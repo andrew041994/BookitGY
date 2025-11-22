@@ -1,7 +1,10 @@
 from pydantic import BaseModel
 from datetime import datetime, date
-from typing import Optional
+from typing import Optional, List
 from decimal import Decimal
+
+
+
 
 class UserBase(BaseModel):
     email: str
@@ -14,10 +17,15 @@ class UserBase(BaseModel):
 
 class UserCreate(UserBase):
     password: str
+    is_provider: bool = False
+    is_admin: bool = False   # 👈 add this
+
 
 class UserOut(UserBase):
     id: int
     is_provider: bool
+    is_admin: bool           # 👈 add this
+
 
     class Config:
         from_attributes = True
@@ -27,6 +35,18 @@ class ServiceCreate(BaseModel):
     description: str
     price_gyd: float
     duration_minutes: int
+
+class ServiceOut(BaseModel):
+    id: int
+    provider_id: int
+    name: str
+    description: str
+    price_gyd: float
+    duration_minutes: int
+
+    class Config:
+        from_attributes = True
+
 
 class BookingCreate(BaseModel):
     service_id: int

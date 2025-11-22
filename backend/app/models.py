@@ -14,7 +14,10 @@ class User(Base):
     lat = Column(Float, nullable=True)
     long = Column(Float, nullable=True)
     is_provider = Column(Boolean, default=False)
+    is_admin = Column(Boolean, default=False)
     created_at = Column(DateTime, default=datetime.utcnow)
+
+    
 
 class Provider(Base):
     __tablename__ = "providers"

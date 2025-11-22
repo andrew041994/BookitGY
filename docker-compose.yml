@@ -1,36 +1,40 @@
+version: "3.9"
+
 services:
   db:
     image: postgres:15
+    container_name: guyana-booker-db
+    restart: always
     environment:
-      POSTGRES_DB: booker
       POSTGRES_USER: user
       POSTGRES_PASSWORD: pass
+      POSTGRES_DB: booker
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - db-data:/var/lib/postgresql/data
     ports:
       - "5432:5432"
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U user -d booker"]
-      interval: 5s
-      timeout: 5s
-      retries: 10
 
   backend:
     build: ./backend
+    container_name: guyana-booker-backend
+    restart: always
+    env_file:
+      - ./backend/.env
+    depends_on:
+      - db
+    volumes:
+      - ./backend/app:/app/app
     ports:
       - "8000:8000"
-    env_file: backend/.env
-    depends_on:
-      db:
-        condition: service_healthy
-    restart: unless-stopped
 
   frontend:
     build: ./frontend
-    ports:
-      - "5173:80"
+    container_name: guyana-booker-frontend
+    restart: always
     depends_on:
       - backend
+    ports:
+      - "3000:80"
 
 volumes:
-  postgres_data:
+  db-data:
