@@ -452,87 +452,734 @@ function SearchScreen() {
 
 function ProviderDashboardScreen({ token, showFlash }) {
   const providerLabel = token?.email || "Provider";
+  const [services, setServices] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [servicesError, setServicesError] = useState("");
+  const [adding, setAdding] = useState(false);
+  const [newName, setNewName] = useState("");
+  const [newPrice, setNewPrice] = useState("");
+  const [newDuration, setNewDuration] = useState("30");
+  const [newDescription, setNewDescription] = useState("");
+  const [bookings, setBookings] = useState([]);
+  const [bookingsLoading, setBookingsLoading] = useState(true);
+  const [bookingsError, setBookingsError] = useState("");
+  const [workingHours, setWorkingHours] = useState([]);
+  const [hoursLoading, setHoursLoading] = useState(false);
+  const [hoursError, setHoursError] = useState("");
+  const [showHours, setShowHours] = useState(false);
+  const [hoursFlash, setHoursFlash] = useState(null); 
 
-  const handleComingSoon = (label) => {
-    if (showFlash) {
-      showFlash("info", `${label} coming soon`);
+
+
+const loadServices = async () => {
+    try {
+      setLoading(true);
+      setServicesError("");
+
+      const storedToken = await AsyncStorage.getItem("accessToken");
+      if (!storedToken) {
+        setServicesError("No access token found. Please log in again.");
+        return;
+      }
+
+      const res = await axios.get(`${API}/providers/me/services`, {
+        headers: {
+          Authorization: `Bearer ${storedToken}`,
+        },
+      });
+
+      setServices(res.data || []);
+    } catch (err) {
+      console.log("Error loading services", err.response?.data || err.message);
+      setServicesError("Could not load services.");
+      if (showFlash) {
+        showFlash("error", "Could not load services.");
+      }
+    } finally {
+      setLoading(false);
     }
   };
 
-  // TEMP: hard-coded services until backend is wired up
-  const sampleServices = [
-    { id: 1, name: "Basic haircut", duration: "30 min", price: "5,000 GYD" },
-    { id: 2, name: "Beard trim & line-up", duration: "20 min", price: "3,000 GYD" },
-  ];
+  useEffect(() => {
+    loadServices();
+    loadBookings();
+    loadWorkingHours();
+  }, []);
+
+const resetForm = () => {
+    setNewName("");
+    setNewPrice("");
+    setNewDuration("30");
+    setNewDescription("");
+  };
+
+const loadBookings = async () => {
+    try {
+      setBookingsLoading(true);
+      setBookingsError("");
+
+      const storedToken = await AsyncStorage.getItem("accessToken");
+      if (!storedToken) {
+        setBookingsError("No access token found. Please log in again.");
+        return;
+      }
+
+      const res = await axios.get(`${API}/providers/me/bookings`, {
+        headers: {
+          Authorization: `Bearer ${storedToken}`,
+        },
+      });
+
+      setBookings(res.data || []);
+    } catch (err) {
+      console.log("Error loading bookings", err.response?.data || err.message);
+      setBookingsError("Could not load bookings.");
+      if (showFlash) {
+        showFlash("error", "Could not load bookings.");
+      }
+    } finally {
+      setBookingsLoading(false);
+    }
+  };
+
+const loadWorkingHours = async () => {
+  try {
+    setHoursLoading(true);
+    setHoursError("");
+
+    const storedToken = await AsyncStorage.getItem("accessToken");
+    if (!storedToken) {
+      setHoursError("No access token found. Please log in again.");
+      return;
+    }
+
+    const res = await axios.get(`${API}/providers/me/hours`, {
+      headers: {
+        Authorization: `Bearer ${storedToken}`,
+      },
+    });
+
+    const rows = (res.data || [])
+      .slice()
+      .sort((a, b) => a.weekday - b.weekday)
+      .map((h) => {
+        // Backend may return null/undefined/empty; use sane defaults
+        const start24 = h.start_time || "09:00";
+        const end24 = h.end_time || "17:00";
+
+        return {
+          ...h,
+          startLocal: to12Hour(start24), // 12-hr for UI
+          endLocal: to12Hour(end24),
+        };
+      });
+
+    setWorkingHours(rows);
+  } catch (err) {
+    console.log("Error loading working hours", err.response?.data || err.message);
+    setHoursError("Could not load working hours.");
+    if (showFlash) showFlash("error", "Could not load working hours.");
+  } finally {
+    setHoursLoading(false);
+  }
+};
+
+
+
+const saveWorkingHours = async () => {
+  try {
+    const storedToken = await AsyncStorage.getItem("accessToken");
+    if (!storedToken) {
+      if (showFlash) showFlash("error", "No access token found.");
+      setHoursFlash({ type: "error", message: "No access token found." });
+      setTimeout(() => setHoursFlash(null), 2000);
+      return;
+    }
+
+    const payload = workingHours.map((h) => ({
+      weekday: h.weekday,
+      is_closed: h.is_closed,
+      start_time: to24Hour(h.startLocal), // 👈 convert 12 -> 24
+      end_time: to24Hour(h.endLocal),
+    }));
+
+    const res = await axios.post(`${API}/providers/me/hours`, payload, {
+      headers: {
+        Authorization: `Bearer ${storedToken}`,
+      },
+    });
+
+    const rows = (res.data || [])
+      .slice()
+      .sort((a, b) => a.weekday - b.weekday)
+      .map((h) => ({
+        ...h,
+        startLocal: to12Hour(h.start_time || "09:00"),
+        endLocal: to12Hour(h.end_time || "17:00"),
+      }));
+
+    setWorkingHours(rows);
+
+    if (showFlash) showFlash("success", "Working hours saved");
+    setHoursFlash({ type: "success", message: "Working hours saved" });
+    setTimeout(() => setHoursFlash(null), 2000);
+  } catch (err) {
+    console.log("Error saving working hours", err.response?.data || err.message);
+    if (showFlash) showFlash("error", "Could not save working hours.");
+    setHoursFlash({ type: "error", message: "Could not save working hours." });
+    setTimeout(() => setHoursFlash(null), 2000);
+  }
+};
+
+// Convert "HH:MM" → "h:MM AM/PM" (safe)
+const to12Hour = (time24) => {
+  if (!time24 || typeof time24 !== "string") return "";
+
+  if (!time24.includes(":")) return "";
+
+  let [h, m] = time24.split(":");
+
+  h = parseInt(h, 10);
+  m = parseInt(m, 10);
+
+  if (isNaN(h) || isNaN(m)) return "";
+
+  const suffix = h >= 12 ? "PM" : "AM";
+  h = h % 12 || 12;
+
+  return `${h}:${m.toString().padStart(2, "0")} ${suffix}`;
+};
+
+
+// Convert "h:MM AM/PM" → "HH:MM" safely
+// "h:MM AM/PM" or "1000am" / "930 PM" / "10" -> "HH:MM"
+const to24Hour = (time12) => {
+  if (!time12) return "";
+
+  let raw = time12.trim().toUpperCase();
+
+  // 1) Extract AM/PM if present
+  let suffix = null;
+  if (raw.endsWith("AM")) {
+    suffix = "AM";
+    raw = raw.slice(0, -2).trim();
+  } else if (raw.endsWith("PM")) {
+    suffix = "PM";
+    raw = raw.slice(0, -2).trim();
+  }
+
+  // 2) Remove any remaining spaces
+  let time = raw.replace(/\s+/g, "");
+
+  let h, m;
+
+  if (time.includes(":")) {
+    // Normal "h:mm" or "hh:mm"
+    const parts = time.split(":");
+    if (parts.length !== 2) return "";
+    h = parseInt(parts[0], 10);
+    m = parseInt(parts[1], 10);
+  } else if (/^\d+$/.test(time)) {
+    // Only digits like "1000", "930", "10"
+    if (time.length === 4) {
+      // "1000" -> 10:00, "0930" -> 9:30
+      h = parseInt(time.slice(0, 2), 10);
+      m = parseInt(time.slice(2, 4), 10);
+    } else if (time.length === 3) {
+      // "930" -> 9:30
+      h = parseInt(time.slice(0, 1), 10);
+      m = parseInt(time.slice(1, 3), 10);
+    } else if (time.length <= 2) {
+      // "9" or "10" -> 9:00 / 10:00
+      h = parseInt(time, 10);
+      m = 0;
+    } else {
+      return "";
+    }
+  } else {
+    // Invalid format
+    return "";
+  }
+
+  if (isNaN(h) || isNaN(m)) return "";
+
+  // 3) Default to AM if no suffix provided
+  if (!suffix) suffix = "AM";
+
+  // 4) Convert to 24h
+  if (suffix === "PM" && h !== 12) h += 12;
+  if (suffix === "AM" && h === 12) h = 0;
+
+  // 5) Return "HH:MM"
+  return `${h.toString().padStart(2, "0")}:${m
+    .toString()
+    .padStart(2, "0")}`;
+};
+
+
+  const handleAddService = async () => {
+    if (!newName.trim()) {
+      if (showFlash) showFlash("error", "Service name is required");
+      return;
+    }
+
+    const priceNumber = newPrice ? Number(newPrice) : 0;
+    const durationNumber = newDuration ? Number(newDuration) : 30;
+
+    try {
+      const storedToken = await AsyncStorage.getItem("accessToken");
+      if (!storedToken) {
+        if (showFlash) showFlash("error", "No access token found.");
+        return;
+      }
+
+      const payload = {
+        name: newName.trim(),
+        description: newDescription.trim(),
+        duration_minutes: durationNumber,
+        price_gyd: priceNumber,
+      };
+
+      await axios.post(`${API}/providers/me/services`, payload, {
+        headers: {
+          Authorization: `Bearer ${storedToken}`,
+        },
+      });
+
+      if (showFlash) {
+        showFlash("success", "Service created");
+      }
+
+      resetForm();
+      setAdding(false);
+      loadServices();
+    } catch (err) {
+      console.log("Error creating service", err.response?.data || err.message);
+      if (showFlash) {
+        showFlash("error", "Could not create service.");
+      }
+    }
+  };
+
+  const handleDeleteService = async (serviceId) => {
+    try {
+      const storedToken = await AsyncStorage.getItem("accessToken");
+      if (!storedToken) {
+        if (showFlash) showFlash("error", "No access token found.");
+        return;
+      }
+
+      await axios.delete(`${API}/providers/me/services/${serviceId}`, {
+        headers: {
+          Authorization: `Bearer ${storedToken}`,
+        },
+      });
+
+      if (showFlash) {
+        showFlash("success", "Service deleted");
+      }
+
+      setServices((prev) => prev.filter((s) => s.id !== serviceId));
+    } catch (err) {
+      console.log("Error deleting service", err.response?.data || err.message);
+      if (showFlash) {
+        showFlash("error", "Could not delete service.");
+      }
+    }
+  };
+
+  const handleCancelBooking = async (bookingId) => {
+    try {
+      const storedToken = await AsyncStorage.getItem("accessToken");
+      if (!storedToken) {
+        if (showFlash) showFlash("error", "No access token found.");
+        return;
+      }
+
+      await axios.post(
+        `${API}/providers/me/bookings/${bookingId}/cancel`,
+        {},
+        {
+          headers: {
+            Authorization: `Bearer ${storedToken}`,
+          },
+        }
+      );
+
+      if (showFlash) {
+        showFlash("success", "Booking cancelled");
+      }
+
+      // Update local state so UI reflects the cancellation
+      setBookings((prev) =>
+        prev.map((b) =>
+          b.id === bookingId ? { ...b, status: "cancelled" } : b
+        )
+      );
+    } catch (err) {
+      console.log("Error cancelling booking", err.response?.data || err.message);
+      if (showFlash) {
+        showFlash("error", "Could not cancel booking.");
+      }
+    }
+  };
+
+
+  const todayBookingsCount = () => {
+    if (!bookings || bookings.length === 0) return 0;
+
+    const now = new Date();
+    const y = now.getFullYear();
+    const m = now.getMonth();
+    const d = now.getDate();
+
+    return bookings.filter((b) => {
+      const start = new Date(b.start_time);
+      return (
+        start.getFullYear() === y &&
+        start.getMonth() === m &&
+        start.getDate() === d
+      );
+    }).length;
+  };
+
+
 
   return (
+      <View style={{ flex: 1 }}>
+        {hoursFlash && (
+        <View style={[
+          styles.hoursFlashGlobal,
+          hoursFlash.type === "error"
+            ? styles.hoursFlashError
+            : styles.hoursFlashSuccess,
+          ]}
+        >
+           <Text style={styles.hoursFlashText}>{hoursFlash.message}</Text>
+        
+      </View>
+    )}
+
+
     <ScrollView contentContainerStyle={styles.providerScroll}>
       <Text style={styles.profileTitle}>Provider dashboard</Text>
       <Text style={styles.subtitleSmall}>Welcome, {providerLabel}</Text>
 
-      {/* Overview card (static for now) */}
-      <View style={styles.card}>
-        <Text style={styles.label}>Today</Text>
-        <Text style={styles.value}>0 bookings</Text>
+      {/* Overview */}
+      <View className="card" style={styles.card}>
+                <Text style={styles.label}>Today</Text>
+        <Text style={styles.value}>{todayBookingsCount()} bookings</Text>
         <Text style={{ fontSize: 13, color: "#6b7280", marginTop: 4 }}>
           Once bookings are added, you’ll see your daily schedule here.
         </Text>
       </View>
 
-      {/* Services card */}
+
+      {/* Upcoming bookings */}
       <View style={styles.card}>
-        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+        <Text style={styles.sectionTitle}>Upcoming bookings</Text>
+
+        {bookingsLoading && (
+          <View style={{ paddingVertical: 10 }}>
+            <ActivityIndicator />
+            <Text style={styles.serviceMeta}>Loading bookings…</Text>
+          </View>
+        )}
+
+        {!bookingsLoading && bookingsError ? (
+          <Text style={styles.errorText}>{bookingsError}</Text>
+        ) : null}
+
+        {!bookingsLoading && !bookingsError && bookings.length === 0 && (
+          <Text style={styles.serviceHint}>
+            You have no upcoming bookings yet.
+          </Text>
+        )}
+
+        {!bookingsLoading &&
+          !bookingsError &&
+          bookings.map((b) => {
+            const start = new Date(b.start_time);
+            const timeStr = start.toLocaleTimeString([], {
+              hour: "2-digit",
+              minute: "2-digit",
+            });
+            const dateStr = start.toLocaleDateString();
+
+            return (
+              <View key={b.id} style={styles.serviceRow}>
+                <View style={{ flex: 1, paddingRight: 8 }}>
+                  <Text style={styles.serviceName}>{b.service_name}</Text>
+                  <Text style={styles.serviceMeta}>
+                    {dateStr} at {timeStr}
+                  </Text>
+                  <Text style={styles.serviceMeta}>
+                    Client: {b.customer_name}
+                  </Text>
+                </View>
+                  <View style={{ alignItems: "flex-end" }}>
+                  <Text
+                    style={[
+                      styles.serviceMeta,
+                      { textTransform: "capitalize" },
+                    ]}
+                  >
+                    {b.status}
+                  </Text>
+
+                  {b.status !== "cancelled" && (
+                    <TouchableOpacity
+                      onPress={() => handleCancelBooking(b.id)}
+                      style={{ marginTop: 4 }}
+                    >
+                      <Text style={{ fontSize: 12, color: "#b91c1c" }}>
+                        Cancel
+                      </Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+              </View>
+            );
+          })}
+      </View>
+
+
+      {/* Services */}
+      <View style={styles.card}>
+        <View
+          style={{
+            flexDirection: "row",
+            justifyContent: "space-between",
+            alignItems: "center",
+            marginBottom: 8,
+          }}
+        >
           <Text style={styles.sectionTitle}>Your services</Text>
-          <TouchableOpacity onPress={() => handleComingSoon("Add service")}>
-            <Text style={{ color: "#16a34a", fontWeight: "600" }}>+ Add</Text>
+          <TouchableOpacity onPress={() => setAdding((prev) => !prev)}>
+            <Text style={{ color: "#16a34a", fontWeight: "600" }}>
+              {adding ? "Cancel" : "+ Add"}
+            </Text>
           </TouchableOpacity>
         </View>
 
-        {sampleServices.map((s) => (
-          <View key={s.id} style={styles.serviceRow}>
-            <View>
-              <Text style={styles.serviceName}>{s.name}</Text>
-              <Text style={styles.serviceMeta}>{s.duration}</Text>
-            </View>
-            <Text style={styles.servicePrice}>{s.price}</Text>
-          </View>
-        ))}
+        {adding && (
+          <View style={{ marginBottom: 12 }}>
+            <TextInput
+              style={styles.input}
+              placeholder="Service name"
+              value={newName}
+              onChangeText={setNewName}
+            />
+            <TextInput
+              style={styles.input}
+              placeholder="Price (GYD)"
+              value={newPrice}
+              onChangeText={setNewPrice}
+              keyboardType="numeric"
+            />
+            <TextInput
+              style={styles.input}
+              placeholder="Duration (minutes)"
+              value={newDuration}
+              onChangeText={setNewDuration}
+              keyboardType="numeric"
+            />
+            <TextInput
+              style={[styles.input, { height: 80 }]}
+              placeholder="Description"
+              value={newDescription}
+              onChangeText={setNewDescription}
+              multiline
+            />
 
-        <Text style={styles.serviceHint}>
-          Service list is just a preview. We’ll hook this up to real data later.
-        </Text>
+            <View style={{ width: "100%", marginTop: 4 }}>
+              <Button title="Save service" onPress={handleAddService} color="#16a34a" />
+            </View>
+          </View>
+        )}
+
+        {loading && (
+          <View style={{ paddingVertical: 10 }}>
+            <ActivityIndicator />
+            <Text style={styles.serviceMeta}>Loading services…</Text>
+          </View>
+        )}
+
+        {!loading && servicesError ? (
+          <Text style={styles.errorText}>{servicesError}</Text>
+        ) : null}
+
+        {!loading && !servicesError && services.length === 0 && !adding && (
+          <Text style={styles.serviceHint}>
+            You have no services yet. Tap “+ Add” to create your first service.
+          </Text>
+        )}
+
+        {!loading &&
+          !servicesError &&
+          services.map((s) => (
+            <View key={s.id} style={styles.serviceRow}>
+              <View style={{ flex: 1, paddingRight: 8 }}>
+                <Text style={styles.serviceName}>{s.name}</Text>
+                <Text style={styles.serviceMeta}>
+                  {s.duration_minutes} min
+                </Text>
+                {s.description ? (
+                  <Text style={styles.serviceMeta}>{s.description}</Text>
+                ) : null}
+              </View>
+              <View style={{ alignItems: "flex-end" }}>
+                {s.price_gyd != null && (
+                  <Text style={styles.servicePrice}>
+                    {s.price_gyd.toLocaleString()} GYD
+                  </Text>
+                )}
+                <TouchableOpacity
+                  onPress={() => handleDeleteService(s.id)}
+                  style={{ marginTop: 4 }}
+                >
+                  <Text style={{ fontSize: 12, color: "#b91c1c" }}>Delete</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          ))}
       </View>
 
-      {/* Other actions */}
+            {/* Working hours editor */}
+      {showHours && (
+  <View style={styles.card}>
+    <Text style={styles.sectionTitle}>Working hours</Text>
+
+    {hoursLoading && (
+      <View style={{ paddingVertical: 10 }}>
+        <ActivityIndicator />
+        <Text style={styles.serviceMeta}>Loading working hours…</Text>
+      </View>
+    )}
+
+    {hoursError ? (
+      <Text style={styles.errorText}>{hoursError}</Text>
+    ) : null}
+
+    {!hoursLoading &&
+      !hoursError &&
+      workingHours.map((h) => {
+        const dayNames = [
+          "Monday",
+          "Tuesday",
+          "Wednesday",
+          "Thursday",
+          "Friday",
+          "Saturday",
+          "Sunday",
+        ];
+        const label = dayNames[h.weekday] || `Day ${h.weekday}`;
+
+        return (
+          <View key={h.id} style={styles.workingHoursRow}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.serviceName}>{label}</Text>
+              <View style={{ flexDirection: "row", marginTop: 4 }}>
+                <Text style={styles.serviceMeta}>Open</Text>
+                <Switch
+                  style={{ marginLeft: 8 }}
+                  value={!h.is_closed}
+                  onValueChange={(val) => {
+                    setWorkingHours((prev) =>
+                      prev.map((row) =>
+                        row.id === h.id ? { ...row, is_closed: !val } : row
+                      )
+                    );
+                  }}
+                />
+              </View>
+            </View>
+
+            {!h.is_closed && (
+              <View style={{ alignItems: "flex-end" }}>
+                <View style={{ flexDirection: "row" }}>
+                  <TextInput
+                    style={styles.hoursInput}
+                    value={h.startLocal || ""}
+                    onChangeText={(text) => {
+                      setWorkingHours((prev) =>
+                        prev.map((row) =>
+                          row.id === h.id ? { ...row, startLocal: text } : row
+                        )
+                      );
+                    }}
+                    placeholder="9:00 AM"
+                  />
+                  <Text style={styles.serviceMeta}> - </Text>
+                  <TextInput
+                    style={styles.hoursInput}
+                    value={h.endLocal || ""}
+                    onChangeText={(text) => {
+                      setWorkingHours((prev) =>
+                        prev.map((row) =>
+                          row.id === h.id ? { ...row, endLocal: text } : row
+                        )
+                      );
+                    }}
+                    placeholder="5:00 PM"
+                  />
+                </View>
+              </View>
+            )}
+          </View>
+        );
+      })}
+
+    {!hoursLoading && !hoursError && (
+      <View style={{ width: "100%", marginTop: 8 }}>
+        <Button
+          title="Save working hours"
+          onPress={saveWorkingHours}
+          color="#16a34a"
+        />
+      </View>
+    )}
+  </View>
+)}
+
+
+
+      {/* Actions */}
       <View style={styles.actionsContainer}>
         <Text style={styles.sectionTitle}>Actions</Text>
 
         <TouchableOpacity
           style={styles.actionButton}
-          onPress={() => handleComingSoon("Manage working hours")}
+          onPress={() => setShowHours((prev) => !prev)}
         >
-          <Text style={styles.actionButtonText}>Manage working hours</Text>
+          <Text style={styles.actionButtonText}>
+            {showHours ? "Hide working hours" : "Manage working hours"}
+          </Text>
         </TouchableOpacity>
+
 
         <TouchableOpacity
           style={styles.actionButton}
-          onPress={() => handleComingSoon("View upcoming bookings")}
+          onPress={() => {
+            if (showFlash) showFlash("info", "Bookings view coming soon");
+          }}
         >
           <Text style={styles.actionButtonText}>View upcoming bookings</Text>
         </TouchableOpacity>
 
         <TouchableOpacity
           style={styles.actionButton}
-          onPress={() => handleComingSoon("Edit provider profile")}
+          onPress={() => {
+            if (showFlash) showFlash("info", "Provider profile editor coming soon");
+          }}
         >
           <Text style={styles.actionButtonText}>Edit provider profile</Text>
         </TouchableOpacity>
       </View>
     </ScrollView>
+    </View>
   );
 }
-
-
 
 // Tabs after login
 function MainApp({ token, setToken, showFlash }) {
@@ -891,6 +1538,52 @@ function App() {
     color: "#9ca3af",
     marginTop: 8,
   },
+
+    workingHoursRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: "#f3f4f6",
+  },
+  hoursInput: {
+    borderWidth: 1,
+    borderColor: "#d1d5db",
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    minWidth: 60,
+    textAlign: "center",
+    marginHorizontal: 4,
+    backgroundColor: "white",
+  },
+
+  hoursFlashGlobal: {
+    position: "absolute",
+    top: 50,
+    left: 20,
+    right: 20,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    zIndex: 9999,
+    elevation: 10,
+  },
+  hoursFlashSuccess: {
+    backgroundColor: "#22c55e",
+  },
+  hoursFlashError: {
+    backgroundColor: "#ef4444",
+  },
+  hoursFlashText: {
+    color: "white",
+    fontSize: 13,
+    textAlign: "center",
+  },
+
+
+
 
 
 });

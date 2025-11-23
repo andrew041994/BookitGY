@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta, date
 from decimal import Decimal
 import os
-
+from typing import Optional
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 from passlib.context import CryptContext
@@ -16,6 +16,20 @@ from . import models, schemas
 
 pwd_context = CryptContext(schemes=["pbkdf2_sha256"], deprecated="auto")
 
+def hash_password(password: str) -> str:
+    """Return a secure hash for the given plaintext password."""
+    return pwd_context.hash(password)
+
+
+def verify_password(plain: str, hashed: str) -> bool:
+    """Verify that a plaintext password matches a stored hash."""
+    return pwd_context.verify(plain, hashed)
+
+
+
+# ---------------------------------------------------------------------------
+# provider dashboard
+# ---------------------------------------------------------------------------
 
 def get_provider_by_user_id(db: Session, user_id: int):
     return db.query(models.Provider).filter(models.Provider.user_id == user_id).first()
@@ -48,16 +62,27 @@ def create_service_for_provider(db: Session, provider_id: int, service_in: schem
     db.refresh(svc)
     return svc
 
+def get_service_for_provider(
+    db: Session, service_id: int, provider_id: int
+) -> Optional[models.Service]:
+    return (
+        db.query(models.Service)
+        .filter(
+            models.Service.id == service_id,
+            models.Service.provider_id == provider_id,
+        )
+        .first()
+    )
 
-def hash_password(password: str) -> str:
-    """Return a secure hash for the given plaintext password."""
-    return pwd_context.hash(password)
-
-
-def verify_password(plain: str, hashed: str) -> bool:
-    """Verify that a plaintext password matches a stored hash."""
-    return pwd_context.verify(plain, hashed)
-
+def delete_service_for_provider(
+    db: Session, service_id: int, provider_id: int
+) -> bool:
+    svc = get_service_for_provider(db, service_id, provider_id)
+    if not svc:
+        return False
+    db.delete(svc)
+    db.commit()
+    return True
 
 # ---------------------------------------------------------------------------
 # Twilio / WhatsApp helper
@@ -301,3 +326,138 @@ def generate_monthly_bills(db: Session, month: date):
             )
 
     db.commit()
+
+
+def list_bookings_for_provider(db: Session, provider_id: int):
+    """Return upcoming bookings for this provider (from now onwards)."""
+    now = datetime.utcnow()
+
+    rows = (
+        db.query(
+            models.Booking.id,
+            models.Booking.start_time,
+            models.Booking.end_time,
+            models.Booking.status,
+            models.Service.name.label("service_name"),
+            models.User.full_name.label("customer_name"),
+        )
+        .join(models.Service, models.Booking.service_id == models.Service.id)
+        .join(models.Provider, models.Service.provider_id == models.Provider.id)
+        .join(models.User, models.Booking.customer_id == models.User.id)
+        .filter(
+            models.Provider.id == provider_id,
+            models.Booking.start_time >= now,
+        )
+        .order_by(models.Booking.start_time.asc())
+        .all()
+    )
+
+    return [
+        {
+            "id": r.id,
+            "service_name": r.service_name,
+            "customer_name": r.customer_name,
+            "start_time": r.start_time,
+            "end_time": r.end_time,
+            "status": r.status,
+        }
+        for r in rows
+    ]
+
+def cancel_booking_for_provider(db: Session, booking_id: int, provider_id: int) -> bool:
+    """
+    Set a booking's status to 'cancelled' if it belongs to this provider.
+    Returns True if updated, False if not found.
+    """
+    booking = (
+        db.query(models.Booking)
+        .join(models.Service, models.Booking.service_id == models.Service.id)
+        .join(models.Provider, models.Service.provider_id == models.Provider.id)
+        .filter(
+            models.Booking.id == booking_id,
+            models.Provider.id == provider_id,
+        )
+        .first()
+    )
+
+    if not booking:
+        return False
+
+    booking.status = "cancelled"
+    db.commit()
+    db.refresh(booking)
+    return True
+
+def get_or_create_working_hours_for_provider(db: Session, provider_id: int):
+    """
+    Return a list of 7 working-hours rows for this provider.
+    If none exist yet, create closed rows with default times.
+    """
+    rows = (
+        db.query(models.ProviderWorkingHours)
+        .filter(models.ProviderWorkingHours.provider_id == provider_id)
+        .order_by(models.ProviderWorkingHours.weekday.asc())
+        .all()
+    )
+
+    if len(rows) == 0:
+        # create default 7 days, all closed
+        defaults = []
+        for weekday in range(7):
+            wh = models.ProviderWorkingHours(
+                provider_id=provider_id,
+                weekday=weekday,
+                is_closed=True,
+                start_time="09:00",
+                end_time="17:00",
+            )
+            db.add(wh)
+            defaults.append(wh)
+        db.commit()
+        for wh in defaults:
+            db.refresh(wh)
+        rows = defaults
+
+    return rows
+
+def set_working_hours_for_provider(db: Session, provider_id: int, hours_list):
+    """
+    hours_list is a list of dicts with keys:
+    weekday, is_closed, start_time, end_time
+    """
+    existing = {
+        wh.weekday: wh
+        for wh in db.query(models.ProviderWorkingHours)
+        .filter(models.ProviderWorkingHours.provider_id == provider_id)
+        .all()
+    }
+
+    for item in hours_list:
+        weekday = item["weekday"]
+        is_closed = item.get("is_closed", True)
+        start_time = item.get("start_time")
+        end_time = item.get("end_time")
+
+        wh = existing.get(weekday)
+        if wh is None:
+            wh = models.ProviderWorkingHours(
+                provider_id=provider_id,
+                weekday=weekday,
+            )
+            db.add(wh)
+
+        wh.is_closed = is_closed
+        wh.start_time = start_time
+        wh.end_time = end_time
+
+    db.commit()
+
+    # return updated rows
+    rows = (
+        db.query(models.ProviderWorkingHours)
+        .filter(models.ProviderWorkingHours.provider_id == provider_id)
+        .order_by(models.ProviderWorkingHours.weekday.asc())
+        .all()
+    )
+    return rows
+

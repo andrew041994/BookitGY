@@ -3,7 +3,6 @@ from fastapi.security import OAuth2PasswordRequestForm
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from typing import List, Optional  # 👈 new
-
 from .database import get_db, Base, engine, SessionLocal
 from app import crud, schemas
 import os
@@ -198,3 +197,122 @@ def create_my_service(
         db, provider_id=provider.id, service_in=service_in
     )
     return new_service
+
+
+@app.delete(
+    "/providers/me/services/{service_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def delete_my_service(
+    service_id: int,
+    authorization: str = Header(None),
+    db: Session = Depends(get_db),
+):
+    user = get_current_user_from_header(authorization, db)
+
+    if not user.is_provider:
+        raise HTTPException(status_code=403, detail="Only providers can delete services")
+
+    provider = crud.get_provider_by_user_id(db, user.id)
+    if not provider:
+        raise HTTPException(status_code=404, detail="Provider not found")
+
+    ok = crud.delete_service_for_provider(db, service_id=service_id, provider_id=provider.id)
+    if not ok:
+        raise HTTPException(status_code=404, detail="Service not found")
+
+    # 204 has no body
+    return
+
+@app.get(
+    "/providers/me/bookings",
+    response_model=List[schemas.BookingSummary],
+    status_code=status.HTTP_200_OK,
+)
+def list_my_bookings(
+    authorization: str = Header(None),
+    db: Session = Depends(get_db),
+):
+    user = get_current_user_from_header(authorization, db)
+
+    if not user.is_provider:
+        raise HTTPException(status_code=403, detail="Only providers can view provider bookings")
+
+    provider = crud.get_provider_by_user_id(db, user.id)
+    if not provider:
+        raise HTTPException(status_code=404, detail="Provider not found")
+
+    bookings = crud.list_bookings_for_provider(db, provider_id=provider.id)
+    return bookings
+
+@app.post(
+    "/providers/me/bookings/{booking_id}/cancel",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def cancel_my_booking(
+    booking_id: int,
+    authorization: str = Header(None),
+    db: Session = Depends(get_db),
+):
+    user = get_current_user_from_header(authorization, db)
+
+    if not user.is_provider:
+        raise HTTPException(status_code=403, detail="Only providers can cancel bookings")
+
+    provider = crud.get_provider_by_user_id(db, user.id)
+    if not provider:
+        raise HTTPException(status_code=404, detail="Provider not found")
+
+    ok = crud.cancel_booking_for_provider(db, booking_id=booking_id, provider_id=provider.id)
+    if not ok:
+        raise HTTPException(status_code=404, detail="Booking not found")
+
+    # 204 No Content → nothing to return
+    return
+
+@app.get(
+    "/providers/me/hours",
+    response_model=List[schemas.WorkingHoursOut],
+    status_code=status.HTTP_200_OK,
+)
+def get_my_working_hours(
+    authorization: str = Header(None),
+    db: Session = Depends(get_db),
+):
+    user = get_current_user_from_header(authorization, db)
+
+    if not user.is_provider:
+        raise HTTPException(status_code=403, detail="Only providers can manage working hours")
+
+    provider = crud.get_provider_by_user_id(db, user.id)
+    if not provider:
+        raise HTTPException(status_code=404, detail="Provider not found")
+
+    rows = crud.get_or_create_working_hours_for_provider(db, provider_id=provider.id)
+    return rows
+
+
+@app.post(
+    "/providers/me/hours",
+    response_model=List[schemas.WorkingHoursOut],
+    status_code=status.HTTP_200_OK,
+)
+def update_my_working_hours(
+    hours: List[schemas.WorkingHoursUpdate],
+    authorization: str = Header(None),
+    db: Session = Depends(get_db),
+):
+    user = get_current_user_from_header(authorization, db)
+
+    if not user.is_provider:
+        raise HTTPException(status_code=403, detail="Only providers can manage working hours")
+
+    provider = crud.get_provider_by_user_id(db, user.id)
+    if not provider:
+        raise HTTPException(status_code=404, detail="Provider not found")
+
+    # convert Pydantic models to simple dicts for CRUD
+    hours_list = [h.dict() for h in hours]
+
+    rows = crud.set_working_hours_for_provider(db, provider_id=provider.id, hours_list=hours_list)
+    return rows

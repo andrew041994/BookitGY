@@ -17,8 +17,6 @@ class User(Base):
     is_admin = Column(Boolean, default=False)
     created_at = Column(DateTime, default=datetime.utcnow)
 
-    
-
 class Provider(Base):
     __tablename__ = "providers"
     id = Column(Integer, primary_key=True, index=True)
@@ -59,3 +57,12 @@ class Promotion(Base):
     provider_id = Column(Integer, ForeignKey("providers.id"), unique=True)
     free_bookings_total = Column(Integer, default=0)
     free_bookings_used = Column(Integer, default=0)
+
+class ProviderWorkingHours(Base):
+    __tablename__ = "provider_working_hours"
+    id = Column(Integer, primary_key=True, index=True)
+    provider_id = Column(Integer, ForeignKey("providers.id"))
+    weekday = Column(Integer)  # 0 = Monday, 6 = Sunday
+    is_closed = Column(Boolean, default=True)
+    start_time = Column(String, nullable=True)  # "09:00"
+    end_time = Column(String, nullable=True)    # "17:00"

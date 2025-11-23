@@ -52,5 +52,34 @@ class BookingCreate(BaseModel):
     service_id: int
     start_time: datetime
 
+
+class WorkingHoursBase(BaseModel):
+    weekday: int               # 0 = Monday, 6 = Sunday
+    is_closed: bool
+    start_time: Optional[str] = None  # "09:00"
+    end_time: Optional[str] = None    # "17:00"
+
+
+class WorkingHoursOut(WorkingHoursBase):
+    id: int
+    provider_id: int
+
+
+class WorkingHoursUpdate(WorkingHoursBase):
+       weekday: int               # 0 = Monday, 6 = Sunday
+       is_closed: bool
+       start_time: Optional[str] = None  # "09:00"
+       end_time: Optional[str] = None    # "17:00"# same fields as base; used for updates
+       pass
+
+class BookingSummary(BaseModel):
+    id: int
+    service_name: str
+    customer_name: str
+    start_time: datetime
+    end_time: datetime
+    status: str
+
+
 class PromotionUpdate(BaseModel):
     free_bookings_total: int
