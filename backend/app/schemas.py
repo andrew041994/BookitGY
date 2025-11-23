@@ -83,3 +83,58 @@ class BookingSummary(BaseModel):
 
 class PromotionUpdate(BaseModel):
     free_bookings_total: int
+
+
+class ProviderProfileOut(BaseModel):
+    full_name: str
+    phone: str
+    whatsapp: Optional[str] = None
+    location: str
+    bio: Optional[str] = None
+
+
+class ProviderProfileUpdate(BaseModel):
+    full_name: Optional[str] = None
+    phone: Optional[str] = None
+    whatsapp: Optional[str] = None
+    location: Optional[str] = None
+    bio: Optional[str] = None
+
+class BookingWithDetails(BaseModel):
+    id: int
+    start_time: datetime
+    end_time: datetime
+    status: str
+
+    service_name: str
+    service_duration_minutes: int
+    service_price_gyd: float
+
+    customer_name: str
+    customer_phone: str
+
+    class Config:
+        from_attributes = True
+
+
+class BookingUpdate(BaseModel):
+    start_time: Optional[datetime] = None
+    end_time: Optional[datetime] = None
+
+class ProviderListItem(BaseModel):
+    provider_id: int
+    name: str
+    location: str
+    lat: Optional[float] = None
+    long: Optional[float] = None
+    bio: Optional[str] = None
+
+class AvailabilitySlot(BaseModel):
+    start_time: datetime  # full ISO datetime from backend
+
+
+class ProviderAvailabilityDay(BaseModel):
+    date: date            # YYYY-MM-DD
+    slots: List[datetime]  # list of ISO datetimes (start times)
+
+

@@ -6,6 +6,10 @@ import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import axios from "axios";
 import { registerRootComponent } from "expo";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import * as Location from "expo-location";
+import MapView, { Marker } from "react-native-maps";
+
+
 
 const API = "https://cecila-opalescent-compulsorily.ngrok-free.dev";
 
@@ -116,6 +120,9 @@ function LoginScreen({ setToken, goToSignup, goBack, setIsAdmin, showFlash  }) {
     </View>
   );
 }
+
+
+
 
 function SignupScreen({ goToLogin, goBack, showFlash }) {
   const [email, setEmail] = useState("");
@@ -434,13 +441,470 @@ function ProfileScreen({ setToken, showFlash }) {
 
 
 
-function SearchScreen() {
+function SearchScreen({ token, showFlash }) {
+  const [providers, setProviders] = useState([]);
+  const [providersLoading, setProvidersLoading] = useState(true);
+  const [providersError, setProvidersError] = useState("");
+
+  const [selectedProvider, setSelectedProvider] = useState(null);
+
+  const [services, setServices] = useState([]);
+  const [servicesLoading, setServicesLoading] = useState(false);
+  const [servicesError, setServicesError] = useState("");
+  const [selectedService, setSelectedService] = useState(null);
+
+  const [availability, setAvailability] = useState([]);
+  const [availabilityLoading, setAvailabilityLoading] = useState(false);
+  const [availabilityError, setAvailabilityError] = useState("");
+
+  const [selectedDate, setSelectedDate] = useState(null);
+  const [selectedSlot, setSelectedSlot] = useState(null); // ISO string
+  const [bookingLoading, setBookingLoading] = useState(false);
+
+  // Load providers on mount
+  useEffect(() => {
+    const loadProviders = async () => {
+      try {
+        setProvidersLoading(true);
+        setProvidersError("");
+
+        const res = await axios.get(`${API}/providers`);
+        setProviders(res.data || []);
+      } catch (err) {
+        console.log(
+          "Error loading providers",
+          err.response?.data || err.message
+        );
+        setProvidersError("Could not load providers.");
+        if (showFlash) showFlash("error", "Could not load providers.");
+      } finally {
+        setProvidersLoading(false);
+      }
+    };
+
+    loadProviders();
+  }, []);
+
+  const loadAvailability = async (providerId, serviceId) => {
+    try {
+      setAvailabilityLoading(true);
+      setAvailabilityError("");
+
+      const res = await axios.get(
+        `${API}/providers/${providerId}/availability`,
+        {
+          params: {
+            service_id: serviceId,
+            days: 14,
+          },
+        }
+      );
+
+      setAvailability(res.data || []);
+    } catch (err) {
+      console.log(
+        "Error loading availability",
+        err.response?.data || err.message
+      );
+      setAvailabilityError("Could not load availability for this service.");
+      if (showFlash) showFlash("error", "Could not load availability.");
+    } finally {
+      setAvailabilityLoading(false);
+    }
+  };
+
+  const handleSelectProvider = async (provider) => {
+    setSelectedProvider(provider);
+
+    // Reset downstream state
+    setServices([]);
+    setServicesError("");
+    setSelectedService(null);
+    setAvailability([]);
+    setAvailabilityError("");
+    setSelectedDate(null);
+    setSelectedSlot(null);
+
+    try {
+      setServicesLoading(true);
+
+      const res = await axios.get(
+        `${API}/providers/${provider.provider_id}/services`
+      );
+      setServices(res.data || []);
+    } catch (err) {
+      console.log(
+        "Error loading services",
+        err.response?.data || err.message
+      );
+      setServicesError("Could not load services for this provider.");
+      if (showFlash) showFlash("error", "Could not load provider services.");
+    } finally {
+      setServicesLoading(false);
+    }
+  };
+
+  const handleSelectService = async (service) => {
+    setSelectedService(service);
+    setAvailability([]);
+    setAvailabilityError("");
+    setSelectedDate(null);
+    setSelectedSlot(null);
+
+    if (!selectedProvider) return;
+
+    await loadAvailability(selectedProvider.provider_id, service.id);
+  };
+
+  const handleBookAppointment = async () => {
+    if (!selectedService || !selectedSlot || !selectedProvider) return;
+
+    try {
+      setBookingLoading(true);
+
+      const storedToken = await AsyncStorage.getItem("accessToken");
+      if (!storedToken) {
+        if (showFlash) {
+          showFlash("error", "No access token found. Please log in again.");
+        } else {
+          Alert.alert("Error", "No access token found. Please log in again.");
+        }
+        return;
+      }
+
+      await axios.post(
+        `${API}/bookings`,
+        {
+          service_id: selectedService.id,
+          start_time: selectedSlot,
+        },
+        {
+          headers: { Authorization: `Bearer ${storedToken}` },
+        }
+      );
+
+      // Refresh availability so this slot disappears
+      await loadAvailability(selectedProvider.provider_id, selectedService.id);
+
+      // Clear selection
+      setSelectedSlot(null);
+
+      if (showFlash) showFlash("success", "Booking created!");
+      else Alert.alert("Success", "Booking created!");
+    } catch (err) {
+      console.log(
+        "Error creating booking",
+        err.response?.data || err.message
+      );
+      const detail =
+        err.response?.data?.detail ||
+        "Could not create booking. Maybe slot is already taken.";
+
+      if (showFlash) showFlash("error", detail);
+      else Alert.alert("Error", detail);
+
+      // Refresh availability after failure to show updated slots
+      try {
+        if (selectedProvider && selectedService) {
+          await loadAvailability(
+            selectedProvider.provider_id,
+            selectedService.id
+          );
+        }
+      } catch (e) {
+        console.log("Error refreshing availability after failure", e);
+      }
+    } finally {
+      setBookingLoading(false);
+    }
+  };
+
+  // Map date string -> slots for easier lookup
+  const availabilityMap = React.useMemo(() => {
+    const map = {};
+    (availability || []).forEach((day) => {
+      map[day.date] = day.slots || [];
+    });
+    return map;
+  }, [availability]);
+
+  const makeDateKey = (d) => {
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`; // "YYYY-MM-DD"
+  };
+
+
+  // Build mini calendar for next 14 days
+  const buildCalendarDays = () => {
+    const days = [];
+    const today = new Date();
+
+    for (let i = 0; i < 14; i++) {
+      const d = new Date(today);
+      d.setDate(today.getDate() + i);
+      const key = makeDateKey(d); // YYYY-MM-DD
+      const hasSlots = (availabilityMap[key] || []).length > 0;
+
+      days.push({ key, date: d, hasSlots });
+    }
+    return days;
+  };
+
+  const calendarDays = buildCalendarDays();
+
+  const formatTimeLabel = (isoString) => {
+    const d = new Date(isoString);
+    return d.toLocaleTimeString("en-US", {
+      hour: "numeric",
+      minute: "2-digit",
+    });
+  };
+
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Search</Text>
-    </View>
+    <ScrollView contentContainerStyle={styles.providerScroll}>
+      <Text style={styles.profileTitle}>Find a provider</Text>
+      <Text style={styles.subtitleSmall}>
+        Pick a provider, service, date, and time.
+      </Text>
+
+      {/* Providers list */}
+      <View style={styles.card}>
+        <Text style={styles.sectionTitle}>Providers</Text>
+
+        {providersLoading && (
+          <View style={{ paddingVertical: 10 }}>
+            <ActivityIndicator />
+            <Text style={styles.serviceMeta}>Loading providers…</Text>
+          </View>
+        )}
+
+        {!providersLoading && providersError ? (
+          <Text style={styles.errorText}>{providersError}</Text>
+        ) : null}
+
+        {!providersLoading && !providersError && providers.length === 0 && (
+          <Text style={styles.serviceHint}>
+            No providers available yet. Check back soon.
+          </Text>
+        )}
+
+        {!providersLoading &&
+          !providersError &&
+          providers.map((p) => (
+            <TouchableOpacity
+              key={p.provider_id}
+              style={[
+                styles.serviceRow,
+                selectedProvider &&
+                  selectedProvider.provider_id === p.provider_id && {
+                    backgroundColor: "#ecfdf3",
+                  },
+              ]}
+              onPress={() => handleSelectProvider(p)}
+            >
+              <View style={{ flex: 1, paddingRight: 8 }}>
+                <Text style={styles.serviceName}>{p.name}</Text>
+                {p.location ? (
+                  <Text style={styles.serviceMeta}>{p.location}</Text>
+                ) : null}
+                {p.bio ? (
+                  <Text numberOfLines={2} style={styles.serviceMeta}>
+                    {p.bio}
+                  </Text>
+                ) : null}
+              </View>
+            </TouchableOpacity>
+          ))}
+      </View>
+
+      {/* Services list for selected provider */}
+      {selectedProvider && (
+        <View style={styles.card}>
+          <Text style={styles.sectionTitle}>
+            Services by {selectedProvider.name}
+          </Text>
+
+          {servicesLoading && (
+            <View style={{ paddingVertical: 10 }}>
+              <ActivityIndicator />
+              <Text style={styles.serviceMeta}>Loading services…</Text>
+            </View>
+          )}
+
+          {!servicesLoading && servicesError ? (
+            <Text style={styles.errorText}>{servicesError}</Text>
+          ) : null}
+
+          {!servicesLoading &&
+            !servicesError &&
+            services.length === 0 && (
+              <Text style={styles.serviceHint}>
+                This provider has not added any services yet.
+              </Text>
+            )}
+
+          {!servicesLoading &&
+            !servicesError &&
+            services.map((s) => {
+              const isSelected =
+                selectedService && selectedService.id === s.id;
+              return (
+                <TouchableOpacity
+                  key={s.id}
+                  style={[
+                    styles.serviceRow,
+                    isSelected && { borderColor: "#16a34a", borderWidth: 1 },
+                  ]}
+                  onPress={() => handleSelectService(s)}
+                >
+                  <View style={{ flex: 1, paddingRight: 8 }}>
+                    <Text style={styles.serviceName}>{s.name}</Text>
+                    <Text style={styles.serviceMeta}>
+                      {s.duration_minutes} min
+                    </Text>
+                    {s.description ? (
+                      <Text style={styles.serviceMeta}>{s.description}</Text>
+                    ) : null}
+                  </View>
+                  <View style={{ alignItems: "flex-end" }}>
+                    {s.price_gyd != null && (
+                      <Text style={styles.servicePrice}>
+                        {s.price_gyd.toLocaleString()} GYD
+                      </Text>
+                    )}
+                  </View>
+                </TouchableOpacity>
+              );
+            })}
+        </View>
+      )}
+
+      {/* Calendar for selected service */}
+      {selectedService && (
+        <View style={styles.card}>
+          <Text style={styles.sectionTitle}>Choose a date</Text>
+
+          {availabilityLoading && (
+            <View style={{ paddingVertical: 10 }}>
+              <ActivityIndicator />
+              <Text style={styles.serviceMeta}>Loading availability…</Text>
+            </View>
+          )}
+
+          {!availabilityLoading && availabilityError ? (
+            <Text style={styles.errorText}>{availabilityError}</Text>
+          ) : null}
+
+          {!availabilityLoading && !availabilityError && (
+            <>
+              {calendarDays.every((d) => !d.hasSlots) ? (
+                <Text style={styles.serviceHint}>
+                  No available dates in the next 14 days.
+                </Text>
+              ) : (
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  style={{ marginTop: 8 }}
+                >
+                  {calendarDays.map((d) => {
+                    const isSelected = selectedDate === d.key;
+                    const disabled = !d.hasSlots;
+
+                    return (
+                      <TouchableOpacity
+                        key={d.key}
+                        disabled={disabled}
+                        onPress={() => {
+                          setSelectedDate(d.key);
+                          setSelectedSlot(null);
+                        }}
+                        style={[
+                          styles.datePill,
+                          disabled && styles.datePillDisabled,
+                          isSelected && styles.datePillSelected,
+                        ]}
+                      >
+                        <Text style={styles.datePillDow}>
+                          {d.date.toLocaleDateString("en-US", {
+                            weekday: "short",
+                          })}
+                        </Text>
+                        <Text style={styles.datePillDay}>
+                          {d.date.getDate()}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </ScrollView>
+              )}
+            </>
+          )}
+        </View>
+      )}
+
+      {/* Time slots for selected date */}
+      {selectedService && selectedDate && (
+        <View style={styles.card}>
+          <Text style={styles.sectionTitle}>Available time slots</Text>
+
+          {(availabilityMap[selectedDate] || []).length === 0 ? (
+            <Text style={styles.serviceHint}>
+              No available times for this date.
+            </Text>
+          ) : (
+            <View style={styles.timesContainer}>
+              {availabilityMap[selectedDate].map((slotIso) => {
+                const isSelected = selectedSlot === slotIso;
+                return (
+                  <TouchableOpacity
+                    key={slotIso}
+                    style={[
+                      styles.timeSlotButton,
+                      isSelected && styles.timeSlotButtonSelected,
+                    ]}
+                    onPress={() => setSelectedSlot(slotIso)}
+                  >
+                    <Text
+                      style={[
+                        styles.timeSlotLabel,
+                        isSelected && styles.timeSlotLabelSelected,
+                      ]}
+                    >
+                      {formatTimeLabel(slotIso)}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          )}
+        </View>
+      )}
+
+      {/* Book button BELOW the time-slot card */}
+      {selectedService && selectedDate && (
+        <View style={{ marginTop: 12, marginBottom: 20 }}>
+          <TouchableOpacity
+            style={[
+              styles.bookButton,
+              (!selectedSlot || bookingLoading) && styles.bookButtonDisabled,
+            ]}
+            disabled={!selectedSlot || bookingLoading}
+            onPress={handleBookAppointment}
+          >
+            <Text style={styles.bookButtonLabel}>
+              {bookingLoading ? "Booking..." : "Book Appointment"}
+            </Text>
+          </TouchableOpacity>
+        </View>
+      )}
+    </ScrollView>
   );
 }
+
+
 
 // function AdminScreen() {
 //   return (
@@ -468,6 +932,27 @@ function ProviderDashboardScreen({ token, showFlash }) {
   const [hoursError, setHoursError] = useState("");
   const [showHours, setShowHours] = useState(false);
   const [hoursFlash, setHoursFlash] = useState(null); 
+  const [showProfileEditor, setShowProfileEditor] = useState(false);
+  const [profileLoading, setProfileLoading] = useState(false);
+  const [profileError, setProfileError] = useState("");
+  const [profile, setProfile] = useState({
+  full_name: "",
+  phone: "",
+  whatsapp: "",
+  location: "",
+  bio: "",
+});
+
+const [todayBookings, setTodayBookings] = useState([]);
+const [todayLoading, setTodayLoading] = useState(false);
+const [todayError, setTodayError] = useState("");
+const [upcomingBookings, setUpcomingBookings] = useState([]);
+const [upcomingLoading, setUpcomingLoading] = useState(false);
+const [upcomingError, setUpcomingError] = useState("");
+const [providerLocation, setProviderLocation] = useState(null);
+
+
+
 
 
 
@@ -504,6 +989,11 @@ const loadServices = async () => {
     loadServices();
     loadBookings();
     loadWorkingHours();
+    loadTodayBookings();
+    loadUpcomingBookings(); 
+    loadProviderLocation(); 
+
+
   }, []);
 
 const resetForm = () => {
@@ -563,20 +1053,28 @@ const loadWorkingHours = async () => {
       .slice()
       .sort((a, b) => a.weekday - b.weekday)
       .map((h) => {
-        // Backend may return null/undefined/empty; use sane defaults
-        const start24 = h.start_time || "09:00";
-        const end24 = h.end_time || "17:00";
+        let start24 = h.start_time;
+        let end24 = h.end_time;
+
+        if (!h.is_closed && !start24 && !end24) {
+          // only for brand-new empty rows
+          start24 = "09:00";
+          end24 = "17:00";
+        }
 
         return {
           ...h,
-          startLocal: to12Hour(start24), // 12-hr for UI
-          endLocal: to12Hour(end24),
+          startLocal: start24 ? to12Hour(start24) : "",
+          endLocal: end24 ? to12Hour(end24) : "",
         };
       });
 
     setWorkingHours(rows);
   } catch (err) {
-    console.log("Error loading working hours", err.response?.data || err.message);
+    console.log(
+      "Error loading working hours",
+      err.response?.data || err.message
+    );
     setHoursError("Could not load working hours.");
     if (showFlash) showFlash("error", "Could not load working hours.");
   } finally {
@@ -584,6 +1082,93 @@ const loadWorkingHours = async () => {
   }
 };
 
+
+const loadTodayBookings = async () => {
+  try {
+    setTodayLoading(true);
+    setTodayError("");
+
+    const storedToken = await AsyncStorage.getItem("accessToken");
+    if (!storedToken) {
+      setTodayError("No access token found. Please log in again.");
+      return;
+    }
+
+    const res = await axios.get(`${API}/providers/me/bookings/today`, {
+      headers: {
+        Authorization: `Bearer ${storedToken}`,
+      },
+    });
+
+    setTodayBookings(res.data || []);
+  } catch (err) {
+    console.log("Error loading today's bookings", err.response?.data || err.message);
+    setTodayError("Could not load today's bookings.");
+    if (showFlash) showFlash("error", "Could not load today's bookings.");
+  } finally {
+    setTodayLoading(false);
+  }
+};
+
+const handleCancelBooking = (bookingId) => {
+  Alert.alert(
+    "Cancel booking",
+    "Are you sure you want to cancel this booking?",
+    [
+      { text: "No", style: "cancel" },
+      {
+        text: "Yes, cancel",
+        style: "destructive",
+        onPress: async () => {
+          try {
+            const storedToken = await AsyncStorage.getItem("accessToken");
+            if (!storedToken) {
+              if (showFlash) showFlash("error", "No access token found.");
+              return;
+            }
+
+            await axios.post(
+              `${API}/providers/me/bookings/${bookingId}/cancel`,
+              {},
+              {
+                headers: {
+                  Authorization: `Bearer ${storedToken}`,
+                },
+              }
+            );
+
+            if (showFlash) showFlash("success", "Booking cancelled");
+
+            // 🔹 Optimistically remove from both lists so UI updates immediately
+            setTodayBookings((prev) =>
+              (prev || []).filter((b) => b.id !== bookingId)
+            );
+            setUpcomingBookings((prev) =>
+              (prev || []).filter((b) => b.id !== bookingId)
+            );
+
+            // 🔹 (Optional) also re-sync with backend
+            // await Promise.all([loadTodayBookings(), loadUpcomingBookings()]);
+          } catch (err) {
+            console.log(
+              "Error cancelling booking",
+              err.response?.data || err.message
+            );
+            if (showFlash) showFlash("error", "Could not cancel booking.");
+          }
+        },
+      },
+    ]
+  );
+};
+
+
+const handleEditBooking = (booking) => {
+  if (showFlash) {
+    showFlash("info", "Editing bookings will be added soon.");
+  }
+  // Next step: navigate to an Edit Booking screen or show a time picker.
+};
 
 
 const saveWorkingHours = async () => {
@@ -596,35 +1181,79 @@ const saveWorkingHours = async () => {
       return;
     }
 
-    const payload = workingHours.map((h) => ({
-      weekday: h.weekday,
-      is_closed: h.is_closed,
-      start_time: to24Hour(h.startLocal), // 👈 convert 12 -> 24
-      end_time: to24Hour(h.endLocal),
-    }));
+    // Validate and build payload
+    const payload = [];
+    for (const h of workingHours) {
+      const start24 = to24Hour(h.startLocal);
+      const end24 = to24Hour(h.endLocal);
 
-    const res = await axios.post(`${API}/providers/me/hours`, payload, {
+      if (!h.is_closed) {
+        // For open days, both times must be valid
+        if (!start24 || !end24) {
+          const dayNames = [
+            "Monday",
+            "Tuesday",
+            "Wednesday",
+            "Thursday",
+            "Friday",
+            "Saturday",
+            "Sunday",
+          ];
+          const label = dayNames[h.weekday] || `Day ${h.weekday}`;
+          const msg = `Please enter valid start and end times for ${label}.`;
+          if (showFlash) showFlash("error", msg);
+          setHoursFlash({ type: "error", message: msg });
+          setTimeout(() => setHoursFlash(null), 2000);
+          return;
+        }
+
+        // And end must be after start
+        const [sh, sm] = start24.split(":").map((n) => parseInt(n, 10));
+        const [eh, em] = end24.split(":").map((n) => parseInt(n, 10));
+        const startMinutes = sh * 60 + sm;
+        const endMinutes = eh * 60 + em;
+
+        if (endMinutes <= startMinutes) {
+          const dayNames = [
+            "Monday",
+            "Tuesday",
+            "Wednesday",
+            "Thursday",
+            "Friday",
+            "Saturday",
+            "Sunday",
+          ];
+          const label = dayNames[h.weekday] || `Day ${h.weekday}`;
+          const msg = `End time must be after start time for ${label}.`;
+          if (showFlash) showFlash("error", msg);
+          setHoursFlash({ type: "error", message: msg });
+          setTimeout(() => setHoursFlash(null), 2000);
+          return;
+        }
+      }
+
+      payload.push({
+        weekday: h.weekday,
+        is_closed: h.is_closed,
+        start_time: h.is_closed ? null : start24,
+        end_time: h.is_closed ? null : end24,
+      });
+    }
+
+    await axios.post(`${API}/providers/me/hours`, payload, {
       headers: {
         Authorization: `Bearer ${storedToken}`,
       },
     });
 
-    const rows = (res.data || [])
-      .slice()
-      .sort((a, b) => a.weekday - b.weekday)
-      .map((h) => ({
-        ...h,
-        startLocal: to12Hour(h.start_time || "09:00"),
-        endLocal: to12Hour(h.end_time || "17:00"),
-      }));
-
-    setWorkingHours(rows);
-
     if (showFlash) showFlash("success", "Working hours saved");
     setHoursFlash({ type: "success", message: "Working hours saved" });
     setTimeout(() => setHoursFlash(null), 2000);
   } catch (err) {
-    console.log("Error saving working hours", err.response?.data || err.message);
+    console.log(
+      "Error saving working hours",
+      err.response?.data || err.message
+    );
     if (showFlash) showFlash("error", "Could not save working hours.");
     setHoursFlash({ type: "error", message: "Could not save working hours." });
     setTimeout(() => setHoursFlash(null), 2000);
@@ -788,42 +1417,6 @@ const to24Hour = (time12) => {
     }
   };
 
-  const handleCancelBooking = async (bookingId) => {
-    try {
-      const storedToken = await AsyncStorage.getItem("accessToken");
-      if (!storedToken) {
-        if (showFlash) showFlash("error", "No access token found.");
-        return;
-      }
-
-      await axios.post(
-        `${API}/providers/me/bookings/${bookingId}/cancel`,
-        {},
-        {
-          headers: {
-            Authorization: `Bearer ${storedToken}`,
-          },
-        }
-      );
-
-      if (showFlash) {
-        showFlash("success", "Booking cancelled");
-      }
-
-      // Update local state so UI reflects the cancellation
-      setBookings((prev) =>
-        prev.map((b) =>
-          b.id === bookingId ? { ...b, status: "cancelled" } : b
-        )
-      );
-    } catch (err) {
-      console.log("Error cancelling booking", err.response?.data || err.message);
-      if (showFlash) {
-        showFlash("error", "Could not cancel booking.");
-      }
-    }
-  };
-
 
   const todayBookingsCount = () => {
     if (!bookings || bookings.length === 0) return 0;
@@ -843,371 +1436,786 @@ const to24Hour = (time12) => {
     }).length;
   };
 
+  const loadProviderProfile = async () => {
+  try {
+    setProfileLoading(true);
+    setProfileError("");
+
+    const storedToken = await AsyncStorage.getItem("accessToken");
+    if (!storedToken) {
+      setProfileError("No access token found. Please log in again.");
+      return;
+    }
+
+    const res = await axios.get(`${API}/providers/me/profile`, {
+      headers: {
+        Authorization: `Bearer ${storedToken}`,
+      },
+    });
+
+    setProfile({
+      full_name: res.data.full_name || "",
+      phone: res.data.phone || "",
+      whatsapp: res.data.whatsapp || "",
+      location: res.data.location || "",
+      bio: res.data.bio || "",
+    });
+  } catch (err) {
+    console.log("Error loading provider profile", err.response?.data || err.message);
+    setProfileError("Could not load provider profile.");
+    if (showFlash) showFlash("error", "Could not load provider profile.");
+  } finally {
+    setProfileLoading(false);
+  }
+};
+
+const saveProviderProfile = async () => {
+  try {
+    const storedToken = await AsyncStorage.getItem("accessToken");
+    if (!storedToken) {
+      if (showFlash) showFlash("error", "No access token found.");
+      return;
+    }
+
+    const payload = {
+      full_name: profile.full_name,
+      phone: profile.phone,
+      whatsapp: profile.whatsapp,
+      location: profile.location,
+      bio: profile.bio,
+    };
+
+    const res = await axios.put(`${API}/providers/me/profile`, payload, {
+      headers: {
+        Authorization: `Bearer ${storedToken}`,
+      },
+    });
+
+    setProfile({
+      full_name: res.data.full_name || "",
+      phone: res.data.phone || "",
+      whatsapp: res.data.whatsapp || "",
+      location: res.data.location || "",
+      bio: res.data.bio || "",
+    });
+
+    if (showFlash) showFlash("success", "Provider profile saved");
+        setHoursFlash({ type: "success", message: "Provider profile saved" });
+        setTimeout(() => setHoursFlash(null), 2000);
+  } catch (err) {
+    console.log("Error saving provider profile", err.response?.data || err.message);
+    if (showFlash) showFlash("error", "Could not save provider profile.");
+    setHoursFlash({ type: "error", message: "Provider profile not saved" });
+        setTimeout(() => setHoursFlash(null), 2000);
+  }
+};
+
+const loadUpcomingBookings = async () => {
+  try {
+    setUpcomingLoading(true);
+    setUpcomingError("");
+
+    const storedToken = await AsyncStorage.getItem("accessToken");
+    if (!storedToken) {
+      setUpcomingError("No access token found. Please log in again.");
+      return;
+    }
+
+    const res = await axios.get(`${API}/providers/me/bookings/upcoming`, {
+      headers: {
+        Authorization: `Bearer ${storedToken}`,
+      },
+    });
+
+    setUpcomingBookings(res.data || []);
+  } catch (err) {
+    console.log("Error loading upcoming bookings", err.response?.data || err.message);
+    setUpcomingError("Could not load upcoming bookings.");
+    if (showFlash) showFlash("error", "Could not load upcoming bookings.");
+  } finally {
+    setUpcomingLoading(false);
+  }
+};
+
+
+
+const getCurrentLocation = async () => {
+  let { status } = await Location.requestForegroundPermissionsAsync();
+  if (status !== "granted") {
+    return null;
+  }
+
+  const loc = await Location.getCurrentPositionAsync({});
+  return {
+    lat: loc.coords.latitude,
+    long: loc.coords.longitude
+  };
+};
+
+const sendLocationToServer = async () => {
+  const token = await AsyncStorage.getItem("accessToken");
+  const loc = await getCurrentLocation();
+
+  if (!loc) return;
+
+  await axios.post(`${API}/providers/me/location`, loc, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+};
+
+const handlePinLocation = async () => {
+  try {
+    const { status } = await Location.requestForegroundPermissionsAsync();
+    if (status !== "granted") {
+      Alert.alert(
+        "Permission needed",
+        "Location permission is required to pin your business on the map."
+      );
+      return;
+    }
+
+    const loc = await Location.getCurrentPositionAsync({});
+    const coords = {
+      lat: loc.coords.latitude,
+      long: loc.coords.longitude,
+    };
+
+    const storedToken = await AsyncStorage.getItem("accessToken");
+    if (!storedToken) {
+      if (showFlash) showFlash("error", "No access token found.");
+      return;
+    }
+
+    await axios.post(`${API}/providers/me/location`, coords, {
+      headers: {
+        Authorization: `Bearer ${storedToken}`,
+      },
+    });
+
+    // Update local state so map updates immediately
+    setProviderLocation(coords);
+
+    if (showFlash) showFlash("success", "Business location pinned here.");
+    Alert.alert(
+      "Location pinned",
+      "Clients will now navigate to this location."
+    );
+  } catch (err) {
+    console.log("Error pinning location", err.response?.data || err.message);
+    if (showFlash) showFlash("error", "Could not pin business location.");
+  }
+};
+
+const loadProviderLocation = async () => {
+  try {
+    const storedToken = await AsyncStorage.getItem("accessToken");
+    if (!storedToken) return;
+
+    const res = await axios.get(`${API}/me`, {
+      headers: {
+        Authorization: `Bearer ${storedToken}`,
+      },
+    });
+
+    if (res.data.lat != null && res.data.long != null) {
+      setProviderLocation({
+        lat: res.data.lat,
+        long: res.data.long,
+      });
+    }
+  } catch (err) {
+    console.log("Error loading provider location", err.response?.data || err.message);
+  }
+};
+
 
 
   return (
-      <View style={{ flex: 1 }}>
-        {hoursFlash && (
-        <View style={[
-          styles.hoursFlashGlobal,
-          hoursFlash.type === "error"
-            ? styles.hoursFlashError
-            : styles.hoursFlashSuccess,
+    <View style={{ flex: 1 }}>
+      {hoursFlash && (
+        <View
+          style={[
+            styles.hoursFlashGlobal,
+            hoursFlash.type === "error"
+              ? styles.hoursFlashError
+              : styles.hoursFlashSuccess,
           ]}
         >
-           <Text style={styles.hoursFlashText}>{hoursFlash.message}</Text>
-        
-      </View>
-    )}
+          <Text style={styles.hoursFlashText}>{hoursFlash.message}</Text>
+        </View>
+      )}
 
+      <ScrollView contentContainerStyle={styles.providerScroll}>
+        <Text style={styles.profileTitle}>Provider dashboard</Text>
+        <Text style={styles.subtitleSmall}>Welcome, {providerLabel}</Text>
 
-    <ScrollView contentContainerStyle={styles.providerScroll}>
-      <Text style={styles.profileTitle}>Provider dashboard</Text>
-      <Text style={styles.subtitleSmall}>Welcome, {providerLabel}</Text>
+        {/* TODAY overview */}
+        <View style={styles.card}>
+          <Text style={styles.label}>TODAY</Text>
 
-      {/* Overview */}
-      <View className="card" style={styles.card}>
-                <Text style={styles.label}>Today</Text>
-        <Text style={styles.value}>{todayBookingsCount()} bookings</Text>
-        <Text style={{ fontSize: 13, color: "#6b7280", marginTop: 4 }}>
-          Once bookings are added, you’ll see your daily schedule here.
-        </Text>
-      </View>
+          {todayLoading && (
+            <View style={{ paddingVertical: 10 }}>
+              <ActivityIndicator />
+              <Text style={styles.serviceMeta}>Loading today&apos;s bookings…</Text>
+            </View>
+          )}
 
+          {!todayLoading && todayError ? (
+            <Text style={styles.errorText}>{todayError}</Text>
+          ) : null}
 
-      {/* Upcoming bookings */}
-      <View style={styles.card}>
-        <Text style={styles.sectionTitle}>Upcoming bookings</Text>
+          {!todayLoading && !todayError && todayBookings.length === 0 && (
+            <>
+              <Text style={styles.value}>0 bookings</Text>
+              <Text style={styles.serviceMeta}>
+                Once bookings are added, you’ll see your daily schedule here.
+              </Text>
+            </>
+          )}
 
-        {bookingsLoading && (
-          <View style={{ paddingVertical: 10 }}>
-            <ActivityIndicator />
-            <Text style={styles.serviceMeta}>Loading bookings…</Text>
-          </View>
-        )}
+          {!todayLoading && !todayError && todayBookings.length > 0 && (
+            <>
+              <Text style={styles.value}>
+                {todayBookings.length} booking
+                {todayBookings.length > 1 ? "s" : ""}
+              </Text>
 
-        {!bookingsLoading && bookingsError ? (
-          <Text style={styles.errorText}>{bookingsError}</Text>
-        ) : null}
+              {todayBookings.map((b) => {
+                const start = new Date(b.start_time);
+                const end = new Date(b.end_time);
 
-        {!bookingsLoading && !bookingsError && bookings.length === 0 && (
-          <Text style={styles.serviceHint}>
-            You have no upcoming bookings yet.
-          </Text>
-        )}
+                const formatTime = (dt) => {
+                  const d = new Date(dt);
+                  let h = d.getHours();
+                  const m = d.getMinutes();
+                  const suffix = h >= 12 ? "PM" : "AM";
+                  h = h % 12 || 12;
+                  const mm = m.toString().padStart(2, "0");
+                  return `${h}:${mm} ${suffix}`;
+                };
 
-        {!bookingsLoading &&
-          !bookingsError &&
-          bookings.map((b) => {
-            const start = new Date(b.start_time);
-            const timeStr = start.toLocaleTimeString([], {
-              hour: "2-digit",
-              minute: "2-digit",
-            });
-            const dateStr = start.toLocaleDateString();
-
-            return (
-              <View key={b.id} style={styles.serviceRow}>
-                <View style={{ flex: 1, paddingRight: 8 }}>
-                  <Text style={styles.serviceName}>{b.service_name}</Text>
-                  <Text style={styles.serviceMeta}>
-                    {dateStr} at {timeStr}
-                  </Text>
-                  <Text style={styles.serviceMeta}>
-                    Client: {b.customer_name}
-                  </Text>
-                </View>
-                  <View style={{ alignItems: "flex-end" }}>
-                  <Text
-                    style={[
-                      styles.serviceMeta,
-                      { textTransform: "capitalize" },
-                    ]}
-                  >
-                    {b.status}
-                  </Text>
-
-                  {b.status !== "cancelled" && (
-                    <TouchableOpacity
-                      onPress={() => handleCancelBooking(b.id)}
-                      style={{ marginTop: 4 }}
-                    >
-                      <Text style={{ fontSize: 12, color: "#b91c1c" }}>
-                        Cancel
+                return (
+                  <View key={b.id} style={styles.bookingRow}>
+                    <View style={styles.bookingMain}>
+                      <Text style={styles.bookingTime}>
+                        {formatTime(start)} – {formatTime(end)}
                       </Text>
-                    </TouchableOpacity>
-                  )}
-                </View>
-              </View>
-            );
-          })}
-      </View>
+                      <Text style={styles.bookingService}>{b.service_name}</Text>
+                      <Text style={styles.bookingMeta}>
+                        {b.customer_name} · {b.customer_phone}
+                      </Text>
+                    </View>
 
-
-      {/* Services */}
-      <View style={styles.card}>
-        <View
-          style={{
-            flexDirection: "row",
-            justifyContent: "space-between",
-            alignItems: "center",
-            marginBottom: 8,
-          }}
-        >
-          <Text style={styles.sectionTitle}>Your services</Text>
-          <TouchableOpacity onPress={() => setAdding((prev) => !prev)}>
-            <Text style={{ color: "#16a34a", fontWeight: "600" }}>
-              {adding ? "Cancel" : "+ Add"}
-            </Text>
-          </TouchableOpacity>
+                    <View style={styles.bookingActions}>
+                      <TouchableOpacity onPress={() => handleEditBooking(b)}>
+                        <Text style={styles.bookingEdit}>Edit</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        onPress={() => handleCancelBooking(b.id)}
+                      >
+                        <Text style={styles.bookingCancel}>Cancel</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                );
+              })}
+            </>
+          )}
         </View>
 
-        {adding && (
-          <View style={{ marginBottom: 12 }}>
-            <TextInput
-              style={styles.input}
-              placeholder="Service name"
-              value={newName}
-              onChangeText={setNewName}
-            />
-            <TextInput
-              style={styles.input}
-              placeholder="Price (GYD)"
-              value={newPrice}
-              onChangeText={setNewPrice}
-              keyboardType="numeric"
-            />
-            <TextInput
-              style={styles.input}
-              placeholder="Duration (minutes)"
-              value={newDuration}
-              onChangeText={setNewDuration}
-              keyboardType="numeric"
-            />
-            <TextInput
-              style={[styles.input, { height: 80 }]}
-              placeholder="Description"
-              value={newDescription}
-              onChangeText={setNewDescription}
-              multiline
-            />
+        {/* Upcoming bookings */}
+        <View style={styles.card}>
+          <Text style={styles.sectionTitle}>Upcoming bookings</Text>
 
-            <View style={{ width: "100%", marginTop: 4 }}>
-              <Button title="Save service" onPress={handleAddService} color="#16a34a" />
+          {upcomingLoading && (
+            <View style={{ paddingVertical: 10 }}>
+              <ActivityIndicator />
+              <Text style={styles.serviceMeta}>
+                Loading upcoming bookings…
+              </Text>
             </View>
+          )}
+
+          {!upcomingLoading && upcomingError ? (
+            <Text style={styles.errorText}>{upcomingError}</Text>
+          ) : null}
+
+          {!upcomingLoading &&
+            !upcomingError &&
+            upcomingBookings.length === 0 && (
+              <Text style={styles.serviceMeta}>
+                No upcoming bookings for the next few days.
+              </Text>
+            )}
+
+          {!upcomingLoading &&
+            !upcomingError &&
+            upcomingBookings.length > 0 && (
+              <>
+                {upcomingBookings.map((b) => {
+                  const start = new Date(b.start_time);
+                  const end = new Date(b.end_time);
+
+                  const formatTime = (dt) => {
+                    let h = dt.getHours();
+                    const m = dt.getMinutes();
+                    const suffix = h >= 12 ? "PM" : "AM";
+                    h = h % 12 || 12;
+                    return `${h}:${m.toString().padStart(2, "0")} ${suffix}`;
+                  };
+
+                  const formatDate = (dt) =>
+                    dt.toLocaleDateString("en-US", {
+                      weekday: "short",
+                      month: "short",
+                      day: "numeric",
+                    });
+
+                  return (
+                    <View key={b.id} style={styles.bookingRow}>
+                      <View style={styles.bookingMain}>
+                        <Text style={styles.bookingTime}>
+                          {formatDate(start)} · {formatTime(start)} –{" "}
+                          {formatTime(end)}
+                        </Text>
+                        <Text style={styles.bookingService}>
+                          {b.service_name}
+                        </Text>
+                        <Text style={styles.bookingMeta}>
+                          {b.customer_name} · {b.customer_phone}
+                        </Text>
+                      </View>
+
+                      <View style={styles.bookingActions}>
+                        <TouchableOpacity onPress={() => handleEditBooking(b)}>
+                          <Text style={styles.bookingEdit}>Edit</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          onPress={() => handleCancelBooking(b.id)}
+                        >
+                          <Text style={styles.bookingCancel}>Cancel</Text>
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                  );
+                })}
+              </>
+            )}
+        </View>
+
+        {/* Services */}
+        <View style={styles.card}>
+          <View
+            style={{
+              flexDirection: "row",
+              justifyContent: "space-between",
+              alignItems: "center",
+              marginBottom: 8,
+            }}
+          >
+            <Text style={styles.sectionTitle}>Your services</Text>
+            <TouchableOpacity onPress={() => setAdding((prev) => !prev)}>
+              <Text style={{ color: "#16a34a", fontWeight: "600" }}>
+                {adding ? "Cancel" : "+ Add"}
+              </Text>
+            </TouchableOpacity>
           </View>
-        )}
 
-        {loading && (
-          <View style={{ paddingVertical: 10 }}>
-            <ActivityIndicator />
-            <Text style={styles.serviceMeta}>Loading services…</Text>
-          </View>
-        )}
+          {adding && (
+            <View style={{ marginBottom: 12 }}>
+              <TextInput
+                style={styles.input}
+                placeholder="Service name"
+                value={newName}
+                onChangeText={setNewName}
+              />
+              <TextInput
+                style={styles.input}
+                placeholder="Price (GYD)"
+                value={newPrice}
+                onChangeText={setNewPrice}
+                keyboardType="numeric"
+              />
+              <TextInput
+                style={styles.input}
+                placeholder="Duration (minutes)"
+                value={newDuration}
+                onChangeText={setNewDuration}
+                keyboardType="numeric"
+              />
+              <TextInput
+                style={[styles.input, { height: 80 }]}
+                placeholder="Description"
+                value={newDescription}
+                onChangeText={setNewDescription}
+                multiline
+              />
 
-        {!loading && servicesError ? (
-          <Text style={styles.errorText}>{servicesError}</Text>
-        ) : null}
-
-        {!loading && !servicesError && services.length === 0 && !adding && (
-          <Text style={styles.serviceHint}>
-            You have no services yet. Tap “+ Add” to create your first service.
-          </Text>
-        )}
-
-        {!loading &&
-          !servicesError &&
-          services.map((s) => (
-            <View key={s.id} style={styles.serviceRow}>
-              <View style={{ flex: 1, paddingRight: 8 }}>
-                <Text style={styles.serviceName}>{s.name}</Text>
-                <Text style={styles.serviceMeta}>
-                  {s.duration_minutes} min
-                </Text>
-                {s.description ? (
-                  <Text style={styles.serviceMeta}>{s.description}</Text>
-                ) : null}
-              </View>
-              <View style={{ alignItems: "flex-end" }}>
-                {s.price_gyd != null && (
-                  <Text style={styles.servicePrice}>
-                    {s.price_gyd.toLocaleString()} GYD
-                  </Text>
-                )}
-                <TouchableOpacity
-                  onPress={() => handleDeleteService(s.id)}
-                  style={{ marginTop: 4 }}
-                >
-                  <Text style={{ fontSize: 12, color: "#b91c1c" }}>Delete</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          ))}
-      </View>
-
-            {/* Working hours editor */}
-      {showHours && (
-  <View style={styles.card}>
-    <Text style={styles.sectionTitle}>Working hours</Text>
-
-    {hoursLoading && (
-      <View style={{ paddingVertical: 10 }}>
-        <ActivityIndicator />
-        <Text style={styles.serviceMeta}>Loading working hours…</Text>
-      </View>
-    )}
-
-    {hoursError ? (
-      <Text style={styles.errorText}>{hoursError}</Text>
-    ) : null}
-
-    {!hoursLoading &&
-      !hoursError &&
-      workingHours.map((h) => {
-        const dayNames = [
-          "Monday",
-          "Tuesday",
-          "Wednesday",
-          "Thursday",
-          "Friday",
-          "Saturday",
-          "Sunday",
-        ];
-        const label = dayNames[h.weekday] || `Day ${h.weekday}`;
-
-        return (
-          <View key={h.id} style={styles.workingHoursRow}>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.serviceName}>{label}</Text>
-              <View style={{ flexDirection: "row", marginTop: 4 }}>
-                <Text style={styles.serviceMeta}>Open</Text>
-                <Switch
-                  style={{ marginLeft: 8 }}
-                  value={!h.is_closed}
-                  onValueChange={(val) => {
-                    setWorkingHours((prev) =>
-                      prev.map((row) =>
-                        row.id === h.id ? { ...row, is_closed: !val } : row
-                      )
-                    );
-                  }}
+              <View style={{ width: "100%", marginTop: 4 }}>
+                <Button
+                  title="Save service"
+                  onPress={handleAddService}
+                  color="#16a34a"
                 />
               </View>
             </View>
+          )}
 
-            {!h.is_closed && (
-              <View style={{ alignItems: "flex-end" }}>
-                <View style={{ flexDirection: "row" }}>
-                  <TextInput
-                    style={styles.hoursInput}
-                    value={h.startLocal || ""}
-                    onChangeText={(text) => {
-                      setWorkingHours((prev) =>
-                        prev.map((row) =>
-                          row.id === h.id ? { ...row, startLocal: text } : row
-                        )
-                      );
-                    }}
-                    placeholder="9:00 AM"
-                  />
-                  <Text style={styles.serviceMeta}> - </Text>
-                  <TextInput
-                    style={styles.hoursInput}
-                    value={h.endLocal || ""}
-                    onChangeText={(text) => {
-                      setWorkingHours((prev) =>
-                        prev.map((row) =>
-                          row.id === h.id ? { ...row, endLocal: text } : row
-                        )
-                      );
-                    }}
-                    placeholder="5:00 PM"
-                  />
+          {loading && (
+            <View style={{ paddingVertical: 10 }}>
+              <ActivityIndicator />
+              <Text style={styles.serviceMeta}>Loading services…</Text>
+            </View>
+          )}
+
+          {!loading && servicesError ? (
+            <Text style={styles.errorText}>{servicesError}</Text>
+          ) : null}
+
+          {!loading && !servicesError && services.length === 0 && !adding && (
+            <Text style={styles.serviceHint}>
+              You have no services yet. Tap “+ Add” to create your first
+              service.
+            </Text>
+          )}
+
+          {!loading &&
+            !servicesError &&
+            services.map((s) => (
+              <View key={s.id} style={styles.serviceRow}>
+                <View style={{ flex: 1, paddingRight: 8 }}>
+                  <Text style={styles.serviceName}>{s.name}</Text>
+                  <Text style={styles.serviceMeta}>
+                    {s.duration_minutes} min
+                  </Text>
+                  {s.description ? (
+                    <Text style={styles.serviceMeta}>{s.description}</Text>
+                  ) : null}
+                </View>
+                <View style={{ alignItems: "flex-end" }}>
+                  {s.price_gyd != null && (
+                    <Text style={styles.servicePrice}>
+                      {s.price_gyd.toLocaleString()} GYD
+                    </Text>
+                  )}
+                  <TouchableOpacity
+                    onPress={() => handleDeleteService(s.id)}
+                    style={{ marginTop: 4 }}
+                  >
+                    <Text style={{ fontSize: 12, color: "#b91c1c" }}>
+                      Delete
+                    </Text>
+                  </TouchableOpacity>
                 </View>
               </View>
+            ))}
+        </View>
+
+        {/* Working hours editor */}
+        {showHours && (
+          <View style={styles.card}>
+            <Text style={styles.sectionTitle}>Working hours</Text>
+
+            {hoursLoading && (
+              <View style={{ paddingVertical: 10 }}>
+                <ActivityIndicator />
+                <Text style={styles.serviceMeta}>
+                  Loading working hours…
+                </Text>
+              </View>
+            )}
+
+            {hoursError ? (
+              <Text style={styles.errorText}>{hoursError}</Text>
+            ) : null}
+
+            {!hoursLoading &&
+              !hoursError &&
+              workingHours.map((h) => {
+                const dayNames = [
+                  "Monday",
+                  "Tuesday",
+                  "Wednesday",
+                  "Thursday",
+                  "Friday",
+                  "Saturday",
+                  "Sunday",
+                ];
+                const label = dayNames[h.weekday] || `Day ${h.weekday}`;
+
+                return (
+                  <View key={h.id} style={styles.workingHoursRow}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.serviceName}>{label}</Text>
+                      <View style={{ flexDirection: "row", marginTop: 4 }}>
+                        <Text style={styles.serviceMeta}>Open</Text>
+                        <Switch
+                          style={{ marginLeft: 8 }}
+                          value={!h.is_closed}
+                          onValueChange={(val) => {
+                            setWorkingHours((prev) =>
+                              prev.map((row) =>
+                                row.id === h.id
+                                  ? { ...row, is_closed: !val }
+                                  : row
+                              )
+                            );
+                          }}
+                        />
+                      </View>
+                    </View>
+
+                    {!h.is_closed && (
+                      <View style={{ alignItems: "flex-end" }}>
+                        <View style={{ flexDirection: "row" }}>
+                          {/* Start time */}
+                          <TextInput
+                            style={styles.hoursInput}
+                            value={h.startLocal || ""}
+                            onChangeText={(text) => {
+                              setWorkingHours((prev) =>
+                                prev.map((row) =>
+                                  row.id === h.id
+                                    ? { ...row, startLocal: text }
+                                    : row
+                                )
+                              );
+                            }}
+                            onBlur={() => {
+                              setWorkingHours((prev) =>
+                                prev.map((row) => {
+                                  if (row.id !== h.id) return row;
+                                  const as24 = to24Hour(row.startLocal);
+                                  return as24
+                                    ? { ...row, startLocal: to12Hour(as24) }
+                                    : row;
+                                })
+                              );
+                            }}
+                            placeholder="9:00 AM"
+                          />
+
+                          <Text style={styles.serviceMeta}> - </Text>
+
+                          {/* End time */}
+                          <TextInput
+                            style={styles.hoursInput}
+                            value={h.endLocal || ""}
+                            onChangeText={(text) => {
+                              setWorkingHours((prev) =>
+                                prev.map((row) =>
+                                  row.id === h.id
+                                    ? { ...row, endLocal: text }
+                                    : row
+                                )
+                              );
+                            }}
+                            onBlur={() => {
+                              setWorkingHours((prev) =>
+                                prev.map((row) => {
+                                  if (row.id !== h.id) return row;
+                                  const as24 = to24Hour(row.endLocal);
+                                  return as24
+                                    ? { ...row, endLocal: to12Hour(as24) }
+                                    : row;
+                                })
+                              );
+                            }}
+                            placeholder="5:00 PM"
+                          />
+                        </View>
+                      </View>
+                    )}
+                  </View>
+                );
+              })}
+
+            <View style={{ width: "100%", marginTop: 8 }}>
+              <Button
+                title="Save working hours"
+                onPress={saveWorkingHours}
+                color="#16a34a"
+              />
+            </View>
+          </View>
+        )}
+
+        {/* Provider profile editor */}
+        {showProfileEditor && (
+          <View style={styles.card}>
+            <Text style={styles.sectionTitle}>Provider profile</Text>
+            <Text style={styles.hoursHelp}>
+              This is what clients will see on your public profile.
+            </Text>
+
+            {profileLoading && (
+              <View style={{ paddingVertical: 10 }}>
+                <ActivityIndicator />
+                <Text style={styles.serviceMeta}>Loading profile…</Text>
+              </View>
+            )}
+
+            {profileError ? (
+              <Text style={styles.errorText}>{profileError}</Text>
+            ) : null}
+
+            {!profileLoading && (
+              <>
+                <TextInput
+                  style={styles.input}
+                  placeholder="Business / display name"
+                  value={profile.full_name}
+                  onChangeText={(text) =>
+                    setProfile((prev) => ({ ...prev, full_name: text }))
+                  }
+                />
+                <TextInput
+                  style={styles.input}
+                  placeholder="Phone"
+                  value={profile.phone}
+                  onChangeText={(text) =>
+                    setProfile((prev) => ({ ...prev, phone: text }))
+                  }
+                  keyboardType="phone-pad"
+                />
+                <TextInput
+                  style={styles.input}
+                  placeholder="WhatsApp (optional)"
+                  value={profile.whatsapp}
+                  onChangeText={(text) =>
+                    setProfile((prev) => ({ ...prev, whatsapp: text }))
+                  }
+                />
+                <TextInput
+                  style={styles.input}
+                  placeholder="Location (e.g. Georgetown)"
+                  value={profile.location}
+                  onChangeText={(text) =>
+                    setProfile((prev) => ({ ...prev, location: text }))
+                  }
+                />
+                <TextInput
+                  style={[styles.input, { height: 80 }]}
+                  placeholder="Short bio / description"
+                  value={profile.bio}
+                  onChangeText={(text) =>
+                    setProfile((prev) => ({ ...prev, bio: text }))
+                  }
+                  multiline
+                />
+
+                <View style={{ width: "100%", marginTop: 8 }}>
+                  <Button
+                    title="Save provider profile"
+                    onPress={saveProviderProfile}
+                    color="#16a34a"
+                  />
+                </View>
+              </>
             )}
           </View>
-        );
-      })}
+        )}
 
-    {!hoursLoading && !hoursError && (
-      <View style={{ width: "100%", marginTop: 8 }}>
-        <Button
-          title="Save working hours"
-          onPress={saveWorkingHours}
-          color="#16a34a"
-        />
-      </View>
-    )}
-  </View>
-)}
+        {/* Actions */}
+        <View style={styles.actionsContainer}>
+          <Text style={styles.sectionTitle}>Actions</Text>
 
+          <TouchableOpacity
+            style={styles.actionButton}
+            onPress={() => setShowHours((prev) => !prev)}
+          >
+            <Text style={styles.actionButtonText}>
+              {showHours ? "Hide working hours" : "Manage working hours"}
+            </Text>
+          </TouchableOpacity>
 
+          <TouchableOpacity
+            style={styles.actionButton}
+            onPress={async () => {
+              const next = !showProfileEditor;
+              setShowProfileEditor(next);
+              if (next) {
+                await loadProviderProfile();
+              }
+            }}
+          >
+            <Text style={styles.actionButtonText}>
+              {showProfileEditor ? "Hide provider profile" : "Edit provider profile"}
+            </Text>
+          </TouchableOpacity>
 
-      {/* Actions */}
-      <View style={styles.actionsContainer}>
-        <Text style={styles.sectionTitle}>Actions</Text>
+          <TouchableOpacity
+            style={styles.actionButton}
+            onPress={handlePinLocation}
+          >
+            <Text style={styles.actionButtonText}>
+              Pin my business location here
+            </Text>
+          </TouchableOpacity>
 
-        <TouchableOpacity
-          style={styles.actionButton}
-          onPress={() => setShowHours((prev) => !prev)}
-        >
-          <Text style={styles.actionButtonText}>
-            {showHours ? "Hide working hours" : "Manage working hours"}
-          </Text>
-        </TouchableOpacity>
-
-
-        <TouchableOpacity
-          style={styles.actionButton}
-          onPress={() => {
-            if (showFlash) showFlash("info", "Bookings view coming soon");
-          }}
-        >
-          <Text style={styles.actionButtonText}>View upcoming bookings</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={styles.actionButton}
-          onPress={() => {
-            if (showFlash) showFlash("info", "Provider profile editor coming soon");
-          }}
-        >
-          <Text style={styles.actionButtonText}>Edit provider profile</Text>
-        </TouchableOpacity>
-      </View>
-    </ScrollView>
+          {providerLocation && (
+            <View style={styles.mapContainer}>
+              <MapView
+                style={{ flex: 1 }}
+                pointerEvents="none"
+                initialRegion={{
+                  latitude: providerLocation.lat,
+                  longitude: providerLocation.long,
+                  latitudeDelta: 0.01,
+                  longitudeDelta: 0.01,
+                }}
+              >
+                <Marker
+                  coordinate={{
+                    latitude: providerLocation.lat,
+                    longitude: providerLocation.long,
+                  }}
+                />
+              </MapView>
+            </View>
+          )}
+        </View>
+      </ScrollView>
     </View>
   );
 }
+
 
 // Tabs after login
 function MainApp({ token, setToken, showFlash }) {
   return (
     <NavigationContainer>
       {token.isProvider ? (
- 		   <Tab.Navigator initialRouteName="Dashboard">
-    			<Tab.Screen name="Dashboard">
-      				{() => <ProviderDashboardScreen />}
-    			</Tab.Screen>
-   		<Tab.Screen name="Profile">
-     		 {() => <ProfileScreen setToken={setToken} showFlash={showFlash} />}
-    	</Tab.Screen>
-  </Tab.Navigator>
-) : (
-  <Tab.Navigator initialRouteName="Profile">
-    <Tab.Screen name="Profile">
-      {() => <ProfileScreen setToken={setToken} showFlash={showFlash} />}
-    </Tab.Screen>
-    <Tab.Screen name="Search">
-      {() => <SearchScreen token={token} />}
-    </Tab.Screen>
-  </Tab.Navigator>
-)}
-
+        <Tab.Navigator initialRouteName="Dashboard">
+          <Tab.Screen name="Dashboard">
+            {() => (
+              <ProviderDashboardScreen token={token} showFlash={showFlash} />
+            )}
+          </Tab.Screen>
+          <Tab.Screen name="Profile">
+            {() => (
+              <ProfileScreen setToken={setToken} showFlash={showFlash} />
+            )}
+          </Tab.Screen>
+        </Tab.Navigator>
+      ) : (
+        <Tab.Navigator initialRouteName="Profile">
+          <Tab.Screen name="Profile">
+            {() => (
+              <ProfileScreen setToken={setToken} showFlash={showFlash} />
+            )}
+          </Tab.Screen>
+          <Tab.Screen name="Search">
+            {() => (
+              <SearchScreen token={token} showFlash={showFlash} />
+            )}
+          </Tab.Screen>
+        </Tab.Navigator>
+      )}
     </NavigationContainer>
   );
 }
+
 
 
 //Flash message component
@@ -1582,7 +2590,205 @@ function App() {
     textAlign: "center",
   },
 
+  hoursHelp: {
+  fontSize: 12,
+  color: "#6b7280",
+  marginTop: 4,
+  marginBottom: 8,
+},
 
+bookingRow: {
+  marginTop: 8,
+  paddingTop: 8,
+  borderTopWidth: 1,
+  borderTopColor: "#e5e7eb",
+  flexDirection: "row",
+  justifyContent: "space-between",
+  alignItems: "flex-start",
+},
+bookingMain: {
+  flex: 1,
+  paddingRight: 8,
+},
+bookingTime: {
+  fontSize: 13,
+  color: "#6b7280",
+},
+bookingService: {
+  fontSize: 16,
+  fontWeight: "600",
+  color: "#065f46",
+  marginTop: 2,
+},
+bookingMeta: {
+  fontSize: 13,
+  color: "#6b7280",
+  marginTop: 2,
+},
+bookingActions: {
+  alignItems: "flex-end",
+},
+bookingEdit: {
+  fontSize: 12,
+  color: "#16a34a",
+},
+bookingCancel: {
+  fontSize: 12,
+  color: "#b91c1c",
+  marginTop: 4,
+},
+
+mapContainer: {
+  marginTop: 12,
+  width: "100%",
+  height: 160,
+  borderRadius: 12,
+  overflow: "hidden",
+  borderWidth: 1,
+  borderColor: "#bbf7d0",
+},
+
+  providerScroll: {
+    paddingHorizontal: 20,
+    paddingTop: 30,
+    paddingBottom: 40,
+    backgroundColor: "#F2FFF2",
+  },
+  card: {
+    backgroundColor: "#ffffff",
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 16,
+    shadowColor: "#000",
+    shadowOpacity: 0.06,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
+  },
+  profileTitle: {
+    fontSize: 24,
+    fontWeight: "700",
+    color: "#064E3B",
+    marginBottom: 4,
+  },
+  subtitleSmall: {
+    fontSize: 14,
+    color: "#4B5563",
+    marginBottom: 16,
+  },
+  sectionTitle: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#065F46",
+    marginBottom: 8,
+  },
+  serviceRow: {
+    paddingVertical: 10,
+    paddingHorizontal: 8,
+    borderRadius: 8,
+    marginBottom: 8,
+    backgroundColor: "#F9FAFB",
+    flexDirection: "row",
+  },
+  serviceName: {
+    fontSize: 15,
+    fontWeight: "600",
+    color: "#111827",
+  },
+  serviceMeta: {
+    fontSize: 12,
+    color: "#6B7280",
+    marginTop: 2,
+  },
+  servicePrice: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: "#047857",
+  },
+  serviceHint: {
+    fontSize: 13,
+    color: "#6B7280",
+    marginTop: 4,
+  },
+  errorText: {
+    fontSize: 13,
+    color: "#DC2626",
+    marginTop: 4,
+  },
+  datePill: {
+    width: 60,
+    paddingVertical: 8,
+    marginRight: 8,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#D1D5DB",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#ffffff",
+  },
+  datePillSelected: {
+    backgroundColor: "#059669",
+    borderColor: "#059669",
+  },
+  datePillDisabled: {
+    backgroundColor: "#E5E7EB",
+    borderColor: "#E5E7EB",
+    opacity: 0.6,
+  },
+  datePillDow: {
+    fontSize: 11,
+    color: "#4B5563",
+  },
+  datePillDay: {
+    marginTop: 2,
+    fontSize: 16,
+    fontWeight: "700",
+    color: "#111827",
+  },
+  timesContainer: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    marginTop: 8,
+  },
+  timeSlotButton: {
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: "#D1D5DB",
+    marginRight: 8,
+    marginBottom: 8,
+    backgroundColor: "#ffffff",
+  },
+  timeSlotLabel: {
+    fontSize: 13,
+    color: "#111827",
+  },
+
+  timeSlotButtonSelected: {
+  backgroundColor: "#059669",
+  borderColor: "#059669",
+},
+timeSlotLabelSelected: {
+  color: "#ffffff",
+},
+
+bookButton: {
+  marginTop: 12,
+  paddingVertical: 12,
+  borderRadius: 999,
+  alignItems: "center",
+  justifyContent: "center",
+  backgroundColor: "#16a34a",
+},
+bookButtonDisabled: {
+  backgroundColor: "#9CA3AF",
+},
+bookButtonLabel: {
+  fontSize: 15,
+  fontWeight: "600",
+  color: "#ffffff",
+},
 
 
 

@@ -84,6 +84,22 @@ def delete_service_for_provider(
     db.commit()
     return True
 
+def get_or_create_provider_for_user(db: Session, user_id: int):
+    provider = (
+        db.query(models.Provider)
+        .filter(models.Provider.user_id == user_id)
+        .first()
+    )
+    if provider:
+        return provider
+
+    provider = models.Provider(user_id=user_id, bio="")
+    db.add(provider)
+    db.commit()
+    db.refresh(provider)
+    return provider
+
+
 # ---------------------------------------------------------------------------
 # Twilio / WhatsApp helper
 # ---------------------------------------------------------------------------
@@ -230,6 +246,28 @@ def create_booking(db: Session, booking: schemas.BookingCreate, customer_id: int
         promo.free_bookings_used += 1
 
     # Create booking
+        # Make sure this time slot is still free for this provider
+    proposed_start = booking.start_time
+    proposed_end = booking.start_time + timedelta(minutes=service.duration_minutes)
+
+    overlapping = (
+        db.query(models.Booking)
+        .join(models.Service, models.Booking.service_id == models.Service.id)
+        .filter(
+            models.Service.provider_id == provider.id,
+            models.Booking.status == "confirmed",
+            # overlap: existing.start < proposed_end AND existing.end > proposed_start
+            models.Booking.start_time < proposed_end,
+            models.Booking.end_time > proposed_start,
+        )
+        .first()
+    )
+
+    if overlapping:
+        # Another booking already grabbed this slot
+        raise ValueError("This time slot has just been booked. Please choose another time.")
+
+
     end_time = booking.start_time + timedelta(minutes=service.duration_minutes)
     db_booking = models.Booking(
         customer_id=customer_id,
@@ -460,4 +498,227 @@ def set_working_hours_for_provider(db: Session, provider_id: int, hours_list):
         .all()
     )
     return rows
+
+def get_provider_availability(
+    db: Session,
+    provider_id: int,
+    service_id: int,
+    days: int = 14,
+):
+    """
+    Compute availability for a provider for a given service over the next `days`.
+    Returns a list of dicts:
+    {
+      "date": date,
+      "slots": [datetime, datetime, ...]
+    }
+    """
+
+    # Make sure the service exists and belongs to this provider
+    service = (
+        db.query(models.Service)
+        .filter(
+            models.Service.id == service_id,
+            models.Service.provider_id == provider_id,
+        )
+        .first()
+    )
+    if not service:
+        raise ValueError("Service not found for this provider")
+
+    # Load working hours (creates defaults if missing)
+    working_hours = get_or_create_working_hours_for_provider(db, provider_id)
+
+    # Map weekday -> working hours row (only open days with valid times)
+    wh_by_weekday = {}
+    for wh in working_hours:
+        if wh.is_closed:
+            continue
+        if not wh.start_time or not wh.end_time:
+            continue
+        wh_by_weekday[wh.weekday] = wh
+
+    availability = []
+
+    now = datetime.utcnow()
+    slot_duration = timedelta(minutes=service.duration_minutes)
+
+    for offset in range(days):
+        day_date = (now + timedelta(days=offset)).date()
+        weekday = day_date.weekday()
+
+        wh = wh_by_weekday.get(weekday)
+        if not wh:
+            # Closed or no hours for this weekday
+            continue
+
+        # Parse "HH:MM"
+        try:
+            start_hour, start_minute = map(int, (wh.start_time or "09:00").split(":"))
+            end_hour, end_minute = map(int, (wh.end_time or "17:00").split(":"))
+        except ValueError:
+            # Bad time format – skip this day
+            continue
+
+        day_start = datetime(day_date.year, day_date.month, day_date.day, start_hour, start_minute)
+        day_end = datetime(day_date.year, day_date.month, day_date.day, end_hour, end_minute)
+
+        # Don't offer slots in the past for *today*
+        if day_date == now.date() and now > day_start:
+            # Round "now" down to nearest minute
+            day_start = now.replace(second=0, microsecond=0)
+
+        # Get existing confirmed bookings for this provider on that day
+        bookings = (
+            db.query(models.Booking)
+            .join(models.Service, models.Booking.service_id == models.Service.id)
+            .filter(
+                models.Service.provider_id == provider_id,
+                models.Booking.start_time >= day_start,
+                models.Booking.start_time < day_end,
+                models.Booking.status == "confirmed",
+            )
+            .all()
+        )
+
+        def overlaps(slot_start, slot_end, booking):
+            # True if times intersect
+            return not (slot_end <= booking.start_time or slot_start >= booking.end_time)
+
+        slot_start = day_start
+        slots_for_day = []
+
+        while slot_start + slot_duration <= day_end:
+            slot_end = slot_start + slot_duration
+
+            # Check for overlap with any existing booking
+            conflict = False
+            for b in bookings:
+                if overlaps(slot_start, slot_end, b):
+                    conflict = True
+                    break
+
+            if not conflict:
+                slots_for_day.append(slot_start)
+
+            # Step forward by the service duration (so slots line up)
+            slot_start += slot_duration
+
+        if slots_for_day:
+            availability.append(
+                {
+                    "date": day_date,
+                    "slots": slots_for_day,
+                }
+            )
+
+    return availability
+
+
+def list_todays_bookings_for_provider(db: Session, provider_id: int):
+    """
+    All *confirmed* bookings for this provider whose start_time is today.
+    """
+    now = datetime.utcnow()
+    start_of_day = datetime(now.year, now.month, now.day)
+    end_of_day = start_of_day + timedelta(days=1)
+
+    q = (
+        db.query(models.Booking, models.Service, models.User)
+        .join(models.Service, models.Booking.service_id == models.Service.id)
+        .join(models.User, models.Booking.customer_id == models.User.id)
+        .filter(
+            models.Service.provider_id == provider_id,
+            models.Booking.start_time >= start_of_day,
+            models.Booking.start_time < end_of_day,
+            models.Booking.status == "confirmed",
+        )
+        .order_by(models.Booking.start_time)
+    )
+
+    results = []
+    for booking, service, customer in q.all():
+        results.append(
+            schemas.BookingWithDetails(
+                id=booking.id,
+                start_time=booking.start_time,
+                end_time=booking.end_time,
+                status=booking.status,
+                service_name=service.name,
+                service_duration_minutes=service.duration_minutes,
+                service_price_gyd=service.price_gyd or 0.0,
+                customer_name=customer.full_name or "",
+                customer_phone=customer.phone or "",
+            )
+        )
+    return results
+
+
+def list_upcoming_bookings_for_provider(
+    db: Session,
+    provider_id: int,
+    days_ahead: int = 7,
+):
+    """
+    All confirmed bookings for this provider from *tomorrow* up to N days in the future.
+    """
+    now = datetime.utcnow()
+    start = now + timedelta(days=1)
+    start_of_tomorrow = datetime(start.year, start.month, start.day)
+    end = start_of_tomorrow + timedelta(days=days_ahead)
+
+    q = (
+      db.query(models.Booking, models.Service, models.User)
+      .join(models.Service, models.Booking.service_id == models.Service.id)
+      .join(models.User, models.Booking.customer_id == models.User.id)
+      .filter(
+          models.Service.provider_id == provider_id,
+          models.Booking.start_time >= start_of_tomorrow,
+          models.Booking.start_time < end,
+          models.Booking.status == "confirmed",
+      )
+      .order_by(models.Booking.start_time)
+    )
+
+    results = []
+    for booking, service, customer in q.all():
+        results.append(
+            schemas.BookingWithDetails(
+                id=booking.id,
+                start_time=booking.start_time,
+                end_time=booking.end_time,
+                status=booking.status,
+                service_name=service.name,
+                service_duration_minutes=service.duration_minutes,
+                service_price_gyd=service.price_gyd or 0.0,
+                customer_name=customer.full_name or "",
+                customer_phone=customer.phone or "",
+            )
+        )
+    return results
+
+
+def cancel_booking_for_provider(
+    db: Session, booking_id: int, provider_id: int
+) -> bool:
+    """
+    Mark a booking as cancelled if it belongs to this provider.
+    """
+    booking = (
+        db.query(models.Booking)
+        .join(models.Service, models.Booking.service_id == models.Service.id)
+        .filter(
+            models.Booking.id == booking_id,
+            models.Service.provider_id == provider_id,
+        )
+        .first()
+    )
+    if not booking:
+        return False
+
+    booking.status = "cancelled"
+    db.commit()
+    return True
+
+
 

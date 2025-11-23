@@ -4,7 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from typing import List, Optional  # 👈 new
 from .database import get_db, Base, engine, SessionLocal
-from app import crud, schemas
+from app import crud, schemas, models
 import os
 from jose import jwt, JWTError
 from datetime import datetime, timedelta
@@ -28,6 +28,7 @@ Base.metadata.create_all(bind=engine)
 # Seed demo users
 db = SessionLocal()
 try:
+    
     if not crud.get_user_by_email(db, "customer@guyana.com"):
         crud.create_user(
             db,
@@ -53,6 +54,8 @@ try:
             ),
         )
         print("Demo users created — login with customer@guyana.com / pass")
+
+        
 finally:
     db.close()
 
@@ -143,6 +146,8 @@ def read_me(authorization: str = Header(None), db: Session = Depends(get_db)):
         "full_name": user.full_name,
         "phone": user.phone,
         "location": user.location,
+        "lat": user.lat,
+        "long": user.long,
         "is_provider": user.is_provider,
         "is_admin": user.is_admin,
     }
@@ -316,3 +321,280 @@ def update_my_working_hours(
 
     rows = crud.set_working_hours_for_provider(db, provider_id=provider.id, hours_list=hours_list)
     return rows
+
+
+@app.get(
+    "/providers/me/profile",
+    response_model=schemas.ProviderProfileOut,
+    status_code=status.HTTP_200_OK,
+)
+def get_my_provider_profile(
+    authorization: str = Header(None),
+    db: Session = Depends(get_db),
+):
+    user = get_current_user_from_header(authorization, db)
+
+    if not user.is_provider:
+        raise HTTPException(status_code=403, detail="Only providers can edit provider profile")
+
+    provider = crud.get_or_create_provider_for_user(db, user.id)
+
+    return schemas.ProviderProfileOut(
+        full_name=user.full_name or "",
+        phone=user.phone or "",
+        whatsapp=user.whatsapp,
+        location=user.location or "",
+        bio=provider.bio or "",
+    )
+
+
+@app.put(
+    "/providers/me/profile",
+    response_model=schemas.ProviderProfileOut,
+    status_code=status.HTTP_200_OK,
+)
+def update_my_provider_profile(
+    payload: schemas.ProviderProfileUpdate,
+    authorization: str = Header(None),
+    db: Session = Depends(get_db),
+):
+    user = get_current_user_from_header(authorization, db)
+
+    if not user.is_provider:
+        raise HTTPException(status_code=403, detail="Only providers can edit provider profile")
+
+    provider = crud.get_or_create_provider_for_user(db, user.id)
+
+    # Update fields if provided
+    if payload.full_name is not None:
+        user.full_name = payload.full_name
+
+    if payload.phone is not None:
+        user.phone = payload.phone
+
+    if payload.whatsapp is not None:
+        user.whatsapp = payload.whatsapp
+
+    if payload.location is not None:
+        user.location = payload.location
+
+    if payload.bio is not None:
+        provider.bio = payload.bio
+
+    db.commit()
+    db.refresh(user)
+    db.refresh(provider)
+
+    return schemas.ProviderProfileOut(
+        full_name=user.full_name or "",
+        phone=user.phone or "",
+        whatsapp=user.whatsapp,
+        location=user.location or "",
+        bio=provider.bio or "",
+    )
+
+@app.get(
+    "/providers/me/bookings/today",
+    response_model=List[schemas.BookingWithDetails],
+    status_code=status.HTTP_200_OK,
+)
+def get_my_todays_bookings(
+    authorization: str = Header(None),
+    db: Session = Depends(get_db),
+):
+    user = get_current_user_from_header(authorization, db)
+
+    if not user.is_provider:
+        raise HTTPException(status_code=403, detail="Only providers can see these bookings")
+
+    provider = crud.get_provider_by_user_id(db, user.id)
+    if not provider:
+        raise HTTPException(status_code=404, detail="Provider not found")
+
+    bookings = crud.list_todays_bookings_for_provider(db, provider.id)
+    return bookings
+
+
+@app.post(
+    "/providers/me/bookings/{booking_id}/cancel",
+    status_code=status.HTTP_200_OK,
+)
+def cancel_my_booking(
+    booking_id: int,
+    authorization: str = Header(None),
+    db: Session = Depends(get_db),
+):
+    user = get_current_user_from_header(authorization, db)
+
+    if not user.is_provider:
+        raise HTTPException(status_code=403, detail="Only providers can cancel bookings")
+
+    provider = crud.get_provider_by_user_id(db, user.id)
+    if not provider:
+        raise HTTPException(status_code=404, detail="Provider not found")
+
+    ok = crud.cancel_booking_for_provider(db, booking_id=booking_id, provider_id=provider.id)
+    if not ok:
+        raise HTTPException(status_code=404, detail="Booking not found")
+
+    return {"status": "cancelled"}
+
+@app.get(
+    "/providers/me/bookings/upcoming",
+    response_model=List[schemas.BookingWithDetails],
+    status_code=status.HTTP_200_OK,
+)
+def get_my_upcoming_bookings(
+    authorization: str = Header(None),
+    db: Session = Depends(get_db),
+):
+    user = get_current_user_from_header(authorization, db)
+
+    if not user.is_provider:
+        raise HTTPException(status_code=403, detail="Only providers can see these bookings")
+
+    provider = crud.get_provider_by_user_id(db, user.id)
+    if not provider:
+        raise HTTPException(status_code=404, detail="Provider not found")
+
+    bookings = crud.list_upcoming_bookings_for_provider(db, provider.id)
+    return bookings
+
+
+@app.post("/providers/me/location")
+def update_location(data: dict, authorization: str = Header(None), db: Session = Depends(get_db)):
+    user = get_current_user_from_header(authorization, db)
+
+    if not user.is_provider:
+        raise HTTPException(status_code=403, detail="Only providers can update location")
+
+    provider = crud.get_provider_by_user_id(db, user.id)
+
+    user.lat = data.get("lat")
+    user.long = data.get("long")
+
+    db.commit()
+
+    return {"status": "updated", "lat": user.lat, "long": user.long}
+
+@app.get(
+    "/providers/{provider_id}/availability",
+    response_model=List[schemas.ProviderAvailabilityDay],
+    status_code=status.HTTP_200_OK,
+)
+def get_provider_availability_route(
+    provider_id: int,
+    service_id: int,
+    days: int = 14,
+    db: Session = Depends(get_db),
+):
+    """
+    Availability for a specific provider + service over the next `days`.
+    Used by the client calendar/time slot picker.
+    """
+    try:
+        availability = crud.get_provider_availability(
+            db,
+            provider_id=provider_id,
+            service_id=service_id,
+            days=days,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    return availability
+
+
+# ---------------------------
+# PUBLIC PROVIDER LIST + CLIENT BOOKINGS
+# ---------------------------
+
+@app.get(
+    "/providers",
+    response_model=List[schemas.ProviderListItem],
+    status_code=status.HTTP_200_OK,
+)
+def list_providers(db: Session = Depends(get_db)):
+    """
+    Public list of providers for the client search screen.
+    """
+    rows = (
+        db.query(models.Provider, models.User)
+        .join(models.User, models.Provider.user_id == models.User.id)
+        .all()
+    )
+    out = []
+    for provider, user in rows:
+        out.append(
+            schemas.ProviderListItem(
+                provider_id=provider.id,
+                name=user.full_name or "",
+                location=user.location or "",
+                lat=user.lat,
+                long=user.long,
+                bio=provider.bio or "",
+            )
+        )
+    return out
+
+
+@app.get(
+    "/providers/{provider_id}/services",
+    response_model=List[schemas.ServiceOut],
+    status_code=status.HTTP_200_OK,
+)
+def list_services_for_provider_public(
+    provider_id: int, db: Session = Depends(get_db)
+):
+    """
+    Public list of services for a single provider.
+    """
+    services = crud.list_services_for_provider(db, provider_id=provider_id)
+    return services
+
+
+@app.post(
+    "/bookings",
+    response_model=schemas.BookingWithDetails,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_booking_for_me(
+    payload: schemas.BookingCreate,
+    authorization: str = Header(None),
+    db: Session = Depends(get_db),
+):
+    """
+    Create a booking for the currently logged-in user (as customer).
+    This uses the promotion + lock logic inside crud.create_booking.
+    """
+    user = get_current_user_from_header(authorization, db)
+
+    try:
+        booking = crud.create_booking(db, payload, customer_id=user.id)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    # Build rich response with service + customer info
+    service = (
+        db.query(models.Service)
+        .filter(models.Service.id == booking.service_id)
+        .first()
+    )
+    customer = user
+
+    return schemas.BookingWithDetails(
+        id=booking.id,
+        start_time=booking.start_time,
+        end_time=booking.end_time,
+        status=booking.status,
+        service_name=service.name if service else "",
+        service_duration_minutes=service.duration_minutes if service else 0,
+        service_price_gyd=(
+            float(service.price_gyd) if service and service.price_gyd is not None else 0.0
+        ),
+        customer_name=customer.full_name or "",
+        customer_phone=customer.phone or "",
+    )
+
+
+
