@@ -1,21 +1,22 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { useFocusEffect } from "@react-navigation/native";
 import { Text, View, StyleSheet, TextInput, Button, Alert, ActivityIndicator, ScrollView,
-         TouchableOpacity, Switch, Linking, Platform } from "react-native";
+         TouchableOpacity, Switch, Linking, Platform, Image,} from "react-native";
 import { NavigationContainer } from "@react-navigation/native";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import axios from "axios";
-import { registerRootComponent } from "expo";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Location from "expo-location";
-// ❌ remove direct import of react-native-maps
 import * as Notifications from "expo-notifications";
 import Constants from "expo-constants";
+import * as ImagePicker from "expo-image-picker";
+// import { API } from "./App"; // wherever you define your base URL
+
 
 
 
 const API = "https://cecila-opalescent-compulsorily.ngrok-free.dev";
-console.log("### API base URL =", API);
+  console.log("### API base URL =", API);
 
 // ✅ add this block:
 let MapView;
@@ -1647,7 +1648,9 @@ function ProviderDashboardScreen({ token, showFlash }) {
   location: "",
   bio: "",
   professions: [],
-});
+  });
+  const [provider, setProvider] = useState(null);  // 👈 add this
+
 
 const providerLabel =
   (profile?.full_name && profile.full_name.trim()) ||
@@ -2277,6 +2280,65 @@ const saveProviderProfile = async () => {
 };
 
 
+
+const pickAvatar = async () => {
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) {
+      alert("Permission to access photos is required!");
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.8,
+    });
+
+    if (result.canceled) return;
+
+    const asset = result.assets[0];
+    await uploadAvatar(asset.uri);
+  };
+
+const uploadAvatar = async (uri) => {
+    try {
+      const token = await AsyncStorage.getItem("accessToken");
+
+      const filename = uri.split("/").pop() || "avatar.jpg";
+      const match = /\.(\w+)$/.exec(filename);
+      const ext = match ? match[1] : "jpg";
+      const mimeType = ext === "png" ? "image/png" : "image/jpeg";
+
+      const formData = new FormData();
+      formData.append("file", {
+        uri,
+        name: filename,
+        type: mimeType,
+      });
+
+      const res = await axios.post(
+        `${API}/providers/me/avatar`,
+        formData,
+        {
+          headers: {
+            "Content-Type": "multipart/form-data",
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
+
+      const newUrl = res.data.avatar_url;
+
+      // update UI immediately
+      setProvider((prev) => ({ ...prev, avatar_url: newUrl }));
+    } catch (err) {
+      console.log("Avatar upload error:", err.response?.data || err.message);
+      alert("Failed to upload avatar. Please try again.");
+    }
+  };
+
+
 const loadUpcomingBookings = async () => {
   try {
     const token = await AsyncStorage.getItem("accessToken");
@@ -2401,7 +2463,42 @@ const loadProviderSummary = async () => {
 
 
   return (
+    
     <View style={{ flex: 1 }}>
+          <View style={{ alignItems: "center", marginBottom: 16 }}>
+        {provider?.avatar_url ? (
+          <Image
+            source={{ uri: provider.avatar_url }}
+            style={{
+              width: 96,
+              height: 96,
+              borderRadius: 48,
+              marginBottom: 8
+            }}
+          />
+        ) : (
+          <View
+            style={{
+              width: 96,
+              height: 96,
+              borderRadius: 48,
+              backgroundColor: "#ccc",
+              justifyContent: "center",
+              alignItems: "center",
+              marginBottom: 8,
+            }}
+          >
+            <Text style={{ fontSize: 32 }}>
+              {provider?.full_name?.[0]?.toUpperCase() || "P"}
+            </Text>
+          </View>
+        )}
+
+        <TouchableOpacity onPress={pickAvatar}>
+          <Text style={{ color: "#007AFF", marginTop: 4 }}>Change photo</Text>
+        </TouchableOpacity>
+      </View>
+
       {hoursFlash && (
         <View
           style={[
@@ -2416,6 +2513,7 @@ const loadProviderSummary = async () => {
       )}
 
       <ScrollView contentContainerStyle={styles.providerScroll}>
+      
         <Text style={styles.profileTitle}>Provider dashboard</Text>
         <Text style={styles.subtitleSmall}>Welcome, {providerLabel}</Text>
         {/*Account Info */}
@@ -3896,4 +3994,5 @@ providerSummaryValue: {
 //   },
 // });
 
-registerRootComponent(App);
+// registerRootComponent(App);
+export default App;

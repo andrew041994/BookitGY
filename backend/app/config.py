@@ -48,6 +48,15 @@ class Settings:
             os.getenv("ENABLE_DEMO_SEED", "true").lower() == "true"
         )
 
+                # Cloudinary (for image uploads)
+        self.CLOUDINARY_CLOUD_NAME: str = os.getenv("CLOUDINARY_CLOUD_NAME", "")
+        self.CLOUDINARY_API_KEY: str = os.getenv("CLOUDINARY_API_KEY", "")
+        self.CLOUDINARY_API_SECRET: str = os.getenv("CLOUDINARY_API_SECRET", "")
+        self.CLOUDINARY_UPLOAD_FOLDER: str = os.getenv(
+            "CLOUDINARY_UPLOAD_FOLDER", "bookitgy/avatars"
+        )
+
+
 
 @lru_cache()
 def get_settings() -> Settings:

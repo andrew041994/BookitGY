@@ -24,7 +24,7 @@ class Provider(Base):
     user_id = Column(Integer, ForeignKey("users.id"))
     bio = Column(Text)
     account_number = Column(String, unique=True, index=True)  # NEW
-    avatar_url = Column(Text, nullable=True)  # 👈 NEW
+    avatar_url = Column(String, nullable=True)
 
 
 

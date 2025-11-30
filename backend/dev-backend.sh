@@ -1,5 +1,13 @@
 #!/usr/bin/env bash
+export DATABASE_URL="postgresql+psycopg2://postgres:postgres@localhost:8003/postgres"
+export CLOUDINARY_URL="cloudinary://<API_KEY>:<API_SECRET>@<CLOUD_NAME>"
+
 set -e
+set -a
+source .env
+set +a
+
+
 
 cd "$(dirname "$0")"
 
