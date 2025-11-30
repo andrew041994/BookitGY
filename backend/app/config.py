@@ -1,7 +1,10 @@
 import os
 from functools import lru_cache
 from typing import List
+from dotenv import load_dotenv, find_dotenv
 
+# Load the nearest .env file (root .env or backend/.env)
+load_dotenv(find_dotenv(), override=False)
 
 class Settings:
     """Application configuration loaded from environment variables.

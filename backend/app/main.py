@@ -4,7 +4,13 @@ from fastapi.middleware.cors import CORSMiddleware
 from apscheduler.schedulers.background import BackgroundScheduler
 from sqlalchemy.orm import Session
 from fastapi import Depends, HTTPException, Header
-
+from dotenv import load_dotenv
+from pathlib import Path
+BASE_DIR = Path(__file__).resolve().parent.parent  # points to backend/
+# Load backend/.env
+load_dotenv(BASE_DIR / ".env")
+# Optionally also load project-root .env (guyana-booker/.env)
+load_dotenv(BASE_DIR.parent / ".env")
 from app.database import SessionLocal, get_db, Base, engine
 from app.workers.cron import registerCronJobs
 from app.config import get_settings
@@ -14,6 +20,10 @@ from app.routes import users as users_routes
 from app.routes import providers as providers_routes
 from app.routes import bookings as bookings_routes
 from app.routes import profile as profile_routes
+
+
+
+
 
 settings = get_settings()
 

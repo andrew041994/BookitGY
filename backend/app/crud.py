@@ -12,7 +12,9 @@ import hashlib
 from sqlalchemy import func
 from . import models, schemas
 from typing import Optional
+from dotenv import load_dotenv, find_dotenv
 
+load_dotenv(find_dotenv(), override=False)
 
 
 # ---------------------------------------------------------------------------
@@ -221,27 +223,53 @@ def generate_account_number_for_email(email: str) -> str:
 # ---------------------------------------------------------------------------
 # Twilio / WhatsApp helper
 # ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# Twilio / WhatsApp helper
+# ---------------------------------------------------------------------------
 
 twilio_client = None
 if os.getenv("TWILIO_ACCOUNT_SID"):
+    print("[WhatsApp debug] TWILIO_ACCOUNT_SID is set")
     twilio_client = Client(
         os.getenv("TWILIO_ACCOUNT_SID"),
         os.getenv("TWILIO_AUTH_TOKEN"),
     )
+else:
+    print("[WhatsApp debug] TWILIO_ACCOUNT_SID is NOT set")
 
 FROM_NUMBER = os.getenv("TWILIO_WHATSAPP_FROM")
+print(f"[WhatsApp debug] FROM_NUMBER = {FROM_NUMBER!r}")
 
 
 def send_whatsapp(to: str, body: str) -> None:
     """Send a WhatsApp message, or log a preview if Twilio isn't configured."""
+    print(
+        "[WhatsApp debug] send_whatsapp called with: "
+        f"client={bool(twilio_client)}, FROM={FROM_NUMBER!r}, to={to!r}"
+    )
+
     if not twilio_client or not to or not FROM_NUMBER:
         print(f"[WhatsApp Preview] To {to}: {body}")
         return
 
     try:
-        twilio_client.messages.create(from_=FROM_NUMBER, body=body, to=to)
+        msg = twilio_client.messages.create(from_=FROM_NUMBER, body=body, to=to)
+        print(f"[WhatsApp debug] Twilio message SID: {msg.sid}")
     except Exception as e:
         print(f"WhatsApp error: {e}")
+
+
+
+# def send_whatsapp(to: str, body: str) -> None:
+#     """Send a WhatsApp message, or log a preview if Twilio isn't configured."""
+#     if not twilio_client or not to or not FROM_NUMBER:
+#         print(f"[WhatsApp Preview] To {to}: {body}")
+#         return
+
+#     try:
+#         twilio_client.messages.create(from_=FROM_NUMBER, body=body, to=to)
+#     except Exception as e:
+#         print(f"WhatsApp error: {e}")
 
 
 # ---------------------------------------------------------------------------
