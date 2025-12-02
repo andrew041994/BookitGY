@@ -1,11 +1,25 @@
 from typing import List, Optional
-
-from fastapi import APIRouter, Depends, HTTPException
+import tempfile
+import os
+import cloudinary
+import cloudinary.uploader
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from sqlalchemy.orm import Session
-
+from app.services.cloudinary_service import upload_avatar
 from app.database import get_db
 from app import crud, schemas, models
 from app.security import get_current_user_from_header
+from app.config import get_settings
+
+
+settings = get_settings()
+
+cloudinary.config(
+    cloud_name=settings.CLOUDINARY_CLOUD_NAME,
+    api_key=settings.CLOUDINARY_API_KEY,
+    api_secret=settings.CLOUDINARY_API_SECRET,
+    secure=True,
+)
 
 router = APIRouter(tags=["providers"])
 
@@ -35,6 +49,36 @@ def update_my_provider(
     updated = crud.update_provider(db, provider.id, provider_update)
     return updated
 
+
+@router.post("/providers/me/avatar")
+def upload_my_avatar(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user_from_header),
+):
+    """
+    Upload or update the current provider's avatar image.
+    Expects multipart/form-data with a file field named 'file'.
+    """
+    provider = crud.get_or_create_provider_for_user(db, current_user.id)
+
+    # Save uploaded file to a temp file so Cloudinary can read it
+    suffix = "." + (file.filename.split(".")[-1] if "." in file.filename else "jpg")
+    with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
+        tmp.write(file.file.read())
+        tmp_path = tmp.name
+
+    try:
+        public_id = f"provider_{provider.id}_avatar"
+        avatar_url = upload_avatar(tmp_path, public_id=public_id)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Avatar upload failed: {e}")
+
+    provider.avatar_url = avatar_url
+    db.commit()
+    db.refresh(provider)
+
+    return {"avatar_url": provider.avatar_url}
 
 # -------------------------------------------------------------------
 # Provider "me" services
@@ -191,19 +235,33 @@ def get_provider_availability_route(
 
 
 @router.put("/providers/me")
-def update_my_provider_location(
+def update_my_provider_profile(
     payload: schemas.ProviderUpdate,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user_from_header),
 ):
+    """
+    Update provider profile fields (bio, location text, whatsapp, is_active, professions).
+
+    Coordinate updates (lat/long) are handled exclusively by /providers/me/location
+    with proper validation, so they are NOT accepted here.
+    """
     provider = crud.get_or_create_provider_for_user(db, current_user.id)
 
-    # Only update lat/long if provided
-    if payload.lat is not None:
-        provider.lat = payload.lat
-    if payload.long is not None:
-        provider.long = payload.long
+    # Update provider row via CRUD helper
+    updated = crud.update_provider(db, provider.id, payload)
+    if not updated:
+        raise HTTPException(status_code=404, detail="Provider not found")
+
+    # Optionally keep user's contact info in sync
+    if payload.location is not None:
+        current_user.location = payload.location
+    if payload.whatsapp is not None:
+        current_user.whatsapp = payload.whatsapp
 
     db.commit()
-    db.refresh(provider)
-    return provider
+    db.refresh(updated)
+    db.refresh(current_user)
+
+    return updated
+

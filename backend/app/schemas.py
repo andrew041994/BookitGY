@@ -35,12 +35,11 @@ class UserUpdate(BaseModel):
 
 class ProviderUpdate(BaseModel):
     bio: Optional[str] = None
-    location: Optional[str] = None
+    location: Optional[str] = None  # human-readable address / area
     whatsapp: Optional[str] = None
     professions: Optional[List[str]] = None
-    lat: Optional[float] = None
-    long: Optional[float] = None
     is_active: Optional[bool] = None
+
 
 
 class UserCreate(UserBase):
@@ -139,6 +138,9 @@ class ProviderProfileOut(BaseModel):
     location: str
     bio: Optional[str] = None
     professions: List[str] = []
+    avatar_url: Optional[str] = None   # 👈 NEW
+
+
 
 
 
@@ -149,6 +151,8 @@ class ProviderProfileUpdate(BaseModel):
     location: Optional[str] = None
     bio: Optional[str] = None
     professions: Optional[List[str]] = None
+    avatar_url: Optional[str] = None   # 👈 NEW
+
 
 
 class BookingWithDetails(BaseModel):
@@ -222,6 +226,11 @@ class TokenResponse(BaseModel):
     email: str
     is_provider: bool
     is_admin: bool
+
+class ProviderLocationUpdate(BaseModel):
+    lat: float
+    long: float
+    location: Optional[str] = None  # optional human-readable text
 
 
 

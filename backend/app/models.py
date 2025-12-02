@@ -1,6 +1,24 @@
-from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey, Boolean, Float, Date, Numeric
+from sqlalchemy import (
+    Column,
+    Integer,
+    String,
+    Text,
+    DateTime,
+    ForeignKey,
+    Boolean,
+    Float,
+    Date,
+    Numeric,
+    Enum,)
+
 from .database import Base
 from datetime import datetime
+from sqlalchemy.orm import relationship
+from sqlalchemy.ext.declarative import declarative_base
+
+Base = declarative_base()
+
+
 
 class User(Base):
     __tablename__ = "users"
@@ -24,6 +42,8 @@ class Provider(Base):
     user_id = Column(Integer, ForeignKey("users.id"))
     bio = Column(Text)
     account_number = Column(String, unique=True, index=True)  # NEW
+    avatar_url = Column(String, nullable=True)
+
 
 
 class Service(Base):
@@ -35,14 +55,31 @@ class Service(Base):
     price_gyd = Column(Float)
     duration_minutes = Column(Integer)
 
+
 class Booking(Base):
     __tablename__ = "bookings"
+
     id = Column(Integer, primary_key=True, index=True)
-    customer_id = Column(Integer, ForeignKey("users.id"))
-    service_id = Column(Integer, ForeignKey("services.id"))
-    start_time = Column(DateTime)
-    end_time = Column(DateTime)
-    status = Column(String, default="confirmed")  # confirmed, cancelled
+    customer_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    service_id = Column(Integer, ForeignKey("services.id"), nullable=False, index=True)
+    start_time = Column(DateTime, nullable=False, index=True)
+    end_time = Column(DateTime, nullable=False, index=True)
+    status = Column(
+        Enum(
+            "confirmed",
+            "pending",
+            "cancelled",
+            "completed",
+            name="booking_status_enum",
+        ),
+        nullable=False,
+        default="confirmed",
+    )
+
+
+
+
+
 
 class Bill(Base):
     __tablename__ = "bills"

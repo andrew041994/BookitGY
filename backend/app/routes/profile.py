@@ -1,62 +1,19 @@
-from typing import List, Optional
-
 from fastapi import APIRouter, Depends, Header, HTTPException, status
-from jose import jwt, JWTError
 from sqlalchemy.orm import Session
+from typing import Optional, List
 
 from app.database import get_db
 from app import models, schemas, crud
 from app.config import get_settings
+from app.security import get_current_user_from_header
+
 
 settings = get_settings()
-
-SECRET_KEY = settings.JWT_SECRET_KEY
-ALGORITHM = "HS256"
 
 router = APIRouter(tags=["profile"])
 
 
-# ---------------------------
-# Helper: current user from Authorization: Bearer <token>
-# ---------------------------
-def get_current_user_from_header(
-    authorization: Optional[str] = Header(None),
-    db: Session = Depends(get_db),
-) -> models.User:
-    if not authorization:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Missing Authorization header",
-        )
 
-    token = authorization.replace("Bearer", "").strip()
-    if not token:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid token in Authorization header",
-        )
-
-    try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-    except JWTError:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token"
-        )
-
-    user_email = payload.get("sub")
-    if not user_email:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid token payload",
-        )
-
-    user = crud.get_user_by_email(db, user_email)
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
-        )
-
-    return user
 
 
 # =====================================================================
@@ -89,6 +46,7 @@ def read_my_provider_profile(
         location=user.location or "",
         bio=provider.bio or "",
         professions=professions,
+        avatar_url=provider.avatar_url,  # 👈 NEW
     )
 
 
@@ -128,6 +86,9 @@ def update_my_provider_profile(
     if payload.bio is not None:
         provider.bio = payload.bio
 
+    if payload.avatar_url is not None:  # 👈 NEW
+        provider.avatar_url = payload.avatar_url
+
     # Update professions if provided
     if payload.professions is not None:
         professions = crud.set_professions_for_provider(
@@ -147,6 +108,7 @@ def update_my_provider_profile(
         location=user.location or "",
         bio=provider.bio or "",
         professions=professions,
+        avatar_url=provider.avatar_url,  # 👈 NEW
     )
 
 

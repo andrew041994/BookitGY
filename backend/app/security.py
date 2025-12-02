@@ -12,16 +12,29 @@ settings = get_settings()
 
 
 def get_current_user_from_header(
-    authorization: Optional[str] = Header(None),
+    authorization: str = Header(None),
     db: Session = Depends(get_db),
 ) -> models.User:
+    """
+    Extract the current user from a standard Bearer token Authorization header.
+
+    - Requires "Authorization: Bearer <token>"
+    - Rejects headers that don't match that pattern (e.g. 'BearerX')
+    """
     if not authorization:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Missing Authorization header",
         )
 
-    token = authorization.replace("Bearer ", "").strip()
+    parts = authorization.split()
+    if len(parts) != 2 or parts[0].lower() != "bearer":
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authorization header must be: Bearer <token>",
+        )
+
+    token = parts[1].strip()
     if not token:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

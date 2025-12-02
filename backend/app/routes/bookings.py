@@ -7,6 +7,11 @@ from app.database import get_db
 from app import crud, schemas, models
 from app.security import get_current_user_from_header
 
+
+
+router = APIRouter()
+
+
 router = APIRouter(tags=["bookings"])
 
 
@@ -72,21 +77,40 @@ def cancel_booking_as_provider(
     return {"status": "cancelled"}
 
 
+# @router.post("/bookings/{booking_id}/cancel")
+# def cancel_booking_as_customer(
+#     booking_id: int,
+#     db: Session = Depends(get_db),
+#     authorization: Optional[str] = Header(None),
+# ):
+#     user = get_current_user_from_header(authorization, db)
+
+#     ok = crud.cancel_booking_for_customer(
+#         db, booking_id=booking_id, customer_id=user.id
+#     )
+#     if not ok:
+#         raise HTTPException(status_code=404, detail="Booking not found")
+
+#     return {"status": "cancelled"}
+
 @router.post("/bookings/{booking_id}/cancel")
-def cancel_booking_as_customer(
+def cancel_my_booking(
     booking_id: int,
     db: Session = Depends(get_db),
-    authorization: Optional[str] = Header(None),
+    current_user: models.User = Depends(get_current_user_from_header),
 ):
-    user = get_current_user_from_header(authorization, db)
+    """
+    Allow a customer to cancel their own booking.
 
-    ok = crud.cancel_booking_for_customer(
-        db, booking_id=booking_id, customer_id=user.id
-    )
-    if not ok:
+    - Only the customer who owns the booking can cancel it.
+    - Sets status='cancelled' if currently 'confirmed' or 'pending'.
+    """
+    booking = crud.cancel_booking_for_customer(db, booking_id, current_user.id)
+    if not booking:
         raise HTTPException(status_code=404, detail="Booking not found")
 
-    return {"status": "cancelled"}
+    return booking
+
 
 @router.get("/providers/me/bookings/today")
 def list_my_todays_bookings(

@@ -12,6 +12,9 @@ import hashlib
 from sqlalchemy import func
 from . import models, schemas
 from typing import Optional
+from dotenv import load_dotenv, find_dotenv
+
+load_dotenv(find_dotenv(), override=False)
 
 
 
@@ -25,6 +28,16 @@ pwd_context = CryptContext(schemes=["pbkdf2_sha256"], deprecated="auto")
 
 
 EXPO_PUSH_URL = "https://exp.host/--/api/v2/push/send"
+
+def validate_coordinates(lat: Optional[float], long: Optional[float]) -> None:
+    if lat is not None:
+        if not (-90.0 <= lat <= 90.0):
+            raise ValueError("Latitude must be between -90 and 90 degrees")
+
+    if long is not None:
+        if not (-180.0 <= long <= 180.0):
+            raise ValueError("Longitude must be between -180 and 180 degrees")
+
 
 def send_push(to_token: Optional[str], title: str, body: str) -> None:
     if not to_token:
@@ -221,27 +234,97 @@ def generate_account_number_for_email(email: str) -> str:
 # ---------------------------------------------------------------------------
 # Twilio / WhatsApp helper
 # ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# Twilio / WhatsApp helper
+# ---------------------------------------------------------------------------
 
 twilio_client = None
 if os.getenv("TWILIO_ACCOUNT_SID"):
+    print("[WhatsApp debug] TWILIO_ACCOUNT_SID is set")
     twilio_client = Client(
         os.getenv("TWILIO_ACCOUNT_SID"),
         os.getenv("TWILIO_AUTH_TOKEN"),
     )
+else:
+    print("[WhatsApp debug] TWILIO_ACCOUNT_SID is NOT set")
 
 FROM_NUMBER = os.getenv("TWILIO_WHATSAPP_FROM")
+print(f"[WhatsApp debug] FROM_NUMBER = {FROM_NUMBER!r}")
 
 
 def send_whatsapp(to: str, body: str) -> None:
     """Send a WhatsApp message, or log a preview if Twilio isn't configured."""
+    print(
+        "[WhatsApp debug] send_whatsapp called with: "
+        f"client={bool(twilio_client)}, FROM={FROM_NUMBER!r}, to={to!r}"
+    )
+
     if not twilio_client or not to or not FROM_NUMBER:
         print(f"[WhatsApp Preview] To {to}: {body}")
         return
 
     try:
-        twilio_client.messages.create(from_=FROM_NUMBER, body=body, to=to)
+        msg = twilio_client.messages.create(from_=FROM_NUMBER, body=body, to=to)
+        print(f"[WhatsApp debug] Twilio message SID: {msg.sid}")
     except Exception as e:
         print(f"WhatsApp error: {e}")
+
+
+def notify_booking_created(
+    customer: Optional[models.User],
+    provider_user: Optional[models.User],
+    service: models.Service,
+    booking: models.Booking,
+) -> None:
+    """Send all notifications for a newly confirmed booking.
+
+    - WhatsApp to customer (if configured)
+    - WhatsApp to provider (if configured)
+    - Push to customer (if configured)
+    - Push to provider (if configured)
+    """
+    if not (customer and provider_user):
+        return
+
+    # Customer: one confirmation message
+    if customer.whatsapp:
+        send_whatsapp(
+            customer.whatsapp,
+            (
+                "Booking confirmed!\n"
+                f"{service.name} with {provider_user.full_name}\n"
+                f"{booking.start_time.strftime('%d %b %Y at %I:%M %p')}\n"
+                f"GYD {service.price_gyd}"
+            ),
+        )
+
+    # Provider: one "new booking" message
+    if provider_user.whatsapp:
+        send_whatsapp(
+            provider_user.whatsapp,
+            (
+                "New booking!\n"
+                f"{customer.full_name} booked {service.name}\n"
+                f"{booking.start_time.strftime('%d %b %Y at %I:%M %p')}"
+            ),
+        )
+
+    # Push notifications (one each)
+    send_push(
+        customer.expo_push_token,
+        "Booking confirmed",
+        f"{service.name} with {provider_user.full_name} on "
+        f"{booking.start_time.strftime('%d %b %Y at %I:%M %p')}",
+    )
+
+    send_push(
+        provider_user.expo_push_token,
+        "New booking",
+        f"{customer.full_name} booked {service.name} on "
+        f"{booking.start_time.strftime('%d %b %Y at %I:%M %p')}",
+    )
+
+
 
 
 # ---------------------------------------------------------------------------
@@ -299,10 +382,18 @@ def update_user(
     # Only apply fields that were sent in the request
     update_data = user_update.dict(exclude_unset=True)
 
+    # Explicit whitelist of user fields that may be updated from the API
+    ALLOWED_USER_FIELDS = {
+        "full_name",
+        "whatsapp",
+        "location",
+        "avatar_url",
+    }
+
     for field, value in update_data.items():
-        # Make sure the User model actually has this attribute
-        if hasattr(user, field):
+        if field in ALLOWED_USER_FIELDS:
             setattr(user, field, value)
+
 
     db.commit()
     db.refresh(user)
@@ -346,142 +437,94 @@ def upsert_promotion(db: Session, provider_id: int, free_total: int):
 # Booking with promotion + lock check
 # ---------------------------------------------------------------------------
 
-def create_booking(db: Session, booking: schemas.BookingCreate, customer_id: int):
+def create_booking(
+    db: Session,
+    customer_id: int,
+    booking: schemas.BookingCreate,
+) -> Optional[models.Booking]:
+    """
+    Create a new booking for a customer.
+
+    Flow:
+    1. Validate service / provider.
+    2. Validate that the selected slot is not already booked.
+    3. Create booking (confirmed).
+    4. Dispatch notifications (single helper).
+    """
+
+    # Load service
     service = (
         db.query(models.Service)
         .filter(models.Service.id == booking.service_id)
         .first()
     )
     if not service:
-        raise ValueError("Service not found")
+        return None
 
+    # Load provider
     provider = (
         db.query(models.Provider)
         .filter(models.Provider.id == service.provider_id)
         .first()
     )
     if not provider:
-        raise ValueError("Provider not found")
+        return None
 
+    # Load provider user
     provider_user = (
         db.query(models.User)
         .filter(models.User.id == provider.user_id)
         .first()
     )
+    if not provider_user:
+        return None
 
-    # Check if provider is locked (unpaid bill past due)
-    overdue = (
-        db.query(models.Bill)
+    # Compute end time
+    end_time = booking.start_time + timedelta(
+        minutes=service.duration_minutes
+    )
+
+    # Check overlapping bookings
+    overlap = (
+        db.query(models.Booking)
+        .filter(models.Booking.service_id == booking.service_id)
         .filter(
-            models.Bill.provider_id == provider.id,
-            models.Bill.is_paid.is_(False),
-            models.Bill.due_date < datetime.utcnow(),
+            models.Booking.start_time < end_time,
+            models.Booking.end_time > booking.start_time,
         )
         .first()
     )
-    if overdue:
-        raise ValueError("Provider account is locked due to unpaid bill")
 
-    # Apply promotion
-    promo = get_promotion(db, provider.id)
-    fee_applied = Decimal("0.1") * Decimal(str(service.price_gyd))
-    if promo and promo.free_bookings_used < promo.free_bookings_total:
-        fee_applied = Decimal("0")
-        promo.free_bookings_used += 1
+    if overlap:
+        # This slot is taken
+        return None
 
     # Create booking
-        # Make sure this time slot is still free for this provider
-    proposed_start = booking.start_time
-    proposed_end = booking.start_time + timedelta(minutes=service.duration_minutes)
-
-    overlapping = (
-        db.query(models.Booking)
-        .join(models.Service, models.Booking.service_id == models.Service.id)
-        .filter(
-            models.Service.provider_id == provider.id,
-            models.Booking.status == "confirmed",
-            # overlap: existing.start < proposed_end AND existing.end > proposed_start
-            models.Booking.start_time < proposed_end,
-            models.Booking.end_time > proposed_start,
-        )
-        .first()
-    )
-
-    if overlapping:
-        # Another booking already grabbed this slot
-        raise ValueError("This time slot has just been booked. Please choose another time.")
-
-
-    end_time = booking.start_time + timedelta(minutes=service.duration_minutes)
-    db_booking = models.Booking(
+    new_booking = models.Booking(
         customer_id=customer_id,
-        service_id=booking.service_id,
+        service_id=service.id,
         start_time=booking.start_time,
         end_time=end_time,
         status="confirmed",
     )
-    db.add(db_booking)
-    db.commit()
-    db.refresh(db_booking)
 
-    # WhatsApp notifications
+    db.add(new_booking)
+    db.commit()
+    db.refresh(new_booking)
+
+    # Load customer
     customer = (
         db.query(models.User)
         .filter(models.User.id == customer_id)
         .first()
     )
 
-    if customer and provider_user:
-        send_whatsapp(
-            customer.whatsapp,
-            (
-                "Booking confirmed!\n"
-                f"{service.name} with {provider_user.full_name}\n"
-                f"{booking.start_time.strftime('%d %b %Y at %I:%M %p')}\n"
-                f"GYD {service.price_gyd}"
-            ),
-        )
-        customer = (
-    db.query(models.User)
-    .filter(models.User.id == customer_id)
-    .first()
-)
+    # Dispatch all notifications in one place
+    notify_booking_created(customer, provider_user, service, new_booking)
 
-            # WhatsApp (optional)
-        send_whatsapp(
-                customer.whatsapp,
-                (
-                    "Booking confirmed!\n"
-                    f"{service.name} with {provider_user.full_name}\n"
-                    f"{booking.start_time.strftime('%d %b %Y at %I:%M %p')}\n"
-                    f"GYD {service.price_gyd}"
-                ),
-            )
-        send_whatsapp(
-                provider_user.whatsapp,
-                (
-                    "New booking!\n"
-                    f"{customer.full_name} booked {service.name}\n"
-                    f"{booking.start_time.strftime('%d %b %Y at %I:%M %p')}"
-                ),
-            )
+    return new_booking
 
-            # Push notifications
-        send_push(
-                customer.expo_push_token,
-                "Booking confirmed",
-                f"{service.name} with {provider_user.full_name} on "
-                f"{booking.start_time.strftime('%d %b %Y at %I:%M %p')}",
-            )
 
-        send_push(
-                provider_user.expo_push_token,
-                "New booking",
-                f"{customer.full_name} booked {service.name} on "
-                f"{booking.start_time.strftime('%d %b %Y at %I:%M %p')}",
-            )
-
-    return db_booking
 
 
 # ---------------------------------------------------------------------------
@@ -649,14 +692,15 @@ def list_bookings_for_customer(db: Session, customer_id: int):
         .all()
     )
 
-    results = []
-    for booking, service in rows:
-                provider_name = ""
-                provider_location = ""
-                provider_lat = None
-                provider_long = None
+    results: list[schemas.BookingWithDetails] = []
 
-    if service:
+    for booking, service in rows:
+        provider_name = ""
+        provider_location = ""
+        provider_lat = None
+        provider_long = None
+
+        if service:
             provider = (
                 db.query(models.Provider)
                 .filter(models.Provider.id == service.provider_id)
@@ -674,7 +718,7 @@ def list_bookings_for_customer(db: Session, customer_id: int):
                     provider_lat = provider_user.lat
                     provider_long = provider_user.long
 
-    results.append(
+        results.append(
             schemas.BookingWithDetails(
                 id=booking.id,
                 start_time=booking.start_time,
@@ -682,9 +726,11 @@ def list_bookings_for_customer(db: Session, customer_id: int):
                 status=booking.status,
                 service_name=service.name if service else "",
                 service_duration_minutes=service.duration_minutes if service else 0,
-                service_price_gyd=float(service.price_gyd or 0.0)
-                if service and service.price_gyd is not None
-                else 0.0,
+                service_price_gyd=(
+                    float(service.price_gyd or 0.0)
+                    if service and service.price_gyd is not None
+                    else 0.0
+                ),
                 customer_name=user.full_name or "",
                 customer_phone=user.phone or "",
                 provider_name=provider_name,
@@ -693,13 +739,19 @@ def list_bookings_for_customer(db: Session, customer_id: int):
                 provider_long=provider_long,
             )
         )
+
     return results
+
 
 
 def cancel_booking_for_customer(
     db: Session, booking_id: int, customer_id: int
-) -> bool:
+) -> Optional[models.Booking]:
+    """
+    Cancel a booking for a given customer.
 
+    Returns the updated booking or None if not found / not owned by customer.
+    """
     booking = (
         db.query(models.Booking)
         .filter(
@@ -710,57 +762,16 @@ def cancel_booking_for_customer(
     )
 
     if not booking:
-        return False
+        return None
 
-    service = (
-        db.query(models.Service)
-        .filter(models.Service.id == booking.service_id)
-        .first()
-    )
-
-    provider_user = None
-    if service:
-        provider = (
-            db.query(models.Provider)
-            .filter(models.Provider.id == service.provider_id)
-            .first()
-        )
-        if provider:
-            provider_user = (
-                db.query(models.User)
-                .filter(models.User.id == provider.user_id)
-                .first()
-            )
-
-    customer = (
-        db.query(models.User)
-        .filter(models.User.id == customer_id)
-        .first()
-    )
+    # Only allow cancellation from certain states
+    if booking.status not in ("confirmed", "pending"):
+        return booking  # already cancelled/completed, no-op
 
     booking.status = "cancelled"
     db.commit()
     db.refresh(booking)
-
-    if provider_user and service and customer:
-        send_whatsapp(
-            provider_user.whatsapp,
-            (
-                "❌ Booking cancelled by customer.\n"
-                f"Customer: {customer.full_name}\n"
-                f"Service: {service.name}\n"
-                f"Time: {booking.start_time.strftime('%d %b %Y at %I:%M %p')}"
-            ),
-        )
-
-        send_push(
-            provider_user.expo_push_token,
-            "Booking cancelled",
-            f"{customer.full_name} cancelled {service.name} "
-            f"for {booking.start_time.strftime('%d %b %Y at %I:%M %p')}",
-        )
-
-    return True
+    return booking
 
 
 

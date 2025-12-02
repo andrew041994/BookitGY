@@ -1,21 +1,22 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { useFocusEffect } from "@react-navigation/native";
 import { Text, View, StyleSheet, TextInput, Button, Alert, ActivityIndicator, ScrollView,
-         TouchableOpacity, Switch, Linking, Platform } from "react-native";
+         TouchableOpacity, Switch, Linking, Platform, Image,} from "react-native";
 import { NavigationContainer } from "@react-navigation/native";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import axios from "axios";
-import { registerRootComponent } from "expo";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Location from "expo-location";
-// ❌ remove direct import of react-native-maps
 import * as Notifications from "expo-notifications";
 import Constants from "expo-constants";
+import * as ImagePicker from "expo-image-picker";
+// import { API } from "./App"; // wherever you define your base URL
+
 
 
 
 const API = "https://cecila-opalescent-compulsorily.ngrok-free.dev";
-console.log("### API base URL =", API);
+  console.log("### API base URL =", API);
 
 // ✅ add this block:
 let MapView;
@@ -232,7 +233,30 @@ function SignupScreen({ goToLogin, goBack, showFlash }) {
   const [isProvider, setIsProvider] = useState(false); // 👈 new
 
   const signup = async () => {
-    if (password !== confirmPassword) {
+    const trimmedEmail = email.trim();
+    const trimmedPassword = password.trim();
+    const trimmedConfirm = confirmPassword.trim();
+    const trimmedUsername = username.trim();
+    const trimmedPhone = phone.trim();
+
+    // ✅ All fields required
+    if (
+      !trimmedUsername ||
+      !trimmedEmail ||
+      !trimmedPhone ||
+      !trimmedPassword ||
+      !trimmedConfirm
+    ) {
+      if (showFlash) {
+        showFlash("error", "Please fill in all fields");
+      } else {
+        Alert.alert("Error", "Please fill in all fields");
+      }
+      return;
+    }
+
+    // ✅ Passwords must match
+    if (trimmedPassword !== trimmedConfirm) {
       if (showFlash) {
         showFlash("error", "Passwords do not match");
       } else {
@@ -241,15 +265,37 @@ function SignupScreen({ goToLogin, goBack, showFlash }) {
       return;
     }
 
+    // ✅ Normalize phone into WhatsApp format: whatsapp:+...
+    let whatsappValue = trimmedPhone;
+
+    // Strip existing 'whatsapp:' if user typed it
+    if (whatsappValue.startsWith("whatsapp:")) {
+      whatsappValue = whatsappValue.replace(/^whatsapp:/, "");
+    }
+
+    // Ensure it starts with +
+    if (!whatsappValue.startsWith("+")) {
+      // If it starts with 592, assume +592...
+      if (whatsappValue.startsWith("592")) {
+        whatsappValue = `+${whatsappValue}`;
+      } else {
+        // Fallback: just prefix +
+        whatsappValue = `+${whatsappValue}`;
+      }
+    }
+
+    // Final WhatsApp format
+    whatsappValue = `whatsapp:${whatsappValue}`;
+
     try {
       await axios.post(`${API}/auth/signup`, {
-        email,
-        password,
-        full_name: username,
-        phone,
+        email: trimmedEmail,
+        password: trimmedPassword,
+        full_name: trimmedUsername,
+        phone: trimmedPhone,          // plain phone as user entered
         location: "Georgetown",
-        whatsapp: `whatsapp:+592${phone}`,
-        is_provider: isProvider, // 👈 tell backend this is a provider
+        whatsapp: whatsappValue,      // normalized WhatsApp format
+        is_provider: isProvider,      // tell backend this is a provider
       });
 
       if (showFlash) {
@@ -269,6 +315,7 @@ function SignupScreen({ goToLogin, goBack, showFlash }) {
       }
     }
   };
+
 
   return (
     <View style={styles.container}>
@@ -347,7 +394,7 @@ function SignupScreen({ goToLogin, goBack, showFlash }) {
 
 
 // Placeholder screens so MainApp compiles — replace with your real ones
-function ProfileScreen({ setToken, showFlash }) {
+function ProfileScreen({ setToken, showFlash, token }) {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -366,6 +413,8 @@ function ProfileScreen({ setToken, showFlash }) {
   const [bookings, setBookings] = useState([]);
   const [bookingsLoading, setBookingsLoading] = useState(false);
   const [bookingsError, setBookingsError] = useState("");
+  const [avatarUrl, setAvatarUrl] = useState(null);
+
 
   const logout = async () => {
     try {
@@ -390,22 +439,22 @@ function ProfileScreen({ setToken, showFlash }) {
         setLoading(true);
         setError("");
 
-        const token = await AsyncStorage.getItem("accessToken");
+        const tokenValue = await AsyncStorage.getItem("accessToken");
 
-        if (!token) {
+        if (!tokenValue) {
           setError("No access token found. Please log in again.");
           setLoading(false);
           return;
         }
 
-        const res = await axios.get(`${API}/users/me`, {
-          headers: {
-          Authorization: `Bearer ${token}`,
-          },
-        });
+        const headers = {
+          Authorization: `Bearer ${tokenValue}`,
+        };
+
+        // 1) Load base user info
+        const res = await axios.get(`${API}/users/me`, { headers });
 
         setUser(res.data);
-               // setUser(res.data);
         setEditProfile({
           full_name: res.data.full_name || "",
           phone: res.data.phone || "",
@@ -413,6 +462,28 @@ function ProfileScreen({ setToken, showFlash }) {
           location: res.data.location || "",
         });
 
+        // 2) Try to get avatar
+        let avatar = res.data.avatar_url || null;
+
+        // If this user is a provider, also check provider profile
+        if ((token && token.isProvider) || res.data.is_provider) {
+          try {
+            const provRes = await axios.get(
+              `${API}/providers/me/profile`,
+              { headers }
+            );
+            if (provRes.data.avatar_url) {
+              avatar = provRes.data.avatar_url;
+            }
+          } catch (err) {
+            console.log(
+              "Error loading provider avatar for profile",
+              err.response?.data || err.message
+            );
+          }
+        }
+
+        setAvatarUrl(avatar);
       } catch (err) {
         console.error("Error loading profile", err);
         setError("Could not load profile.");
@@ -425,7 +496,7 @@ function ProfileScreen({ setToken, showFlash }) {
     };
 
     loadProfile();
-  }, []);
+  }, [token]);
 
     const toggleEditProfile = () => {
     // ensure form reflects current user
@@ -601,13 +672,14 @@ function ProfileScreen({ setToken, showFlash }) {
                 return;
               }
 
-              await axios.post(
-                `${API}/me/bookings/${bookingId}/cancel`,
-                {},
-                {
-                  headers: { Authorization: `Bearer ${token}` },
-                }
-              );
+                  await axios.post(
+                    `${API}/bookings/${bookingId}/cancel`,
+                    {},
+                    {
+                      headers: { Authorization: `Bearer ${token}` },
+                    }
+                  );
+
 
 
               // update local state so UI reflects cancellation
@@ -679,18 +751,41 @@ function ProfileScreen({ setToken, showFlash }) {
   return (
     <ScrollView contentContainerStyle={styles.profileScroll}>
       <View style={styles.profileHeader}>
-        <Text style={styles.profileTitle}>{user.full_name || "My Profile"}</Text>
-        <View
-          style={[
-            styles.roleBadge,
-            isAdmin
-              ? styles.roleBadgeAdmin
-              : isProvider
-              ? styles.roleBadgeProvider
-              : styles.roleBadgeClient,
-          ]}
-        >
-          <Text style={styles.roleBadgeText}>{role}</Text>
+        {/* Avatar */}
+        <View style={styles.profileAvatarWrapper}>
+          {avatarUrl ? (
+            <Image
+              source={{ uri: avatarUrl }}
+              style={styles.profileAvatarImage}
+            />
+          ) : (
+            <View style={styles.profileAvatarFallback}>
+              <Text style={styles.profileAvatarInitial}>
+                {(user.full_name || user.email || "?")
+                  .charAt(0)
+                  .toUpperCase()}
+              </Text>
+            </View>
+          )}
+        </View>
+
+        {/* Name + role */}
+        <View style={{ flex: 1, marginLeft: 12 }}>
+          <Text style={styles.profileTitle}>
+            {user.full_name || "My Profile"}
+          </Text>
+          <View
+            style={[
+              styles.roleBadge,
+              isAdmin
+                ? styles.roleBadgeAdmin
+                : isProvider
+                ? styles.roleBadgeProvider
+                : styles.roleBadgeClient,
+            ]}
+          >
+            <Text style={styles.roleBadgeText}>{role}</Text>
+          </View>
         </View>
       </View>
 
@@ -825,24 +920,41 @@ function ProfileScreen({ setToken, showFlash }) {
       <View style={styles.actionsContainer}>
         <Text style={styles.sectionTitle}>Actions</Text>
 
-          <TouchableOpacity
-              style={styles.actionButton}
-              onPress={toggleEditProfile}
-          >
+        {/* Edit profile */}
+        <TouchableOpacity
+          style={styles.actionButton}
+          onPress={toggleEditProfile}
+        >
           <Text style={styles.actionButtonText}>
-              {showEdit ? "Hide edit profile" : "Edit profile"}
-            </Text>
-          </TouchableOpacity>
+            {showEdit ? "Hide edit profile" : "Edit profile"}
+          </Text>
+        </TouchableOpacity>
 
-        {isAdmin && (
+        {/* My bookings – only for clients (non-providers) */}
+        {!isProvider && (
           <TouchableOpacity
             style={styles.actionButton}
-            onPress={() => handleComingSoon("Admin dashboard")}
+            onPress={toggleMyBookings}
           >
-            <Text style={styles.actionButtonText}>Admin dashboard</Text>
+            <Text style={styles.actionButtonText}>
+              {showBookings ? "Hide my bookings" : "My bookings"}
+            </Text>
           </TouchableOpacity>
         )}
 
+        {/* Admin tools */}
+        {isAdmin && (
+          <TouchableOpacity
+              style={styles.actionButton}
+              onPress={() => handleComingSoon("Admin dashboard")}
+            >
+            <Text style={styles.actionButtonText}>Admin dashboard</Text>
+          
+          
+          </TouchableOpacity>
+        )}
+
+        {/* Logout */}
         <TouchableOpacity
           style={[styles.actionButton, styles.logoutButton]}
           onPress={logout}
@@ -852,6 +964,7 @@ function ProfileScreen({ setToken, showFlash }) {
           </Text>
         </TouchableOpacity>
       </View>
+
     </ScrollView>
     
   );
@@ -1336,17 +1449,33 @@ function SearchScreen({ token, showFlash }) {
                 hasSearched &&
                 filteredProviders.length > 0 &&
                 filteredProviders.map((p) => (
-                  <TouchableOpacity
-                    key={p.provider_id}
-                    style={[
-                      styles.serviceRow,
-                      selectedProvider &&
-                        selectedProvider.provider_id === p.provider_id && {
-                          backgroundColor: "#ecfdf3",
-                        },
-                    ]}
-                    onPress={() => handleSelectProvider(p)}
-                  >
+                <TouchableOpacity
+                  key={p.provider_id}
+                  style={[
+                    styles.serviceRow,
+                    selectedProvider &&
+                      selectedProvider.provider_id === p.provider_id && {
+                        backgroundColor: "#ecfdf3",
+                      },
+                  ]}
+                  onPress={() => handleSelectProvider(p)}
+                >
+                  <View style={{ flexDirection: "row", alignItems: "center", flex: 1 }}>
+                    {/* Avatar (photo or initial) */}
+                    {p.avatar_url ? (
+                      <Image
+                        source={{ uri: p.avatar_url }}
+                        style={styles.providerAvatarSmall}
+                      />
+                    ) : (
+                      <View style={styles.providerAvatarSmallFallback}>
+                        <Text style={styles.providerAvatarSmallInitial}>
+                          {(p.name || "P").charAt(0).toUpperCase()}
+                        </Text>
+                      </View>
+                    )}
+
+                    {/* Provider text info */}
                     <View style={{ flex: 1, paddingRight: 8 }}>
                       <Text style={styles.serviceName}>{p.name}</Text>
 
@@ -1372,8 +1501,10 @@ function SearchScreen({ token, showFlash }) {
                         </Text>
                       ) : null}
                     </View>
-                  </TouchableOpacity>
-                ))}
+                  </View>
+                </TouchableOpacity>
+              ))}
+
             </View>
 
 
@@ -1601,7 +1732,9 @@ function ProviderDashboardScreen({ token, showFlash }) {
   location: "",
   bio: "",
   professions: [],
-});
+  });
+  const [provider, setProvider] = useState(null);  // 👈 add this
+
 
 const providerLabel =
   (profile?.full_name && profile.full_name.trim()) ||
@@ -1619,6 +1752,8 @@ const [upcomingLoading, setUpcomingLoading] = useState(false);
 const [upcomingError, setUpcomingError] = useState("");
 const [providerLocation, setProviderLocation] = useState(null);
 const [focusedHoursField, setFocusedHoursField] = useState(null);
+const [avatarUrl, setAvatarUrl] = useState(null);
+
 
 
 
@@ -2164,6 +2299,8 @@ const to24Hour = (time12) => {
         professions: res.data.professions || [],
       });
 
+      setAvatarUrl(res.data.avatar_url || null);
+
   } catch (err) {
     console.log("Error loading provider profile", err.response?.data || err.message);
     setProfileError("Could not load provider profile.");
@@ -2229,6 +2366,66 @@ const saveProviderProfile = async () => {
     }
   }
 };
+
+
+
+const pickAvatar = async () => {
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) {
+      alert("Permission to access photos is required!");
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.8,
+    });
+
+    if (result.canceled) return;
+
+    const asset = result.assets[0];
+    await uploadAvatar(asset.uri);
+  };
+
+const uploadAvatar = async (uri) => {
+    try {
+      const token = await AsyncStorage.getItem("accessToken");
+
+      const filename = uri.split("/").pop() || "avatar.jpg";
+      const match = /\.(\w+)$/.exec(filename);
+      const ext = match ? match[1] : "jpg";
+      const mimeType = ext === "png" ? "image/png" : "image/jpeg";
+
+      const formData = new FormData();
+      formData.append("file", {
+        uri,
+        name: filename,
+        type: mimeType,
+      });
+
+      const res = await axios.post(
+        `${API}/providers/me/avatar`,
+        formData,
+        {
+          headers: {
+            "Content-Type": "multipart/form-data",
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
+
+      const newUrl = res.data.avatar_url;
+      setAvatarUrl(newUrl);
+
+      // update UI immediately
+      setProvider((prev) => ({ ...prev, avatar_url: newUrl }));
+    } catch (err) {
+      console.log("Avatar upload error:", err.response?.data || err.message);
+      alert("Failed to upload avatar. Please try again.");
+    }
+  };
 
 
 const loadUpcomingBookings = async () => {
@@ -2354,8 +2551,42 @@ const loadProviderSummary = async () => {
 
 
 
-  return (
-    <View style={{ flex: 1 }}>
+  return (    
+    <View style={{ flex: 1 }}> 
+      <View style={{ alignItems: "center", marginBottom: 16 }}>
+        {avatarUrl ? (
+          <Image
+            source={{ uri: avatarUrl }}
+            style={{
+              width: 96,
+              height: 96,
+              borderRadius: 48,
+              marginBottom: 8,
+            }}
+          />
+        ) : (
+          <View
+            style={{
+              width: 96,
+              height: 96,
+              borderRadius: 48,
+              backgroundColor: "#ccc",
+              justifyContent: "center",
+              alignItems: "center",
+              marginBottom: 8,
+            }}
+          >
+            <Text style={{ fontSize: 32 }}>
+              {(profile.full_name || token?.email || "P")[0].toUpperCase()}
+            </Text>
+          </View>
+        )}
+
+        <TouchableOpacity onPress={pickAvatar}>
+          <Text style={{ color: "#007AFF", marginTop: 4 }}>Change photo</Text>
+        </TouchableOpacity>
+      </View>
+      
       {hoursFlash && (
         <View
           style={[
@@ -2370,6 +2601,7 @@ const loadProviderSummary = async () => {
       )}
 
       <ScrollView contentContainerStyle={styles.providerScroll}>
+      
         <Text style={styles.profileTitle}>Provider dashboard</Text>
         <Text style={styles.subtitleSmall}>Welcome, {providerLabel}</Text>
         {/*Account Info */}
@@ -3026,35 +3258,46 @@ function MainApp({ token, setToken, showFlash }) {
   return (
     <NavigationContainer>
       {token.isProvider ? (
+        // 👇 Provider view: Dashboard + Profile
         <Tab.Navigator initialRouteName="Dashboard">
           <Tab.Screen name="Dashboard">
             {() => (
               <ProviderDashboardScreen token={token} showFlash={showFlash} />
             )}
           </Tab.Screen>
+
           <Tab.Screen name="Profile">
             {() => (
-              <ProfileScreen setToken={setToken} showFlash={showFlash} />
+              <ProfileScreen
+                token={token}
+                setToken={setToken}
+                showFlash={showFlash}
+              />
             )}
           </Tab.Screen>
         </Tab.Navigator>
       ) : (
+        // 👇 Client view: Profile + Search
         <Tab.Navigator initialRouteName="Profile">
           <Tab.Screen name="Profile">
             {() => (
-              <ProfileScreen setToken={setToken} showFlash={showFlash} />
+              <ProfileScreen
+                token={token}
+                setToken={setToken}
+                showFlash={showFlash}
+              />
             )}
           </Tab.Screen>
+
           <Tab.Screen name="Search">
-            {() => (
-              <SearchScreen token={token} showFlash={showFlash} />
-            )}
+            {() => <SearchScreen token={token} showFlash={showFlash} />}
           </Tab.Screen>
         </Tab.Navigator>
       )}
     </NavigationContainer>
   );
 }
+
 
 
 
@@ -3771,6 +4014,54 @@ providerSummaryValue: {
   color: "#111",
 },
 
+  providerAvatarSmall: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    marginRight: 10,
+    backgroundColor: "#dcfce7",
+  },
+  providerAvatarSmallFallback: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    marginRight: 10,
+    backgroundColor: "#dcfce7",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  providerAvatarSmallInitial: {
+    fontSize: 18,
+    fontWeight: "600",
+    color: "#166534",
+  },
+
+    profileAvatarWrapper: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: "#dcfce7",
+    alignItems: "center",
+    justifyContent: "center",
+    overflow: "hidden",
+  },
+  profileAvatarImage: {
+    width: "100%",
+    height: "100%",
+  },
+  profileAvatarFallback: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: "#dcfce7",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  profileAvatarInitial: {
+    fontSize: 26,
+    fontWeight: "700",
+    color: "#166534",
+  },
 
 
 
@@ -3850,4 +4141,5 @@ providerSummaryValue: {
 //   },
 // });
 
-registerRootComponent(App);
+// registerRootComponent(App);
+export default App;
