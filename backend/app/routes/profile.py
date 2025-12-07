@@ -1,7 +1,8 @@
 from fastapi import APIRouter, Depends, Header, HTTPException, status
 from sqlalchemy.orm import Session
 from typing import Optional, List
-
+from urllib.parse import urlparse
+from fastapi import HTTPException, status
 from app.database import get_db
 from app import models, schemas, crud
 from app.config import get_settings
@@ -13,6 +14,40 @@ settings = get_settings()
 router = APIRouter(tags=["profile"])
 
 
+
+
+MAX_AVATAR_URL_LENGTH = 500
+
+def _sanitize_avatar_url(raw_url: str) -> str:
+    """
+    Validate and normalize an avatar URL before saving it.
+
+    Requirements:
+    - Must be a non-empty http or https URL
+    - Rejects scriptable schemes (javascript:, data:, file:, etc.)
+    - Enforces length limit
+    """
+    if raw_url is None:
+        return None
+
+    url = raw_url.strip()
+    if not url:
+        return ""
+
+    if len(url) > MAX_AVATAR_URL_LENGTH:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Avatar URL is too long"
+        )
+
+    parsed = urlparse(url)
+    if parsed.scheme not in ("http", "https"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Avatar URL must start with http:// or https://"
+        )
+
+    return url
 
 
 
@@ -87,8 +122,9 @@ def update_my_provider_profile(
     if payload.bio is not None:
         provider.bio = payload.bio
 
-    if payload.avatar_url is not None:  # 👈 NEW
-        provider.avatar_url = payload.avatar_url
+    if payload.avatar_url is not None:
+         provider.avatar_url = _sanitize_avatar_url(payload.avatar_url)
+
 
     # Update professions if provided
     if payload.professions is not None:

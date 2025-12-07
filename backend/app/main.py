@@ -14,11 +14,83 @@ from app.routes import bookings as bookings_routes
 from app.routes import profile as profile_routes
 from app.security import get_current_user_from_header
 from app.workers.cron import registerCronJobs
+import secrets
+from sqlalchemy.orm import Session
+from app.database import SessionLocal
+from app import crud, schemas
+from app.config import get_settings
 
 settings = get_settings()
 
 app = FastAPI(title="Guyana Booker")
 scheduler = BackgroundScheduler()
+
+
+
+
+
+def _seed_demo_users() -> None:
+    """
+    Seed demo users in development environment only.
+    This will:
+    - Run only when ENV='dev' AND ENABLE_DEMO_SEED=true
+    - Use a strong random password unless DEMO_USER_PASSWORD is set
+    """
+    if not settings.ENABLE_DEMO_SEED or settings.ENV != "dev":
+        return
+
+    # Determine password
+    demo_password = os.getenv("DEMO_USER_PASSWORD")
+    if not demo_password or len(demo_password) < 12:
+        demo_password = secrets.token_urlsafe(16)
+        print(
+            "[DEMO SEED] Generated random password for demo users. "
+            "Set DEMO_USER_PASSWORD to override."
+        )
+
+    db: Session = SessionLocal()
+    try:
+        # CUSTOMER
+        customer = crud.get_user_by_email(db, "customer@guyana.com")
+        if not customer:
+            customer = crud.create_user(
+                db,
+                schemas.UserCreate(
+                    email="customer@guyana.com",
+                    password=demo_password,
+                    full_name="Demo Customer"
+                )
+            )
+
+        # PROVIDER
+        provider_user = crud.get_user_by_email(db, "provider@guyana.com")
+        if not provider_user:
+            provider_user = crud.create_user(
+                db,
+                schemas.UserCreate(
+                    email="provider@guyana.com",
+                    password=demo_password,
+                    full_name="Demo Provider"
+                )
+            )
+
+        # Ensure provider role (server-side only)
+        if not provider_user.is_provider:
+            provider_user.is_provider = True
+            db.commit()
+            db.refresh(provider_user)
+
+        # Create provider profile if missing
+        crud.get_or_create_provider_for_user(db, provider_user.id)
+
+        print(
+            "[DEMO SEED] Created/verified demo users "
+            "customer@guyana.com and provider@guyana.com "
+            f"with shared password: {demo_password!r}"
+        )
+
+    finally:
+        db.close()
 
 
 # -------------------------------------------------------------------

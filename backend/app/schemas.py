@@ -232,5 +232,7 @@ class ProviderLocationUpdate(BaseModel):
     long: float
     location: Optional[str] = None  # optional human-readable text
 
+class UserCreate(UserBase):
+    password: str
 
 
