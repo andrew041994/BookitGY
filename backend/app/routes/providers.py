@@ -196,6 +196,53 @@ def get_my_provider_summary(
         "total_fees_due_gyd": float(total_fees_due or 0.0),
     }
 
+# -------------------------------------------------------------------
+# Provider "me" location pin
+# -------------------------------------------------------------------
+
+@router.put("/providers/me/location", response_model=schemas.ProviderLocationUpdate)
+def update_my_location(
+    payload: schemas.ProviderLocationUpdate,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user_from_header),
+):
+    """
+    Update the current provider's pinned map location (lat/long and optional text).
+
+    This:
+    - Only works for users marked as providers.
+    - Stores coordinates on the User record (lat, long, location).
+    """
+
+    if not current_user.is_provider:
+        raise HTTPException(
+            status_code=403,
+            detail="Only providers can pin their location.",
+        )
+
+    # Basic validation in case the frontend sends weird values
+    if payload.lat is None or payload.long is None:
+        raise HTTPException(
+            status_code=400,
+            detail="Latitude and longitude are required.",
+        )
+
+    # Update the user's location fields
+    current_user.lat = payload.lat
+    current_user.long = payload.long
+
+    if payload.location is not None:
+        current_user.location = payload.location
+
+    db.commit()
+    db.refresh(current_user)
+
+    return schemas.ProviderLocationUpdate(
+        lat=current_user.lat,
+        long=current_user.long,
+        location=current_user.location,
+    )
+
 
 # -------------------------------------------------------------------
 # Public provider routes
@@ -281,5 +328,5 @@ def update_my_provider_profile(
 
     return updated
 
-    return updated
+
 

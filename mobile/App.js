@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { useFocusEffect } from "@react-navigation/native";
 import { Text, View, StyleSheet, TextInput, Button, Alert, ActivityIndicator, ScrollView,
-         TouchableOpacity, Switch, Linking, Platform, Image,} from "react-native";
+         TouchableOpacity, Switch, Linking, Platform, Image,  KeyboardAvoidingView,
+         TouchableWithoutFeedback, Keyboard,} from "react-native";
 import { NavigationContainer } from "@react-navigation/native";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import axios from "axios";
@@ -212,53 +213,67 @@ function LoginScreen({ setToken, goToSignup, goBack, setIsAdmin, showFlash  }) {
 
 
   return (
-    <View style={styles.container}>
-      <View style={{ alignItems: "center", marginBottom: 40, marginTop: 60 }}>
-        <Image
-          source={BookitGYLogoTransparent}
-          style={{
-            width: 300,          // bigger
-            height: 300,
-            resizeMode: "contain",
-          }}
-        />
-      </View>
-      <Text style={styles.title}>Login</Text>
-      <TextInput
-        style={styles.input}
-        placeholder="Email"
-        value={email}
-        autoCapitalize="none"
-        onChangeText={setEmail}
-      />
-      <TextInput
-        style={styles.input}
-        placeholder="Password"
-        value={password}
-        onChangeText={setPassword}
-        secureTextEntry
-      />
-      <View style={{ width: "100%", marginBottom: 10 }}>
-        <Button title="Login" onPress={login} color="#16a34a" />
-      </View>
+  <KeyboardAvoidingView
+    style={styles.avoider}
+    behavior={Platform.OS === "ios" ? "padding" : "height"}
+    keyboardVerticalOffset={Platform.OS === "ios" ? 40 : 0} // tweak if needed
+  >
+    <ScrollView
+      contentContainerStyle={styles.scrollContent}
+      keyboardShouldPersistTaps="handled"
+    >
+      <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+        <View style={styles.container}>
+          <View style={styles.logoWrapper}>
+            <Image
+              source={BookitGYLogoTransparent}
+              style={styles.logo}
+            />
+          </View>
 
-      {goToSignup && (
-        <View style={{ width: "100%", marginBottom: 10 }}>
-          <Button
-            title="Need an account? Sign Up"
-            onPress={goToSignup}
-            color="#166534"
+          <Text style={styles.title}>Login</Text>
+
+          <TextInput
+            style={styles.input}
+            placeholder="Email"
+            value={email}
+            autoCapitalize="none"
+            onChangeText={setEmail}
           />
-        </View>
-      )}
 
-      {goBack && (
-        <View style={{ width: "100%" }}>
-          <Button title="Back" onPress={goBack} color="#6b7280" />
+          <TextInput
+            style={styles.input}
+            placeholder="Password"
+            value={password}
+            onChangeText={setPassword}
+            secureTextEntry
+          />
+
+          <View style={{ width: "100%", marginBottom: 10 }}>
+            <Button title="Login" onPress={login} color="#16a34a" />
+          </View>
+
+          {goToSignup && (
+            <View style={{ width: "100%", marginBottom: 10 }}>
+              <Button
+                title="Need an account? Sign Up"
+                onPress={goToSignup}
+                color="#166534"
+              />
+            </View>
+          )}
+
+          {goBack && (
+            <View style={{ width: "100%" }}>
+              <Button title="Back" onPress={goBack} color="#6b7280" />
+            </View>
+          )}
         </View>
-      )}
-    </View>
-  );
+      </TouchableWithoutFeedback>
+    </ScrollView>
+  </KeyboardAvoidingView>
+);
+
 }
 
 
@@ -2565,7 +2580,7 @@ const handlePinLocation = async () => {
 
     // 2) ALSO update the provider record so searches & client view use it
     await axios.put(
-      `${API}/providers/me`,
+      `${API}/providers/me/location`,
       { lat: coords.lat, long: coords.long },
       { headers: { Authorization: `Bearer ${token}` } }
     );
@@ -4214,10 +4229,47 @@ authSecondaryButtonText: {
   fontWeight: "600",
 },
 
+  avoider: {
+    flex: 1,
+    backgroundColor: "#EAFDF4", // your light background
+  },
+  scrollContent: {
+    flexGrow: 1,
+  },
+  container: {
+    flex: 1,
+    paddingHorizontal: 24,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  logoWrapper: {
+    alignItems: "center",
+    marginBottom: 24,
+  },
+  logo: {
+    width: 260,
+    height: 260,
+    resizeMode: "contain",
+  },
+  title: {
+    fontSize: 28,
+    fontWeight: "700",
+    color: "#16a34a",
+    marginBottom: 16,
+  },
+  input: {
+    width: "100%",
+    borderWidth: 1,
+    borderColor: "#d4d4d4",
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginBottom: 12,
+    backgroundColor: "#ffffff",
+  },
 
 
-
-});
+})
 
 // const styles = StyleSheet.create({
 //   container: {
