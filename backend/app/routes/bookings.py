@@ -25,7 +25,13 @@ def _require_current_provider(
 
     provider = crud.get_provider_by_user_id(db, current_user.id)
     if not provider:
-        provider = crud.create_provider_for_user(db, current_user)
+        raise HTTPException(
+            status_code=403,
+            detail=(
+                "You do not have an active provider profile. Contact support or an admin."
+            ),
+        )
+
     return provider
 
 
