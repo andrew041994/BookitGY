@@ -1138,139 +1138,172 @@ function ClientHomeScreen({ navigation }) {
   };
 
   return (
-    <ScrollView contentContainerStyle={styles.homeScroll}>
-      <View style={{ alignItems: "center", marginBottom: 24 }}>
-        <Image
-          source={BookitGYLogoTransparent}
-          style={{ width: 260, height: 260, resizeMode: "contain" }}
-        />
-      </View>
-        <Text style={styles.subtitle} allowFontScaling={false}>
-        Find and book services in {"\n"}Guyana
-      </Text>
-      <View style={{ marginTop: 30, width: "70%" }}>
-        <TouchableOpacity
-          style={styles.bookButton}
-          onPress={() => navigation.navigate("Search")}
-        >
-          <Text style={styles.bookButtonLabel}>Start searching</Text>
-        </TouchableOpacity>
-      </View>
-    <View style={[styles.card, styles.homeCard]}>
-        <View style={styles.carouselHeader}>
-          <View>
-            <Text style={styles.sectionTitle}>Providers within 15 km</Text>
-            <Text style={styles.serviceMeta}>
-              Based on your current location
-            </Text>
-          </View>
-          {hasCarousel ? (
-            <View style={styles.carouselBadge}>
-              <Text style={styles.carouselBadgeText}>{
-                nearbyProviders.length
-              }</Text>
-            </View>
-          ) : null}
+      <ScrollView contentContainerStyle={styles.homeScroll}>
+        <View style={{ alignItems: "center", marginBottom: 24 }}>
+          <Image
+            source={BookitGYLogoTransparent}
+            style={{ width: 260, height: 260, resizeMode: "contain" }}
+          />
         </View>
 
-        {nearbyLoading ? (
-          <View style={{ paddingVertical: 12 }}>
-            <ActivityIndicator />
-            <Text style={styles.serviceMeta}>Loading nearby providers…</Text>
-          </View>
-        ) : null}
+        <Text style={styles.subtitle} allowFontScaling={false}>
+          Find and book services in {"\n"}Guyana
+        </Text>
 
-        {!nearbyLoading && nearbyError ? (
-          <Text style={styles.errorText}>{nearbyError}</Text>
-        ) : null}
-
-        {!nearbyLoading && !nearbyError && !hasCarousel ? (
-          <Text style={styles.serviceHint}>
-            No providers found within 15 km yet.
-          </Text>
-        ) : null}
-
-        {!nearbyLoading && !nearbyError && hasCarousel ? (
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.carouselList}
-            onMomentumScrollEnd={handleCarouselScroll}
+        <View style={{ marginTop: 30, width: "70%" }}>
+          <TouchableOpacity
+            style={styles.bookButton}
+            onPress={() => navigation.navigate("Search")}
           >
-            {nearbyProviders.map((provider) => (
-              <View key={provider.id || provider.name} style={styles.providerCard}>
-                <View style={styles.cardImageWrapper}>
-                  {provider.profile_photo_url ? (
-                    <Image
-                      source={{ uri: provider.profile_photo_url }}
-                      style={styles.cardImage}
-                    />
-                  ) : (
-                    <View style={styles.cardImageFallback}>
-                      <Ionicons name="person" size={36} color="#fff" />
-                    </View>
-                  )}
+            <Text style={styles.bookButtonLabel}>Start searching</Text>
+          </TouchableOpacity>
+        </View>
 
-                  <View style={styles.cardBadge}>
-                    <Text style={styles.cardBadgeText} numberOfLines={1}>
-                      {provider.professions?.[0] || "Provider"}
-                    </Text>
-                  </View>
-                </View>
+        <View style={[styles.card, styles.homeCard]}>
+          <View style={styles.carouselHeader}>
+            <View>
+              <Text style={styles.sectionTitle}>Nearby Providers</Text>
+              <Text style={styles.serviceMeta}>
+                Based on your current location
+              </Text>
+            </View>
 
-                <View style={styles.cardBody}>
-                  <Text style={styles.cardTitle} numberOfLines={2}>
-                    {provider.name}
-                  </Text>
-                  {provider.distance_km != null ? (
-                    <Text style={styles.cardMeta}>
-                      {provider.distance_km.toFixed(1)} km away
-                    </Text>
-                  ) : null}
-                  {provider.address ? (
-                    <Text style={styles.cardSubtitle} numberOfLines={1}>
-                      {provider.address}
-                    </Text>
-                  ) : null}
-                  {provider.professions?.length ? (
-                    <Text style={styles.cardMeta} numberOfLines={1}>
-                      {provider.professions.join(", ")}
-                    </Text>
-                  ) : null}
-                  {provider.bio ? (
-                    <Text style={styles.cardDescription} numberOfLines={2}>
-                      {provider.bio}
-                    </Text>
-                  ) : null}
-                </View>
+            {hasCarousel ? (
+              <View style={styles.carouselBadge}>
+                <Text style={styles.carouselBadgeText}>
+                  {nearbyProviders.length}
+                </Text>
               </View>
-            ))}
-          </ScrollView>
-        ) : null}
+            ) : null}
+          </View>
 
-        {currentProvider ? (
-          <Text style={styles.carouselActiveLabel} numberOfLines={1}>
-            Viewing: {currentProvider.name}
-          </Text>
-        ) : null}
-      </View>
-    </ScrollView>
-  );
-}
+          {nearbyLoading ? (
+            <View style={{ paddingVertical: 12 }}>
+              <ActivityIndicator />
+              <Text style={styles.serviceMeta}>Loading nearby providers…</Text>
+            </View>
+          ) : null}
+
+          {!nearbyLoading && nearbyError ? (
+            <Text style={styles.errorText}>{nearbyError}</Text>
+          ) : null}
+
+          {!nearbyLoading && !nearbyError && !hasCarousel ? (
+            <Text style={styles.serviceHint}>
+              No providers found within 15 km yet.
+            </Text>
+          ) : null}
+
+          {!nearbyLoading && !nearbyError && hasCarousel ? (
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.carouselList}
+              onMomentumScrollEnd={handleCarouselScroll}
+            >
+              {nearbyProviders.map((provider) => {
+                const avatar =
+                  provider.avatar_url || provider.profile_photo_url;
+                const servicesLabel = (provider.services || []).join(" · ");
+
+                return (
+                  <View
+                    key={provider.id || provider.name}
+                    style={styles.providerCard}
+                  >
+                    <View style={styles.cardImageWrapper}>
+                      {avatar ? (
+                        <Image
+                          source={{ uri: avatar }}
+                          style={styles.cardImage}
+                        />
+                      ) : (
+                        <View style={styles.cardImageFallback}>
+                          <Ionicons name="person" size={36} color="#fff" />
+                        </View>
+                      )}
+
+                      <View style={styles.cardBadge}>
+                        <Text style={styles.cardBadgeText} numberOfLines={1}>
+                          {provider.professions?.[0] || "Provider"}
+                        </Text>
+                      </View>
+                    </View>
+
+                    <View style={styles.cardBody}>
+                      <Text style={styles.cardTitle} numberOfLines={2}>
+                        {provider.name}
+                      </Text>
+
+                      {provider.distance_km != null ? (
+                        <Text style={styles.cardMeta}>
+                          {provider.distance_km.toFixed(1)} km away
+                        </Text>
+                      ) : null}
+
+                      {provider.services?.length ? (
+                        <Text
+                          style={styles.cardMeta}
+                          numberOfLines={2}
+                        >
+                          {servicesLabel}
+                        </Text>
+                      ) : (
+                        <Text
+                          style={styles.cardMetaMuted}
+                          numberOfLines={1}
+                        >
+                          No services listed yet
+                        </Text>
+                      )}
+
+                      {provider.professions?.length ? (
+                        <Text style={styles.cardMeta} numberOfLines={1}>
+                          {provider.professions.join(", ")}
+                        </Text>
+                      ) : null}
+
+                      {provider.bio ? (
+                        <Text
+                          style={styles.cardDescription}
+                          numberOfLines={2}
+                        >
+                          {provider.bio}
+                        </Text>
+                      ) : null}
+                    </View>
+                  </View>
+                );
+              })}
+            </ScrollView>
+          ) : null}
+
+          {currentProvider ? (
+            <Text style={styles.carouselActiveLabel} numberOfLines={1}>
+              Viewing: {currentProvider.name}
+            </Text>
+          ) : null}
+        </View>
+      </ScrollView>
+    );
+  }
+
+
+
 
 
 function AppointmentsScreen({ token, showFlash }) {
-  // For now this is a simple placeholder.
-  // Later we can move the "My bookings" logic from Profile into here.
-  return (
-    <View style={styles.center}>
-      <Text style={styles.profileTitle}>Appointments</Text>
-      <Text style={styles.subtitleSmall}>
-        Your upcoming and past bookings will appear here.
-      </Text>
-    </View>
-  );
-}
+      // For now this is a simple placeholder.
+      // Later we can move the "My bookings" logic from Profile into here.
+      return (
+        <View style={styles.center}>
+          <Text style={styles.profileTitle}>Appointments</Text>
+          <Text style={styles.subtitleSmall}>
+            Your upcoming and past bookings will appear here.
+          </Text>
+        </View>
+      );
+  }
 
 
 
@@ -3774,6 +3807,85 @@ function App() {
     width: "100%",
   },
 
+
+  carouselList: {
+    paddingVertical: 4,
+    paddingRight: 12,
+  },
+
+  providerCard: {
+    width: 280,
+    borderRadius: 12,
+    backgroundColor: "#ffffff",
+    marginRight: 12,
+    overflow: "hidden",
+    borderWidth: 1,
+    borderColor: "#e5e7eb",
+  },
+  cardImageWrapper: {
+    height: 140,
+    backgroundColor: "#dcfce7",
+    position: "relative",
+  },
+  cardImage: {
+    width: "100%",
+    height: "100%",
+  },
+  cardImageFallback: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#16a34a",
+  },
+  cardBadge: {
+    position: "absolute",
+    bottom: 8,
+    left: 8,
+    backgroundColor: "#ecfdf3",
+    borderColor: "#bbf7d0",
+    borderWidth: 1,
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+  },
+  cardBadgeText: {
+    color: "#166534",
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  cardBody: {
+    padding: 12,
+    gap: 4,
+  },
+  cardTitle: {
+    fontSize: 18,
+    fontWeight: "700",
+    color: "#111827",
+  },
+  cardMeta: {
+    fontSize: 12,
+    color: "#4b5563",
+  },
+  cardMetaMuted: {
+    fontSize: 12,
+    color: "#94a3b8",
+  },
+  cardSubtitle: {
+    fontSize: 13,
+    color: "#111827",
+  },
+  cardDescription: {
+    fontSize: 13,
+    color: "#1f2937",
+  },
+  carouselActiveLabel: {
+    marginTop: 12,
+    fontSize: 13,
+    color: "#166534",
+    fontWeight: "600",
+    textAlign: "center",
+  },
+
   flashText: {
     textAlign: "center",
     fontSize: 14,
@@ -4570,79 +4682,4 @@ authSecondaryButtonText: {
 
 })
 
-// const styles = StyleSheet.create({
-//   container: {
-//     flex: 1,
-//     backgroundColor: "#F2FFF2",
-//     paddingHorizontal: 20,
-//     paddingTop: 40,
-//   },
-//   center: {
-//     flex: 1,
-//     backgroundColor: "#F2FFF2",
-//     alignItems: "center",
-//     justifyContent: "center",
-//   },
-//   screenTitle: {
-//     fontSize: 26,
-//     fontWeight: "700",
-//     textAlign: "center",
-//     marginBottom: 24,
-//     color: "#008538",
-//   },
-//   loadingText: {
-//     marginTop: 12,
-//     fontSize: 16,
-//     color: "#555",
-//   },
-//   errorText: {
-//     fontSize: 16,
-//     color: "red",
-//     textAlign: "center",
-//     paddingHorizontal: 24,
-//   },
-//   card: {
-//     backgroundColor: "#FFFFFF",
-//     borderRadius: 12,
-//     padding: 16,
-//     shadowColor: "#000",
-//     shadowOpacity: 0.05,
-//     shadowRadius: 8,
-//     shadowOffset: { width: 0, height: 3 },
-//     elevation: 3,
-//   },
-//   label: {
-//     fontSize: 14,
-//     color: "#666",
-//     textTransform: "uppercase",
-//     letterSpacing: 0.8,
-//   },
-//   value: {
-//     fontSize: 18,
-//     fontWeight: "600",
-//     color: "#222",
-//     marginTop: 4,
-//   },
-//   adminRole: {
-//     color: "#008538",
-//   },
-//   adminBox: {
-//     marginTop: 24,
-//     padding: 16,
-//     borderRadius: 12,
-//     backgroundColor: "#E3F9E8",
-//   },
-//   adminTitle: {
-//     fontSize: 18,
-//     fontWeight: "700",
-//     marginBottom: 8,
-//     color: "#006B2C",
-//   },
-//   adminText: {
-//     fontSize: 14,
-//     color: "#335533",
-//   },
-// });
-
-// registerRootComponent(App);
 export default App;

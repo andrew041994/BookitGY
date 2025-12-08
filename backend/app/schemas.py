@@ -192,6 +192,8 @@ class ProviderListItem(BaseModel):
     long: Optional[float] = None
     bio: Optional[str] = None
     professions: List[str] = []
+    services: List[str] = []
+    avatar_url: Optional[str] = None
 
 
 class AvailabilitySlot(BaseModel):

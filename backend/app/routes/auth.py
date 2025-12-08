@@ -32,6 +32,7 @@ def signup(user: schemas.UserCreate, db: Session = Depends(get_db)):
             created.is_provider = True
             db.commit()
             db.refresh(created)
+
         crud.get_or_create_provider_for_user(db, created.id)
     return created
 

@@ -128,6 +128,7 @@ def list_providers(db: Session, profession: Optional[str] = None):
     results = []
     for provider, user in rows:
         professions = get_professions_for_provider(db, provider.id)
+        services = [svc.name for svc in list_services_for_provider(db, provider.id)]
 
         results.append(
             {
@@ -138,6 +139,8 @@ def list_providers(db: Session, profession: Optional[str] = None):
                 "long": user.long,
                 "bio": provider.bio or "",
                 "professions": professions,
+                "services": services,
+                "avatar_url": provider.avatar_url,
             }
         )
 
