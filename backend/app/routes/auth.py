@@ -25,6 +25,14 @@ def signup(user: schemas.UserCreate, db: Session = Depends(get_db)):
 
     # Create user
     created = crud.create_user(db, user)
+      # If the user chose to register as a provider, ensure the flag is stored
+    # and create their provider row too.
+    if user.is_provider:
+        if not getattr(created, "is_provider", False):
+            created.is_provider = True
+            db.commit()
+            db.refresh(created)
+        crud.get_or_create_provider_for_user(db, created.id)
     return created
 
 
