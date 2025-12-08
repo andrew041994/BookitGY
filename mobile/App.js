@@ -14,7 +14,8 @@ import * as ImagePicker from "expo-image-picker";
 import BookitGYLogo from "./assets/bookitgy-logo.png";
 import BookitGYLogoTransparent from "./assets/bookitgy-logo-transparent.png"
 import { Ionicons } from "@expo/vector-icons";
-import { SafeAreaView } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+
 
 
 
@@ -470,13 +471,82 @@ function ProfileScreen({ setToken, showFlash, token }) {
     whatsapp: "",
     location: "",
   });
-
   // NEW state for "My bookings"
   const [showBookings, setShowBookings] = useState(false);
   const [bookings, setBookings] = useState([]);
   const [bookingsLoading, setBookingsLoading] = useState(false);
   const [bookingsError, setBookingsError] = useState("");
   const [avatarUrl, setAvatarUrl] = useState(null);
+
+
+  const uploadAvatar = async (uri) => {
+    try{
+      const token = await AsyncStorage.getItem("accessToken");
+      if (!token) {
+        alert("No access token found. Please log in again.");
+        return;
+      }
+
+      const filename = uri.split("/").pop() || "avatar.jpg";
+      const match = /\.(\w+)$/.exec(filename);
+      const ext = match ? match[1] : "jpg";
+      const mimeType = ext === "png" ? "image/png" : "image/jpeg";
+
+      const formData = new FormData();
+      formData.append("file", {
+        uri,
+        name: filename,
+        type: mimeType,
+      });
+
+      const res = await axios.post(`${API}/users/me/avatar`, formData, {
+        headers: {
+          "Content-Type": "multipart/form-data",
+          Authorization: `Bearer ${token}`,
+        },
+        });
+
+      const newUrl = res.data.avatar_url;
+
+        // update avatar in this screen
+        setAvatarUrl(newUrl);
+        setUser((prev) =>
+          prev ? { ...prev, avatar_url: newUrl } : prev
+        );
+      } catch (err) {
+        console.log(
+          "Avatar upload error:",
+          err.response?.data || err.message
+        );
+        alert("Failed to upload avatar. Please try again.");
+      }
+    };
+
+  const pickClientAvatar = async () => {
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        // ✅ This is the safe, supported form in your setup
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 1,
+      });
+
+      if (result.canceled) {
+        return;
+      }
+
+      const asset = result.assets && result.assets[0];
+      if (!asset || !asset.uri) {
+        return;
+      }
+
+    await uploadAvatar(asset.uri);
+    } catch (err) {
+      console.log("Image picker error:", err);
+    }
+  };
+
 
 
   const logout = async () => {
@@ -815,22 +885,35 @@ function ProfileScreen({ setToken, showFlash, token }) {
     <ScrollView contentContainerStyle={styles.profileScroll}>
       <View style={styles.profileHeader}>
         {/* Avatar */}
-        <View style={styles.profileAvatarWrapper}>
-          {avatarUrl ? (
-            <Image
-              source={{ uri: avatarUrl }}
-              style={styles.profileAvatarImage}
-            />
-          ) : (
-            <View style={styles.profileAvatarFallback}>
-              <Text style={styles.profileAvatarInitial}>
-                {(user.full_name || user.email || "?")
-                  .charAt(0)
-                  .toUpperCase()}
-              </Text>
-            </View>
-          )}
+        <View style={{ alignItems: "center", marginBottom: 16 }}>
+          <View style={styles.profileAvatarWrapper}>
+            {user?.avatar_url ? (
+              <Image
+                source={{ uri: user.avatar_url }}
+                style={{ width: "100%", height: "100%" }}
+                resizeMode="cover"
+              />
+            ) : (
+              <View style={styles.profileAvatarFallback}>
+                <Text style={styles.profileAvatarInitial}>
+                  {(user.full_name || user.email || "C").charAt(0).toUpperCase()}
+                </Text>
+              </View>
+            )}
+          </View>
+
+          <TouchableOpacity onPress={pickClientAvatar} style={{ marginTop: 8 }}>
+            <Text
+              style={{
+                color: "#007AFF",
+                fontWeight: "500",
+              }}
+            >
+              Change profile picture
+            </Text>
+          </TouchableOpacity>
         </View>
+
 
         {/* Name + role */}
         <View style={{ flex: 1, marginLeft: 12 }}>
@@ -1764,343 +1847,346 @@ function SearchScreen({ token, showFlash, navigation, route }) {
   };
 
     return (
-    <ScrollView contentContainerStyle={styles.providerScroll}>
-      <Text style={styles.profileTitle}>Find a provider</Text>
-      <Text style={styles.subtitleSmall}>
-        Search by profession and distance, then pick a service and time.
-      </Text>
-
-      {/* Filters */}
-      <View style={styles.card}>
-        <Text style={styles.sectionTitle}>Search filters</Text>
-
-        <TextInput
-          style={styles.input}
-          placeholder="Search by profession (e.g. Barber, Nail Tech)"
-          value={searchQuery}
-          onChangeText={setSearchQuery}
-          onSubmitEditing={handleSearchSubmit}
-        />
-
-        <Text style={[styles.label, { marginTop: 8 }]}>Distance</Text>
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          style={{ marginTop: 8 }}
-        >
-          {radiusOptions.map((km) => {
-            const selected = radiusKm === km;
-            const label = km === 0 ? "Any distance" : `${km} km`;
-            return (
-              <TouchableOpacity
-                key={km}
-                style={[
-                  styles.radiusPill,
-                  selected && styles.radiusPillSelected,
-                ]}
-                onPress={() => handleRadiusChange(km)}
-              >
-                <Text
-                  style={[
-                    styles.radiusPillText,
-                    selected && styles.radiusPillTextSelected,
-                  ]}
-                >
-                  {label}
+      <SafeAreaView style={{ flex: 1, backgroundColor: "#EFFFF3" }}>
+      
+              <ScrollView contentContainerStyle={styles.providerScroll}>
+                <Text style={styles.profileTitle}>Find a provider</Text>
+                <Text style={styles.subtitleSmall}>
+                  Search by profession and distance, then pick a service and time.
                 </Text>
-              </TouchableOpacity>
-            );
-          })}
-        </ScrollView>
 
-        {locationError ? (
-          <Text style={[styles.errorText, { marginTop: 6 }]}>
-            {locationError}
-          </Text>
-        ) : null}
-      </View>
+                {/* Filters */}
+                <View style={styles.card}>
+                  <Text style={styles.sectionTitle}>Search filters</Text>
 
-      {/* Providers list */}
-            <View style={styles.card}>
-              <Text style={styles.sectionTitle}>Providers</Text>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="Search by profession (e.g. Barber, Nail Tech)"
+                    value={searchQuery}
+                    onChangeText={setSearchQuery}
+                    onSubmitEditing={handleSearchSubmit}
+                  />
 
-              {/* If user hasn't searched yet, show hint */}
-              {!hasSearched && (
-                <Text style={styles.serviceHint}>
-                  Type a profession and press enter to search.
-                </Text>
-              )}
+                  <Text style={[styles.label, { marginTop: 8 }]}>Distance</Text>
+                  <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    style={{ marginTop: 8 }}
+                  >
+                    {radiusOptions.map((km) => {
+                      const selected = radiusKm === km;
+                      const label = km === 0 ? "Any distance" : `${km} km`;
+                      return (
+                        <TouchableOpacity
+                          key={km}
+                          style={[
+                            styles.radiusPill,
+                            selected && styles.radiusPillSelected,
+                          ]}
+                          onPress={() => handleRadiusChange(km)}
+                        >
+                          <Text
+                            style={[
+                              styles.radiusPillText,
+                              selected && styles.radiusPillTextSelected,
+                            ]}
+                          >
+                            {label}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </ScrollView>
 
-              {/* Loading */}
-              {providersLoading && hasSearched && (
-                <View style={{ paddingVertical: 10 }}>
-                  <ActivityIndicator />
-                  <Text style={styles.serviceMeta}>Loading providers…</Text>
+                  {locationError ? (
+                    <Text style={[styles.errorText, { marginTop: 6 }]}>
+                      {locationError}
+                    </Text>
+                  ) : null}
                 </View>
-              )}
 
-              {/* Error */}
-              {!providersLoading && providersError && hasSearched && (
-                <Text style={styles.errorText}>{providersError}</Text>
-              )}
+                {/* Providers list */}
+                      <View style={styles.card}>
+                        <Text style={styles.sectionTitle}>Providers</Text>
 
-              {/* No results */}
-              {!providersLoading &&
-                !providersError &&
-                hasSearched &&
-                filteredProviders.length === 0 && (
-                  <Text style={styles.serviceHint}>No providers found.</Text>
-                )}
+                        {/* If user hasn't searched yet, show hint */}
+                        {!hasSearched && (
+                          <Text style={styles.serviceHint}>
+                            Type a profession and press enter to search.
+                          </Text>
+                        )}
 
-              {/* Results */}
-              {!providersLoading &&
-                !providersError &&
-                hasSearched &&
-                filteredProviders.length > 0 &&
-                filteredProviders.map((p) => (
-                <TouchableOpacity
-                  key={getProviderId(p)}
-                  style={[
-                    styles.serviceRow,
-                    selectedProvider &&
-                      getProviderId(selectedProvider) === getProviderId(p) && {
-                        backgroundColor: "#ecfdf3",
-                      },
-                  ]}
-                  onPress={() => handleSelectProvider(p)}
-                >
-                  <View style={{ flexDirection: "row", alignItems: "center", flex: 1 }}>
-                    {/* Avatar (photo or initial) */}
-                    {p.avatar_url ? (
-                      <Image
-                        source={{ uri: p.avatar_url }}
-                        style={styles.providerAvatarSmall}
-                      />
-                    ) : (
-                      <View style={styles.providerAvatarSmallFallback}>
-                        <Text style={styles.providerAvatarSmallInitial}>
-                          {(p.name || "P").charAt(0).toUpperCase()}
-                        </Text>
+                        {/* Loading */}
+                        {providersLoading && hasSearched && (
+                          <View style={{ paddingVertical: 10 }}>
+                            <ActivityIndicator />
+                            <Text style={styles.serviceMeta}>Loading providers…</Text>
+                          </View>
+                        )}
+
+                        {/* Error */}
+                        {!providersLoading && providersError && hasSearched && (
+                          <Text style={styles.errorText}>{providersError}</Text>
+                        )}
+
+                        {/* No results */}
+                        {!providersLoading &&
+                          !providersError &&
+                          hasSearched &&
+                          filteredProviders.length === 0 && (
+                            <Text style={styles.serviceHint}>No providers found.</Text>
+                          )}
+
+                        {/* Results */}
+                        {!providersLoading &&
+                          !providersError &&
+                          hasSearched &&
+                          filteredProviders.length > 0 &&
+                          filteredProviders.map((p) => (
+                          <TouchableOpacity
+                            key={getProviderId(p)}
+                            style={[
+                              styles.serviceRow,
+                              selectedProvider &&
+                                getProviderId(selectedProvider) === getProviderId(p) && {
+                                  backgroundColor: "#ecfdf3",
+                                },
+                            ]}
+                            onPress={() => handleSelectProvider(p)}
+                          >
+                            <View style={{ flexDirection: "row", alignItems: "center", flex: 1 }}>
+                              {/* Avatar (photo or initial) */}
+                              {p.avatar_url ? (
+                                <Image
+                                  source={{ uri: p.avatar_url }}
+                                  style={styles.providerAvatarSmall}
+                                />
+                              ) : (
+                                <View style={styles.providerAvatarSmallFallback}>
+                                  <Text style={styles.providerAvatarSmallInitial}>
+                                    {(p.name || "P").charAt(0).toUpperCase()}
+                                  </Text>
+                                </View>
+                              )}
+
+                              {/* Provider text info */}
+                              <View style={{ flex: 1, paddingRight: 8 }}>
+                                <Text style={styles.serviceName}>{p.name}</Text>
+
+                                {p.location ? (
+                                  <Text style={styles.serviceMeta}>{p.location}</Text>
+                                ) : null}
+
+                                {(p.professions || []).length > 0 && (
+                                  <Text style={styles.serviceMeta}>
+                                    {p.professions.join(" · ")}
+                                  </Text>
+                                )}
+
+                                {typeof p.distance_km === "number" && clientLocation && (
+                                  <Text style={styles.serviceMeta}>
+                                    {p.distance_km.toFixed(1)} km away
+                                  </Text>
+                                )}
+
+                                {p.bio ? (
+                                  <Text numberOfLines={2} style={styles.serviceMeta}>
+                                    {p.bio}
+                                  </Text>
+                                ) : null}
+                              </View>
+                            </View>
+                          </TouchableOpacity>
+                        ))}
+
+                      </View>
+
+
+                {/* Services list for selected provider */}
+                {selectedProvider && (
+                  <View style={styles.card}>
+                    <Text style={styles.sectionTitle}>
+                      Services by {selectedProvider.name}
+                    </Text>
+
+                    {servicesLoading && (
+                      <View style={{ paddingVertical: 10 }}>
+                        <ActivityIndicator />
+                        <Text style={styles.serviceMeta}>Loading services…</Text>
                       </View>
                     )}
 
-                    {/* Provider text info */}
-                    <View style={{ flex: 1, paddingRight: 8 }}>
-                      <Text style={styles.serviceName}>{p.name}</Text>
-
-                      {p.location ? (
-                        <Text style={styles.serviceMeta}>{p.location}</Text>
-                      ) : null}
-
-                      {(p.professions || []).length > 0 && (
-                        <Text style={styles.serviceMeta}>
-                          {p.professions.join(" · ")}
-                        </Text>
-                      )}
-
-                      {typeof p.distance_km === "number" && clientLocation && (
-                        <Text style={styles.serviceMeta}>
-                          {p.distance_km.toFixed(1)} km away
-                        </Text>
-                      )}
-
-                      {p.bio ? (
-                        <Text numberOfLines={2} style={styles.serviceMeta}>
-                          {p.bio}
-                        </Text>
-                      ) : null}
-                    </View>
-                  </View>
-                </TouchableOpacity>
-              ))}
-
-            </View>
-
-
-      {/* Services list for selected provider */}
-      {selectedProvider && (
-        <View style={styles.card}>
-          <Text style={styles.sectionTitle}>
-            Services by {selectedProvider.name}
-          </Text>
-
-          {servicesLoading && (
-            <View style={{ paddingVertical: 10 }}>
-              <ActivityIndicator />
-              <Text style={styles.serviceMeta}>Loading services…</Text>
-            </View>
-          )}
-
-          {!servicesLoading && servicesError ? (
-            <Text style={styles.errorText}>{servicesError}</Text>
-          ) : null}
-
-          {!servicesLoading &&
-            !servicesError &&
-            services.length === 0 && (
-              <Text style={styles.serviceHint}>
-                This provider has not added any services yet.
-              </Text>
-            )}
-
-           {!servicesLoading &&
-            !servicesError &&
-            (Array.isArray(services) ? services : []).map((s) => {
-              const isSelected =
-                selectedService && selectedService.id === s.id;
-              return (
-                <TouchableOpacity
-                  key={s.id}
-                  style={[
-                    styles.serviceRow,
-                    isSelected && { borderColor: "#16a34a", borderWidth: 1 },
-                  ]}
-                  onPress={() => handleSelectService(s)}
-                >
-                  <View style={{ flex: 1, paddingRight: 8 }}>
-                    <Text style={styles.serviceName}>{s.name}</Text>
-                    <Text style={styles.serviceMeta}>
-                      {s.duration_minutes} min
-                    </Text>
-                    {s.description ? (
-                      <Text style={styles.serviceMeta}>{s.description}</Text>
+                    {!servicesLoading && servicesError ? (
+                      <Text style={styles.errorText}>{servicesError}</Text>
                     ) : null}
+
+                    {!servicesLoading &&
+                      !servicesError &&
+                      services.length === 0 && (
+                        <Text style={styles.serviceHint}>
+                          This provider has not added any services yet.
+                        </Text>
+                      )}
+
+                    {!servicesLoading &&
+                      !servicesError &&
+                      (Array.isArray(services) ? services : []).map((s) => {
+                        const isSelected =
+                          selectedService && selectedService.id === s.id;
+                        return (
+                          <TouchableOpacity
+                            key={s.id}
+                            style={[
+                              styles.serviceRow,
+                              isSelected && { borderColor: "#16a34a", borderWidth: 1 },
+                            ]}
+                            onPress={() => handleSelectService(s)}
+                          >
+                            <View style={{ flex: 1, paddingRight: 8 }}>
+                              <Text style={styles.serviceName}>{s.name}</Text>
+                              <Text style={styles.serviceMeta}>
+                                {s.duration_minutes} min
+                              </Text>
+                              {s.description ? (
+                                <Text style={styles.serviceMeta}>{s.description}</Text>
+                              ) : null}
+                            </View>
+                            <View style={{ alignItems: "flex-end" }}>
+                              {s.price_gyd != null && (
+                                <Text style={styles.servicePrice}>
+                                  {s.price_gyd.toLocaleString()} GYD
+                                </Text>
+                              )}
+                            </View>
+                          </TouchableOpacity>
+                        );
+                      })}
                   </View>
-                  <View style={{ alignItems: "flex-end" }}>
-                    {s.price_gyd != null && (
-                      <Text style={styles.servicePrice}>
-                        {s.price_gyd.toLocaleString()} GYD
-                      </Text>
+                )}
+
+                {/* Calendar for selected service */}
+                {selectedService && (
+                  <View style={styles.card}>
+                    <Text style={styles.sectionTitle}>Choose a date</Text>
+
+                    {availabilityLoading && (
+                      <View style={{ paddingVertical: 10 }}>
+                        <ActivityIndicator />
+                        <Text style={styles.serviceMeta}>Loading availability…</Text>
+                      </View>
+                    )}
+
+                    {!availabilityLoading && availabilityError ? (
+                      <Text style={styles.errorText}>{availabilityError}</Text>
+                    ) : null}
+
+                    {!availabilityLoading && !availabilityError && (
+                      <>
+                        {calendarDays.every((d) => !d.hasSlots) ? (
+                          <Text style={styles.serviceHint}>
+                            No available dates in the next 14 days.
+                          </Text>
+                        ) : (
+                          <ScrollView
+                            horizontal
+                            showsHorizontalScrollIndicator={false}
+                            style={{ marginTop: 8 }}
+                          >
+                            {calendarDays.map((d) => {
+                              const isSelected = selectedDate === d.key;
+                              const disabled = !d.hasSlots;
+
+                              return (
+                                <TouchableOpacity
+                                  key={d.key}
+                                  disabled={disabled}
+                                  onPress={() => {
+                                    setSelectedDate(d.key);
+                                    setSelectedSlot(null);
+                                  }}
+                                  style={[
+                                    styles.datePill,
+                                    disabled && styles.datePillDisabled,
+                                    isSelected && styles.datePillSelected,
+                                  ]}
+                                >
+                                  <Text style={styles.datePillDow}>
+                                    {d.date.toLocaleDateString("en-US", {
+                                      weekday: "short",
+                                    })}
+                                  </Text>
+                                  <Text style={styles.datePillDay}>
+                                    {d.date.getDate()}
+                                  </Text>
+                                </TouchableOpacity>
+                              );
+                            })}
+                          </ScrollView>
+                        )}
+                      </>
                     )}
                   </View>
-                </TouchableOpacity>
-              );
-            })}
-        </View>
-      )}
+                )}
 
-      {/* Calendar for selected service */}
-      {selectedService && (
-        <View style={styles.card}>
-          <Text style={styles.sectionTitle}>Choose a date</Text>
+                {/* Time slots for selected date */}
+                {selectedService && selectedDate && (
+                  <View style={styles.card}>
+                    <Text style={styles.sectionTitle}>Available time slots</Text>
 
-          {availabilityLoading && (
-            <View style={{ paddingVertical: 10 }}>
-              <ActivityIndicator />
-              <Text style={styles.serviceMeta}>Loading availability…</Text>
-            </View>
-          )}
+                    {(availabilityMap[selectedDate] || []).length === 0 ? (
+                      <Text style={styles.serviceHint}>
+                        No available times for this date.
+                      </Text>
+                    ) : (
+                      <View style={styles.timesContainer}>
+                        {availabilityMap[selectedDate].map((slotIso) => {
+                          const isSelected = selectedSlot === slotIso;
+                          return (
+                            <TouchableOpacity
+                              key={slotIso}
+                              style={[
+                                styles.timeSlotButton,
+                                isSelected && styles.timeSlotButtonSelected,
+                              ]}
+                              onPress={() => setSelectedSlot(slotIso)}
+                            >
+                              <Text
+                                style={[
+                                  styles.timeSlotLabel,
+                                  isSelected && styles.timeSlotLabelSelected,
+                                ]}
+                              >
+                                {formatTimeLabel(slotIso)}
+                              </Text>
+                            </TouchableOpacity>
+                          );
+                        })}
+                      </View>
+                    )}
+                  </View>
+                )}
 
-          {!availabilityLoading && availabilityError ? (
-            <Text style={styles.errorText}>{availabilityError}</Text>
-          ) : null}
-
-          {!availabilityLoading && !availabilityError && (
-            <>
-              {calendarDays.every((d) => !d.hasSlots) ? (
-                <Text style={styles.serviceHint}>
-                  No available dates in the next 14 days.
-                </Text>
-              ) : (
-                <ScrollView
-                  horizontal
-                  showsHorizontalScrollIndicator={false}
-                  style={{ marginTop: 8 }}
-                >
-                  {calendarDays.map((d) => {
-                    const isSelected = selectedDate === d.key;
-                    const disabled = !d.hasSlots;
-
-                    return (
-                      <TouchableOpacity
-                        key={d.key}
-                        disabled={disabled}
-                        onPress={() => {
-                          setSelectedDate(d.key);
-                          setSelectedSlot(null);
-                        }}
-                        style={[
-                          styles.datePill,
-                          disabled && styles.datePillDisabled,
-                          isSelected && styles.datePillSelected,
-                        ]}
-                      >
-                        <Text style={styles.datePillDow}>
-                          {d.date.toLocaleDateString("en-US", {
-                            weekday: "short",
-                          })}
-                        </Text>
-                        <Text style={styles.datePillDay}>
-                          {d.date.getDate()}
-                        </Text>
-                      </TouchableOpacity>
-                    );
-                  })}
-                </ScrollView>
-              )}
-            </>
-          )}
-        </View>
-      )}
-
-      {/* Time slots for selected date */}
-      {selectedService && selectedDate && (
-        <View style={styles.card}>
-          <Text style={styles.sectionTitle}>Available time slots</Text>
-
-          {(availabilityMap[selectedDate] || []).length === 0 ? (
-            <Text style={styles.serviceHint}>
-              No available times for this date.
-            </Text>
-          ) : (
-            <View style={styles.timesContainer}>
-              {availabilityMap[selectedDate].map((slotIso) => {
-                const isSelected = selectedSlot === slotIso;
-                return (
-                  <TouchableOpacity
-                    key={slotIso}
-                    style={[
-                      styles.timeSlotButton,
-                      isSelected && styles.timeSlotButtonSelected,
-                    ]}
-                    onPress={() => setSelectedSlot(slotIso)}
-                  >
-                    <Text
+                {/* Book button */}
+                {selectedService && selectedDate && (
+                  <View style={{ marginTop: 12, marginBottom: 20 }}>
+                    <TouchableOpacity
                       style={[
-                        styles.timeSlotLabel,
-                        isSelected && styles.timeSlotLabelSelected,
+                        styles.bookButton,
+                        (!selectedSlot || bookingLoading) && styles.bookButtonDisabled,
                       ]}
+                      disabled={!selectedSlot || bookingLoading}
+                      onPress={handleBookAppointment}
                     >
-                      {formatTimeLabel(slotIso)}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-          )}
-        </View>
-      )}
-
-      {/* Book button */}
-      {selectedService && selectedDate && (
-        <View style={{ marginTop: 12, marginBottom: 20 }}>
-          <TouchableOpacity
-            style={[
-              styles.bookButton,
-              (!selectedSlot || bookingLoading) && styles.bookButtonDisabled,
-            ]}
-            disabled={!selectedSlot || bookingLoading}
-            onPress={handleBookAppointment}
-          >
-            <Text style={styles.bookButtonLabel}>
-              {bookingLoading ? "Booking..." : "Book Appointment"}
-            </Text>
-          </TouchableOpacity>
-        </View>
-      )}
-    </ScrollView>
-  );
-}
+                      <Text style={styles.bookButtonLabel}>
+                        {bookingLoading ? "Booking..." : "Book Appointment"}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+              </ScrollView>
+        </SafeAreaView>
+         );
+      }
 
 
 
@@ -2778,63 +2864,69 @@ const saveProviderProfile = async () => {
 
 
 
-const pickAvatar = async () => {
-    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!permission.granted) {
-      alert("Permission to access photos is required!");
+const uploadAvatar = async (uri) => {
+  try {
+    const rawToken = await AsyncStorage.getItem("accessToken");
+    if (!rawToken) {
+      alert("No access token found. Please log in again.");
       return;
     }
 
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true,
-      aspect: [1, 1],
-      quality: 0.8,
+    const filename = uri.split("/").pop() || "avatar.jpg";
+    const match = /\.(\w+)$/.exec(filename);
+    const ext = match ? match[1] : "jpg";
+    const mimeType = ext === "png" ? "image/png" : "image/jpeg";
+
+    const formData = new FormData();
+    formData.append("file", {
+      uri,
+      name: filename,
+      type: mimeType,
     });
 
-    if (result.canceled) return;
+    // Decide which endpoint to use: client vs provider
+    let endpoint = `${API}/users/me/avatar`; // default: client
 
-    const asset = result.assets[0];
-    await uploadAvatar(asset.uri);
-  };
-
-const uploadAvatar = async (uri) => {
     try {
-      const token = await AsyncStorage.getItem("accessToken");
-
-      const filename = uri.split("/").pop() || "avatar.jpg";
-      const match = /\.(\w+)$/.exec(filename);
-      const ext = match ? match[1] : "jpg";
-      const mimeType = ext === "png" ? "image/png" : "image/jpeg";
-
-      const formData = new FormData();
-      formData.append("file", {
-        uri,
-        name: filename,
-        type: mimeType,
+      const meRes = await axios.get(`${API}/users/me`, {
+        headers: {
+          Authorization: `Bearer ${rawToken}`,
+        },
       });
 
-      const res = await axios.post(
-        `${API}/providers/me/avatar`,
-        formData,
-        {
-          headers: {
-            "Content-Type": "multipart/form-data",
-            Authorization: `Bearer ${token}`,
-          },
-        }
+      if (meRes.data?.is_provider) {
+        // logged-in user is a provider → use provider avatar endpoint
+        endpoint = `${API}/providers/me/avatar`;
+      }
+    } catch (e) {
+      console.log(
+        "Could not determine user type for avatar upload; using /users/me/avatar",
+        e.response?.data || e.message
       );
-
-      const newUrl = res.data.avatar_url;
-      setAvatarUrl(newUrl);
-
-      // update UI immediately
-      setProvider((prev) => ({ ...prev, avatar_url: newUrl }));
-    } catch (err) {
-      console.log("Avatar upload error:", err.response?.data || err.message);
-      alert("Failed to upload avatar. Please try again.");
     }
-  };
+
+    // Upload to the chosen endpoint
+    const res = await axios.post(endpoint, formData, {
+      headers: {
+        "Content-Type": "multipart/form-data",
+        Authorization: `Bearer ${rawToken}`,
+      },
+    });
+
+    const newUrl = res.data.avatar_url;
+
+    // update avatar in this screen
+    setAvatarUrl(newUrl);
+
+    // if this screen has a provider object, keep it in sync (no-op for pure clients)
+    if (typeof setProvider === "function") {
+      setProvider((prev) => (prev ? { ...prev, avatar_url: newUrl } : prev));
+    }
+  } catch (err) {
+    console.log("Avatar upload error:", err.response?.data || err.message);
+    alert("Failed to upload avatar. Please try again.");
+  }
+};
 
 
 const loadUpcomingBookings = async () => {

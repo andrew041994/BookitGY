@@ -14,6 +14,8 @@ class UserBase(BaseModel):
     location: str
     lat: Optional[float] = None
     long: Optional[float] = None
+    avatar_url: Optional[str] = None  # 👈 NEW
+
 
 class User(UserBase):
     id: int
@@ -31,6 +33,8 @@ class UserUpdate(BaseModel):
 
     lat: Optional[float] = None
     long: Optional[float] = None
+    avatar_url: Optional[str] = None  # 👈 NEW
+
 
 
 class ProviderUpdate(BaseModel):
@@ -209,6 +213,8 @@ class UserProfileOut(BaseModel):
     phone: str
     whatsapp: Optional[str] = None
     location: str
+    avatar_url: Optional[str] = None  # 👈 NEW
+
 
 
 class UserProfileUpdate(BaseModel):
@@ -216,6 +222,8 @@ class UserProfileUpdate(BaseModel):
     phone: Optional[str] = None
     whatsapp: Optional[str] = None
     location: Optional[str] = None
+    avatar_url: Optional[str] = None  # 👈 NEW
+
 
 class ProviderSummary(BaseModel):
     account_number: str

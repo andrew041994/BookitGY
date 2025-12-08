@@ -263,6 +263,9 @@ def update_my_profile(
     if payload.location is not None:
         user.location = payload.location
 
+    if payload.avatar_url is not None:      # 👈 NEW
+        user.avatar_url = payload.avatar_url
+
     db.commit()
     db.refresh(user)
 
@@ -271,4 +274,5 @@ def update_my_profile(
         phone=user.phone or "",
         whatsapp=user.whatsapp,
         location=user.location or "",
+        avatar_url=user.avatar_url,
     )

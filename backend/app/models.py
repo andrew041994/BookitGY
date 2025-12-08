@@ -35,6 +35,8 @@ class User(Base):
     is_provider = Column(Boolean, default=False)
     is_admin = Column(Boolean, default=False)
     created_at = Column(DateTime, default=datetime.utcnow)
+    avatar_url = Column(String, nullable=True)   # 👈 NEW
+
 
 class Provider(Base):
     __tablename__ = "providers"
