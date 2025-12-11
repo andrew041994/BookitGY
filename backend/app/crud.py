@@ -476,7 +476,7 @@ def create_booking(
         .first()
     )
     if not service:
-        return None
+        raise ValueError("Service not found")
 
     # Load provider
     provider = (
@@ -485,7 +485,7 @@ def create_booking(
         .first()
     )
     if not provider:
-        return None
+        raise ValueError("Provider not found for this service")
 
     # Load provider user
     provider_user = (
@@ -494,7 +494,7 @@ def create_booking(
         .first()
     )
     if not provider_user:
-        return None
+        raise ValueError("Provider user not found")
 
     # Compute end time
     end_time = booking.start_time + timedelta(
@@ -514,7 +514,7 @@ def create_booking(
 
     if overlap:
         # This slot is taken
-        return None
+        raise ValueError("Selected slot is no longer available")
 
     # Create booking
     new_booking = models.Booking(

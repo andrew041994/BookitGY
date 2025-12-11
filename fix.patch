@@ -1,321 +1,57 @@
-diff --git a/mobile/App.js b/mobile/App.js
-index 54abaad63beed535fec270f2122934b93b4f2c84..77b2c0311f07d4e6826020649a79eb2631632bba 100644
---- a/mobile/App.js
-+++ b/mobile/App.js
-@@ -4960,229 +4960,257 @@ const loadProviderSummary = async () => {
-                     longitudeDelta: 0.01,
-                   }}
-                 >
-                   <Marker
-                     coordinate={{
-                       latitude: providerLocation.lat,
-                       longitude: providerLocation.long,
-                     }}
-                     title="Your business location"
-                   />
-                 </MapView>
-             </View>
-           )}
-         </View>
-       </ScrollView>
-     </View>
-   );
- }
+diff --git a/backend/app/routes/bookings.py b/backend/app/routes/bookings.py
+index d5246eb2256e5fc1e9b4d2183fb7c889941950e0..59b44143055d1fb333683872bb2113095e49adac 100644
+--- a/backend/app/routes/bookings.py
++++ b/backend/app/routes/bookings.py
+@@ -23,50 +23,52 @@ def _require_current_provider(
+             status_code=403, detail="Only providers can access this endpoint",
+         )
  
- function ProviderBillingScreen({ token, showFlash }) {
-   const [billingSummary, setBillingSummary] = useState(null);
-   const [bills, setBills] = useState([]);
-   const [billingLoading, setBillingLoading] = useState(false);
-   const [billingError, setBillingError] = useState("");
-   const [expandedBills, setExpandedBills] = useState({});
-+  const [serviceChargePct, setServiceChargePct] = useState(10);
-+
-+  const resolveServiceChargePct = (summaryData) => {
-+    const rawValue =
-+      summaryData?.service_charge_percentage ??
-+      summaryData?.service_charge_percent ??
-+      summaryData?.service_charge_rate ??
-+      summaryData?.service_charge;
-+
-+    const numeric = Number(rawValue);
-+    if (!Number.isFinite(numeric)) return 10;
-+
-+    // Allow either fractional (0.1) or whole-number (10) representations.
-+    const pctValue = numeric <= 1 ? numeric * 100 : numeric;
-+    return Math.max(pctValue, 0);
-+  };
+     provider = crud.get_provider_by_user_id(db, current_user.id)
+     if not provider:
+         raise HTTPException(
+             status_code=403,
+             detail=(
+                 "You do not have an active provider profile. Contact support or an admin."
+             ),
+         )
  
-   const toggleBillExpanded = (billId) => {
-     setExpandedBills((prev) => ({
-       ...prev,
-       [billId]: !prev[billId],
-     }));
-   };
- 
-   const formatMoney = (value) => {
-     const amount = Number.isFinite(value) ? value : 0;
-     return `GYD ${Math.round(amount).toLocaleString()}`;
-   };
- 
-   const formatDate = (value) => {
-     if (!value) return "-";
-     const dateObj = value instanceof Date ? value : new Date(value);
-     if (Number.isNaN(dateObj.getTime())) return "-";
-     return dateObj.toLocaleDateString("en-US", {
-       month: "short",
-       day: "numeric",
-       year: "numeric",
-     });
-   };
- 
-   const normalizeStart = (booking) => {
-     const raw = booking?.start_time || booking?.start;
-     if (!raw) return null;
-     const dateObj = new Date(raw);
-     return Number.isNaN(dateObj.getTime()) ? null : dateObj;
-   };
- 
--  const buildBills = useCallback((bookingList) => {
-+  const buildBills = useCallback((bookingList, chargePct = 10) => {
-     const now = new Date();
-     const statements = [];
-     const monthsToShow = 6;
- 
-+    const feeRate = Math.max(chargePct, 0) / 100;
-+
-     for (let i = 0; i < monthsToShow; i += 1) {
-       const coverageStart = new Date(now.getFullYear(), now.getMonth() - i, 1);
-       const coverageEnd = new Date(now.getFullYear(), now.getMonth() - i + 1, 0);
-       const invoiceDate = new Date(
-         coverageStart.getFullYear(),
-         coverageStart.getMonth() + 1,
-         1
-       );
- 
-       const monthBookings = bookingList.filter((booking) => {
-         const start = normalizeStart(booking);
-         if (!start) return false;
-         return start >= coverageStart && start <= coverageEnd;
-       });
- 
-       const lineItems = monthBookings.length
-         ? monthBookings.map((booking) => ({
-             bookingId: booking.id || booking.booking_id,
-             description: booking.service_name || "Service booking",
-             client:
-               booking.client_name ||
-               booking.customer_name ||
-               booking.user_name ||
-               booking.client ||
-               booking.user,
-             date: normalizeStart(booking),
-             amount:
-               Number(
-                 booking.service_price_gyd ??
-                   booking.price_gyd ??
-                   booking.total_price_gyd ??
-                   booking.price
-               ) || 0,
-           }))
-         : [
-             {
-               bookingId: `empty-${coverageStart.toISOString()}`,
-               description: "No completed bookings recorded",
-               client: "",
-               date: null,
-               amount: 0,
-             },
-           ];
- 
-       const servicesTotal = lineItems.reduce(
-         (sum, item) => sum + (Number.isFinite(item.amount) ? item.amount : 0),
-         0
-       );
- 
--      const platformFee = Math.max(Math.round(servicesTotal * 0.10), 0);
-+      const platformFee = Math.max(Math.round(servicesTotal * feeRate), 0);
-       const totalDue = platformFee; // Total due should only reflect platform fees
- 
-       statements.push({
-         id: `${coverageStart.getFullYear()}-${coverageStart.getMonth() + 1}`,
-         coverageStart,
-         coverageEnd,
-         invoiceDate,
-         status: invoiceDate <= now ? "Generated" : "Scheduled",
-         servicesTotal,
-         platformFee,
-         totalDue,
-         lineItems,
-       });
-     }
- 
-     statements.sort((a, b) => b.invoiceDate - a.invoiceDate);
-     setBills(statements);
-   }, []);
- 
-   const fetchBilling = useCallback(async () => {
-     try {
-       setBillingLoading(true);
-       setBillingError("");
- 
-       const storedToken = await AsyncStorage.getItem("accessToken");
-       const authToken = token?.token || storedToken;
- 
-       if (!authToken) {
-         setBillingError("No access token found. Please log in again.");
-         return;
-       }
- 
-       const [bookingsRes, summaryRes] = await Promise.all([
-         axios.get(`${API}/providers/me/bookings`, {
-           headers: { Authorization: `Bearer ${authToken}` },
-         }),
-         axios
-           .get(`${API}/providers/me/summary`, {
-             headers: { Authorization: `Bearer ${authToken}` },
-           })
-           .catch(() => null),
-       ]);
- 
-       const bookingList = Array.isArray(bookingsRes.data)
-         ? bookingsRes.data
-         : bookingsRes.data?.bookings || bookingsRes.data?.results || [];
- 
--      setBillingSummary(summaryRes?.data || null);
--      buildBills(bookingList);
-+      const summaryData = summaryRes?.data || null;
-+      setBillingSummary(summaryData);
-+
-+      const resolvedChargePct = resolveServiceChargePct(summaryData);
-+      setServiceChargePct(resolvedChargePct);
-+
-+      buildBills(bookingList, resolvedChargePct);
-     } catch (err) {
-       console.log("Error loading billing", err.response?.data || err.message);
-       setBillingError("Could not load billing statements.");
-       if (showFlash) {
-         showFlash("error", "Could not load billing statements.");
-       }
-     } finally {
-       setBillingLoading(false);
-     }
-   }, [buildBills, showFlash, token?.token]);
- 
-   useEffect(() => {
-     fetchBilling();
-   }, [fetchBilling]);
- 
-   useFocusEffect(
-     useCallback(() => {
-       fetchBilling();
-       return () => {};
-     }, [fetchBilling])
-   );
- 
-   const now = new Date();
-   const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-   const outstandingFees =
-     now >= endOfMonth ? billingSummary?.total_fees_due_gyd || 0 : 0;
- 
-   return (
-     <ScrollView contentContainerStyle={styles.providerBillingScroll}>
-       <Text style={styles.profileTitle}>Billing</Text>
-       <Text style={styles.subtitleSmall}>
-         Bills populate automatically on the 1st of each month with booking
-         details.
-       </Text>
- 
-       {billingSummary && (
-         <View style={styles.providerSummaryCard}>
-           <Text style={styles.providerSummaryLabel}>Account number</Text>
-           <Text style={styles.providerSummaryValue}>
-             {billingSummary.account_number || "N/A"}
-           </Text>
- 
-           <View style={{ height: 8 }} />
- 
-+          <Text style={styles.providerSummaryLabel}>Service charge</Text>
-+          <Text style={styles.providerSummaryValue}>{serviceChargePct}%</Text>
-+
-+          <View style={{ height: 8 }} />
-+
-           <Text style={styles.providerSummaryLabel}>Outstanding fees</Text>
-           <Text style={styles.providerSummaryValue}>
-             {formatMoney(outstandingFees)}
-           </Text>
-         </View>
-       )}
- 
-       {billingLoading && (
-         <View style={styles.card}>
-           <ActivityIndicator />
-           <Text style={styles.serviceMeta}>Loading billing history…</Text>
-         </View>
-       )}
- 
-       {billingError ? (
-         <View style={styles.card}>
-           <Text style={styles.errorText}>{billingError}</Text>
-         </View>
-       ) : null}
- 
-       {!billingLoading && !billingError && bills.length === 0 && (
-         <View style={styles.card}>
-           <Text style={styles.serviceMeta}>No billing statements yet.</Text>
-         </View>
-       )}
-@@ -5244,51 +5272,53 @@ function ProviderBillingScreen({ token, showFlash }) {
-                     <View style={{ flex: 1 }}>
-                       <Text style={styles.billingLineLabel}>{item.description}</Text>
-                       {item.client ? (
-                         <Text style={styles.billingMeta}>Client: {item.client}</Text>
-                       ) : null}
-                       {item.date ? (
-                         <Text style={styles.billingMeta}>
-                           Service date: {formatDate(item.date)}
-                         </Text>
-                       ) : null}
-                     </View>
-                     <Text style={styles.billingAmount}>{formatMoney(item.amount)}</Text>
- 
-                   </View>
-                    ))}
-               </View>
-             ) : null}
- 
-             <View style={styles.billingTotalsRow}>
-               <Text style={styles.billingTotalsLabel}>Services total</Text>
-               <Text style={styles.billingTotalsValue}>
-                 {formatMoney(bill.servicesTotal)}
-               </Text>
-             </View>
-             <View style={styles.billingTotalsRow}>
--              <Text style={styles.billingTotalsLabel}>Platform fee (10%)</Text>
-+              <Text style={styles.billingTotalsLabel}>
-+                Platform fee ({serviceChargePct}%)
-+              </Text>
-               <Text style={styles.billingTotalsValue}>
-                 {formatMoney(bill.platformFee)}
-               </Text>
-             </View>
-             <View style={styles.billingTotalsRow}>
-               <Text style={styles.billingTotalsLabel}>Total due</Text>
-               <Text style={styles.billingTotalsValue}>{formatMoney(bill.totalDue)}</Text>
-             </View>
-           </View>
-         ))}
-     </ScrollView>
-   );
- }
+     return provider
  
  
- // Tabs after login
- function MainApp({ token, setToken, showFlash }) {
-    const {
-     favoriteIds,
-     favoriteProviders,
-     favoritesLoading,
-     toggleFavorite,
-     isFavorite,
-     syncFavoritesFromList,
-     refreshFavoriteProviders,
+ @router.post("/bookings")
+ def create_booking_for_me(
+     booking_in: schemas.BookingCreate,
+     db: Session = Depends(get_db),
+     current_user: models.User = Depends(get_current_user_from_header),
+ ):
+     try:
+         booking = crud.create_booking(
+             db, customer_id=current_user.id, booking=booking_in
+         )
++        if not booking:
++            raise ValueError("Could not create booking")
+     except ValueError as e:
+         # bad time, slot already taken, etc.
+         raise HTTPException(status_code=400, detail=str(e))
+ 
+     return booking
+ 
+ 
+ @router.get("/bookings/me")
+ def list_my_bookings(
+     db: Session = Depends(get_db),
+     current_user: models.User = Depends(get_current_user_from_header),
+ ):
+     return crud.list_bookings_for_customer(db, current_user.id)
+ 
+ 
+ @router.get("/providers/me/bookings")
+ def list_provider_bookings(
+     db: Session = Depends(get_db),
+      provider: models.Provider = Depends(_require_current_provider),
+ ):
+     return crud.list_bookings_for_provider(db, provider.id)
+ 
+ 
+ @router.post("/providers/me/bookings/{booking_id}/confirm")
+ def confirm_booking_as_provider(

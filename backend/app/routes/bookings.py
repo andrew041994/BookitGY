@@ -45,6 +45,8 @@ def create_booking_for_me(
         booking = crud.create_booking(
             db, customer_id=current_user.id, booking=booking_in
         )
+        if not booking:
+            raise ValueError("Could not create booking")
     except ValueError as e:
         # bad time, slot already taken, etc.
         raise HTTPException(status_code=400, detail=str(e))
