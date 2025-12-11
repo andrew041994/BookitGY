@@ -24,5 +24,5 @@ fi
 echo "DATABASE_URL is: $DATABASE_URL"
 
 # Start uvicorn
-echo "Starting FastAPI on http://0.0.0.0:8002 ..."
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8002
+echo "Starting FastAPI on http://0.0.0.0:8000 ..."
+uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
