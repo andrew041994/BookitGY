@@ -1,72 +1,155 @@
-diff --git a/backend/app/crud.py b/backend/app/crud.py
-index 28f8b19e7cce8ed06e82e8d283b0e2dadf2ee63a..97c03b6ac409449480ad7350404f8387325202e2 100644
---- a/backend/app/crud.py
-+++ b/backend/app/crud.py
-@@ -1135,64 +1135,66 @@ def get_provider_availability(
-             for b in bookings:
-                 if overlaps(slot_start, slot_end, b):
-                     conflict = True
-                     break
- 
-             if not conflict:
-                 slots_for_day.append(slot_start)
- 
-             # Step forward by the service duration (so slots line up)
-             slot_start += slot_duration
- 
-         if slots_for_day:
-             availability.append(
-                 {
-                     "date": day_date,
-                     "slots": slots_for_day,
-                 }
-             )
- 
-     return availability
+ (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
+diff --git a/mobile/App.js b/mobile/App.js
+index 77b2c0311f07d4e6826020649a79eb2631632bba..e60cbb0491776c957c65dd708de6c7aa7b36bda9 100644
+--- a/mobile/App.js
++++ b/mobile/App.js
+@@ -19,82 +19,87 @@ import { SafeAreaProvider,SafeAreaView } from "react-native-safe-area-context";
  
  
  
- def list_todays_bookings_for_provider(db: Session, provider_id: int):
-     """
--    All *confirmed* bookings for this provider whose start_time is today.
-+    All *confirmed* bookings for this provider whose start_time is today
-+    and that have not finished yet.
-     """
-     now = now_local_naive()   # ⬅ Guyana local date for “today”
-     start_of_day = datetime(now.year, now.month, now.day)
-     end_of_day = start_of_day + timedelta(days=1)
- 
-     q = (
-         db.query(models.Booking, models.Service, models.User)
-         .join(models.Service, models.Booking.service_id == models.Service.id)
-         .join(models.User, models.Booking.customer_id == models.User.id)
-         .filter(
-             models.Service.provider_id == provider_id,
-             models.Booking.start_time >= start_of_day,
-             models.Booking.start_time < end_of_day,
-+            models.Booking.end_time > now,
-             models.Booking.status == "confirmed",
-         )
-         .order_by(models.Booking.start_time)
-     )
- 
-     results = []
-     for booking, service, customer in q.all():
-         results.append(
-             schemas.BookingWithDetails(
-                 id=booking.id,
-                 start_time=booking.start_time,
-                 end_time=booking.end_time,
-                 status=booking.status,
-                 service_name=service.name,
-                 service_duration_minutes=service.duration_minutes,
-                 service_price_gyd=service.price_gyd or 0.0,
-                 customer_name=customer.full_name or "",
-                 customer_phone=customer.phone or "",
-             )
-         )
-     return results
+ // import { API } from "./App"; // wherever you define your base URL
  
  
- def list_upcoming_bookings_for_provider(
-     db: Session,
+ 
+ 
+   const API = "https://cecila-opalescent-compulsorily.ngrok-free.dev";
+   console.log("### API base URL =", API);
+ 
+   const isValidEmail = (value) => {
+   const trimmed = value.trim();
+   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+   return emailRegex.test(trimmed);
+ };
+ 
+   const resolveImageUrl = (url) => {
+     if (!url || typeof url !== "string") return null;
+     if (url.startsWith("http")) return url;
+     if (url.startsWith("//")) return `https:${url}`;
+     const normalizedPath = url.startsWith("/") ? url : `/${url}`;
+     return `${API}${normalizedPath}`;
+   };
+ 
+-  const FAVORITES_STORAGE_KEY = "favoriteProviders";
++  const FAVORITES_STORAGE_KEY = (userKey) =>
++    userKey ? `favoriteProviders:${userKey}` : "favoriteProviders";
+ 
+ const getProviderId = (provider) =>
+   provider?.provider_id ?? provider?.id ?? provider?._id ?? null;
+ 
+-function useFavoriteProviders() {
++function useFavoriteProviders(userKey) {
++  const storageKey = FAVORITES_STORAGE_KEY(userKey);
+   const [favoriteIds, setFavoriteIds] = useState([]);
+   const [favoriteProviders, setFavoriteProviders] = useState([]);
+   const [favoritesLoading, setFavoritesLoading] = useState(true);
+ 
+   const persistIds = useCallback(async (ids) => {
+     try {
+-      await AsyncStorage.setItem(FAVORITES_STORAGE_KEY, JSON.stringify(ids));
++      await AsyncStorage.setItem(storageKey, JSON.stringify(ids));
+     } catch (err) {
+       console.log("Error saving favorites", err?.message || err);
+     }
+-  }, []);
++  }, [storageKey]);
+ 
+   const loadFavoritesFromStorage = useCallback(async () => {
+     try {
+-      const raw = await AsyncStorage.getItem(FAVORITES_STORAGE_KEY);
++      setFavoritesLoading(true);
++      const raw = await AsyncStorage.getItem(storageKey);
+       const parsed = raw ? JSON.parse(raw) : [];
+       setFavoriteIds(Array.isArray(parsed) ? parsed : []);
+     } catch (err) {
+       console.log("Error reading favorites", err?.message || err);
+       setFavoriteIds([]);
+     } finally {
+       setFavoritesLoading(false);
+     }
+-  }, []);
++  }, [storageKey]);
+ 
+   useEffect(() => {
++    setFavoriteIds([]);
++    setFavoriteProviders([]);
+     loadFavoritesFromStorage();
+   }, [loadFavoritesFromStorage]);
+ 
+   const syncFavoritesFromList = useCallback(
+     (list) => {
+       if (!Array.isArray(list)) return;
+ 
+       setFavoriteProviders((prev) => {
+         const idSet = new Set(favoriteIds);
+         const merged = list.filter((p) => idSet.has(getProviderId(p)));
+ 
+         const prevMap = new Map(
+           prev.map((p) => [getProviderId(p), p]).filter(([id]) => idSet.has(id))
+         );
+ 
+         merged.forEach((p) => {
+           const id = getProviderId(p);
+           if (id) prevMap.set(id, p);
+         });
+ 
+         return Array.from(prevMap.values());
+       });
+     },
+     [favoriteIds]
+   );
+@@ -5300,51 +5305,51 @@ function ProviderBillingScreen({ token, showFlash }) {
+               <Text style={styles.billingTotalsValue}>
+                 {formatMoney(bill.platformFee)}
+               </Text>
+             </View>
+             <View style={styles.billingTotalsRow}>
+               <Text style={styles.billingTotalsLabel}>Total due</Text>
+               <Text style={styles.billingTotalsValue}>{formatMoney(bill.totalDue)}</Text>
+             </View>
+           </View>
+         ))}
+     </ScrollView>
+   );
+ }
+ 
+ 
+ // Tabs after login
+ function MainApp({ token, setToken, showFlash }) {
+    const {
+     favoriteIds,
+     favoriteProviders,
+     favoritesLoading,
+     toggleFavorite,
+     isFavorite,
+     syncFavoritesFromList,
+     refreshFavoriteProviders,
+-  } = useFavoriteProviders();
++  } = useFavoriteProviders(token?.email || token?.userId);
+   return (
+     <NavigationContainer>
+       {token.isProvider ? (
+         // 👇 Provider view: Dashboard + Billing + Profile
+         <Tab.Navigator
+           initialRouteName="Dashboard"
+           screenOptions={({ route }) => ({
+             headerShown: false,
+             tabBarShowLabel: true,
+             tabBarActiveTintColor: "#0B6BF2",
+             tabBarInactiveTintColor: "#A1A1A1",
+             tabBarStyle: {
+               backgroundColor: "#FFFFFF",
+               height: 70,
+               paddingBottom: 25,
+               paddingTop: 8,
+               borderTopWidth: 0,
+               shadowColor: "#000",
+               shadowOpacity: 0.05,
+               shadowRadius: 8,
+               elevation: 4,
+               marginBottom: Platform.OS === "android" ? 8 : 0,
+             },
+             tabBarIcon: ({ color }) => {
+               let iconName = "home-outline";
+ 
+EOF
+)

@@ -41,27 +41,30 @@ import { SafeAreaProvider,SafeAreaView } from "react-native-safe-area-context";
     return `${API}${normalizedPath}`;
   };
 
-  const FAVORITES_STORAGE_KEY = "favoriteProviders";
+  const FAVORITES_STORAGE_KEY = (userKey) =>
+    userKey ? `favoriteProviders:${userKey}` : "favoriteProviders";
 
 const getProviderId = (provider) =>
   provider?.provider_id ?? provider?.id ?? provider?._id ?? null;
 
-function useFavoriteProviders() {
+function useFavoriteProviders(userKey) {
+  const storageKey = FAVORITES_STORAGE_KEY(userKey);
   const [favoriteIds, setFavoriteIds] = useState([]);
   const [favoriteProviders, setFavoriteProviders] = useState([]);
   const [favoritesLoading, setFavoritesLoading] = useState(true);
 
   const persistIds = useCallback(async (ids) => {
     try {
-      await AsyncStorage.setItem(FAVORITES_STORAGE_KEY, JSON.stringify(ids));
+      await AsyncStorage.setItem(storageKey, JSON.stringify(ids));
     } catch (err) {
       console.log("Error saving favorites", err?.message || err);
     }
-  }, []);
+  }, [storageKey]);
 
   const loadFavoritesFromStorage = useCallback(async () => {
     try {
-      const raw = await AsyncStorage.getItem(FAVORITES_STORAGE_KEY);
+      setFavoritesLoading(true);
+      const raw = await AsyncStorage.getItem(storageKey);
       const parsed = raw ? JSON.parse(raw) : [];
       setFavoriteIds(Array.isArray(parsed) ? parsed : []);
     } catch (err) {
@@ -70,9 +73,11 @@ function useFavoriteProviders() {
     } finally {
       setFavoritesLoading(false);
     }
-  }, []);
+  }, [storageKey]);
 
   useEffect(() => {
+    setFavoriteIds([]);
+    setFavoriteProviders([]);
     loadFavoritesFromStorage();
   }, [loadFavoritesFromStorage]);
 
@@ -5322,7 +5327,7 @@ function MainApp({ token, setToken, showFlash }) {
     isFavorite,
     syncFavoritesFromList,
     refreshFavoriteProviders,
-  } = useFavoriteProviders();
+  } = useFavoriteProviders(token?.email || token?.userId);
   return (
     <NavigationContainer>
       {token.isProvider ? (
