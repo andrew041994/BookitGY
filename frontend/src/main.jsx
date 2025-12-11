@@ -1,6 +1,6 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
-import { BrowserRouter, Routes, Route, Link } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, Link, useNavigate } from 'react-router-dom'
 import axios from 'axios'
 import 'os'
 import './login.css'
@@ -15,12 +15,27 @@ function App() {
   const [token, setToken] = React.useState(localStorage.getItem('token') || '')
   const [user, setUser] = React.useState(null)
 
+  React.useEffect(() => {
+    if (token) {
+      axios.defaults.headers.common.Authorization = `Bearer ${token}`
+    } else {
+      delete axios.defaults.headers.common.Authorization
+    }
+  }, [token])
+
   // Simple login for demo
   const Login = () => {
     const [email, setEmail] = React.useState('customer@guyana.com')
     const [password, setPassword] = React.useState('pass')
     const [loading, setLoading] = React.useState(false)
     const [error, setError] = React.useState('')
+    const navigate = useNavigate()
+
+    React.useEffect(() => {
+      if (token) {
+        navigate('/admin/promotions', { replace: true })
+      }
+    }, [token, navigate])
 
     const login = async (e) => {
       e.preventDefault()
@@ -33,6 +48,7 @@ function App() {
         }))
         localStorage.setItem('token', res.data.access_token)
         setToken(res.data.access_token)
+        navigate('/admin/promotions', { replace: true })
       } catch {
         setError('Wrong credentials – try customer@guyana.com with password pass')
       } finally {
