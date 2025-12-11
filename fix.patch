@@ -1,8 +1,132 @@
 diff --git a/mobile/App.js b/mobile/App.js
-index fd37d00a5e8f5c2cda6b2500a256fdc28659edbf..2234e3c7a1a0c15864a50fec2e220189c2af1fad 100644
+index fd37d00a5e8f5c2cda6b2500a256fdc28659edbf..83c2462cd10b6675ae00505b004d61546f63ec8e 100644
 --- a/mobile/App.js
 +++ b/mobile/App.js
-@@ -2381,57 +2381,58 @@ function SearchScreen({
+@@ -2088,55 +2088,67 @@ function AppointmentsScreen({ token, showFlash }) {
+                     : b
+                 )
+               );
+ 
+               showFlash && showFlash("success", "Booking cancelled");
+             } catch (err) {
+               console.log(
+                 "Error cancelling booking (appointments)",
+                 err.response?.data || err.message
+               );
+               showFlash && showFlash("error", "Could not cancel booking.");
+             }
+           },
+         },
+       ]
+     );
+   };
+ 
+   const datedBookings = bookings.map((b) => ({
+     ...b,
+     _start: normalizeStart(b),
+   }));
+ 
+   const now = new Date();
+   const upcomingBookings = datedBookings
+-    .filter((b) => b._start && b.status !== "cancelled" && b._start >= now)
++    .filter(
++      (b) =>
++        b._start &&
++        b.status !== "cancelled" &&
++        b.status !== "completed" &&
++        b._start >= now
++    )
+     .sort((a, b) => a._start - b._start);
+ 
+   const finishedBookings = datedBookings
+-    .filter((b) => !b._start || b.status === "cancelled" || b._start < now)
++    .filter(
++      (b) =>
++        !b._start ||
++        b.status === "cancelled" ||
++        b.status === "completed" ||
++        b._start < now
++    )
+     .sort((a, b) => {
+       const aTime = a?._start?.getTime?.() ?? 0;
+       const bTime = b?._start?.getTime?.() ?? 0;
+       return bTime - aTime;
+     });
+ 
+   const deriveStatus = (booking) => {
+     const startIso = booking.start_time || booking.start;
+     const endIso = booking.end_time || booking.end;
+     const startDate = startIso ? new Date(startIso) : null;
+     const endDate = endIso ? new Date(endIso) : null;
+     const nowTs = Date.now();
+ 
+     const normalizedStart =
+       startDate && !Number.isNaN(startDate.getTime()) ? startDate.getTime() : null;
+     const normalizedEnd =
+       endDate && !Number.isNaN(endDate.getTime()) ? endDate.getTime() : null;
+ 
+     if (booking.status === "cancelled") return "cancelled";
+ 
+     if (normalizedEnd != null) {
+       if (nowTs >= normalizedEnd) return "completed";
+       if (normalizedStart != null && nowTs >= normalizedStart) return "in progress";
+     }
+ 
+@@ -2163,51 +2175,52 @@ function AppointmentsScreen({ token, showFlash }) {
+             <Text style={styles.appointmentMeta}>
+               {dateLabel} {timeLabel ? `· ${timeLabel}` : ""}
+             </Text>
+           )}
+           {booking.provider_location ? (
+             <Text style={styles.appointmentMeta}>
+               {booking.provider_location}
+             </Text>
+           ) : null}
+           <View style={styles.appointmentStatusRow}>
+             <Text style={styles.appointmentStatus}>
+               Status: {statusLabel}
+             </Text>
+ 
+             {isUpcoming && (
+               <TouchableOpacity
+                 style={styles.appointmentCancelButton}
+                 onPress={() => handleCancelBooking(booking)}
+               >
+                 <Text style={styles.appointmentCancelButtonText}>Cancel</Text>
+               </TouchableOpacity>
+             )}
+           </View>
+         </View>
+ 
+-        {(booking.provider_lat != null || booking.provider_location) && (
++        {isUpcoming &&
++          (booking.provider_lat != null || booking.provider_location) && (
+           <TouchableOpacity
+             style={[styles.navigateButton, styles.appointmentDirectionsButton]}
+             onPress={() => handleNavigateToBooking(booking)}
+           >
+             <Text style={styles.navigateButtonText}>Directions</Text>
+           </TouchableOpacity>
+         )}
+       </View>
+     );
+   };
+ 
+   return (
+   <ScrollView
+     contentContainerStyle={styles.appointmentScroll}
+     refreshControl={
+       <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
+     }
+   >
+     <View style={styles.card}>
+       <View style={styles.appointmentHeader}>
+         <Text style={styles.profileTitle}>Appointments</Text>
+         {/* <TouchableOpacity onPress={fetchBookings}>
+           <Text style={styles.refreshText}>Refresh</Text>
+         </TouchableOpacity> */}
+       </View>
+@@ -2381,57 +2394,58 @@ function SearchScreen({
  
    // Load providers on mount
    useEffect(() => {
