@@ -1609,10 +1609,9 @@ function AppointmentsScreen({ token, showFlash }) {
             </View>
             {(booking.provider_lat != null || booking.provider_location) && (
               <TouchableOpacity
-                style={styles.appointmentNavigate}
-                onPress={() => handleNavigateToBooking(booking)}
-              >
-                <Text style={styles.bookingNavigate}>Directions</Text>
+                  style={[styles.navigateButton, styles.appointmentDirectionsButton]}
+                  onPress={() => handleNavigateToBooking(booking)}          >
+                <Text style={styles.navigateButtonText}>Directions</Text>
               </TouchableOpacity>
             )}
           </View>
