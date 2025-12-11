@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { BrowserRouter, Routes, Route, Link } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Link, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import axios from 'axios';
 
 const API = 'http://localhost:8000';
@@ -94,9 +94,10 @@ const signupHistory = [
   { month: 'Oct', providers: 40, clients: 95 },
 ];
 
-function Login() {
+function Login({ onLogin }) {
   const [email, setEmail] = useState('customer@guyana.com');
   const [password, setPassword] = useState('pass');
+  const navigate = useNavigate();
 
   const login = async () => {
     try {
@@ -104,8 +105,11 @@ function Login() {
         username: email,
         password: password,
       }));
-      localStorage.setItem('token', res.data.access_token);
-      alert('Logged in! Refresh page');
+      const token = res.data.access_token;
+      localStorage.setItem('token', token);
+      axios.defaults.headers.common.Authorization = `Bearer ${token}`;
+      onLogin?.(token);
+      navigate('/admin');
     } catch {
       alert('Wrong credentials');
     }
@@ -658,12 +662,37 @@ function AdminDashboard() {
 }
 
 export default function App() {
+  const [token, setToken] = useState(localStorage.getItem('token'));
+
+  useEffect(() => {
+    if (token) {
+      axios.defaults.headers.common.Authorization = `Bearer ${token}`;
+    } else {
+      delete axios.defaults.headers.common.Authorization;
+    }
+  }, [token]);
+
+  const ProtectedRoute = ({ children }) => {
+    const location = useLocation();
+    if (!token) {
+      return <Navigate to="/login" replace state={{ from: location }} />;
+    }
+    return children;
+  };
+
   return (
     <BrowserRouter>
       <Routes>
         <Route path="/" element={<Home />} />
-        <Route path="/login" element={<Login />} />
-        <Route path="/admin" element={<AdminDashboard />} />
+        <Route path="/login" element={<Login onLogin={setToken} />} />
+        <Route
+          path="/admin"
+          element={(
+            <ProtectedRoute>
+              <AdminDashboard />
+            </ProtectedRoute>
+          )}
+        />
       </Routes>
     </BrowserRouter>
   );

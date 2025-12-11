@@ -1,8 +1,85 @@
 diff --git a/frontend/src/App.jsx b/frontend/src/App.jsx
-index f1fb84a3e643db588fb4c83287454acbde3e8e1b..dea3fd45af42a5d4e02aef6fd867e293a8ca6be9 100644
+index dea3fd45af42a5d4e02aef6fd867e293a8ca6be9..95868ef2bec95ad87f439720d726e9ecfe16d03a 100644
 --- a/frontend/src/App.jsx
 +++ b/frontend/src/App.jsx
-@@ -113,167 +113,60 @@ function Login() {
+@@ -1,27 +1,27 @@
+ import React, { useEffect, useMemo, useState } from 'react';
+-import { BrowserRouter, Routes, Route, Link } from 'react-router-dom';
++import { BrowserRouter, Routes, Route, Link, Navigate, useLocation, useNavigate } from 'react-router-dom';
+ import axios from 'axios';
+ 
+ const API = 'http://localhost:8000';
+ 
+ const sampleProviders = [
+   {
+     id: 1,
+     name: 'Ariana De Freitas',
+     location: 'Georgetown',
+     lat: 6.8013,
+     long: -58.155,
+     outstanding: 32000,
+     credit: 5000,
+     isLocked: false,
+     lastActive: '2024-10-10',
+     totalBookings: 42,
+     cancellations: 3,
+     noShows: 1,
+     services: ['Makeup', 'Hair Styling'],
+   },
+   {
+     id: 2,
+     name: 'Jamall Adams',
+     location: 'East Bank',
+     lat: 6.7484,
+@@ -72,62 +72,66 @@ const sampleCharges = [
+   { id: 102, providerId: 1, month: '2024-09-01', amount: 15000, isPaid: true },
+   { id: 103, providerId: 2, month: '2024-10-01', amount: 9000, isPaid: false },
+   { id: 104, providerId: 3, month: '2024-10-01', amount: 22000, isPaid: false },
+   { id: 105, providerId: 4, month: '2024-10-01', amount: 12000, isPaid: true },
+ ];
+ 
+ const sampleBookings = [
+   { id: 1, providerId: 1, clientId: 10, status: 'completed', startTime: '2024-10-12T12:00:00Z' },
+   { id: 2, providerId: 1, clientId: 11, status: 'cancelled', startTime: '2024-10-12T15:00:00Z' },
+   { id: 3, providerId: 2, clientId: 12, status: 'completed', startTime: '2024-10-11T16:00:00Z' },
+   { id: 4, providerId: 2, clientId: 13, status: 'pending', startTime: '2024-10-10T10:00:00Z' },
+   { id: 5, providerId: 3, clientId: 14, status: 'no-show', startTime: '2024-10-01T10:00:00Z' },
+   { id: 6, providerId: 4, clientId: 10, status: 'completed', startTime: '2024-10-12T09:00:00Z' },
+   { id: 7, providerId: 4, clientId: 16, status: 'cancelled', startTime: '2024-09-15T09:00:00Z' },
+   { id: 8, providerId: 1, clientId: 15, status: 'completed', startTime: '2024-10-10T09:00:00Z' },
+ ];
+ 
+ const signupHistory = [
+   { month: 'Jun', providers: 10, clients: 54 },
+   { month: 'Jul', providers: 14, clients: 62 },
+   { month: 'Aug', providers: 21, clients: 70 },
+   { month: 'Sep', providers: 33, clients: 82 },
+   { month: 'Oct', providers: 40, clients: 95 },
+ ];
+ 
+-function Login() {
++function Login({ onLogin }) {
+   const [email, setEmail] = useState('customer@guyana.com');
+   const [password, setPassword] = useState('pass');
++  const navigate = useNavigate();
+ 
+   const login = async () => {
+     try {
+       const res = await axios.post(`${API}/auth/login`, new URLSearchParams({
+         username: email,
+         password: password,
+       }));
+-      localStorage.setItem('token', res.data.access_token);
+-      alert('Logged in! Refresh page');
++      const token = res.data.access_token;
++      localStorage.setItem('token', token);
++      axios.defaults.headers.common.Authorization = `Bearer ${token}`;
++      onLogin?.(token);
++      navigate('/admin');
+     } catch {
+       alert('Wrong credentials');
+     }
+   };
  
    return (
      <div style={{ textAlign: 'center', marginTop: '100px' }}>
@@ -24,153 +101,12 @@ index f1fb84a3e643db588fb4c83287454acbde3e8e1b..dea3fd45af42a5d4e02aef6fd867e293
          Login
        </button>
        <p>Use customer@guyana.com / pass</p>
-     </div>
-   );
- }
- 
--function AdminSignup() {
--  const [fullName, setFullName] = useState('Admin User');
--  const [email, setEmail] = useState('admin@guyana.com');
--  const [password, setPassword] = useState('changeMe123!');
--  const [phone, setPhone] = useState('+5926000000');
--  const [location, setLocation] = useState('Georgetown');
--  const [status, setStatus] = useState(null);
--
--  const signup = async () => {
--    setStatus(null);
--    try {
--      await axios.post(`${API}/auth/signup`, {
--        email,
--        password,
--        full_name: fullName,
--        phone,
--        location,
--        is_admin: true,
--      });
--      setStatus({ type: 'success', message: 'Admin account created! You can now log in.' });
--    } catch (err) {
--      const detail = err?.response?.data?.detail || 'Unable to create admin user';
--      setStatus({ type: 'error', message: detail });
--    }
--  };
--
--  return (
--    <div style={{ maxWidth: '480px', margin: '80px auto', padding: '20px', border: '1px solid #e5e7eb', borderRadius: '12px', background: 'white' }}>
--      <h1 style={{ color: '#16a34a', textAlign: 'center' }}>Create Admin Account</h1>
--      <p style={{ color: '#6b7280', textAlign: 'center' }}>
--        This will register an admin user who can access the dashboard and manage providers.
--      </p>
--      <label style={{ display: 'block', marginTop: '12px', fontWeight: 600 }}>Full name</label>
--      <input
--        value={fullName}
--        onChange={(e) => setFullName(e.target.value)}
--        placeholder="Full name"
--        style={{ display: 'block', width: '100%', padding: '10px', borderRadius: '10px', border: '1px solid #d1d5db' }}
--      />
--
--      <label style={{ display: 'block', marginTop: '12px', fontWeight: 600 }}>Email</label>
--      <input
--        type="email"
--        value={email}
--        onChange={(e) => setEmail(e.target.value)}
--        placeholder="Email"
--        style={{ display: 'block', width: '100%', padding: '10px', borderRadius: '10px', border: '1px solid #d1d5db' }}
--      />
--
--      <label style={{ display: 'block', marginTop: '12px', fontWeight: 600 }}>Password</label>
--      <input
--        type="password"
--        value={password}
--        onChange={(e) => setPassword(e.target.value)}
--        placeholder="Password"
--        style={{ display: 'block', width: '100%', padding: '10px', borderRadius: '10px', border: '1px solid #d1d5db' }}
--      />
--
--      <label style={{ display: 'block', marginTop: '12px', fontWeight: 600 }}>Phone</label>
--      <input
--        value={phone}
--        onChange={(e) => setPhone(e.target.value)}
--        placeholder="Phone number"
--        style={{ display: 'block', width: '100%', padding: '10px', borderRadius: '10px', border: '1px solid #d1d5db' }}
--      />
--
--      <label style={{ display: 'block', marginTop: '12px', fontWeight: 600 }}>Location</label>
--      <input
--        value={location}
--        onChange={(e) => setLocation(e.target.value)}
--        placeholder="Location"
--        style={{ display: 'block', width: '100%', padding: '10px', borderRadius: '10px', border: '1px solid #d1d5db' }}
--      />
--
--      <button
--        onClick={signup}
--        style={{ width: '100%', marginTop: '18px', padding: '12px', background: '#16a34a', color: 'white', border: 'none', borderRadius: '10px', fontWeight: 700 }}
--      >
--        Create Admin
--      </button>
--
--      {status && (
--        <div
--          style={{
--            marginTop: '12px',
--            padding: '10px',
--            borderRadius: '10px',
--            color: status.type === 'success' ? '#166534' : '#991b1b',
--            background: status.type === 'success' ? '#dcfce7' : '#fee2e2',
--          }}
--        >
--          {status.message}
--        </div>
--      )}
--
--      <div style={{ marginTop: '14px', textAlign: 'center' }}>
--        <Link to="/login" style={{ color: '#16a34a', fontWeight: 600 }}>Back to login</Link>
--      </div>
--    </div>
--  );
--}
--
- function Home() {
-   return (
-     <div style={{ textAlign: 'center', marginTop: '100px' }}>
-       <h1 style={{ color: '#16a34a' }}>Welcome to Guyana Booker Web!</h1>
-       <p>Your Booksy clone is LIVE on web + mobile</p>
-       <div style={{ marginTop: '20px' }}>
-         <Link to="/admin" style={{ color: '#16a34a', fontWeight: 'bold' }}>
-           Go to Admin Dashboard
-         </Link>
-       </div>
--      <div style={{ marginTop: '12px' }}>
--        <Link to="/admin/signup" style={{ color: '#16a34a', fontWeight: 'bold' }}>
--          Create an Admin Account
--        </Link>
--      </div>
-     </div>
-   );
- }
- 
- function StatCard({ label, value, helper }) {
-   return (
-     <div style={{ border: '1px solid #e5e7eb', borderRadius: '10px', padding: '16px', background: 'white' }}>
-       <div style={{ fontSize: '12px', color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.04em' }}>{label}</div>
-       <div style={{ fontSize: '28px', fontWeight: 700, color: '#111827', margin: '4px 0' }}>{value}</div>
-       {helper && <div style={{ fontSize: '12px', color: '#9ca3af' }}>{helper}</div>}
-     </div>
-   );
- }
- 
- function ReportSection({ title, children }) {
-   return (
-     <div style={{ border: '1px solid #e5e7eb', borderRadius: '12px', padding: '16px', background: 'white', marginBottom: '16px' }}>
-       <div style={{ fontWeight: 700, marginBottom: '12px', color: '#111827' }}>{title}</div>
-       {children}
-     </div>
-   );
- }
- 
- function ProgressRow({ label, value, total, accent }) {
-   const percent = total ? Math.min(100, Math.round((value / total) * 100)) : 0;
-@@ -748,31 +641,30 @@ function AdminDashboard() {
+@@ -636,35 +640,60 @@ function AdminDashboard() {
+             </ul>
+           </div>
+           <div>
+             <h4 style={{ marginTop: 0 }}>Financial Health</h4>
+             <ul style={{ paddingLeft: '16px', color: '#111827' }}>
                <li>Revenue per provider trending at GYD 12,500 monthly average.</li>
                <li>Credit balances outstanding: GYD {(providers.reduce((acc, p) => acc + p.credit, 0)).toLocaleString()}.</li>
                <li>Failed subscription payments: 1 in the last 30 days.</li>
@@ -191,13 +127,39 @@ index f1fb84a3e643db588fb4c83287454acbde3e8e1b..dea3fd45af42a5d4e02aef6fd867e293
  }
  
  export default function App() {
++  const [token, setToken] = useState(localStorage.getItem('token'));
++
++  useEffect(() => {
++    if (token) {
++      axios.defaults.headers.common.Authorization = `Bearer ${token}`;
++    } else {
++      delete axios.defaults.headers.common.Authorization;
++    }
++  }, [token]);
++
++  const ProtectedRoute = ({ children }) => {
++    const location = useLocation();
++    if (!token) {
++      return <Navigate to="/login" replace state={{ from: location }} />;
++    }
++    return children;
++  };
++
    return (
      <BrowserRouter>
        <Routes>
          <Route path="/" element={<Home />} />
-         <Route path="/login" element={<Login />} />
--        <Route path="/admin/signup" element={<AdminSignup />} />
-         <Route path="/admin" element={<AdminDashboard />} />
+-        <Route path="/login" element={<Login />} />
+-        <Route path="/admin" element={<AdminDashboard />} />
++        <Route path="/login" element={<Login onLogin={setToken} />} />
++        <Route
++          path="/admin"
++          element={(
++            <ProtectedRoute>
++              <AdminDashboard />
++            </ProtectedRoute>
++          )}
++        />
        </Routes>
      </BrowserRouter>
    );
