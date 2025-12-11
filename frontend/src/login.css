@@ -114,6 +114,19 @@ body {
   color: var(--text);
 }
 
+.landing-shell {
+  min-height: calc(100vh - var(--nav-height));
+  background: radial-gradient(circle at 18% 25%, rgba(20, 184, 166, 0.12), transparent 30%),
+    radial-gradient(circle at 82% 10%, rgba(22, 163, 74, 0.18), transparent 36%),
+    linear-gradient(135deg, #050915, #0a1020);
+  display: grid;
+  place-items: center;
+  padding: 48px 20px;
+  position: relative;
+  overflow: hidden;
+  color: var(--text);
+}
+
 .login-card {
   width: min(1180px, 100%);
   background: var(--card);
@@ -156,6 +169,58 @@ body {
   bottom: -120px;
   right: -90px;
 }
+
+.landing-glow {
+  position: absolute;
+  filter: blur(100px);
+  opacity: 0.8;
+}
+
+.landing-glow-one {
+  width: 420px;
+  height: 420px;
+  background: rgba(16, 185, 129, 0.24);
+  top: -120px;
+  left: -60px;
+}
+
+.landing-glow-two {
+  width: 460px;
+  height: 460px;
+  background: rgba(37, 188, 144, 0.16);
+  bottom: -160px;
+  right: -80px;
+}
+
+.landing-card {
+  width: min(520px, 100%);
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 28px;
+  padding: 44px 40px;
+  box-shadow: var(--shadow);
+  backdrop-filter: blur(10px);
+  display: grid;
+  gap: 16px;
+  justify-items: center;
+  text-align: center;
+  position: relative;
+  overflow: hidden;
+}
+
+.landing-card h1 {
+  margin: 0;
+  font-size: clamp(34px, 4vw, 40px);
+  font-weight: 800;
+  color: #f9fafb;
+}
+
+.landing-actions {
+  width: 100%;
+  display: grid;
+  gap: 10px;
+}
+
 
 .login-hero {
   padding: 44px 48px;

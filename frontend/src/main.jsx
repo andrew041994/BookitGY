@@ -2,14 +2,9 @@ import React from 'react'
 import ReactDOM from 'react-dom/client'
 import { BrowserRouter, Routes, Route, Link, useNavigate } from 'react-router-dom'
 import axios from 'axios'
-import 'os'
 import './login.css'
 
 const API = 'http://localhost:8000'
-
-
-
-
 
 function App() {
   const [token, setToken] = React.useState(localStorage.getItem('token') || '')
@@ -23,7 +18,6 @@ function App() {
     }
   }, [token])
 
-  // Simple login for demo
   const Login = () => {
     const [email, setEmail] = React.useState('customer@guyana.com')
     const [password, setPassword] = React.useState('pass')
@@ -153,164 +147,37 @@ function App() {
         <p className="mt-6 text-gray-600">Example: Give provider ID 1 → 50 free bookings anytime!</p>
       </div>
     )
-  }
-const distanceBetween = (coordA, coordB) => {
-    // Haversine formula
-    const toRad = (deg) => (deg * Math.PI) / 180
-    const R = 6371 // Earth radius in km
-    const dLat = toRad(coordB.lat - coordA.lat)
-    const dLon = toRad(coordB.long - coordA.long)
+  }   
+      const Home = () => (
+    <div className="landing-shell">
+      <div className="landing-glow landing-glow-one" />
+      <div className="landing-glow landing-glow-two" />
+      <div className="landing-card">
+        <div className="logo-circle">
+          <img src="/bookitgy-logo.png" alt="BookitGY" />
+        </div>
+        <p className="eyebrow">Booking platform for Guyana</p>
+        <h1>Guyana Booker Admin</h1>
+        <p className="subtitle">
+          Modern tools for managing providers, bookings, and promotions—protected behind a secure login.
+        </p>
 
-    const lat1 = toRad(coordA.lat)
-    const lat2 = toRad(coordB.lat)
+        <div className="landing-actions">
+          <Link className="primary-btn" to={token ? '/admin/promotions' : '/login'}>
+            {token ? 'Go to dashboard' : 'Login'}
 
-    const a =
-      Math.sin(dLat / 2) ** 2 +
-      Math.sin(dLon / 2) ** 2 * Math.cos(lat1) * Math.cos(lat2)
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
-
-    return R * c
-  }
-
-  const Home = () => {
-    const [providers, setProviders] = React.useState([])
-    const [nearbyProviders, setNearbyProviders] = React.useState([])
-    const [locationError, setLocationError] = React.useState('')
-    const [clientCoords, setClientCoords] = React.useState(null)
-    const [currentIndex, setCurrentIndex] = React.useState(0)
-
-    React.useEffect(() => {
-      axios
-        .get(`${API}/providers`)
-        .then((res) => setProviders(res.data || []))
-        .catch(() => setProviders([]))
-    }, [])
-
-    React.useEffect(() => {
-      if (!('geolocation' in navigator)) {
-        setLocationError('Geolocation is not supported on this device.')
-        return
-      }
-
-      navigator.geolocation.getCurrentPosition(
-        (pos) => {
-          setClientCoords({ lat: pos.coords.latitude, long: pos.coords.longitude })
-          setLocationError('')
-        },
-        (err) => {
-          console.error('Location error', err)
-          setLocationError('We could not access your location. Please enable location services.')
-        },
-        { enableHighAccuracy: true, maximumAge: 300000, timeout: 10000 }
-      )
-    }, [])
-
-    React.useEffect(() => {
-      if (!clientCoords || !providers.length) return
-
-      const nearby = providers
-        .filter((p) => p.lat !== null && p.lat !== undefined && p.long !== null && p.long !== undefined)
-        .map((p) => ({ ...p, distanceKm: distanceBetween(clientCoords, { lat: p.lat, long: p.long }) }))
-        .filter((p) => p.distanceKm <= 15)
-        .sort((a, b) => a.distanceKm - b.distanceKm)
-
-      setNearbyProviders(nearby)
-      setCurrentIndex(0)
-    }, [clientCoords, providers])
-
-    const visibleProviders = React.useMemo(() => {
-      if (!nearbyProviders.length) return []
-      const slots = Math.min(3, nearbyProviders.length)
-      return Array.from({ length: slots }, (_, idx) => nearbyProviders[(currentIndex + idx) % nearbyProviders.length])
-    }, [currentIndex, nearbyProviders])
-
-    const next = () => {
-      if (!nearbyProviders.length) return
-      setCurrentIndex((prev) => (prev + 1) % nearbyProviders.length)
-    }
-
-    const prev = () => {
-      if (!nearbyProviders.length) return
-      setCurrentIndex((prev) => (prev - 1 + nearbyProviders.length) % nearbyProviders.length)
-    }
-
-    return (
-      <div className="text-center mt-20 px-4">
-        <h1 className="text-6xl font-bold text-green-600 mb-4">BookitGY is LIVE!</h1>
-        <p className="text-xl mb-12">booking app for Guyana</p>
-        {token && (
-          <Link
-            to="/admin/promotions"
-            className="inline-block bg-blue-600 text-white px-8 py-4 rounded text-xl"
-          >
-            Go to Admin → Editable Promotions
           </Link>
-        )}
-
-        <div className="max-w-6xl mx-auto mt-16">
-          <div className="flex items-center justify-between mb-6">
-            <div className="text-left">
-              <h2 className="text-3xl font-semibold">Nearby providers</h2>
-              <p className="text-gray-600">Showing options within a 15 km radius of you.</p>
-            </div>
-            <div className="flex gap-3">
-              <button
-                onClick={prev}
-                className="bg-gray-200 px-4 py-2 rounded disabled:opacity-50"
-                disabled={!nearbyProviders.length}
-              >
-                ‹ Prev
-              </button>
-              <button
-                onClick={next}
-                className="bg-gray-200 px-4 py-2 rounded disabled:opacity-50"
-                disabled={!nearbyProviders.length}
-              >
-                Next ›
-              </button>
-            </div>
-          </div>
-
-          {locationError && <p className="text-red-600 mb-4">{locationError}</p>}
-          {!locationError && !clientCoords && <p className="text-gray-500 mb-4">Requesting your location…</p>}
-
-          {nearbyProviders.length === 0 && clientCoords && (
-            <div className="text-left bg-yellow-50 border border-yellow-200 p-6 rounded">
-              <p className="font-semibold mb-2">No providers within 15 km yet.</p>
-              <p className="text-gray-700">Try widening your search area or checking back soon.</p>
-            </div>
-          )}
-
-          {visibleProviders.length > 0 && (
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              {visibleProviders.map((provider) => (
-                <div
-                  key={provider.provider_id}
-                  className="border rounded-lg shadow-sm p-6 text-left bg-white"
-                  style={{ minHeight: '230px' }}
-                >
-                  <div className="flex items-center justify-between mb-2">
-                    <h3 className="text-xl font-semibold">{provider.name}</h3>
-                    <span className="text-sm bg-green-100 text-green-800 px-3 py-1 rounded-full">
-                      {provider.distanceKm.toFixed(1)} km away
-                    </span>
-                  </div>
-                  <p className="text-gray-700 mb-3">{provider.location || 'Location not provided'}</p>
-                  {provider.professions?.length ? (
-                    <p className="text-gray-600 mb-4">{provider.professions.join(' • ')}</p>
-                  ) : (
-                    <p className="text-gray-500 mb-4">Profession details coming soon.</p>
-                  )}
-                  <p className="text-gray-600 text-sm">{provider.bio || 'No bio yet.'}</p>
-                </div>
-              ))}
-            </div>
+        {/* STOP */}
+          {!token && (
+            <p className="credentials-hint">
+              Demo login: <strong>customer@guyana.com</strong> / <strong>pass</strong>
+            </p>
+       
           )}
         </div>
       </div>
-    )
-  }
-
+    </div>
+  )
 
   return (
     <BrowserRouter>
@@ -320,7 +187,7 @@ const distanceBetween = (coordA, coordB) => {
             <img src="/bookitgy-logo.png" alt="BookitGY" />
             <div className="brand-text">
               <span className="brand-name">BookitGY</span>
-              <span className="brand-subtitle">BookitGY</span>
+              <span className="brand-subtitle">Guyana Booker</span>
             </div>
           </Link>
           <div className="nav-actions">
