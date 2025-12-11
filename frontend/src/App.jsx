@@ -868,6 +868,140 @@ function AdminDashboard() {
   );
 }
 
+function AdminLayout() {
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: '260px 1fr', minHeight: '100vh', background: '#e5e7eb' }}>
+      <aside
+        style={{
+          background: '#111827',
+          color: '#f9fafb',
+          padding: '24px 18px',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '16px',
+          boxShadow: '4px 0 16px rgba(0,0,0,0.15)',
+        }}
+      >
+        <div style={{ fontWeight: 800, fontSize: '20px', letterSpacing: '0.02em' }}>Admin Panel</div>
+        <nav style={{ display: 'grid', gap: '8px' }}>
+          <NavLink
+            to="/admin"
+            end
+            style={({ isActive }) => ({
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '2px',
+              padding: '12px',
+              borderRadius: '10px',
+              textDecoration: 'none',
+              color: 'inherit',
+              background: isActive ? '#0ea5e9' : 'rgba(255,255,255,0.04)',
+              border: isActive ? '1px solid rgba(255,255,255,0.35)' : '1px solid rgba(255,255,255,0.08)',
+              fontWeight: 700,
+            })}
+          >
+            <span>Dashboard</span>
+            <span style={{ fontSize: '12px', color: 'rgba(255,255,255,0.8)', fontWeight: 500 }}>Overview</span>
+          </NavLink>
+          <NavLink
+            to="/admin/service-charge"
+            style={({ isActive }) => ({
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '2px',
+              padding: '12px',
+              borderRadius: '10px',
+              textDecoration: 'none',
+              color: 'inherit',
+              background: isActive ? '#16a34a' : 'rgba(255,255,255,0.04)',
+              border: isActive ? '1px solid rgba(255,255,255,0.35)' : '1px solid rgba(255,255,255,0.08)',
+              fontWeight: 700,
+            })}
+          >
+            <span>Service Charge</span>
+            <span style={{ fontSize: '12px', color: 'rgba(255,255,255,0.8)', fontWeight: 500 }}>Adjust admin fee</span>
+          </NavLink>
+        </nav>
+        <div style={{ marginTop: 'auto', fontSize: '12px', color: 'rgba(255,255,255,0.7)' }}>
+          Billing settings persist between sessions.
+        </div>
+      </aside>
+      <main style={{ minHeight: '100vh', background: '#f9fafb' }}>
+        <Outlet />
+      </main>
+    </div>
+  );
+}
+
+function ServiceChargeSettings() {
+  const [draft, setDraft] = useState(() => loadStoredServiceCharge() ?? DEFAULT_SERVICE_CHARGE);
+  const [savedRate, setSavedRate] = useState(() => loadStoredServiceCharge() ?? DEFAULT_SERVICE_CHARGE);
+
+  const save = () => {
+    const normalized = normalizeServiceCharge(draft);
+    persistServiceCharge(normalized);
+    setSavedRate(normalized);
+    setDraft(normalized);
+    alert(`Service charge saved at ${normalized}%`);
+  };
+
+  const reset = () => {
+    persistServiceCharge(DEFAULT_SERVICE_CHARGE);
+    setSavedRate(DEFAULT_SERVICE_CHARGE);
+    setDraft(DEFAULT_SERVICE_CHARGE);
+  };
+
+  return (
+    <div style={{ padding: '32px', maxWidth: '720px', margin: '0 auto' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+        <div>
+          <h1 style={{ margin: 0, fontSize: '28px', fontWeight: 800, color: '#111827' }}>Service Charge</h1>
+          <p style={{ margin: '4px 0 0', color: '#6b7280' }}>
+            Manage the percentage applied to each service cost. Defaults to {DEFAULT_SERVICE_CHARGE}%.
+          </p>
+        </div>
+        <Link to="/admin" style={{ color: '#16a34a', fontWeight: 700, textDecoration: 'none' }}>
+          ← Back to dashboard
+        </Link>
+      </div>
+
+      <div style={{ background: 'white', border: '1px solid #e5e7eb', borderRadius: '12px', padding: '20px', boxShadow: '0 10px 30px rgba(0,0,0,0.04)' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+          <label style={{ display: 'flex', flexDirection: 'column', gap: '6px', color: '#111827', fontWeight: 700 }}>
+            Service charge percentage
+            <input
+              type="number"
+              min="0"
+              max="100"
+              value={draft}
+              onChange={(e) => setDraft(Number(e.target.value))}
+              style={{ padding: '12px', borderRadius: '10px', border: '1px solid #d1d5db', maxWidth: '160px' }}
+            />
+          </label>
+          <div style={{ color: '#6b7280', fontSize: '14px' }}>
+            Current saved rate: <strong>{savedRate}%</strong>. Values are clamped between 0% and 100%.
+          </div>
+          <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginTop: '8px' }}>
+            <button
+              onClick={save}
+              style={{ padding: '10px 14px', background: '#16a34a', color: 'white', border: 'none', borderRadius: '10px', fontWeight: 700 }}
+            >
+              Save service charge
+            </button>
+            <button
+              onClick={reset}
+              style={{ padding: '10px 14px', background: '#f3f4f6', color: '#111827', border: '1px solid #e5e7eb', borderRadius: '10px', fontWeight: 700 }}
+            >
+              Reset to default ({DEFAULT_SERVICE_CHARGE}%)
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
 export default function App() {
   const [token, setToken] = useState(localStorage.getItem('token'));
 
@@ -896,10 +1030,13 @@ export default function App() {
           path="/admin"
           element={(
             <ProtectedRoute>
-              <AdminDashboard />
+              <AdminLayout />
             </ProtectedRoute>
           )}
-        />
+          >
+          <Route index element={<AdminDashboard />} />
+          <Route path="service-charge" element={<ServiceChargeSettings />} />
+        </Route>
       </Routes>
     </BrowserRouter>
   );

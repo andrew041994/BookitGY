@@ -174,3 +174,380 @@ index f22eec15fc72ae3832b2a98ce1430dd5a351b606..7b3b7fde3a9691831c383dbb7b487bce
  
    const updateSingleChargeStatus = (chargeId, paidState) => {
      setCharges((prev) => prev.map((c) => (c.id === chargeId ? { ...c, isPaid: paidState } : c)));
+diff --git a/frontend/src/App.jsx b/frontend/src/App.jsx
+index f22eec15fc72ae3832b2a98ce1430dd5a351b606..fa7055bb975da222024e8705ea848edec084b9d5 100644
+--- a/frontend/src/App.jsx
++++ b/frontend/src/App.jsx
+@@ -1,31 +1,32 @@
+ import React, { useEffect, useMemo, useState } from 'react';
+-import { BrowserRouter, Routes, Route, Link, Navigate, useLocation, useNavigate } from 'react-router-dom';
++import { BrowserRouter, Routes, Route, Link, Navigate, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
+ import axios from 'axios';
+ 
+ const API = 'http://localhost:8000';
+ const DEFAULT_SERVICE_CHARGE = 10;
++const SERVICE_CHARGE_STORAGE_KEY = 'bookitgy.service_charge_rate';
+ 
+ const sampleProviders = [
+   {
+     id: 1,
+     name: 'Ariana De Freitas',
+     location: 'Georgetown',
+     lat: 6.8013,
+     long: -58.155,
+     outstanding: 32000,
+     credit: 5000,
+     isLocked: false,
+     lastActive: '2024-10-10',
+     totalBookings: 42,
+     cancellations: 3,
+     noShows: 1,
+     services: ['Makeup', 'Hair Styling'],
+   },
+   {
+     id: 2,
+     name: 'Jamall Adams',
+     location: 'East Bank',
+     lat: 6.7484,
+     long: -58.2439,
+     outstanding: 18000,
+     credit: 0,
+@@ -73,50 +74,63 @@ const sampleCharges = [
+   { id: 102, providerId: 1, month: '2024-09-01', amount: 15000, isPaid: true },
+   { id: 103, providerId: 2, month: '2024-10-01', amount: 9000, isPaid: false },
+   { id: 104, providerId: 3, month: '2024-10-01', amount: 22000, isPaid: false },
+   { id: 105, providerId: 4, month: '2024-10-01', amount: 12000, isPaid: true },
+ ];
+ 
+ const sampleBookings = [
+   { id: 1, providerId: 1, clientId: 10, status: 'completed', startTime: '2024-10-12T12:00:00Z' },
+   { id: 2, providerId: 1, clientId: 11, status: 'cancelled', startTime: '2024-10-12T15:00:00Z' },
+   { id: 3, providerId: 2, clientId: 12, status: 'completed', startTime: '2024-10-11T16:00:00Z' },
+   { id: 4, providerId: 2, clientId: 13, status: 'pending', startTime: '2024-10-10T10:00:00Z' },
+   { id: 5, providerId: 3, clientId: 14, status: 'no-show', startTime: '2024-10-01T10:00:00Z' },
+   { id: 6, providerId: 4, clientId: 10, status: 'completed', startTime: '2024-10-12T09:00:00Z' },
+   { id: 7, providerId: 4, clientId: 16, status: 'cancelled', startTime: '2024-09-15T09:00:00Z' },
+   { id: 8, providerId: 1, clientId: 15, status: 'completed', startTime: '2024-10-10T09:00:00Z' },
+ ];
+ 
+ const signupHistory = [
+   { month: 'Jun', providers: 10, clients: 54 },
+   { month: 'Jul', providers: 14, clients: 62 },
+   { month: 'Aug', providers: 21, clients: 70 },
+   { month: 'Sep', providers: 33, clients: 82 },
+   { month: 'Oct', providers: 40, clients: 95 },
+ ];
+ 
++const normalizeServiceCharge = (value) => Math.max(0, Math.min(100, Number(value) || 0));
++
++const loadStoredServiceCharge = () => {
++  const stored = localStorage.getItem(SERVICE_CHARGE_STORAGE_KEY);
++  if (stored === null) return null;
++
++  return normalizeServiceCharge(stored);
++};
++
++const persistServiceCharge = (rate) => {
++  localStorage.setItem(SERVICE_CHARGE_STORAGE_KEY, String(rate));
++};
++
+ function Login({ onLogin }) {
+   const [email, setEmail] = useState('admin@guyana.com');
+   const [password, setPassword] = useState('pass');
+   const navigate = useNavigate();
+ 
+   const login = async () => {
+     try {
+       const res = await axios.post(`${API}/auth/login`, new URLSearchParams({
+         username: email,
+         password: password,
+       }));
+       const token = res.data.access_token;
+       localStorage.setItem('token', token);
+       axios.defaults.headers.common.Authorization = `Bearer ${token}`;
+       onLogin?.(token);
+       navigate('/admin');
+     } catch {
+       alert('Wrong credentials');
+     }
+   };
+ 
+   return (
+     <div
+       style={{
+         minHeight: '100vh',
+@@ -470,62 +484,72 @@ function AdminDashboard() {
+       map[p.id] = p;
+     });
+     return map;
+   }, [providers]);
+ 
+   const topProviders = Object.entries(bookingCountsByProvider)
+     .sort((a, b) => b[1] - a[1])
+     .slice(0, 3)
+     .map(([providerId, count]) => ({
+       name: providerById[providerId]?.name || `Provider ${providerId}`,
+       bookings: count,
+     }));
+ 
+   const applyCredit = (providerId) => {
+     const creditValue = Number(creditInputs[providerId] || 0);
+     if (!creditValue) return;
+     setProviders((prev) =>
+       prev.map((p) =>
+         p.id === providerId ? { ...p, credit: p.credit + creditValue, outstanding: Math.max(0, p.outstanding - creditValue) } : p,
+       ),
+     );
+     setCreditInputs((prev) => ({ ...prev, [providerId]: '' }));
+   };
+ 
+   const recalculateChargesForRate = (rate) => {
+-    const safeRate = Math.max(0, Math.min(100, Number(rate) || 0));
++    const safeRate = normalizeServiceCharge(rate);
+     setCharges((prev) => prev.map((c) => ({ ...c, amount: Math.round(c.baseServiceCost * (safeRate / 100)) })));
+     setServiceCharge(safeRate);
+     setServiceChargeDraft(safeRate);
+   };
+ 
++  useEffect(() => {
++    const storedRate = loadStoredServiceCharge();
++    if (storedRate !== null) {
++      recalculateChargesForRate(storedRate);
++    }
++  }, []);
++
+   const saveServiceCharge = () => {
+-    recalculateChargesForRate(serviceChargeDraft);
++    const safeRate = normalizeServiceCharge(serviceChargeDraft);
++    persistServiceCharge(safeRate);
++    recalculateChargesForRate(safeRate);
+   };
+ 
+   const resetServiceCharge = () => {
+     recalculateChargesForRate(DEFAULT_SERVICE_CHARGE);
++    localStorage.removeItem(SERVICE_CHARGE_STORAGE_KEY);
+   };
+ 
+   const toggleLock = (providerId) => {
+     setProviders((prev) => prev.map((p) => (p.id === providerId ? { ...p, isLocked: !p.isLocked } : p)));
+   };
+ 
+   const toggleChargeSelection = (chargeId) => {
+     setSelectedChargeIds((prev) => (prev.includes(chargeId) ? prev.filter((id) => id !== chargeId) : [...prev, chargeId]));
+   };
+ 
+   const toggleAllChargesSelection = () => {
+     if (selectedChargeIds.length === charges.length) {
+       setSelectedChargeIds([]);
+     } else {
+       setSelectedChargeIds(charges.map((c) => c.id));
+     }
+   };
+ 
+   const setChargesPaidState = (paidState) => {
+     setCharges((prev) => prev.map((c) => (selectedChargeIds.includes(c.id) ? { ...c, isPaid: paidState } : c)));
+     setSelectedChargeIds([]);
+   };
+ 
+   const updateSingleChargeStatus = (chargeId, paidState) => {
+     setCharges((prev) => prev.map((c) => (c.id === chargeId ? { ...c, isPaid: paidState } : c)));
+@@ -822,61 +846,197 @@ function AdminDashboard() {
+               <li>East Bank showing search results with no barbers on weekdays.</li>
+             </ul>
+           </div>
+           <div>
+             <h4 style={{ marginTop: 0 }}>Financial Health</h4>
+             <ul style={{ paddingLeft: '16px', color: '#111827' }}>
+               <li>Revenue per provider trending at GYD 12,500 monthly average.</li>
+               <li>Credit balances outstanding: GYD {(providers.reduce((acc, p) => acc + p.credit, 0)).toLocaleString()}.</li>
+               <li>Failed subscription payments: 1 in the last 30 days.</li>
+               <li>Referral payouts pending: GYD 8,000.</li>
+             </ul>
+           </div>
+         </div>
+       </ReportSection>
+ 
+       <ReportSection title="Provider Map">
+         <div style={{ height: '420px', borderRadius: '12px', overflow: 'hidden', border: '1px solid #e5e7eb', background: '#f3f4f6' }}>
+           <div id="provider-map" style={{ height: '100%', width: '100%' }}></div>
+         </div>
+         {loadingProviders && <div style={{ marginTop: '8px', color: '#6b7280' }}>Loading provider pins…</div>}
+       </ReportSection>
+     </div>
+   );
+ }
+ 
++function AdminLayout() {
++  return (
++    <div style={{ display: 'grid', gridTemplateColumns: '260px 1fr', minHeight: '100vh', background: '#e5e7eb' }}>
++      <aside
++        style={{
++          background: '#111827',
++          color: '#f9fafb',
++          padding: '24px 18px',
++          display: 'flex',
++          flexDirection: 'column',
++          gap: '16px',
++          boxShadow: '4px 0 16px rgba(0,0,0,0.15)',
++        }}
++      >
++        <div style={{ fontWeight: 800, fontSize: '20px', letterSpacing: '0.02em' }}>Admin Panel</div>
++        <nav style={{ display: 'grid', gap: '8px' }}>
++          <NavLink
++            to="/admin"
++            end
++            style={({ isActive }) => ({
++              display: 'flex',
++              flexDirection: 'column',
++              gap: '2px',
++              padding: '12px',
++              borderRadius: '10px',
++              textDecoration: 'none',
++              color: 'inherit',
++              background: isActive ? '#0ea5e9' : 'rgba(255,255,255,0.04)',
++              border: isActive ? '1px solid rgba(255,255,255,0.35)' : '1px solid rgba(255,255,255,0.08)',
++              fontWeight: 700,
++            })}
++          >
++            <span>Dashboard</span>
++            <span style={{ fontSize: '12px', color: 'rgba(255,255,255,0.8)', fontWeight: 500 }}>Overview</span>
++          </NavLink>
++          <NavLink
++            to="/admin/service-charge"
++            style={({ isActive }) => ({
++              display: 'flex',
++              flexDirection: 'column',
++              gap: '2px',
++              padding: '12px',
++              borderRadius: '10px',
++              textDecoration: 'none',
++              color: 'inherit',
++              background: isActive ? '#16a34a' : 'rgba(255,255,255,0.04)',
++              border: isActive ? '1px solid rgba(255,255,255,0.35)' : '1px solid rgba(255,255,255,0.08)',
++              fontWeight: 700,
++            })}
++          >
++            <span>Service Charge</span>
++            <span style={{ fontSize: '12px', color: 'rgba(255,255,255,0.8)', fontWeight: 500 }}>Adjust admin fee</span>
++          </NavLink>
++        </nav>
++        <div style={{ marginTop: 'auto', fontSize: '12px', color: 'rgba(255,255,255,0.7)' }}>
++          Billing settings persist between sessions.
++        </div>
++      </aside>
++      <main style={{ minHeight: '100vh', background: '#f9fafb' }}>
++        <Outlet />
++      </main>
++    </div>
++  );
++}
++
++function ServiceChargeSettings() {
++  const [draft, setDraft] = useState(() => loadStoredServiceCharge() ?? DEFAULT_SERVICE_CHARGE);
++  const [savedRate, setSavedRate] = useState(() => loadStoredServiceCharge() ?? DEFAULT_SERVICE_CHARGE);
++
++  const save = () => {
++    const normalized = normalizeServiceCharge(draft);
++    persistServiceCharge(normalized);
++    setSavedRate(normalized);
++    setDraft(normalized);
++    alert(`Service charge saved at ${normalized}%`);
++  };
++
++  const reset = () => {
++    persistServiceCharge(DEFAULT_SERVICE_CHARGE);
++    setSavedRate(DEFAULT_SERVICE_CHARGE);
++    setDraft(DEFAULT_SERVICE_CHARGE);
++  };
++
++  return (
++    <div style={{ padding: '32px', maxWidth: '720px', margin: '0 auto' }}>
++      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
++        <div>
++          <h1 style={{ margin: 0, fontSize: '28px', fontWeight: 800, color: '#111827' }}>Service Charge</h1>
++          <p style={{ margin: '4px 0 0', color: '#6b7280' }}>
++            Manage the percentage applied to each service cost. Defaults to {DEFAULT_SERVICE_CHARGE}%.
++          </p>
++        </div>
++        <Link to="/admin" style={{ color: '#16a34a', fontWeight: 700, textDecoration: 'none' }}>
++          ← Back to dashboard
++        </Link>
++      </div>
++
++      <div style={{ background: 'white', border: '1px solid #e5e7eb', borderRadius: '12px', padding: '20px', boxShadow: '0 10px 30px rgba(0,0,0,0.04)' }}>
++        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
++          <label style={{ display: 'flex', flexDirection: 'column', gap: '6px', color: '#111827', fontWeight: 700 }}>
++            Service charge percentage
++            <input
++              type="number"
++              min="0"
++              max="100"
++              value={draft}
++              onChange={(e) => setDraft(Number(e.target.value))}
++              style={{ padding: '12px', borderRadius: '10px', border: '1px solid #d1d5db', maxWidth: '160px' }}
++            />
++          </label>
++          <div style={{ color: '#6b7280', fontSize: '14px' }}>
++            Current saved rate: <strong>{savedRate}%</strong>. Values are clamped between 0% and 100%.
++          </div>
++          <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginTop: '8px' }}>
++            <button
++              onClick={save}
++              style={{ padding: '10px 14px', background: '#16a34a', color: 'white', border: 'none', borderRadius: '10px', fontWeight: 700 }}
++            >
++              Save service charge
++            </button>
++            <button
++              onClick={reset}
++              style={{ padding: '10px 14px', background: '#f3f4f6', color: '#111827', border: '1px solid #e5e7eb', borderRadius: '10px', fontWeight: 700 }}
++            >
++              Reset to default ({DEFAULT_SERVICE_CHARGE}%)
++            </button>
++          </div>
++        </div>
++      </div>
++    </div>
++  );
++}
++
+ export default function App() {
+   const [token, setToken] = useState(localStorage.getItem('token'));
+ 
+   useEffect(() => {
+     if (token) {
+       axios.defaults.headers.common.Authorization = `Bearer ${token}`;
+     } else {
+       delete axios.defaults.headers.common.Authorization;
+     }
+   }, [token]);
+ 
+   const ProtectedRoute = ({ children }) => {
+     const location = useLocation();
+     if (!token) {
+       return <Navigate to="/login" replace state={{ from: location }} />;
+     }
+     return children;
+   };
+ 
+   return (
+     <BrowserRouter>
+       <Routes>
+         <Route path="/" element={<Home />} />
+         <Route path="/login" element={<Login onLogin={setToken} />} />
+         <Route
+           path="/admin"
+           element={(
+             <ProtectedRoute>
+-              <AdminDashboard />
++              <AdminLayout />
+             </ProtectedRoute>
+           )}
+-        />
++        >
++          <Route index element={<AdminDashboard />} />
++          <Route path="service-charge" element={<ServiceChargeSettings />} />
++        </Route>
+       </Routes>
+     </BrowserRouter>
+   );
+ }
