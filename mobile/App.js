@@ -35,6 +35,129 @@ const API = "https://cecila-opalescent-compulsorily.ngrok-free.dev";
     return `${API}${normalizedPath}`;
   };
 
+  const FAVORITES_STORAGE_KEY = "favoriteProviders";
+
+const getProviderId = (provider) =>
+  provider?.provider_id ?? provider?.id ?? provider?._id ?? null;
+
+function useFavoriteProviders() {
+  const [favoriteIds, setFavoriteIds] = useState([]);
+  const [favoriteProviders, setFavoriteProviders] = useState([]);
+  const [favoritesLoading, setFavoritesLoading] = useState(true);
+
+  const persistIds = useCallback(async (ids) => {
+    try {
+      await AsyncStorage.setItem(FAVORITES_STORAGE_KEY, JSON.stringify(ids));
+    } catch (err) {
+      console.log("Error saving favorites", err?.message || err);
+    }
+  }, []);
+
+  const loadFavoritesFromStorage = useCallback(async () => {
+    try {
+      const raw = await AsyncStorage.getItem(FAVORITES_STORAGE_KEY);
+      const parsed = raw ? JSON.parse(raw) : [];
+      setFavoriteIds(Array.isArray(parsed) ? parsed : []);
+    } catch (err) {
+      console.log("Error reading favorites", err?.message || err);
+      setFavoriteIds([]);
+    } finally {
+      setFavoritesLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadFavoritesFromStorage();
+  }, [loadFavoritesFromStorage]);
+
+  const syncFavoritesFromList = useCallback(
+    (list) => {
+      if (!Array.isArray(list)) return;
+
+      setFavoriteProviders((prev) => {
+        const idSet = new Set(favoriteIds);
+        const merged = list.filter((p) => idSet.has(getProviderId(p)));
+
+        const prevMap = new Map(
+          prev.map((p) => [getProviderId(p), p]).filter(([id]) => idSet.has(id))
+        );
+
+        merged.forEach((p) => {
+          const id = getProviderId(p);
+          if (id) prevMap.set(id, p);
+        });
+
+        return Array.from(prevMap.values());
+      });
+    },
+    [favoriteIds]
+  );
+
+  const refreshFavoriteProviders = useCallback(async () => {
+    if (!favoriteIds.length) {
+      setFavoriteProviders([]);
+      return;
+    }
+
+    try {
+      const res = await axios.get(`${API}/providers`);
+      const list = Array.isArray(res.data)
+        ? res.data
+        : res.data?.providers || [];
+
+      const idSet = new Set(favoriteIds);
+      setFavoriteProviders(list.filter((p) => idSet.has(getProviderId(p))));
+    } catch (err) {
+      console.log(
+        "Error refreshing favorite providers",
+        err?.response?.data || err?.message
+      );
+    }
+  }, [favoriteIds]);
+
+  const toggleFavorite = useCallback(
+    (provider) => {
+      const id = getProviderId(provider);
+      if (!id) return;
+
+      setFavoriteIds((prev) => {
+        const already = prev.includes(id);
+        const next = already ? prev.filter((x) => x !== id) : [...prev, id];
+        persistIds(next);
+        return next;
+      });
+
+      setFavoriteProviders((prev) => {
+        const exists = prev.some((p) => getProviderId(p) === id);
+        if (exists) {
+          return prev.filter((p) => getProviderId(p) !== id);
+        }
+        return [...prev, provider];
+      });
+    },
+    [persistIds]
+  );
+
+  const isFavorite = useCallback(
+    (provider) => {
+      const id = typeof provider === "object" ? getProviderId(provider) : provider;
+      return favoriteIds.includes(id);
+    },
+    [favoriteIds]
+  );
+
+  return {
+    favoriteIds,
+    favoriteProviders,
+    favoritesLoading,
+    toggleFavorite,
+    isFavorite,
+    syncFavoritesFromList,
+    refreshFavoriteProviders,
+  };
+}
+
+
 // ✅ add this block:
 let MapView;
 let Marker;
@@ -1122,7 +1245,16 @@ function ProfileScreen({ setToken, showFlash, token }) {
 
 
 
-function ClientHomeScreen({ navigation }) {
+function ClientHomeScreen({
+  navigation,
+  favoriteProviders,
+  favoriteIds,
+  favoritesLoading,
+  toggleFavorite,
+  isFavorite,
+  syncFavoritesFromList,
+  refreshFavoriteProviders,
+  }) {
  const [nearbyProviders, setNearbyProviders] = useState([]);
   const [currentProvider, setCurrentProvider] = useState(null);
   const [nearbyLoading, setNearbyLoading] = useState(true);
@@ -1193,6 +1325,7 @@ function ClientHomeScreen({ navigation }) {
         if (!cancelled) {
           setNearbyProviders(withinRadius);
           setCurrentProvider(withinRadius[0] || null);
+          syncFavoritesFromList(withinRadius);
         }
       } catch (err) {
         console.log(
@@ -1235,6 +1368,10 @@ function ClientHomeScreen({ navigation }) {
     if (!provider) return;
     navigation.navigate("Search", { provider });
   };
+
+  useEffect(() => {
+    refreshFavoriteProviders();
+  }, [refreshFavoriteProviders]);
 
   return (
       <SafeAreaView style={{ flex: 1, backgroundColor: "#EFFFF3" }}>
@@ -1314,15 +1451,34 @@ function ClientHomeScreen({ navigation }) {
                   provider.avatar_url || provider.profile_photo_url
                 );
                 const servicesLabel = (provider.services || []).join(" · ");
+                const saved = isFavorite(provider);
+                const providerId = getProviderId(provider) || provider.name;
 
                 return (
                   <TouchableOpacity
-                    key={provider.id || provider.name}
+                    // key={provider.id || provider.name}
+                    key={providerId}
                     style={styles.providerCard}
                     activeOpacity={0.9}
                     onPress={() => handleProviderPress(provider)}
                   >
                 <View style={styles.cardImageWrapper}>
+                  <TouchableOpacity
+                    style={styles.cardHeartButton}
+                    onPress={(e) => {
+                      e.stopPropagation?.();
+                      toggleFavorite(provider);
+                    }}
+                    accessibilityLabel={
+                      saved ? "Remove from favorites" : "Save to favorites"
+                    }
+                  >
+                    <Ionicons
+                      name={saved ? "heart" : "heart-outline"}
+                      size={20}
+                      color={saved ? "#dc2626" : "#111827"}
+                    />
+                  </TouchableOpacity>
                   <View
                     style={{
                       width: 72,
@@ -1419,6 +1575,165 @@ function ClientHomeScreen({ navigation }) {
             <Text style={styles.carouselActiveLabel} numberOfLines={1}>
               Viewing: {currentProvider.name}
             </Text>
+          ) : null}
+        </View>
+
+
+        <View style={[styles.card, styles.homeCard, { marginTop: 16 }]}>
+          <View style={styles.carouselHeader}>
+            <View>
+              <Text style={styles.sectionTitle}>Favorite Providers</Text>
+              <Text style={styles.serviceMeta}>
+                Tap the heart on any provider to save them here
+              </Text>
+            </View>
+
+            {favoriteProviders.length ? (
+              <View style={styles.carouselBadge}>
+                <Text style={styles.carouselBadgeText}>
+                  {favoriteProviders.length}
+                </Text>
+              </View>
+            ) : null}
+          </View>
+
+          {favoritesLoading ? (
+            <View style={{ paddingVertical: 12 }}>
+              <ActivityIndicator />
+              <Text style={styles.serviceMeta}>Loading your favorites…</Text>
+            </View>
+          ) : null}
+
+          {!favoritesLoading && favoriteIds.length === 0 ? (
+            <Text style={styles.serviceHint}>
+              Tap the heart on a provider to keep them here for quick access.
+            </Text>
+          ) : null}
+
+          {!favoritesLoading &&
+            favoriteIds.length > 0 &&
+            favoriteProviders.length === 0 ? (
+              <Text style={styles.serviceHint}>
+                We couldn't load your saved providers. Try again soon.
+              </Text>
+            ) : null}
+
+          {favoriteProviders.length > 0 ? (
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.carouselList}
+            >
+              {favoriteProviders.map((provider) => {
+                const avatar = resolveImageUrl(
+                  provider.avatar_url || provider.profile_photo_url
+                );
+                const servicesLabel = (provider.services || []).join(" · ");
+                const saved = isFavorite(provider);
+                const providerId = getProviderId(provider) || provider.name;
+
+                return (
+                  <TouchableOpacity
+                    key={providerId}
+                    style={styles.providerCard}
+                    activeOpacity={0.9}
+                    onPress={() => handleProviderPress(provider)}
+                  >
+                    <View style={styles.cardImageWrapper}>
+                      <TouchableOpacity
+                        style={styles.cardHeartButton}
+                        onPress={(e) => {
+                          e.stopPropagation?.();
+                          toggleFavorite(provider);
+                        }}
+                        accessibilityLabel={
+                          saved
+                            ? "Remove from favorites"
+                            : "Save to favorites"
+                        }
+                      >
+                        <Ionicons
+                          name={saved ? "heart" : "heart-outline"}
+                          size={20}
+                          color={saved ? "#dc2626" : "#111827"}
+                        />
+                      </TouchableOpacity>
+
+                      <View
+                        style={{
+                          width: 72,
+                          height: 72,
+                          borderRadius: 36,
+                          overflow: "hidden",
+                          backgroundColor: "#e5e7eb",
+                          position: "absolute",
+                          top: 12,
+                          left: 12,
+                          zIndex: 10,
+                        }}
+                      >
+                        {avatar ? (
+                          <Image
+                            source={{ uri: avatar }}
+                            style={{ width: "100%", height: "100%" }}
+                            resizeMode="cover"
+                          />
+                        ) : (
+                          <View
+                            style={{
+                              flex: 1,
+                              alignItems: "center",
+                              justifyContent: "center",
+                              backgroundColor: "#16a34a",
+                            }}
+                          >
+                            <Ionicons name="person" size={32} color="#fff" />
+                          </View>
+                        )}
+                      </View>
+
+                      <View
+                        style={{
+                          width: "100%",
+                          height: "100%",
+                          backgroundColor: "#dcfce7",
+                        }}
+                      />
+                    </View>
+
+                    <View style={styles.cardBody}>
+                      <Text style={styles.cardTitle} numberOfLines={2}>
+                        {provider.name}
+                      </Text>
+
+                      {provider.location ? (
+                        <Text style={styles.cardMeta} numberOfLines={1}>
+                          {provider.location}
+                        </Text>
+                      ) : null}
+
+                      {provider.professions?.length ? (
+                        <Text style={styles.cardMeta} numberOfLines={1}>
+                          {provider.professions.join(", ")}
+                        </Text>
+                      ) : null}
+
+                      {servicesLabel ? (
+                        <Text style={styles.cardMeta} numberOfLines={2}>
+                          {servicesLabel}
+                        </Text>
+                      ) : null}
+
+                      {provider.bio ? (
+                        <Text style={styles.cardDescription} numberOfLines={2}>
+                          {provider.bio}
+                        </Text>
+                      ) : null}
+                    </View>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
           ) : null}
         </View>
       </ScrollView>
@@ -1764,7 +2079,15 @@ function AppointmentsScreen({ token, showFlash }) {
 
 
 
-function SearchScreen({ token, showFlash, navigation, route }) {
+function SearchScreen({
+  token,
+  showFlash,
+  navigation,
+  route,
+  toggleFavorite,
+  isFavorite,
+  syncFavoritesFromList,
+}) {
  
 
   const [filteredProviders, setFilteredProviders] = useState([]);
@@ -1817,8 +2140,6 @@ function SearchScreen({ token, showFlash, navigation, route }) {
     return R * c;
   };
 
-  const getProviderId = (provider) =>
-    provider?.provider_id ?? provider?.id ?? null;
 
   const handleSearchSubmit = () => {
     // when the user hits enter/search on the keyboard
@@ -1838,10 +2159,11 @@ function SearchScreen({ token, showFlash, navigation, route }) {
         // Always normalize the result to an array
         const list = Array.isArray(res.data)
           ? res.data
-          : res.data?.providers || [];
+          : res.data?.providers || [];         
 
         setProviders(list);
         setFilteredProviders(list);
+        syncFavoritesFromList(list);
       } catch (err) {
         console.log(
           "Error loading providers",
@@ -1856,7 +2178,7 @@ function SearchScreen({ token, showFlash, navigation, route }) {
 
     // actually run it on mount
     loadProviders();
-  }, []);
+  }, [syncFavoritesFromList]);
 
   useEffect(() => {
     const providerFromNav = route?.params?.provider;
@@ -2294,63 +2616,92 @@ function SearchScreen({ token, showFlash, navigation, route }) {
                           !providersError &&
                           hasSearched &&
                           filteredProviders.length > 0 &&
-                          filteredProviders.map((p) => (
-                          <TouchableOpacity
-                            key={getProviderId(p)}
-                            style={[
-                              styles.serviceRow,
-                              selectedProvider &&
-                                getProviderId(selectedProvider) === getProviderId(p) && {
-                                  backgroundColor: "#ecfdf3",
-                                },
-                            ]}
-                            onPress={() => handleSelectProvider(p)}
-                          >
-                            <View style={{ flexDirection: "row", alignItems: "center", flex: 1 }}>
-                              {/* Avatar (photo or initial) */}
-                              {p.avatar_url ? (
-                                <Image
-                                  source={{ uri: p.avatar_url }}
-                                  style={styles.providerAvatarSmall}
-                                />
-                              ) : (
-                                <View style={styles.providerAvatarSmallFallback}>
-                                  <Text style={styles.providerAvatarSmallInitial}>
-                                    {(p.name || "P").charAt(0).toUpperCase()}
-                                  </Text>
+                          filteredProviders.map((p) => {
+                            const avatar = resolveImageUrl(
+                              p.avatar_url || p.profile_photo_url
+                            );
+                            const favorite = isFavorite(p);
+                    return (
+                              <TouchableOpacity
+                                key={getProviderId(p) || p.name}
+                                style={[
+                                  styles.serviceRow,
+                                  selectedProvider &&
+                                    getProviderId(selectedProvider) === getProviderId(p) && {
+                                      backgroundColor: "#ecfdf3",
+                                    },
+                                ]}
+                                onPress={() => handleSelectProvider(p)}
+                              >
+                                <View
+                                  style={{
+                                    flexDirection: "row",
+                                    alignItems: "center",
+                                    flex: 1,
+                                  }}
+                                >
+                                  {/* Avatar (photo or initial) */}
+                                  {avatar ? (
+                                    <Image
+                                      source={{ uri: avatar }}
+                                      style={styles.providerAvatarSmall}
+                                    />
+                                  ) : (
+                                    <View style={styles.providerAvatarSmallFallback}>
+                                      <Text style={styles.providerAvatarSmallInitial}>
+                                        {(p.name || "P").charAt(0).toUpperCase()}
+                                      </Text>
+                                    </View>
+                                  )}
+
+                                  {/* Provider text info */}
+                                  <View style={{ flex: 1, paddingRight: 8 }}>
+                                    <Text style={styles.serviceName}>{p.name}</Text>
+
+                                    {p.location ? (
+                                      <Text style={styles.serviceMeta}>{p.location}</Text>
+                                    ) : null}
+
+                                    {(p.professions || []).length > 0 && (
+                                      <Text style={styles.serviceMeta}>
+                                        {p.professions.join(" · ")}
+                                      </Text>
+                                    )}
+
+                                    {typeof p.distance_km === "number" && clientLocation && (
+                                      <Text style={styles.serviceMeta}>
+                                        {p.distance_km.toFixed(1)} km away
+                                      </Text>
+                                    )}
+
+                                    {p.bio ? (
+                                      <Text numberOfLines={2} style={styles.serviceMeta}>
+                                        {p.bio}
+                                      </Text>
+                                    ) : null}
+                                  </View>
                                 </View>
-                              )}
-
-                              {/* Provider text info */}
-                              <View style={{ flex: 1, paddingRight: 8 }}>
-                                <Text style={styles.serviceName}>{p.name}</Text>
-
-                                {p.location ? (
-                                  <Text style={styles.serviceMeta}>{p.location}</Text>
-                                ) : null}
-
-                                {(p.professions || []).length > 0 && (
-                                  <Text style={styles.serviceMeta}>
-                                    {p.professions.join(" · ")}
-                                  </Text>
-                                )}
-
-                                {typeof p.distance_km === "number" && clientLocation && (
-                                  <Text style={styles.serviceMeta}>
-                                    {p.distance_km.toFixed(1)} km away
-                                  </Text>
-                                )}
-
-                                {p.bio ? (
-                                  <Text numberOfLines={2} style={styles.serviceMeta}>
-                                    {p.bio}
-                                  </Text>
-                                ) : null}
-                              </View>
-                            </View>
-                          </TouchableOpacity>
-                        ))}
-
+                                <TouchableOpacity
+                                  onPress={(e) => {
+                                    e.stopPropagation?.();
+                                    toggleFavorite(p);
+                                  }}
+                                  style={styles.favoriteToggleButton}
+                                  accessibilityLabel={
+                                    favorite
+                                      ? "Remove from favorites"
+                                      : "Save to favorites"
+                                  }
+                                >
+                                  <Ionicons
+                                    name={favorite ? "heart" : "heart-outline"}
+                                    size={20}
+                                    color={favorite ? "#dc2626" : "#111827"}
+                                  />
+                                </TouchableOpacity>
+                              </TouchableOpacity>
+                            );
+                          })}
                       </View>
 
 
@@ -4393,6 +4744,15 @@ const loadProviderSummary = async () => {
 
 // Tabs after login
 function MainApp({ token, setToken, showFlash }) {
+   const {
+    favoriteIds,
+    favoriteProviders,
+    favoritesLoading,
+    toggleFavorite,
+    isFavorite,
+    syncFavoritesFromList,
+    refreshFavoriteProviders,
+  } = useFavoriteProviders();
   return (
     <NavigationContainer>
       {token.isProvider ? (
@@ -4449,7 +4809,20 @@ function MainApp({ token, setToken, showFlash }) {
             })}
             initialRouteName="Home"
           >
-            <Tab.Screen name="Home" component={ClientHomeScreen} />
+            <Tab.Screen name="Home">
+              {({ navigation }) => (
+                <ClientHomeScreen
+                  navigation={navigation}
+                  favoriteProviders={favoriteProviders}
+                  favoriteIds={favoriteIds}
+                  favoritesLoading={favoritesLoading}
+                  toggleFavorite={toggleFavorite}
+                  isFavorite={isFavorite}
+                  syncFavoritesFromList={syncFavoritesFromList}
+                  refreshFavoriteProviders={refreshFavoriteProviders}
+                />
+              )}
+            </Tab.Screen>
             <Tab.Screen name="Search">
               {({ navigation, route }) => (
                 <SearchScreen
@@ -4457,6 +4830,9 @@ function MainApp({ token, setToken, showFlash }) {
                   showFlash={showFlash}
                   navigation={navigation}
                   route={route}
+                  toggleFavorite={toggleFavorite}
+                  isFavorite={isFavorite}
+                  syncFavoritesFromList={syncFavoritesFromList}
                 />
               )}
             </Tab.Screen>
@@ -4637,6 +5013,17 @@ const styles = StyleSheet.create({
     backgroundColor: "#dcfce7",
     position: "relative",
   },
+
+cardHeartButton: {
+    position: "absolute",
+    top: 10,
+    right: 10,
+    zIndex: 12,
+    backgroundColor: "rgba(255,255,255,0.9)",
+    borderRadius: 16,
+    padding: 6,
+  },
+
   cardImage: {
     width: "100%",
     height: "100%",
@@ -4951,6 +5338,15 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: "#f3f4f6",
   },
+
+favoriteToggleButton: {
+    padding: 8,
+    borderRadius: 999,
+    backgroundColor: "#e2e8f0",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
   serviceName: {
     fontSize: 15,
     fontWeight: "600",
