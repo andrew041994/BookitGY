@@ -135,6 +135,7 @@ def login(
         "user_id": user.id,
         "email": user.email,
         "is_provider": user.is_provider,
+        "is_admin": getattr(user, "is_admin", False),
     }
 
 
@@ -166,6 +167,7 @@ def login_by_email(
         "user_id": user.id,
         "email": user.email,
         "is_provider": user.is_provider,
+        "is_admin": getattr(user, "is_admin", False),
     }
 
 

@@ -135,6 +135,108 @@ function Login() {
   );
 }
 
+function AdminSignup() {
+  const [fullName, setFullName] = useState('Admin User');
+  const [email, setEmail] = useState('admin@guyana.com');
+  const [password, setPassword] = useState('changeMe123!');
+  const [phone, setPhone] = useState('+5926000000');
+  const [location, setLocation] = useState('Georgetown');
+  const [status, setStatus] = useState(null);
+
+  const signup = async () => {
+    setStatus(null);
+    try {
+      await axios.post(`${API}/auth/signup`, {
+        email,
+        password,
+        full_name: fullName,
+        phone,
+        location,
+        is_admin: true,
+      });
+      setStatus({ type: 'success', message: 'Admin account created! You can now log in.' });
+    } catch (err) {
+      const detail = err?.response?.data?.detail || 'Unable to create admin user';
+      setStatus({ type: 'error', message: detail });
+    }
+  };
+
+  return (
+    <div style={{ maxWidth: '480px', margin: '80px auto', padding: '20px', border: '1px solid #e5e7eb', borderRadius: '12px', background: 'white' }}>
+      <h1 style={{ color: '#16a34a', textAlign: 'center' }}>Create Admin Account</h1>
+      <p style={{ color: '#6b7280', textAlign: 'center' }}>
+        This will register an admin user who can access the dashboard and manage providers.
+      </p>
+      <label style={{ display: 'block', marginTop: '12px', fontWeight: 600 }}>Full name</label>
+      <input
+        value={fullName}
+        onChange={(e) => setFullName(e.target.value)}
+        placeholder="Full name"
+        style={{ display: 'block', width: '100%', padding: '10px', borderRadius: '10px', border: '1px solid #d1d5db' }}
+      />
+
+      <label style={{ display: 'block', marginTop: '12px', fontWeight: 600 }}>Email</label>
+      <input
+        type="email"
+        value={email}
+        onChange={(e) => setEmail(e.target.value)}
+        placeholder="Email"
+        style={{ display: 'block', width: '100%', padding: '10px', borderRadius: '10px', border: '1px solid #d1d5db' }}
+      />
+
+      <label style={{ display: 'block', marginTop: '12px', fontWeight: 600 }}>Password</label>
+      <input
+        type="password"
+        value={password}
+        onChange={(e) => setPassword(e.target.value)}
+        placeholder="Password"
+        style={{ display: 'block', width: '100%', padding: '10px', borderRadius: '10px', border: '1px solid #d1d5db' }}
+      />
+
+      <label style={{ display: 'block', marginTop: '12px', fontWeight: 600 }}>Phone</label>
+      <input
+        value={phone}
+        onChange={(e) => setPhone(e.target.value)}
+        placeholder="Phone number"
+        style={{ display: 'block', width: '100%', padding: '10px', borderRadius: '10px', border: '1px solid #d1d5db' }}
+      />
+
+      <label style={{ display: 'block', marginTop: '12px', fontWeight: 600 }}>Location</label>
+      <input
+        value={location}
+        onChange={(e) => setLocation(e.target.value)}
+        placeholder="Location"
+        style={{ display: 'block', width: '100%', padding: '10px', borderRadius: '10px', border: '1px solid #d1d5db' }}
+      />
+
+      <button
+        onClick={signup}
+        style={{ width: '100%', marginTop: '18px', padding: '12px', background: '#16a34a', color: 'white', border: 'none', borderRadius: '10px', fontWeight: 700 }}
+      >
+        Create Admin
+      </button>
+
+      {status && (
+        <div
+          style={{
+            marginTop: '12px',
+            padding: '10px',
+            borderRadius: '10px',
+            color: status.type === 'success' ? '#166534' : '#991b1b',
+            background: status.type === 'success' ? '#dcfce7' : '#fee2e2',
+          }}
+        >
+          {status.message}
+        </div>
+      )}
+
+      <div style={{ marginTop: '14px', textAlign: 'center' }}>
+        <Link to="/login" style={{ color: '#16a34a', fontWeight: 600 }}>Back to login</Link>
+      </div>
+    </div>
+  );
+}
+
 function Home() {
   return (
     <div style={{ textAlign: 'center', marginTop: '100px' }}>
@@ -143,6 +245,11 @@ function Home() {
       <div style={{ marginTop: '20px' }}>
         <Link to="/admin" style={{ color: '#16a34a', fontWeight: 'bold' }}>
           Go to Admin Dashboard
+        </Link>
+      </div>
+      <div style={{ marginTop: '12px' }}>
+        <Link to="/admin/signup" style={{ color: '#16a34a', fontWeight: 'bold' }}>
+          Create an Admin Account
         </Link>
       </div>
     </div>
@@ -663,6 +770,7 @@ export default function App() {
       <Routes>
         <Route path="/" element={<Home />} />
         <Route path="/login" element={<Login />} />
+        <Route path="/admin/signup" element={<AdminSignup />} />
         <Route path="/admin" element={<AdminDashboard />} />
       </Routes>
     </BrowserRouter>
