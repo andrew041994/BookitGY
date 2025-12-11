@@ -123,3 +123,10 @@ class ProviderCatalogImage(Base):
     image_url = Column(String, nullable=False)
     caption = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class PlatformSetting(Base):
+    __tablename__ = "platform_settings"
+
+    id = Column(Integer, primary_key=True, index=True)
+    service_charge_percentage = Column(Float, default=10.0)

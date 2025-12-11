@@ -177,21 +177,69 @@ function App() {
   }
 
   const ServiceChargeSettings = () => {
-    const [draft, setDraft] = React.useState(() => loadStoredServiceCharge() ?? DEFAULT_SERVICE_CHARGE)
-    const [savedRate, setSavedRate] = React.useState(() => loadStoredServiceCharge() ?? DEFAULT_SERVICE_CHARGE)
+    const [draft, setDraft] = React.useState(DEFAULT_SERVICE_CHARGE)
+    const [savedRate, setSavedRate] = React.useState(DEFAULT_SERVICE_CHARGE)
+    const [loading, setLoading] = React.useState(false)
+    const [error, setError] = React.useState("")
 
-    const save = () => {
-      const normalized = normalizeServiceCharge(draft)
+    const applyRate = (rate) => {
+      const normalized = normalizeServiceCharge(rate)
       persistServiceCharge(normalized)
       setSavedRate(normalized)
       setDraft(normalized)
-      alert(`Service charge saved at ${normalized}%`)
+    }
+
+    React.useEffect(() => {
+      const fetchRate = async () => {
+        try {
+          setLoading(true)
+          setError("")
+          const res = await axios.get(`${API}/admin/service-charge`)
+          const rate =
+            res.data?.service_charge_percentage ??
+            res.data?.service_charge_percent ??
+            (res.data?.service_charge_rate ?? 0) * 100
+          applyRate(rate)
+        } catch (e) {
+          console.log("Falling back to cached service charge", e.message)
+          const storedRate = loadStoredServiceCharge()
+          if (storedRate !== null) {
+            applyRate(storedRate)
+          }
+          setError("Could not load the saved service charge. Showing last known rate.")
+        } finally {
+          setLoading(false)
+        }
+      }
+
+      fetchRate()
+    }, [])
+
+    const save = async () => {
+      const normalized = normalizeServiceCharge(draft)
+      try {
+        setLoading(true)
+        setError("")
+        const res = await axios.put(`${API}/admin/service-charge`, {
+          service_charge_percentage: normalized,
+        })
+        const rate =
+          res.data?.service_charge_percentage ??
+          res.data?.service_charge_percent ??
+          (res.data?.service_charge_rate ?? 0) * 100
+        applyRate(rate)
+        alert(`Service charge saved at ${rate}%`)
+      } catch (e) {
+        console.error("Failed to save service charge", e.message)
+        setError("Could not save the service charge. Please try again.")
+      } finally {
+        setLoading(false)
+      }
     }
 
     const reset = () => {
-      persistServiceCharge(DEFAULT_SERVICE_CHARGE)
-      setSavedRate(DEFAULT_SERVICE_CHARGE)
       setDraft(DEFAULT_SERVICE_CHARGE)
+      save()
     }
 
     return (
@@ -217,9 +265,11 @@ function App() {
               />
             </label>
           </div>
+          {error && <p className="form-error">{error}</p>}
           <p className="muted">Current saved rate: <strong>{savedRate}%</strong>. Values are clamped between 0% and 100%.</p>
+          {loading && <p className="muted">Loading latest service charge…</p>}
           <div className="button-row">
-            <button onClick={save} className="primary-btn">Save service charge</button>
+            <button onClick={save} className="primary-btn">{loading ? 'Saving…' : 'Save service charge'}</button>
             <button onClick={reset} className="ghost-btn">Reset to default ({DEFAULT_SERVICE_CHARGE}%)</button>
           </div>
         </div>

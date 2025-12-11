@@ -1,225 +1,160 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
-diff --git a/mobile/App.js b/mobile/App.js
-index e60cbb0491776c957c65dd708de6c7aa7b36bda9..955d5c91d7c2c74ea0f8cffb2a9aa568853eee92 100644
---- a/mobile/App.js
-+++ b/mobile/App.js
-@@ -2380,122 +2380,139 @@ function SearchScreen({
-       setProvidersError("Could not load providers.");
-       if (showFlash) showFlash("error", "Could not load providers.");
-       return [];
-     } finally {
-       setProvidersLoading(false);
-     }
-   }, [showFlash, syncFavoritesFromList]);
+diff --git a/frontend/src/main.jsx b/frontend/src/main.jsx
+index 5b29592cf64a31ae4015d322442744cba6eda798..72609164b731eb0e20a64ec9923c28cbbc13e90c 100644
+--- a/frontend/src/main.jsx
++++ b/frontend/src/main.jsx
+@@ -155,93 +155,143 @@ function App() {
+           <div>
+             <p className="eyebrow">Marketing</p>
+             <h1>Admin – Editable Promotions</h1>
+             <p className="header-subtitle">Grant bonus bookings to providers whenever you need.</p>
+           </div>
+         </div>
+         <div className="admin-card">
+           <div className="form-grid">
+             <label className="form-field">
+               <span>Provider ID</span>
+               <input value={providerId} onChange={e => setProviderId(e.target.value)} placeholder="Provider ID" />
+             </label>
+             <label className="form-field">
+               <span>Free bookings</span>
+               <input value={free} onChange={e => setFree(e.target.value)} placeholder="Free bookings" />
+             </label>
+           </div>
+           <button onClick={apply} className="primary-btn">Apply Promotion</button>
+           <p className="muted">Example: Give provider ID 1 → 50 free bookings anytime!</p>
+         </div>
+       </div>
+     )
+   }
  
-   // Load providers on mount
-   useEffect(() => {
-     loadProviders();
-   }, [loadProviders]);
+   const ServiceChargeSettings = () => {
+-    const [draft, setDraft] = React.useState(() => loadStoredServiceCharge() ?? DEFAULT_SERVICE_CHARGE)
+-    const [savedRate, setSavedRate] = React.useState(() => loadStoredServiceCharge() ?? DEFAULT_SERVICE_CHARGE)
++    const [draft, setDraft] = React.useState(DEFAULT_SERVICE_CHARGE)
++    const [savedRate, setSavedRate] = React.useState(DEFAULT_SERVICE_CHARGE)
++    const [loading, setLoading] = React.useState(false)
++    const [error, setError] = React.useState("")
  
-   useEffect(() => {
-     const providerFromNav = route?.params?.provider;
-     if (!providerFromNav) return;
- 
-     const incomingId = getProviderId(providerFromNav);
-     const currentId = getProviderId(selectedProvider);
-     if (incomingId && incomingId === currentId) return;
- 
-     setSearchQuery(providerFromNav.name || "");
-     setHasSearched(true);
-     setFilteredProviders([providerFromNav]);
-     handleSelectProvider(providerFromNav);
--  }, [route?.params?.provider, selectedProvider]);
-+  }, [route?.params?.provider, selectedProvider, handleSelectProvider]);
- 
--
--
--//Add a useEffect that recomputes filteredProviders 
--// whenever providers/search/radius/location changes:
-+  // Add a useEffect that recomputes filteredProviders
-+  // whenever providers/search/radius/location changes:
-   useEffect(() => {
-     // 👇 do nothing until the user actually searches or if the query is empty
-     const trimmedQuery = searchQuery.trim();
-     if (!hasSearched || !trimmedQuery) {
-       setFilteredProviders([]);
-       return;
-     }
- 
-     const q = trimmedQuery.toLowerCase();
- 
-     const providerList = Array.isArray(providers) ? providers : [];
--      let list = providerList.map((p) => {
--            let distance_km = null;
--          if (clientLocation && p.lat != null && p.long != null) {
--            distance_km = haversineKm(
--              clientLocation.lat,
--              clientLocation.long,
--              p.lat,
--              p.long
--            );
--          }
--          return { ...p, distance_km };
--        });
-+    const providerFromNav = route?.params?.provider;
-+    const navProviderId = getProviderId(providerFromNav);
-+    const navProviderName = (providerFromNav?.name || "").trim().toLowerCase();
-+
-+    // If we navigated in with a specific provider, keep the results scoped
-+    // to that provider ID so namesakes don't appear.
-+    if (
-+      navProviderId &&
-+      navProviderName &&
-+      trimmedQuery.toLowerCase() === navProviderName
-+    ) {
-+      const exactMatch = providerList.find(
-+        (p) => getProviderId(p) === navProviderId
-+      );
-+
-+      setFilteredProviders([exactMatch || providerFromNav]);
-+      return;
+-    const save = () => {
+-      const normalized = normalizeServiceCharge(draft)
++    const applyRate = (rate) => {
++      const normalized = normalizeServiceCharge(rate)
+       persistServiceCharge(normalized)
+       setSavedRate(normalized)
+       setDraft(normalized)
+-      alert(`Service charge saved at ${normalized}%`)
 +    }
 +
-+    let list = providerList.map((p) => {
-+      let distance_km = null;
-+      if (clientLocation && p.lat != null && p.long != null) {
-+        distance_km = haversineKm(
-+          clientLocation.lat,
-+          clientLocation.long,
-+          p.lat,
-+          p.long
-+        );
++    React.useEffect(() => {
++      const fetchRate = async () => {
++        try {
++          setLoading(true)
++          setError("")
++          const res = await axios.get(`${API}/admin/service-charge`)
++          const rate =
++            res.data?.service_charge_percentage ??
++            res.data?.service_charge_percent ??
++            (res.data?.service_charge_rate ?? 0) * 100
++          applyRate(rate)
++        } catch (e) {
++          console.log("Falling back to cached service charge", e.message)
++          const storedRate = loadStoredServiceCharge()
++          if (storedRate !== null) {
++            applyRate(storedRate)
++          }
++          setError("Could not load the saved service charge. Showing last known rate.")
++        } finally {
++          setLoading(false)
++        }
 +      }
-+      return { ...p, distance_km };
-+    });
- 
-     // text filter (profession/name/location)
-     if (q) {
-       list = list.filter((p) => {
-         const name = (p.name || "").toLowerCase();
-         const location = (p.location || "").toLowerCase();
-         const professions = (p.professions || []).map((pr) =>
-           (pr || "").toLowerCase()
-         );
- 
-         return (
-           professions.some((pr) => pr.includes(q)) ||
-           name.includes(q) ||
-           location.includes(q)
-         );
-       });
++
++      fetchRate()
++    }, [])
++
++    const save = async () => {
++      const normalized = normalizeServiceCharge(draft)
++      try {
++        setLoading(true)
++        setError("")
++        const res = await axios.put(`${API}/admin/service-charge`, {
++          service_charge_percentage: normalized,
++        })
++        const rate =
++          res.data?.service_charge_percentage ??
++          res.data?.service_charge_percent ??
++          (res.data?.service_charge_rate ?? 0) * 100
++        applyRate(rate)
++        alert(`Service charge saved at ${rate}%`)
++      } catch (e) {
++        console.error("Failed to save service charge", e.message)
++        setError("Could not save the service charge. Please try again.")
++      } finally {
++        setLoading(false)
++      }
      }
  
-     // distance filter
-     if (radiusKm > 0) {
-       if (!clientLocation) {
-         setLocationError(
-           "Turn on location services to filter providers by distance."
-         );
-       } else {
-         setLocationError("");
-         list = list.filter(
-           (p) =>
-             typeof p.distance_km === "number" &&
-             p.distance_km <= radiusKm
-         );
-         list.sort((a, b) => {
-           const da = a.distance_km ?? 999999;
-           const db = b.distance_km ?? 999999;
-           return da - db;
-         });
-       }
-     } else {
-       setLocationError("");
+     const reset = () => {
+-      persistServiceCharge(DEFAULT_SERVICE_CHARGE)
+-      setSavedRate(DEFAULT_SERVICE_CHARGE)
+       setDraft(DEFAULT_SERVICE_CHARGE)
++      save()
      }
  
-     setFilteredProviders(list);
--  }, [providers, searchQuery, radiusKm, clientLocation, hasSearched]);
-+  }, [providers, searchQuery, radiusKm, clientLocation, hasSearched, route?.params?.provider]);
+     return (
+       <div className="admin-page">
+         <div className="admin-header">
+           <div>
+             <p className="eyebrow">Billing</p>
+             <h1>Service Charge</h1>
+             <p className="header-subtitle">Control the percentage fee applied to each service cost.</p>
+           </div>
+         </div>
  
+         <div className="admin-card">
+           <div className="form-grid single">
+             <label className="form-field">
+               <span>Service charge percentage</span>
+               <input
+                 type="number"
+                 min="0"
+                 max="100"
+                 value={draft}
+                 onChange={(e) => setDraft(Number(e.target.value))}
+               />
+             </label>
+           </div>
++          {error && <p className="form-error">{error}</p>}
+           <p className="muted">Current saved rate: <strong>{savedRate}%</strong>. Values are clamped between 0% and 100%.</p>
++          {loading && <p className="muted">Loading latest service charge…</p>}
+           <div className="button-row">
+-            <button onClick={save} className="primary-btn">Save service charge</button>
++            <button onClick={save} className="primary-btn">{loading ? 'Saving…' : 'Save service charge'}</button>
+             <button onClick={reset} className="ghost-btn">Reset to default ({DEFAULT_SERVICE_CHARGE}%)</button>
+           </div>
+         </div>
+       </div>
+     )
+   }
  
+   const Home = () => (
+     <div className="landing-shell">
+       <div className="landing-glow landing-glow-one" />
+       <div className="landing-glow landing-glow-two" />
+       <div className="landing-card">
+         <div className="logo-circle">
+           <img src="/bookitgy-logo.png" alt="BookitGY" />
+         </div>
+         <p className="eyebrow">Booking platform for Guyana</p>
+         <h1>BookitGY Admin</h1>
+         <p className="subtitle">
+           Modern tools for managing providers, bookings, and promotions—protected behind a secure login.
+         </p>
  
-   const ensureClientLocation = async () => {
-     try {
-       const { status } = await Location.requestForegroundPermissionsAsync();
-       if (status !== "granted") {
-         setLocationError(
-           "Location permission is required to filter by distance."
-         );
-         if (showFlash) {
-           showFlash(
-             "error",
-             "Please enable location permission to use distance filters."
-           );
-         }
-         return null;
-       }
- 
-       const loc = await Location.getCurrentPositionAsync({});
-       const coords = {
-         lat: loc.coords.latitude,
-         long: loc.coords.longitude,
-       };
-       setClientLocation(coords);
-@@ -5618,53 +5635,56 @@ const styles = StyleSheet.create({
-   carouselList: {
-     paddingVertical: 4,
-     paddingRight: 12,
-   },
- 
-   providerCard: {
-     width: 280,
-     borderRadius: 12,
-     backgroundColor: "#ffffff",
-     marginRight: 12,
-     overflow: "hidden",
-     borderWidth: 1,
-     borderColor: "#e5e7eb",
-   },
-   cardImageWrapper: {
-     height: 140,
-     backgroundColor: "#dcfce7",
-     position: "relative",
-   },
- 
- cardHeartButton: {
-     position: "absolute",
-     top: 10,
-     right: 10,
-     zIndex: 12,
-+    width: 36,
-+    height: 36,
-     backgroundColor: "rgba(255,255,255,0.9)",
--    borderRadius: 16,
--    padding: 6,
-+    borderRadius: 999,
-+    alignItems: "center",
-+    justifyContent: "center",
-   },
- 
-   cardImage: {
-     width: "100%",
-     height: "100%",
-   },
-   cardImageFallback: {
-     flex: 1,
-     alignItems: "center",
-     justifyContent: "center",
-     backgroundColor: "#16a34a",
-   },
-   cardBadge: {
-     position: "absolute",
-     bottom: 8,
-     left: 8,
-     backgroundColor: "#ecfdf3",
-     borderColor: "#bbf7d0",
-     borderWidth: 1,
-     borderRadius: 999,
-     paddingHorizontal: 10,
-     paddingVertical: 4,
-   },
-   cardBadgeText: {
-     color: "#166534",
+         <div className="landing-actions">
+           <Link className="primary-btn" to={token ? '/admin/promotions' : '/login'}>
+             {token ? 'Go to dashboard' : 'Login'}
+           </Link>
  
 EOF
 )

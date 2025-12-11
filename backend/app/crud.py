@@ -28,6 +28,7 @@ pwd_context = CryptContext(schemes=["pbkdf2_sha256"], deprecated="auto")
 
 
 EXPO_PUSH_URL = "https://exp.host/--/api/v2/push/send"
+DEFAULT_SERVICE_CHARGE_PERCENTAGE = Decimal("10.0")
 
 def validate_coordinates(lat: Optional[float], long: Optional[float]) -> None:
     if lat is not None:
@@ -557,6 +558,43 @@ def create_booking(
 # Billing
 # ---------------------------------------------------------------------------
 
+def _clamp_service_charge(percentage: float) -> Decimal:
+    """Normalize a service charge percentage to the 0-100 range as Decimal."""
+
+    pct = Decimal(str(percentage or 0))
+    pct = max(Decimal("0"), min(Decimal("100"), pct))
+    return pct
+
+
+def get_or_create_platform_settings(db: Session) -> models.PlatformSetting:
+    settings = db.query(models.PlatformSetting).first()
+    if not settings:
+        settings = models.PlatformSetting(
+            service_charge_percentage=float(DEFAULT_SERVICE_CHARGE_PERCENTAGE)
+        )
+        db.add(settings)
+        db.commit()
+        db.refresh(settings)
+    return settings
+
+
+def get_platform_service_charge_percentage(db: Session) -> Decimal:
+    settings = get_or_create_platform_settings(db)
+    pct = settings.service_charge_percentage
+    if pct is None:
+        return DEFAULT_SERVICE_CHARGE_PERCENTAGE
+    return _clamp_service_charge(pct)
+
+
+def update_platform_service_charge(db: Session, percentage: float) -> Decimal:
+    settings = get_or_create_platform_settings(db)
+    pct = _clamp_service_charge(percentage)
+    settings.service_charge_percentage = float(pct)
+    db.commit()
+    db.refresh(settings)
+    return pct
+
+
 def generate_monthly_bills(db: Session, month: date):
     """
     Generate or update bills for all providers for the given month.
@@ -603,8 +641,10 @@ def generate_monthly_bills(db: Session, month: date):
             or 0
         )
 
-        # 10% platform fee on completed bookings
-        fee = Decimal("0.1") * Decimal(str(total))
+        # Platform fee on completed bookings using admin-configured percentage
+        service_charge_pct = get_platform_service_charge_percentage(db)
+        fee_rate = service_charge_pct / Decimal("100")
+        fee = fee_rate * Decimal(str(total))
 
         # If there's nothing to bill and no existing bill, skip
         existing_bill = (

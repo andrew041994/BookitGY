@@ -13,6 +13,7 @@ from app.routes import users as users_routes
 from app.routes import providers as providers_routes
 from app.routes import bookings as bookings_routes
 from app.routes import profile as profile_routes
+from app.routes import admin as admin_routes
 from app.security import get_current_user_from_header
 from app.workers.cron import registerCronJobs
 from sqlalchemy.orm import Session
@@ -142,6 +143,7 @@ app.include_router(users_routes.router)
 app.include_router(providers_routes.router)
 app.include_router(bookings_routes.router)
 app.include_router(profile_routes.router)
+app.include_router(admin_routes.router)
 
 
 # -------------------------------------------------------------------

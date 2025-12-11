@@ -315,12 +315,15 @@ def get_my_provider_summary(
     db: Session = Depends(get_db),
     provider: models.Provider = Depends(_require_current_provider),
 ):
-    # Placeholder for fee logic
-    total_fees_due = 0
+    total_fees_due = crud.get_provider_fees_due(db, provider.id)
+    service_charge_pct = crud.get_platform_service_charge_percentage(db)
 
     return {
         "account_number": provider.account_number,
         "total_fees_due_gyd": float(total_fees_due or 0.0),
+        "service_charge_percentage": float(service_charge_pct),
+        "service_charge_percent": float(service_charge_pct),
+        "service_charge_rate": float(service_charge_pct) / 100,
     }
 
 

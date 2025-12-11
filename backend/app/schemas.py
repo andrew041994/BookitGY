@@ -236,6 +236,7 @@ class UserProfileUpdate(BaseModel):
 class ProviderSummary(BaseModel):
     account_number: str
     total_fees_due_gyd: float
+    service_charge_percentage: Optional[float] = None
 
 class TokenResponse(BaseModel):
     access_token: str
@@ -257,5 +258,13 @@ class ProviderCatalogImageOut(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class ServiceChargeUpdate(BaseModel):
+    service_charge_percentage: float
+
+
+class ServiceChargeOut(BaseModel):
+    service_charge_percentage: float
 
 
