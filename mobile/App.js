@@ -4741,6 +4741,277 @@ const loadProviderSummary = async () => {
   );
 }
 
+function ProviderBillingScreen({ token, showFlash }) {
+  const [billingSummary, setBillingSummary] = useState(null);
+  const [bills, setBills] = useState([]);
+  const [billingLoading, setBillingLoading] = useState(false);
+  const [billingError, setBillingError] = useState("");
+
+  const formatMoney = (value) => {
+    const amount = Number.isFinite(value) ? value : 0;
+    return `GYD ${Math.round(amount).toLocaleString()}`;
+  };
+
+  const formatDate = (value) => {
+    if (!value) return "-";
+    const dateObj = value instanceof Date ? value : new Date(value);
+    if (Number.isNaN(dateObj.getTime())) return "-";
+    return dateObj.toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    });
+  };
+
+  const normalizeStart = (booking) => {
+    const raw = booking?.start_time || booking?.start;
+    if (!raw) return null;
+    const dateObj = new Date(raw);
+    return Number.isNaN(dateObj.getTime()) ? null : dateObj;
+  };
+
+  const buildBills = useCallback((bookingList) => {
+    const now = new Date();
+    const statements = [];
+    const monthsToShow = 6;
+
+    for (let i = 0; i < monthsToShow; i += 1) {
+      const coverageStart = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const coverageEnd = new Date(now.getFullYear(), now.getMonth() - i + 1, 0);
+      const invoiceDate = new Date(
+        coverageStart.getFullYear(),
+        coverageStart.getMonth() + 1,
+        1
+      );
+
+      const monthBookings = bookingList.filter((booking) => {
+        const start = normalizeStart(booking);
+        if (!start) return false;
+        return start >= coverageStart && start <= coverageEnd;
+      });
+
+      const lineItems = monthBookings.length
+        ? monthBookings.map((booking) => ({
+            bookingId: booking.id || booking.booking_id,
+            description: booking.service_name || "Service booking",
+            client:
+              booking.client_name ||
+              booking.customer_name ||
+              booking.user_name ||
+              booking.client ||
+              booking.user,
+            date: normalizeStart(booking),
+            amount:
+              Number(booking.price_gyd ?? booking.total_price_gyd ?? booking.price) ||
+              0,
+          }))
+        : [
+            {
+              bookingId: `empty-${coverageStart.toISOString()}`,
+              description: "No completed bookings recorded",
+              client: "",
+              date: null,
+              amount: 0,
+            },
+          ];
+
+      const servicesTotal = lineItems.reduce(
+        (sum, item) => sum + (Number.isFinite(item.amount) ? item.amount : 0),
+        0
+      );
+
+      const platformFee = Math.max(Math.round(servicesTotal * 0.10), 0);
+      const totalDue = servicesTotal + platformFee;
+
+      statements.push({
+        id: `${coverageStart.getFullYear()}-${coverageStart.getMonth() + 1}`,
+        coverageStart,
+        coverageEnd,
+        invoiceDate,
+        status: invoiceDate <= now ? "Generated" : "Scheduled",
+        servicesTotal,
+        platformFee,
+        totalDue,
+        lineItems,
+      });
+    }
+
+    statements.sort((a, b) => b.invoiceDate - a.invoiceDate);
+    setBills(statements);
+  }, []);
+
+  const fetchBilling = useCallback(async () => {
+    try {
+      setBillingLoading(true);
+      setBillingError("");
+
+      const storedToken = await AsyncStorage.getItem("accessToken");
+      const authToken = token?.token || storedToken;
+
+      if (!authToken) {
+        setBillingError("No access token found. Please log in again.");
+        return;
+      }
+
+      const [bookingsRes, summaryRes] = await Promise.all([
+        axios.get(`${API}/providers/me/bookings`, {
+          headers: { Authorization: `Bearer ${authToken}` },
+        }),
+        axios
+          .get(`${API}/providers/me/summary`, {
+            headers: { Authorization: `Bearer ${authToken}` },
+          })
+          .catch(() => null),
+      ]);
+
+      const bookingList = Array.isArray(bookingsRes.data)
+        ? bookingsRes.data
+        : bookingsRes.data?.bookings || bookingsRes.data?.results || [];
+
+      setBillingSummary(summaryRes?.data || null);
+      buildBills(bookingList);
+    } catch (err) {
+      console.log("Error loading billing", err.response?.data || err.message);
+      setBillingError("Could not load billing statements.");
+      if (showFlash) {
+        showFlash("error", "Could not load billing statements.");
+      }
+    } finally {
+      setBillingLoading(false);
+    }
+  }, [buildBills, showFlash, token?.token]);
+
+  useEffect(() => {
+    fetchBilling();
+  }, [fetchBilling]);
+
+  useFocusEffect(
+    useCallback(() => {
+      fetchBilling();
+      return () => {};
+    }, [fetchBilling])
+  );
+
+  return (
+    <ScrollView contentContainerStyle={styles.providerBillingScroll}>
+      <Text style={styles.profileTitle}>Billing</Text>
+      <Text style={styles.subtitleSmall}>
+        Bills populate automatically on the 1st of each month with booking
+        details.
+      </Text>
+
+      {billingSummary && (
+        <View style={styles.providerSummaryCard}>
+          <Text style={styles.providerSummaryLabel}>Account number</Text>
+          <Text style={styles.providerSummaryValue}>
+            {billingSummary.account_number || "N/A"}
+          </Text>
+
+          <View style={{ height: 8 }} />
+
+          <Text style={styles.providerSummaryLabel}>Outstanding fees</Text>
+          <Text style={styles.providerSummaryValue}>
+            {formatMoney(billingSummary.total_fees_due_gyd)}
+          </Text>
+        </View>
+      )}
+
+      {billingLoading && (
+        <View style={styles.card}>
+          <ActivityIndicator />
+          <Text style={styles.serviceMeta}>Loading billing history…</Text>
+        </View>
+      )}
+
+      {billingError ? (
+        <View style={styles.card}>
+          <Text style={styles.errorText}>{billingError}</Text>
+        </View>
+      ) : null}
+
+      {!billingLoading && !billingError && bills.length === 0 && (
+        <View style={styles.card}>
+          <Text style={styles.serviceMeta}>No billing statements yet.</Text>
+        </View>
+      )}
+
+      {!billingLoading &&
+        !billingError &&
+        bills.map((bill) => (
+          <View key={bill.id} style={styles.billingCard}>
+            <View style={styles.billingHeaderRow}>
+              <View>
+                <Text style={styles.billingMonth}>
+                  {bill.coverageStart.toLocaleDateString("en-US", {
+                    month: "long",
+                    year: "numeric",
+                  })}
+                </Text>
+                <Text style={styles.billingMeta}>
+                  Coverage {formatDate(bill.coverageStart)} – {formatDate(bill.coverageEnd)}
+                </Text>
+              </View>
+
+              <Text
+                style={[
+                  styles.billingStatus,
+                  bill.status === "Generated"
+                    ? styles.billingStatusReady
+                    : styles.billingStatusUpcoming,
+                ]}
+              >
+                {bill.status}
+              </Text>
+            </View>
+
+            <Text style={styles.billingMeta}>
+              Invoice date (auto on the 1st): {formatDate(bill.invoiceDate)}
+            </Text>
+
+            <View style={styles.billingLineItems}>
+              {bill.lineItems.map((item) => (
+                <View
+                  key={item.bookingId || item.description}
+                  style={styles.billingLineItem}
+                >
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.billingLineLabel}>{item.description}</Text>
+                    {item.client ? (
+                      <Text style={styles.billingMeta}>Client: {item.client}</Text>
+                    ) : null}
+                    {item.date ? (
+                      <Text style={styles.billingMeta}>
+                        Service date: {formatDate(item.date)}
+                      </Text>
+                    ) : null}
+                  </View>
+                  <Text style={styles.billingAmount}>{formatMoney(item.amount)}</Text>
+                </View>
+              ))}
+            </View>
+
+            <View style={styles.billingTotalsRow}>
+              <Text style={styles.billingTotalsLabel}>Services total</Text>
+              <Text style={styles.billingTotalsValue}>
+                {formatMoney(bill.servicesTotal)}
+              </Text>
+            </View>
+            <View style={styles.billingTotalsRow}>
+              <Text style={styles.billingTotalsLabel}>Platform fee (5%)</Text>
+              <Text style={styles.billingTotalsValue}>
+                {formatMoney(bill.platformFee)}
+              </Text>
+            </View>
+            <View style={styles.billingTotalsRow}>
+              <Text style={styles.billingTotalsLabel}>Total due</Text>
+              <Text style={styles.billingTotalsValue}>{formatMoney(bill.totalDue)}</Text>
+            </View>
+          </View>
+        ))}
+    </ScrollView>
+  );
+}
+
 
 // Tabs after login
 function MainApp({ token, setToken, showFlash }) {
@@ -4756,13 +5027,49 @@ function MainApp({ token, setToken, showFlash }) {
   return (
     <NavigationContainer>
       {token.isProvider ? (
-        // 👇 Provider view: Dashboard + Profile
-        <Tab.Navigator initialRouteName="Dashboard">
+        // 👇 Provider view: Dashboard + Billing + Profile
+        <Tab.Navigator
+          initialRouteName="Dashboard"
+          screenOptions={({ route }) => ({
+            headerShown: false,
+            tabBarShowLabel: true,
+            tabBarActiveTintColor: "#0B6BF2",
+            tabBarInactiveTintColor: "#A1A1A1",
+            tabBarStyle: {
+              backgroundColor: "#FFFFFF",
+              height: 70,
+              paddingBottom: 25,
+              paddingTop: 8,
+              borderTopWidth: 0,
+              shadowColor: "#000",
+              shadowOpacity: 0.05,
+              shadowRadius: 8,
+              elevation: 4,
+              marginBottom: Platform.OS === "android" ? 8 : 0,
+            },
+            tabBarIcon: ({ color }) => {
+              let iconName = "home-outline";
+
+              if (route.name === "Dashboard") iconName = "speedometer-outline";
+              else if (route.name === "Billing") iconName = "card-outline";
+              else if (route.name === "Profile") iconName = "person-outline";
+
+              return <Ionicons name={iconName} size={24} color={color} />;
+            },
+          })}
+        >
           <Tab.Screen name="Dashboard">
             {() => (
               <ProviderDashboardScreen token={token} showFlash={showFlash} />
             )}
           </Tab.Screen>
+
+          <Tab.Screen name="Billing">
+            {() => (
+              <ProviderBillingScreen token={token} showFlash={showFlash} />
+            )}
+          </Tab.Screen>
+
 
           <Tab.Screen name="Profile">
             {() => (
@@ -5829,6 +6136,115 @@ providerSummaryValue: {
   fontSize: 17,
   fontWeight: "600",
   color: "#111",
+},
+
+providerBillingScroll: {
+  flexGrow: 1,
+  backgroundColor: "#f0fdf4",
+  padding: 20,
+  paddingTop: 60,
+},
+
+billingCard: {
+  backgroundColor: "#ffffff",
+  borderRadius: 12,
+  padding: 16,
+  marginBottom: 16,
+  borderWidth: 1,
+  borderColor: "#e5e7eb",
+  shadowColor: "#000",
+  shadowOpacity: 0.04,
+  shadowRadius: 6,
+  shadowOffset: { width: 0, height: 3 },
+  elevation: 3,
+},
+
+billingHeaderRow: {
+  flexDirection: "row",
+  justifyContent: "space-between",
+  alignItems: "center",
+  marginBottom: 6,
+},
+
+billingMonth: {
+  fontSize: 18,
+  fontWeight: "700",
+  color: "#111827",
+},
+
+billingMeta: {
+  fontSize: 13,
+  color: "#6b7280",
+},
+
+billingStatus: {
+  paddingHorizontal: 10,
+  paddingVertical: 6,
+  borderRadius: 999,
+  fontSize: 12,
+  fontWeight: "700",
+},
+
+billingStatusReady: {
+  backgroundColor: "#ecfdf3",
+  color: "#166534",
+  borderColor: "#bbf7d0",
+  borderWidth: 1,
+},
+
+billingStatusUpcoming: {
+  backgroundColor: "#eff6ff",
+  color: "#1d4ed8",
+  borderColor: "#bfdbfe",
+  borderWidth: 1,
+},
+
+billingLineItems: {
+  marginTop: 12,
+  borderTopWidth: 1,
+  borderTopColor: "#e5e7eb",
+  paddingTop: 8,
+},
+
+billingLineItem: {
+  flexDirection: "row",
+  justifyContent: "space-between",
+  alignItems: "flex-start",
+  paddingVertical: 8,
+  borderBottomWidth: 1,
+  borderBottomColor: "#f3f4f6",
+},
+
+billingLineLabel: {
+  fontSize: 15,
+  fontWeight: "600",
+  color: "#111827",
+  marginBottom: 2,
+},
+
+billingAmount: {
+  fontSize: 15,
+  fontWeight: "700",
+  color: "#111827",
+  marginLeft: 12,
+},
+
+billingTotalsRow: {
+  flexDirection: "row",
+  justifyContent: "space-between",
+  alignItems: "center",
+  marginTop: 8,
+},
+
+billingTotalsLabel: {
+  fontSize: 14,
+  color: "#374151",
+},
+
+billingTotalsValue: {
+  fontSize: 16,
+  fontWeight: "700",
+  color: "#111827",
 },
 
   providerAvatarSmall: {
