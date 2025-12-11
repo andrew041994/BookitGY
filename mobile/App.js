@@ -14,7 +14,7 @@ import * as ImagePicker from "expo-image-picker";
 import BookitGYLogo from "./assets/bookitgy-logo.png";
 import BookitGYLogoTransparent from "./assets/bookitgy-logo-transparent.png"
 import { Ionicons } from "@expo/vector-icons";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaProvider,SafeAreaView } from "react-native-safe-area-context";
 
 
 
@@ -878,6 +878,9 @@ function ProfileScreen({ setToken, showFlash, token }) {
     }
   };
 
+  
+
+
 
 
 
@@ -1428,271 +1431,334 @@ function ClientHomeScreen({ navigation }) {
 
 
 function AppointmentsScreen({ token, showFlash }) {
-      const [bookings, setBookings] = useState([]);
-      const [loading, setLoading] = useState(true);
-      const [error, setError] = useState("");
+  const [bookings, setBookings] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
 
-      const normalizeStart = (booking) => {
-        const iso = booking?.start_time || booking?.start;
-        if (!iso) return null;
-        const d = new Date(iso);
-        return Number.isNaN(d.getTime()) ? null : d;
-      };
+  const normalizeStart = (booking) => {
+    const iso = booking?.start_time || booking?.start;
+    if (!iso) return null;
+    const d = new Date(iso);
+    return Number.isNaN(d.getTime()) ? null : d;
+  };
 
-      const formatBookingDate = (iso) => {
-        const d = new Date(iso);
-        if (Number.isNaN(d.getTime())) return "";
-        return d.toLocaleDateString("en-US", {
-          weekday: "short",
-          month: "short",
-          day: "numeric",
-        });
-      };
+  const formatBookingDate = (iso) => {
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return "";
+    return d.toLocaleDateString("en-US", {
+      weekday: "short",
+      month: "short",
+      day: "numeric",
+    });
+  };
 
-      const formatBookingTime = (iso) => {
-        const d = new Date(iso);
-        if (Number.isNaN(d.getTime())) return "";
-        let h = d.getHours();
-        const m = d.getMinutes();
-        const suffix = h >= 12 ? "PM" : "AM";
-        h = h % 12 || 12;
-        return `${h}:${m.toString().padStart(2, "0")} ${suffix}`;
-      };
+  const formatBookingTime = (iso) => {
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return "";
+    let h = d.getHours();
+    const m = d.getMinutes();
+    const suffix = h >= 12 ? "PM" : "AM";
+    h = h % 12 || 12;
+    return `${h}:${m.toString().padStart(2, "0")} ${suffix}`;
+  };
 
-      const fetchBookings = useCallback(async () => {
-        try {
-          setLoading(true);
-          setError("");
+  const fetchBookings = useCallback(async () => {
+    try {
+      setLoading(true);
+      setError("");
 
-          const storedToken = await AsyncStorage.getItem("accessToken");
-          const authToken = token?.token || storedToken;
+      const storedToken = await AsyncStorage.getItem("accessToken");
+      const authToken = token?.token || storedToken;
 
-          if (!authToken) {
-            setError("Please log in to view your appointments.");
-            setBookings([]);
-            return;
-          }
+      if (!authToken) {
+        setError("Please log in to view your appointments.");
+        setBookings([]);
+        return;
+      }
 
-          const res = await axios.get(`${API}/bookings/me`, {
-            headers: { Authorization: `Bearer ${authToken}` },
-          });
+      const res = await axios.get(`${API}/bookings/me`, {
+        headers: { Authorization: `Bearer ${authToken}` },
+      });
 
-          const raw = res.data;
-          const list = Array.isArray(raw)
-            ? raw
-            : raw?.bookings || raw?.results || [];
+      const raw = res.data;
+      const list = Array.isArray(raw)
+        ? raw
+        : raw?.bookings || raw?.results || [];
 
-          setBookings(list);
-        } catch (err) {
-          console.log(
-            "Error loading appointments",
-            err.response?.data || err.message
-          );
-          setError("Could not load your appointments.");
-          if (showFlash) {
-            showFlash("error", "Could not load your appointments.");
-          }
-        } finally {
-          setLoading(false);
-        }
-      }, [showFlash, token?.token]);
-
-      useFocusEffect(
-        useCallback(() => {
-          fetchBookings();
-        }, [fetchBookings])
+      setBookings(list);
+    } catch (err) {
+      console.log(
+        "Error loading appointments",
+        err.response?.data || err.message
       );
-
-      const handleNavigateToBooking = (booking) => {
-        try {
-          let url = "";
-          if (
-            booking?.provider_lat != null &&
-            booking?.provider_long != null
-          ) {
-            const dest = `${booking.provider_lat},${booking.provider_long}`;
-            url =
-              Platform.OS === "ios"
-                ? `http://maps.apple.com/?daddr=${dest}`
-                : `https://www.google.com/maps/dir/?api=1&destination=${dest}`;
-          } else if (booking?.provider_location) {
-            const q = encodeURIComponent(booking.provider_location);
-            url =
-              Platform.OS === "ios"
-                ? `http://maps.apple.com/?q=${q}`
-                : `https://www.google.com/maps/search/?api=1&query=${q}`;
-          } else {
-            showFlash &&
-              showFlash("error", "No location is available yet for this booking.");
-            return;
-          }
-
-          Linking.openURL(url);
-        } catch (err) {
-          console.log("Error opening maps", err);
-          showFlash &&
-            showFlash("error", "Could not open maps on this device.");
-        }
-      };
-
-      const datedBookings = bookings.map((b) => ({
-        ...b,
-        _start: normalizeStart(b),
-      }));
-
-      const now = new Date();
-      const upcomingBookings = datedBookings
-        .filter((b) => b._start && b.status !== "cancelled" && b._start >= now)
-        .sort((a, b) => a._start - b._start);
-
-      const finishedBookings = datedBookings
-        .filter((b) => !b._start || b.status === "cancelled" || b._start < now)
-        .sort((a, b) => {
-          const aTime = a?._start?.getTime?.() ?? 0;
-          const bTime = b?._start?.getTime?.() ?? 0;
-          return bTime - aTime;
-        });
-
-      const deriveStatus = (booking) => {
-        const startIso = booking.start_time || booking.start;
-        const endIso = booking.end_time || booking.end;
-        const startDate = startIso ? new Date(startIso) : null;
-        const endDate = endIso ? new Date(endIso) : null;
-        const nowTs = Date.now();
-
-        const normalizedStart =
-          startDate && !Number.isNaN(startDate.getTime()) ? startDate.getTime() : null;
-        const normalizedEnd =
-          endDate && !Number.isNaN(endDate.getTime()) ? endDate.getTime() : null;
-
-        if (booking.status === "cancelled") return "cancelled";
-
-        if (normalizedEnd != null) {
-          if (nowTs >= normalizedEnd) return "completed";
-          if (normalizedStart != null && nowTs >= normalizedStart) return "in progress";
-        }
-
-        return booking.status || "pending";
-      };
-
-      const renderBooking = (booking) => {
-        const startIso = booking.start_time || booking.start;
-        const dateLabel = formatBookingDate(startIso);
-        const timeLabel = formatBookingTime(startIso);
-        const statusLabel = deriveStatus(booking);
-
-        return (
-          
-
-          <View
-            key={booking.id || booking.booking_id || `${startIso}-${booking.service_name}`}
-            style={styles.appointmentItem}
-          >
-            <View style={{ flex: 1 }}>
-              <Text style={styles.appointmentTitle}>{booking.service_name}</Text>
-              <Text style={styles.appointmentMeta}>
-                {booking.provider_name || "Your provider"}
-              </Text>
-              {(dateLabel || timeLabel) && (
-                <Text style={styles.appointmentMeta}>
-                  {dateLabel} {timeLabel ? `· ${timeLabel}` : ""}
-                </Text>
-              )}
-              {booking.provider_location ? (
-                <Text style={styles.appointmentMeta}>
-                  {booking.provider_location}
-                </Text>
-              ) : null}
-              <Text style={styles.appointmentStatus}>
-                Status: {statusLabel}
-              </Text>
-            </View>
-            {(booking.provider_lat != null || booking.provider_location) && (
-              <TouchableOpacity
-                  style={[styles.navigateButton, styles.appointmentDirectionsButton]}
-                  onPress={() => handleNavigateToBooking(booking)}          >
-                <Text style={styles.navigateButtonText}>Directions</Text>
-              </TouchableOpacity>
-            )}
-          </View>
-        );
-      };
-
-      return (
-        <SafeAreaView style={{ flex: 1, backgroundColor: "#EFFFF3" }}>
-        <ScrollView contentContainerStyle={styles.appointmentScroll}>
-          <View style={styles.card}>
-            <View style={styles.appointmentHeader}>
-              <Text style={styles.profileTitle}>Appointments</Text>
-              <TouchableOpacity onPress={fetchBookings}>
-                <Text style={styles.refreshText}>Refresh</Text>
-              </TouchableOpacity>
-            </View>
-
-            {loading && (
-              <View style={styles.loadingRow}>
-                <ActivityIndicator />
-                <Text style={styles.serviceMeta}>Loading your appointments…</Text>
-              </View>
-            )}
-
-            {!loading && error ? (
-              <Text style={styles.errorText}>{error}</Text>
-            ) : null}
-
-            {!loading && !error && bookings.length === 0 ? (
-              <Text style={styles.serviceMeta}>
-                You don’t have any appointments yet.
-              </Text>
-            ) : null}
-          </View>
-
-          {!loading && bookings.length > 0 && (
-            <>
-              <View style={styles.card}>
-                <View style={styles.appointmentHeader}>
-                  <Text style={styles.sectionTitle}>Upcoming</Text>
-                  <Text style={styles.appointmentCount}>
-                    {upcomingBookings.length} booking
-                    {upcomingBookings.length === 1 ? "" : "s"}
-                  </Text>
-                </View>
-
-                {upcomingBookings.length === 0 ? (
-                  <Text style={styles.serviceMeta}>
-                    No upcoming appointments yet.
-                  </Text>
-                ) : (
-                  upcomingBookings.map(renderBooking)
-                )}
-              </View>
-
-              <View style={styles.card}>
-                <View style={styles.appointmentHeader}>
-                  <Text style={styles.sectionTitle}>Finished</Text>
-                  <Text style={styles.appointmentCount}>
-                    {finishedBookings.length} booking
-                    {finishedBookings.length === 1 ? "" : "s"}
-                  </Text>
-                </View>
-
-                {finishedBookings.length === 0 ? (
-                  <Text style={styles.serviceMeta}>
-                    Nothing here yet. Completed or cancelled bookings will
-                    appear once you have them.
-                  </Text>
-                ) : (
-                  finishedBookings.map(renderBooking)
-                )}
-              </View>
-            </>
-          )}
-        </ScrollView>
-        </SafeAreaView>
-      );
-      
-
+      setError("Could not load your appointments.");
+      if (showFlash) {
+        showFlash("error", "Could not load your appointments.");
+      }
+    } finally {
+      setLoading(false);
     }
+  }, [showFlash, token?.token]);
+
+  useFocusEffect(
+    useCallback(() => {
+      fetchBookings();
+    }, [fetchBookings])
+  );
+
+  const handleNavigateToBooking = (booking) => {
+    try {
+      let url = "";
+      if (
+        booking?.provider_lat != null &&
+        booking?.provider_long != null
+      ) {
+        const dest = `${booking.provider_lat},${booking.provider_long}`;
+        url =
+          Platform.OS === "ios"
+            ? `http://maps.apple.com/?daddr=${dest}`
+            : `https://www.google.com/maps/dir/?api=1&destination=${dest}`;
+      } else if (booking?.provider_location) {
+        const q = encodeURIComponent(booking.provider_location);
+        url =
+          Platform.OS === "ios"
+            ? `http://maps.apple.com/?q=${q}`
+            : `https://www.google.com/maps/search/?api=1&query=${q}`;
+      } else {
+        showFlash &&
+          showFlash("error", "No location is available yet for this booking.");
+        return;
+      }
+
+      Linking.openURL(url);
+    } catch (err) {
+      console.log("Error opening maps", err);
+      showFlash &&
+        showFlash("error", "Could not open maps on this device.");
+    }
+  };
+
+  const handleCancelBooking = (booking) => {
+    const bookingId = booking?.id || booking?.booking_id;
+    if (!bookingId) return;
+
+    Alert.alert(
+      "Cancel appointment",
+      "Are you sure you want to cancel this appointment?",
+      [
+        { text: "No", style: "cancel" },
+        {
+          text: "Yes, cancel",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              const storedToken = await AsyncStorage.getItem("accessToken");
+              const authToken = token?.token || storedToken;
+
+              if (!authToken) {
+                showFlash &&
+                  showFlash("error", "No access token found. Please log in.");
+                return;
+              }
+
+              await axios.post(
+                `${API}/bookings/${bookingId}/cancel`,
+                {},
+                {
+                  headers: { Authorization: `Bearer ${authToken}` },
+                }
+              );
+
+              setBookings((prev) =>
+                (prev || []).map((b) =>
+                  b.id === bookingId || b.booking_id === bookingId
+                    ? { ...b, status: "cancelled" }
+                    : b
+                )
+              );
+
+              showFlash && showFlash("success", "Booking cancelled");
+            } catch (err) {
+              console.log(
+                "Error cancelling booking (appointments)",
+                err.response?.data || err.message
+              );
+              showFlash && showFlash("error", "Could not cancel booking.");
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const datedBookings = bookings.map((b) => ({
+    ...b,
+    _start: normalizeStart(b),
+  }));
+
+  const now = new Date();
+  const upcomingBookings = datedBookings
+    .filter((b) => b._start && b.status !== "cancelled" && b._start >= now)
+    .sort((a, b) => a._start - b._start);
+
+  const finishedBookings = datedBookings
+    .filter((b) => !b._start || b.status === "cancelled" || b._start < now)
+    .sort((a, b) => {
+      const aTime = a?._start?.getTime?.() ?? 0;
+      const bTime = b?._start?.getTime?.() ?? 0;
+      return bTime - aTime;
+    });
+
+  const deriveStatus = (booking) => {
+    const startIso = booking.start_time || booking.start;
+    const endIso = booking.end_time || booking.end;
+    const startDate = startIso ? new Date(startIso) : null;
+    const endDate = endIso ? new Date(endIso) : null;
+    const nowTs = Date.now();
+
+    const normalizedStart =
+      startDate && !Number.isNaN(startDate.getTime()) ? startDate.getTime() : null;
+    const normalizedEnd =
+      endDate && !Number.isNaN(endDate.getTime()) ? endDate.getTime() : null;
+
+    if (booking.status === "cancelled") return "cancelled";
+
+    if (normalizedEnd != null) {
+      if (nowTs >= normalizedEnd) return "completed";
+      if (normalizedStart != null && nowTs >= normalizedStart) return "in progress";
+    }
+
+    return booking.status || "pending";
+  };
+
+  const renderBooking = (booking, isUpcoming = false) => {
+    const startIso = booking.start_time || booking.start;
+    const dateLabel = formatBookingDate(startIso);
+    const timeLabel = formatBookingTime(startIso);
+    const statusLabel = deriveStatus(booking);
+
+    return (
+      <View
+        key={booking.id || booking.booking_id || `${startIso}-${booking.service_name}`}
+        style={styles.appointmentItem}
+      >
+        <View style={{ flex: 1 }}>
+          <Text style={styles.appointmentTitle}>{booking.service_name}</Text>
+          <Text style={styles.appointmentMeta}>
+            {booking.provider_name || "Your provider"}
+          </Text>
+          {(dateLabel || timeLabel) && (
+            <Text style={styles.appointmentMeta}>
+              {dateLabel} {timeLabel ? `· ${timeLabel}` : ""}
+            </Text>
+          )}
+          {booking.provider_location ? (
+            <Text style={styles.appointmentMeta}>
+              {booking.provider_location}
+            </Text>
+          ) : null}
+          <View style={styles.appointmentStatusRow}>
+            <Text style={styles.appointmentStatus}>
+              Status: {statusLabel}
+            </Text>
+
+            {isUpcoming && (
+              <TouchableOpacity
+                style={styles.appointmentCancelButton}
+                onPress={() => handleCancelBooking(booking)}
+              >
+                <Text style={styles.appointmentCancelButtonText}>Cancel</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        </View>
+
+        {(booking.provider_lat != null || booking.provider_location) && (
+          <TouchableOpacity
+            style={[styles.navigateButton, styles.appointmentDirectionsButton]}
+            onPress={() => handleNavigateToBooking(booking)}
+          >
+            <Text style={styles.navigateButtonText}>Directions</Text>
+          </TouchableOpacity>
+        )}
+      </View>
+    );
+  };
+
+  return (
+  <ScrollView contentContainerStyle={styles.appointmentScroll}>
+    <View style={styles.card}>
+      <View style={styles.appointmentHeader}>
+        <Text style={styles.profileTitle}>Appointments</Text>
+        <TouchableOpacity onPress={fetchBookings}>
+          <Text style={styles.refreshText}>Refresh</Text>
+        </TouchableOpacity>
+      </View>
+
+      {loading && (
+        <View style={styles.loadingRow}>
+          <ActivityIndicator />
+          <Text style={styles.serviceMeta}>Loading your appointments…</Text>
+        </View>
+      )}
+
+      {!loading && error ? (
+        <Text style={styles.errorText}>{error}</Text>
+      ) : null}
+
+      {!loading && !error && bookings.length === 0 ? (
+        <Text style={styles.serviceMeta}>
+          You don’t have any appointments yet.
+        </Text>
+      ) : null}
+    </View>
+
+    {!loading && bookings.length > 0 && (
+      <>
+        <View style={styles.card}>
+          <View style={styles.appointmentHeader}>
+            <Text style={styles.sectionTitle}>Upcoming</Text>
+            <Text style={styles.appointmentCount}>
+              {upcomingBookings.length} booking
+              {upcomingBookings.length === 1 ? "" : "s"}
+            </Text>
+          </View>
+
+          {upcomingBookings.length === 0 ? (
+            <Text style={styles.serviceMeta}>
+              No upcoming appointments yet.
+            </Text>
+          ) : (
+            upcomingBookings.map((booking) => renderBooking(booking, true))
+          )}
+        </View>
+
+        <View style={styles.card}>
+          <View style={styles.appointmentHeader}>
+            <Text style={styles.sectionTitle}>Finished</Text>
+            <Text style={styles.appointmentCount}>
+              {finishedBookings.length} booking
+              {finishedBookings.length === 1 ? "" : "s"}
+            </Text>
+          </View>
+
+          {finishedBookings.length === 0 ? (
+            <Text style={styles.serviceMeta}>
+              Nothing here yet. Completed or cancelled bookings will
+              appear once you have them.
+            </Text>
+          ) : (
+            finishedBookings.map((booking) =>
+              renderBooking(booking, false)
+            )
+          )}
+        </View>
+      </>
+    )}
+  </ScrollView>
+);
+}
+
     
 
 
@@ -2134,9 +2200,7 @@ function SearchScreen({ token, showFlash, navigation, route }) {
     });
   };
 
-    return (
-      <SafeAreaView style={{ flex: 1, backgroundColor: "#EFFFF3" }}>
-      
+    return (      
               <ScrollView contentContainerStyle={styles.providerScroll}>
                 <Text style={styles.profileTitle}>Find a provider</Text>
                 <Text style={styles.subtitleSmall}>
@@ -2510,7 +2574,6 @@ function SearchScreen({ token, showFlash, navigation, route }) {
                   </View>
                 )}
               </ScrollView>
-        </SafeAreaView>
          );
       }
 
@@ -4448,62 +4511,59 @@ function App() {
   const [authMode, setAuthMode] = useState("landing"); // 'landing' | 'login' | 'signup'
   const [isAdmin, setIsAdmin] = useState(false);
 
-  // flash state plus helper
   const [flash, setFlash] = useState(null);
 
   const showFlash = (type, text) => {
     setFlash({ type, text });
     setTimeout(() => {
       setFlash(null);
-    }, 3000); // hide after 3s
+    }, 3000);
   };
 
-  // Not logged in yet → show landing/login/signup flow
-  if (!token) {
-    return (
-      <>
+  return (
+    <SafeAreaProvider>
+      <SafeAreaView style={{ flex: 1 }} edges={["top", "bottom"]}>
         <FlashMessage flash={flash} />
 
-        {authMode === "landing" && (
-          <LandingScreen
-            goToLogin={() => setAuthMode("login")}
-            goToSignup={() => setAuthMode("signup")}
-          />
-        )}
+        {!token ? (
+          <>
+            {authMode === "landing" && (
+              <LandingScreen
+                goToLogin={() => setAuthMode("login")}
+                goToSignup={() => setAuthMode("signup")}
+              />
+            )}
 
-        {authMode === "login" && (
-          <LoginScreen
-            setToken={setToken}
-            setIsAdmin={setIsAdmin}
-            goToSignup={() => setAuthMode("signup")}
-            goBack={() => setAuthMode("landing")}
-            showFlash={showFlash}
-          />
-        )}
+            {authMode === "login" && (
+              <LoginScreen
+                setToken={setToken}
+                setIsAdmin={setIsAdmin}
+                goToSignup={() => setAuthMode("signup")}
+                goBack={() => setAuthMode("landing")}
+                showFlash={showFlash}
+              />
+            )}
 
-        {authMode === "signup" && (
-          <SignupScreen
-            goToLogin={() => setAuthMode("login")}
-            goBack={() => setAuthMode("landing")}
-            showFlash={showFlash}
-          />
+            {authMode === "signup" && (
+              <SignupScreen
+                goToLogin={() => setAuthMode("login")}
+                goBack={() => setAuthMode("landing")}
+                showFlash={showFlash}
+              />
+            )}
+          </>
+        ) : (
+          <MainApp token={token} setToken={setToken} showFlash={showFlash} />
         )}
-      </>
-    );
-  }
-
-  // Logged in → show main app (tabs)
-  return (
-    <>
-      <FlashMessage flash={flash} />
-      <MainApp token={token} setToken={setToken} showFlash={showFlash} />
-    </>
+      </SafeAreaView>
+    </SafeAreaProvider>
   );
 }
 
 
 
- const styles = StyleSheet.create({
+
+const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: "#f0fdf4",
@@ -5001,6 +5061,21 @@ appointmentScroll: {
     color: "#4b5563",
     marginTop: 4,
   },
+
+ appointmentCancelButton: {
+  paddingHorizontal: 6,
+  paddingVertical: 2,
+  borderRadius: 6,
+  backgroundColor: "#FCE4E4", // soft light red
+  alignSelf: "flex-start",
+},
+
+appointmentCancelButtonText: {
+  color: "#C62828", // darker red text
+  fontSize: 12,
+  fontWeight: "600",
+},
+
   appointmentStatus: {
     marginTop: 6,
     fontSize: 12,
