@@ -4982,6 +4982,22 @@ function ProviderBillingScreen({ token, showFlash }) {
   const [billingLoading, setBillingLoading] = useState(false);
   const [billingError, setBillingError] = useState("");
   const [expandedBills, setExpandedBills] = useState({});
+  const [serviceChargePct, setServiceChargePct] = useState(10);
+
+  const resolveServiceChargePct = (summaryData) => {
+    const rawValue =
+      summaryData?.service_charge_percentage ??
+      summaryData?.service_charge_percent ??
+      summaryData?.service_charge_rate ??
+      summaryData?.service_charge;
+
+    const numeric = Number(rawValue);
+    if (!Number.isFinite(numeric)) return 10;
+
+    // Allow either fractional (0.1) or whole-number (10) representations.
+    const pctValue = numeric <= 1 ? numeric * 100 : numeric;
+    return Math.max(pctValue, 0);
+  };
 
   const toggleBillExpanded = (billId) => {
     setExpandedBills((prev) => ({
@@ -5013,10 +5029,12 @@ function ProviderBillingScreen({ token, showFlash }) {
     return Number.isNaN(dateObj.getTime()) ? null : dateObj;
   };
 
-  const buildBills = useCallback((bookingList) => {
+  const buildBills = useCallback((bookingList, chargePct = 10) => {
     const now = new Date();
     const statements = [];
     const monthsToShow = 6;
+
+    const feeRate = Math.max(chargePct, 0) / 100;
 
     for (let i = 0; i < monthsToShow; i += 1) {
       const coverageStart = new Date(now.getFullYear(), now.getMonth() - i, 1);
@@ -5067,7 +5085,7 @@ function ProviderBillingScreen({ token, showFlash }) {
         0
       );
 
-      const platformFee = Math.max(Math.round(servicesTotal * 0.10), 0);
+      const platformFee = Math.max(Math.round(servicesTotal * feeRate), 0);
       const totalDue = platformFee; // Total due should only reflect platform fees
 
       statements.push({
@@ -5115,8 +5133,13 @@ function ProviderBillingScreen({ token, showFlash }) {
         ? bookingsRes.data
         : bookingsRes.data?.bookings || bookingsRes.data?.results || [];
 
-      setBillingSummary(summaryRes?.data || null);
-      buildBills(bookingList);
+      const summaryData = summaryRes?.data || null;
+      setBillingSummary(summaryData);
+
+      const resolvedChargePct = resolveServiceChargePct(summaryData);
+      setServiceChargePct(resolvedChargePct);
+
+      buildBills(bookingList, resolvedChargePct);
     } catch (err) {
       console.log("Error loading billing", err.response?.data || err.message);
       setBillingError("Could not load billing statements.");
@@ -5158,6 +5181,11 @@ function ProviderBillingScreen({ token, showFlash }) {
           <Text style={styles.providerSummaryValue}>
             {billingSummary.account_number || "N/A"}
           </Text>
+
+          <View style={{ height: 8 }} />
+
+          <Text style={styles.providerSummaryLabel}>Service charge</Text>
+          <Text style={styles.providerSummaryValue}>{serviceChargePct}%</Text>
 
           <View style={{ height: 8 }} />
 
@@ -5266,7 +5294,9 @@ function ProviderBillingScreen({ token, showFlash }) {
               </Text>
             </View>
             <View style={styles.billingTotalsRow}>
-              <Text style={styles.billingTotalsLabel}>Platform fee (10%)</Text>
+              <Text style={styles.billingTotalsLabel}>
+                Platform fee ({serviceChargePct}%)
+              </Text>
               <Text style={styles.billingTotalsValue}>
                 {formatMoney(bill.platformFee)}
               </Text>
