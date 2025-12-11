@@ -2402,12 +2402,10 @@ function SearchScreen({
     setHasSearched(true);
     setFilteredProviders([providerFromNav]);
     handleSelectProvider(providerFromNav);
-  }, [route?.params?.provider, selectedProvider]);
+  }, [route?.params?.provider, selectedProvider, handleSelectProvider]);
 
-
-
-//Add a useEffect that recomputes filteredProviders 
-// whenever providers/search/radius/location changes:
+  // Add a useEffect that recomputes filteredProviders
+  // whenever providers/search/radius/location changes:
   useEffect(() => {
     // 👇 do nothing until the user actually searches or if the query is empty
     const trimmedQuery = searchQuery.trim();
@@ -2419,18 +2417,37 @@ function SearchScreen({
     const q = trimmedQuery.toLowerCase();
 
     const providerList = Array.isArray(providers) ? providers : [];
-      let list = providerList.map((p) => {
-            let distance_km = null;
-          if (clientLocation && p.lat != null && p.long != null) {
-            distance_km = haversineKm(
-              clientLocation.lat,
-              clientLocation.long,
-              p.lat,
-              p.long
-            );
-          }
-          return { ...p, distance_km };
-        });
+    const providerFromNav = route?.params?.provider;
+    const navProviderId = getProviderId(providerFromNav);
+    const navProviderName = (providerFromNav?.name || "").trim().toLowerCase();
+
+    // If we navigated in with a specific provider, keep the results scoped
+    // to that provider ID so namesakes don't appear.
+    if (
+      navProviderId &&
+      navProviderName &&
+      trimmedQuery.toLowerCase() === navProviderName
+    ) {
+      const exactMatch = providerList.find(
+        (p) => getProviderId(p) === navProviderId
+      );
+
+      setFilteredProviders([exactMatch || providerFromNav]);
+      return;
+    }
+
+    let list = providerList.map((p) => {
+      let distance_km = null;
+      if (clientLocation && p.lat != null && p.long != null) {
+        distance_km = haversineKm(
+          clientLocation.lat,
+          clientLocation.long,
+          p.lat,
+          p.long
+        );
+      }
+      return { ...p, distance_km };
+    });
 
     // text filter (profession/name/location)
     if (q) {
@@ -2473,7 +2490,7 @@ function SearchScreen({
     }
 
     setFilteredProviders(list);
-  }, [providers, searchQuery, radiusKm, clientLocation, hasSearched]);
+  }, [providers, searchQuery, radiusKm, clientLocation, hasSearched, route?.params?.provider]);
 
 
 
@@ -5640,9 +5657,12 @@ cardHeartButton: {
     top: 10,
     right: 10,
     zIndex: 12,
+    width: 36,
+    height: 36,
     backgroundColor: "rgba(255,255,255,0.9)",
-    borderRadius: 16,
-    padding: 6,
+    borderRadius: 999,
+    alignItems: "center",
+    justifyContent: "center",
   },
 
   cardImage: {
