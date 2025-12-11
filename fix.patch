@@ -1,58 +1,206 @@
 diff --git a/mobile/App.js b/mobile/App.js
-index 2234e3c7a1a0c15864a50fec2e220189c2af1fad..94171a506da1efdccab49aeb0fe1a0e77ea671d9 100644
+index 94171a506da1efdccab49aeb0fe1a0e77ea671d9..54abaad63beed535fec270f2122934b93b4f2c84 100644
 --- a/mobile/App.js
 +++ b/mobile/App.js
-@@ -2163,51 +2163,52 @@ function AppointmentsScreen({ token, showFlash }) {
-             <Text style={styles.appointmentMeta}>
-               {dateLabel} {timeLabel ? `· ${timeLabel}` : ""}
-             </Text>
-           )}
-           {booking.provider_location ? (
-             <Text style={styles.appointmentMeta}>
-               {booking.provider_location}
-             </Text>
-           ) : null}
-           <View style={styles.appointmentStatusRow}>
-             <Text style={styles.appointmentStatus}>
-               Status: {statusLabel}
-             </Text>
+@@ -4246,64 +4246,57 @@ const loadProviderSummary = async () => {
  
-             {isUpcoming && (
-               <TouchableOpacity
-                 style={styles.appointmentCancelButton}
-                 onPress={() => handleCancelBooking(booking)}
-               >
-                 <Text style={styles.appointmentCancelButtonText}>Cancel</Text>
-               </TouchableOpacity>
-             )}
-           </View>
+         <TouchableOpacity onPress={pickAvatar}>
+           <Text style={{ color: "#007AFF", marginTop: 4 }}>Change photo</Text>
+         </TouchableOpacity>
+       </View>
+       
+       {hoursFlash && (
+         <View
+           style={[
+             styles.hoursFlashGlobal,
+             hoursFlash.type === "error"
+               ? styles.hoursFlashError
+               : styles.hoursFlashSuccess,
+           ]}
+         >
+           <Text style={styles.hoursFlashText}>{hoursFlash.message}</Text>
          </View>
+       )}
  
--        {(booking.provider_lat != null || booking.provider_location) && (
-+        {isUpcoming &&
-+          (booking.provider_lat != null || booking.provider_location) && (
-           <TouchableOpacity
-             style={[styles.navigateButton, styles.appointmentDirectionsButton]}
-             onPress={() => handleNavigateToBooking(booking)}
-           >
-             <Text style={styles.navigateButtonText}>Directions</Text>
-           </TouchableOpacity>
-         )}
-       </View>
-     );
-   };
+       <ScrollView contentContainerStyle={styles.providerScroll}>
+       
+         <Text style={styles.profileTitle}>Provider dashboard</Text>
+         <Text style={styles.subtitleSmall}>Welcome, {providerLabel}</Text>
+         {/*Account Info */}
+         {providerSummary && (
+-        <View style={styles.providerSummaryCard}>
+-          <Text style={styles.providerSummaryLabel}>Account number</Text>
+-          <Text style={styles.providerSummaryValue}>
+-            {providerSummary.account_number || "N/A"}
+-          </Text>
+-
+-          <View style={{ height: 8 }} />
+-
+-          <Text style={styles.providerSummaryLabel}>Fees due</Text>
+-          <Text style={styles.providerSummaryValue}>
+-            GYD {Math.round(providerSummary.total_fees_due_gyd).toLocaleString()}
+-          </Text>
+-        </View>
+-      )}
++          <View style={styles.providerSummaryCard}>
++            <Text style={styles.providerSummaryLabel}>Account number</Text>
++            <Text style={styles.providerSummaryValue}>
++              {providerSummary.account_number || "N/A"}
++            </Text>
++          </View>
++        )}
  
-   return (
-   <ScrollView
-     contentContainerStyle={styles.appointmentScroll}
-     refreshControl={
-       <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
+         {/* TODAY overview */}
+         <View style={styles.card}>
+           <Text style={styles.label}>TODAY</Text>
+ 
+           {todayLoading && (
+             <View style={{ paddingVertical: 10 }}>
+               <ActivityIndicator />
+               <Text style={styles.serviceMeta}>Loading today&apos;s bookings…</Text>
+             </View>
+           )}
+ 
+           {!todayLoading && todayError ? (
+             <Text style={styles.errorText}>{todayError}</Text>
+           ) : null}
+ 
+           {!todayLoading && !todayError && todayBookings.length === 0 && (
+             <>
+               <Text style={styles.value}>0 bookings</Text>
+               <Text style={styles.serviceMeta}>
+                 Once bookings are added, you’ll see your daily schedule here.
+               </Text>
+             </>
+           )}
+ 
+@@ -5053,51 +5046,51 @@ function ProviderBillingScreen({ token, showFlash }) {
+             date: normalizeStart(booking),
+             amount:
+               Number(
+                 booking.service_price_gyd ??
+                   booking.price_gyd ??
+                   booking.total_price_gyd ??
+                   booking.price
+               ) || 0,
+           }))
+         : [
+             {
+               bookingId: `empty-${coverageStart.toISOString()}`,
+               description: "No completed bookings recorded",
+               client: "",
+               date: null,
+               amount: 0,
+             },
+           ];
+ 
+       const servicesTotal = lineItems.reduce(
+         (sum, item) => sum + (Number.isFinite(item.amount) ? item.amount : 0),
+         0
+       );
+ 
+       const platformFee = Math.max(Math.round(servicesTotal * 0.10), 0);
+-      const totalDue = servicesTotal + platformFee;
++      const totalDue = platformFee; // Total due should only reflect platform fees
+ 
+       statements.push({
+         id: `${coverageStart.getFullYear()}-${coverageStart.getMonth() + 1}`,
+         coverageStart,
+         coverageEnd,
+         invoiceDate,
+         status: invoiceDate <= now ? "Generated" : "Scheduled",
+         servicesTotal,
+         platformFee,
+         totalDue,
+         lineItems,
+       });
      }
-   >
-     <View style={styles.card}>
-       <View style={styles.appointmentHeader}>
-         <Text style={styles.profileTitle}>Appointments</Text>
-         {/* <TouchableOpacity onPress={fetchBookings}>
-           <Text style={styles.refreshText}>Refresh</Text>
-         </TouchableOpacity> */}
-       </View>
+ 
+     statements.sort((a, b) => b.invoiceDate - a.invoiceDate);
+     setBills(statements);
+   }, []);
+ 
+   const fetchBilling = useCallback(async () => {
+     try {
+       setBillingLoading(true);
+       setBillingError("");
+ 
+       const storedToken = await AsyncStorage.getItem("accessToken");
+       const authToken = token?.token || storedToken;
+@@ -5124,70 +5117,75 @@ function ProviderBillingScreen({ token, showFlash }) {
+ 
+       setBillingSummary(summaryRes?.data || null);
+       buildBills(bookingList);
+     } catch (err) {
+       console.log("Error loading billing", err.response?.data || err.message);
+       setBillingError("Could not load billing statements.");
+       if (showFlash) {
+         showFlash("error", "Could not load billing statements.");
+       }
+     } finally {
+       setBillingLoading(false);
+     }
+   }, [buildBills, showFlash, token?.token]);
+ 
+   useEffect(() => {
+     fetchBilling();
+   }, [fetchBilling]);
+ 
+   useFocusEffect(
+     useCallback(() => {
+       fetchBilling();
+       return () => {};
+     }, [fetchBilling])
+   );
+ 
++  const now = new Date();
++  const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
++  const outstandingFees =
++    now >= endOfMonth ? billingSummary?.total_fees_due_gyd || 0 : 0;
++
+   return (
+     <ScrollView contentContainerStyle={styles.providerBillingScroll}>
+       <Text style={styles.profileTitle}>Billing</Text>
+       <Text style={styles.subtitleSmall}>
+         Bills populate automatically on the 1st of each month with booking
+         details.
+       </Text>
+ 
+       {billingSummary && (
+         <View style={styles.providerSummaryCard}>
+           <Text style={styles.providerSummaryLabel}>Account number</Text>
+           <Text style={styles.providerSummaryValue}>
+             {billingSummary.account_number || "N/A"}
+           </Text>
+ 
+           <View style={{ height: 8 }} />
+ 
+           <Text style={styles.providerSummaryLabel}>Outstanding fees</Text>
+           <Text style={styles.providerSummaryValue}>
+-            {formatMoney(billingSummary.total_fees_due_gyd)}
++            {formatMoney(outstandingFees)}
+           </Text>
+         </View>
+       )}
+ 
+       {billingLoading && (
+         <View style={styles.card}>
+           <ActivityIndicator />
+           <Text style={styles.serviceMeta}>Loading billing history…</Text>
+         </View>
+       )}
+ 
+       {billingError ? (
+         <View style={styles.card}>
+           <Text style={styles.errorText}>{billingError}</Text>
+         </View>
+       ) : null}
+ 
+       {!billingLoading && !billingError && bills.length === 0 && (
+         <View style={styles.card}>
+           <Text style={styles.serviceMeta}>No billing statements yet.</Text>
+         </View>
+       )}
+ 
+       {!billingLoading &&
+         !billingError &&

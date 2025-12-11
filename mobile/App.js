@@ -4268,20 +4268,13 @@ const loadProviderSummary = async () => {
         <Text style={styles.subtitleSmall}>Welcome, {providerLabel}</Text>
         {/*Account Info */}
         {providerSummary && (
-        <View style={styles.providerSummaryCard}>
-          <Text style={styles.providerSummaryLabel}>Account number</Text>
-          <Text style={styles.providerSummaryValue}>
-            {providerSummary.account_number || "N/A"}
-          </Text>
-
-          <View style={{ height: 8 }} />
-
-          <Text style={styles.providerSummaryLabel}>Fees due</Text>
-          <Text style={styles.providerSummaryValue}>
-            GYD {Math.round(providerSummary.total_fees_due_gyd).toLocaleString()}
-          </Text>
-        </View>
-      )}
+          <View style={styles.providerSummaryCard}>
+            <Text style={styles.providerSummaryLabel}>Account number</Text>
+            <Text style={styles.providerSummaryValue}>
+              {providerSummary.account_number || "N/A"}
+            </Text>
+          </View>
+        )}
 
         {/* TODAY overview */}
         <View style={styles.card}>
@@ -5075,7 +5068,7 @@ function ProviderBillingScreen({ token, showFlash }) {
       );
 
       const platformFee = Math.max(Math.round(servicesTotal * 0.10), 0);
-      const totalDue = servicesTotal + platformFee;
+      const totalDue = platformFee; // Total due should only reflect platform fees
 
       statements.push({
         id: `${coverageStart.getFullYear()}-${coverageStart.getMonth() + 1}`,
@@ -5146,6 +5139,11 @@ function ProviderBillingScreen({ token, showFlash }) {
     }, [fetchBilling])
   );
 
+  const now = new Date();
+  const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+  const outstandingFees =
+    now >= endOfMonth ? billingSummary?.total_fees_due_gyd || 0 : 0;
+
   return (
     <ScrollView contentContainerStyle={styles.providerBillingScroll}>
       <Text style={styles.profileTitle}>Billing</Text>
@@ -5165,7 +5163,7 @@ function ProviderBillingScreen({ token, showFlash }) {
 
           <Text style={styles.providerSummaryLabel}>Outstanding fees</Text>
           <Text style={styles.providerSummaryValue}>
-            {formatMoney(billingSummary.total_fees_due_gyd)}
+            {formatMoney(outstandingFees)}
           </Text>
         </View>
       )}
