@@ -1,8 +1,8 @@
 diff --git a/frontend/src/App.jsx b/frontend/src/App.jsx
-index 95868ef2bec95ad87f439720d726e9ecfe16d03a..a591fb7953114e9e834d3f61ac5e57eb7788feaf 100644
+index 95868ef2bec95ad87f439720d726e9ecfe16d03a..6d61b5ca8728366b30e3ebd7182dbd4ec44b2e24 100644
 --- a/frontend/src/App.jsx
 +++ b/frontend/src/App.jsx
-@@ -72,215 +72,433 @@ const sampleCharges = [
+@@ -72,215 +72,454 @@ const sampleCharges = [
    { id: 102, providerId: 1, month: '2024-09-01', amount: 15000, isPaid: true },
    { id: 103, providerId: 2, month: '2024-10-01', amount: 9000, isPaid: false },
    { id: 104, providerId: 3, month: '2024-10-01', amount: 22000, isPaid: false },
@@ -30,7 +30,8 @@ index 95868ef2bec95ad87f439720d726e9ecfe16d03a..a591fb7953114e9e834d3f61ac5e57eb
  
 +
  function Login({ onLogin }) {
-   const [email, setEmail] = useState('customer@guyana.com');
+-  const [email, setEmail] = useState('customer@guyana.com');
++  const [email, setEmail] = useState('admin@guyana.com');
    const [password, setPassword] = useState('pass');
    const navigate = useNavigate();
  
@@ -58,13 +59,6 @@ index 95868ef2bec95ad87f439720d726e9ecfe16d03a..a591fb7953114e9e834d3f61ac5e57eb
 -        onChange={(e) => setEmail(e.target.value)}
 -        placeholder="Email"
 -        style={{ display: 'block', margin: '10px auto', padding: '10px', width: '300px' }}
--      />
--      <input
--        type="password"
--        value={password}
--        onChange={(e) => setPassword(e.target.value)}
--        placeholder="Password"
--        style={{ display: 'block', margin: '10px auto', padding: '10px', width: '300px' }}
 +    <div
 +      style={{
 +        minHeight: '100vh',
@@ -72,7 +66,7 @@ index 95868ef2bec95ad87f439720d726e9ecfe16d03a..a591fb7953114e9e834d3f61ac5e57eb
 +        placeItems: 'center',
 +        padding: '32px',
 +        background:
-+          'radial-gradient(circle at 20% 20%, rgba(59,130,246,0.20), transparent 35%), radial-gradient(circle at 75% 15%, rgba(16,185,129,0.18), transparent 32%), radial-gradient(circle at 15% 80%, rgba(99,102,241,0.18), transparent 32%), #020617',
++          'radial-gradient(circle at 15% 20%, rgba(59,130,246,0.18), transparent 34%), radial-gradient(circle at 80% 10%, rgba(52,211,153,0.16), transparent 32%), radial-gradient(circle at 25% 85%, rgba(99,102,241,0.18), transparent 34%), #020617',
 +        position: 'relative',
 +        overflow: 'hidden',
 +        color: '#e2e8f0',
@@ -81,10 +75,27 @@ index 95868ef2bec95ad87f439720d726e9ecfe16d03a..a591fb7953114e9e834d3f61ac5e57eb
 +      <div
 +        style={{
 +          position: 'absolute',
++          inset: '-10%',
++          background:
++            'conic-gradient(from 160deg at 60% 40%, rgba(59,130,246,0.20), rgba(16,185,129,0.12), rgba(236,72,153,0.14), rgba(59,130,246,0.20))',
++          filter: 'blur(60px)',
++          opacity: 0.65,
++          pointerEvents: 'none',
++        }}
+       />
+-      <input
+-        type="password"
+-        value={password}
+-        onChange={(e) => setPassword(e.target.value)}
+-        placeholder="Password"
+-        style={{ display: 'block', margin: '10px auto', padding: '10px', width: '300px' }}
++      <div
++        style={{
++          position: 'absolute',
 +          inset: 0,
 +          backgroundImage:
-+            'linear-gradient(140deg, rgba(255,255,255,0.05) 1px, transparent 1px), linear-gradient(-140deg, rgba(255,255,255,0.05) 1px, transparent 1px)',
-+          backgroundSize: '38px 38px',
++            'linear-gradient(135deg, rgba(255,255,255,0.04) 1px, transparent 1px), linear-gradient(-135deg, rgba(255,255,255,0.04) 1px, transparent 1px)',
++          backgroundSize: '46px 46px',
 +          opacity: 0.35,
 +          pointerEvents: 'none',
 +        }}
@@ -136,21 +147,21 @@ index 95868ef2bec95ad87f439720d726e9ecfe16d03a..a591fb7953114e9e834d3f61ac5e57eb
 +          position: 'relative',
 +          zIndex: 1,
 +          display: 'grid',
-+          gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))',
-+          gap: '20px',
++          gridTemplateColumns: 'repeat(auto-fit, minmax(380px, 1fr))',
++          gap: '22px',
 +        }}
 +      >
 +        <div
 +          style={{
-+            background: 'linear-gradient(140deg, rgba(255,255,255,0.08), rgba(255,255,255,0.04))',
-+            borderRadius: '32px',
-+            padding: '48px 42px',
-+            border: '1px solid rgba(255,255,255,0.12)',
++            background: 'linear-gradient(150deg, rgba(255,255,255,0.10), rgba(255,255,255,0.04))',
++            borderRadius: '34px',
++            padding: '52px 46px',
++            border: '1px solid rgba(255,255,255,0.14)',
 +            position: 'relative',
 +            overflow: 'hidden',
-+            boxShadow: '0 30px 90px rgba(0,0,0,0.55)',
++            boxShadow: '0 32px 90px rgba(0,0,0,0.55)',
 +            display: 'grid',
-+            gap: '24px',
++            gap: '26px',
 +            alignContent: 'center',
 +          }}
 +        >
@@ -159,50 +170,60 @@ index 95868ef2bec95ad87f439720d726e9ecfe16d03a..a591fb7953114e9e834d3f61ac5e57eb
 +              position: 'absolute',
 +              inset: '-40%',
 +              background:
-+                'conic-gradient(from 120deg at 50% 50%, rgba(59,130,246,0.10), rgba(16,185,129,0.08), rgba(236,72,153,0.08), rgba(59,130,246,0.10))',
-+              filter: 'blur(28px)',
-+              opacity: 0.8,
++                'radial-gradient(circle at 30% 30%, rgba(59,130,246,0.26), transparent 32%), radial-gradient(circle at 70% 70%, rgba(16,185,129,0.22), transparent 28%)',
++              filter: 'blur(34px)',
++              opacity: 0.7,
 +            }}
 +          />
 +          <div
 +            style={{
-+              width: '186px',
-+              height: '186px',
++              width: '192px',
++              height: '192px',
 +              margin: '0 auto',
-+              borderRadius: '36px',
-+              background: 'radial-gradient(circle at 30% 30%, rgba(255,255,255,0.30), rgba(255,255,255,0.08))',
++              borderRadius: '38px',
++              background: 'radial-gradient(circle at 30% 30%, rgba(255,255,255,0.32), rgba(255,255,255,0.08))',
 +              display: 'grid',
 +              placeItems: 'center',
 +              position: 'relative',
-+              boxShadow: '0 26px 60px rgba(59,130,246,0.32)',
-+              border: '1px solid rgba(255,255,255,0.24)',
++              border: '1px solid rgba(255,255,255,0.26)',
++              boxShadow: '0 28px 64px rgba(59,130,246,0.32)',
 +              overflow: 'hidden',
 +            }}
 +          >
 +            <div
 +              style={{
 +                position: 'absolute',
-+                inset: '-14px',
++                inset: '-12px',
 +                borderRadius: '40px',
 +                background:
-+                  'conic-gradient(from 0deg at 50% 50%, rgba(16,185,129,0.24), rgba(59,130,246,0.20), rgba(236,72,153,0.20), rgba(16,185,129,0.24))',
-+                filter: 'blur(14px)',
-+                opacity: 0.7,
++                  'conic-gradient(from 30deg at 50% 50%, rgba(16,185,129,0.24), rgba(59,130,246,0.22), rgba(236,72,153,0.18), rgba(16,185,129,0.24))',
++                filter: 'blur(16px)',
++                opacity: 0.8,
++              }}
++            />
++            <div
++              style={{
++                position: 'absolute',
++                inset: 16,
++                borderRadius: '28px',
++                border: '1px solid rgba(255,255,255,0.18)',
++                backdropFilter: 'blur(8px)',
++                background: 'linear-gradient(160deg, rgba(255,255,255,0.08), rgba(255,255,255,0.02))',
 +              }}
 +            />
 +            <img
 +              src="/bookitgy-logo.png"
 +              alt="BookitGY logo"
 +              style={{
-+                height: '104px',
-+                width: '104px',
++                height: '112px',
++                width: '112px',
 +                objectFit: 'contain',
-+                filter: 'drop-shadow(0 12px 24px rgba(0,0,0,0.35))',
++                filter: 'drop-shadow(0 12px 24px rgba(0,0,0,0.4))',
 +                zIndex: 1,
 +              }}
 +            />
 +          </div>
-+          <div style={{ textAlign: 'center', maxWidth: '520px', margin: '0 auto', display: 'grid', gap: '10px' }}>
++          <div style={{ textAlign: 'center', maxWidth: '520px', margin: '0 auto', display: 'grid', gap: '12px' }}>
 +            <p style={{ color: '#c7d2fe', letterSpacing: '0.32em', fontSize: '11px', textTransform: 'uppercase', margin: 0 }}>
 +              Admin Portal
 +            </p>
@@ -217,17 +238,17 @@ index 95868ef2bec95ad87f439720d726e9ecfe16d03a..a591fb7953114e9e834d3f61ac5e57eb
 +            >
 +              Welcome back to Guyana Booker
 +            </h1>
-+            <p style={{ color: '#e2e8f0', opacity: 0.9, lineHeight: 1.65, margin: 0 }}>
++            <p style={{ color: '#e2e8f0', opacity: 0.92, lineHeight: 1.65, margin: 0 }}>
 +              Manage providers, bookings, and payouts in one secure command center. Your BookitGY tools are waiting.
 +            </p>
 +          </div>
 +          <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', justifyContent: 'center' }}>
 +            <span
 +              style={{
-+                padding: '9px 14px',
++                padding: '10px 14px',
 +                borderRadius: '999px',
-+                background: 'rgba(255,255,255,0.08)',
-+                border: '1px solid rgba(255,255,255,0.14)',
++                background: 'rgba(255,255,255,0.10)',
++                border: '1px solid rgba(255,255,255,0.18)',
 +                fontSize: '12px',
 +                letterSpacing: '0.02em',
 +              }}
@@ -236,10 +257,10 @@ index 95868ef2bec95ad87f439720d726e9ecfe16d03a..a591fb7953114e9e834d3f61ac5e57eb
 +            </span>
 +            <span
 +              style={{
-+                padding: '9px 14px',
++                padding: '10px 14px',
 +                borderRadius: '999px',
 +                background: 'rgba(34,197,94,0.16)',
-+                border: '1px solid rgba(34,197,94,0.38)',
++                border: '1px solid rgba(34,197,94,0.42)',
 +                color: '#dcfce7',
 +                fontSize: '12px',
 +                letterSpacing: '0.02em',
@@ -266,15 +287,15 @@ index 95868ef2bec95ad87f439720d726e9ecfe16d03a..a591fb7953114e9e834d3f61ac5e57eb
 -            height: '8px',
 -            borderRadius: '999px',
 -            transition: 'width 0.3s ease',
-+            background: 'rgba(2,6,23,0.92)',
-+            borderRadius: '32px',
-+            padding: '42px',
-+            border: '1px solid rgba(255,255,255,0.08)',
++            background: 'rgba(2,6,23,0.94)',
++            borderRadius: '34px',
++            padding: '44px',
++            border: '1px solid rgba(255,255,255,0.10)',
 +            position: 'relative',
 +            overflow: 'hidden',
-+            boxShadow: '0 30px 90px rgba(0,0,0,0.55)',
++            boxShadow: '0 32px 90px rgba(0,0,0,0.55)',
 +            display: 'grid',
-+            gap: '18px',
++            gap: '20px',
 +            alignContent: 'start',
            }}
 -        />
@@ -285,9 +306,9 @@ index 95868ef2bec95ad87f439720d726e9ecfe16d03a..a591fb7953114e9e834d3f61ac5e57eb
 +              inset: '16px',
 +              borderRadius: '26px',
 +              background:
-+                'radial-gradient(circle at 16% 16%, rgba(59,130,246,0.14), transparent 34%), radial-gradient(circle at 84% 10%, rgba(16,185,129,0.12), transparent 32%), radial-gradient(circle at 58% 86%, rgba(236,72,153,0.10), transparent 28%)',
++                'radial-gradient(circle at 18% 20%, rgba(59,130,246,0.16), transparent 34%), radial-gradient(circle at 88% 12%, rgba(16,185,129,0.14), transparent 32%), radial-gradient(circle at 62% 84%, rgba(236,72,153,0.12), transparent 28%)',
 +              opacity: 0.85,
-+              filter: 'blur(6px)',
++              filter: 'blur(7px)',
 +              pointerEvents: 'none',
 +            }}
 +          />
@@ -295,11 +316,11 @@ index 95868ef2bec95ad87f439720d726e9ecfe16d03a..a591fb7953114e9e834d3f61ac5e57eb
 +            <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
 +              <div
 +                style={{
-+                  height: '48px',
-+                  width: '48px',
++                  height: '50px',
++                  width: '50px',
 +                  borderRadius: '14px',
-+                  background: 'linear-gradient(135deg, rgba(59,130,246,0.38), rgba(16,185,129,0.32))',
-+                  border: '1px solid rgba(255,255,255,0.18)',
++                  background: 'linear-gradient(135deg, rgba(59,130,246,0.40), rgba(16,185,129,0.32))',
++                  border: '1px solid rgba(255,255,255,0.20)',
 +                  display: 'grid',
 +                  placeItems: 'center',
 +                  boxShadow: '0 12px 34px rgba(0,0,0,0.45)',
@@ -330,8 +351,8 @@ index 95868ef2bec95ad87f439720d726e9ecfe16d03a..a591fb7953114e9e834d3f61ac5e57eb
 +                  marginLeft: 'auto',
 +                  padding: '8px 12px',
 +                  borderRadius: '999px',
-+                  background: 'linear-gradient(120deg, rgba(34,197,94,0.24), rgba(34,197,94,0.14))',
-+                  border: '1px solid rgba(34,197,94,0.38)',
++                  background: 'linear-gradient(120deg, rgba(34,197,94,0.26), rgba(34,197,94,0.14))',
++                  border: '1px solid rgba(34,197,94,0.42)',
 +                  color: '#bbf7d0',
 +                  fontSize: '12px',
 +                  display: 'flex',
@@ -362,7 +383,7 @@ index 95868ef2bec95ad87f439720d726e9ecfe16d03a..a591fb7953114e9e834d3f61ac5e57eb
 +                placeholder="admin@guyana.com"
 +                style={{
 +                  background: 'rgba(255,255,255,0.06)',
-+                  border: '1px solid rgba(255,255,255,0.14)',
++                  border: '1px solid rgba(255,255,255,0.16)',
 +                  borderRadius: '14px',
 +                  padding: '14px 16px',
 +                  color: 'white',
@@ -372,12 +393,12 @@ index 95868ef2bec95ad87f439720d726e9ecfe16d03a..a591fb7953114e9e834d3f61ac5e57eb
 +                  transition: 'border-color 0.2s, transform 0.2s, box-shadow 0.2s',
 +                }}
 +                onFocus={(e) => {
-+                  e.target.style.borderColor = 'rgba(59,130,246,0.55)';
++                  e.target.style.borderColor = 'rgba(59,130,246,0.60)';
 +                  e.target.style.transform = 'translateY(-1px)';
-+                  e.target.style.boxShadow = '0 14px 40px rgba(59,130,246,0.22)';
++                  e.target.style.boxShadow = '0 14px 40px rgba(59,130,246,0.24)';
 +                }}
 +                onBlur={(e) => {
-+                  e.target.style.borderColor = 'rgba(255,255,255,0.14)';
++                  e.target.style.borderColor = 'rgba(255,255,255,0.16)';
 +                  e.target.style.transform = 'translateY(0)';
 +                  e.target.style.boxShadow = '0 12px 35px rgba(0,0,0,0.32) inset';
 +                }}
@@ -393,7 +414,7 @@ index 95868ef2bec95ad87f439720d726e9ecfe16d03a..a591fb7953114e9e834d3f61ac5e57eb
 +                placeholder="••••••••"
 +                style={{
 +                  background: 'rgba(255,255,255,0.06)',
-+                  border: '1px solid rgba(255,255,255,0.14)',
++                  border: '1px solid rgba(255,255,255,0.16)',
 +                  borderRadius: '14px',
 +                  padding: '14px 16px',
 +                  color: 'white',
@@ -403,12 +424,12 @@ index 95868ef2bec95ad87f439720d726e9ecfe16d03a..a591fb7953114e9e834d3f61ac5e57eb
 +                  transition: 'border-color 0.2s, transform 0.2s, box-shadow 0.2s',
 +                }}
 +                onFocus={(e) => {
-+                  e.target.style.borderColor = 'rgba(59,130,246,0.55)';
++                  e.target.style.borderColor = 'rgba(59,130,246,0.60)';
 +                  e.target.style.transform = 'translateY(-1px)';
-+                  e.target.style.boxShadow = '0 14px 40px rgba(59,130,246,0.22)';
++                  e.target.style.boxShadow = '0 14px 40px rgba(59,130,246,0.24)';
 +                }}
 +                onBlur={(e) => {
-+                  e.target.style.borderColor = 'rgba(255,255,255,0.14)';
++                  e.target.style.borderColor = 'rgba(255,255,255,0.16)';
 +                  e.target.style.transform = 'translateY(0)';
 +                  e.target.style.boxShadow = '0 12px 35px rgba(0,0,0,0.32) inset';
 +                }}
@@ -447,9 +468,9 @@ index 95868ef2bec95ad87f439720d726e9ecfe16d03a..a591fb7953114e9e834d3f61ac5e57eb
 +              style={{
 +                marginTop: '4px',
 +                padding: '14px 16px',
-+                background: 'rgba(255,255,255,0.05)',
++                background: 'rgba(255,255,255,0.06)',
 +                borderRadius: '14px',
-+                border: '1px dashed rgba(255,255,255,0.14)',
++                border: '1px dashed rgba(255,255,255,0.16)',
 +                color: '#e2e8f0',
 +                display: 'flex',
 +                alignItems: 'center',
@@ -478,8 +499,8 @@ index 95868ef2bec95ad87f439720d726e9ecfe16d03a..a591fb7953114e9e834d3f61ac5e57eb
        </div>
      </div>
    );
--}
--
+ }
+ 
 -function useLeafletMap(providers) {
 -  useEffect(() => {
 -    const ensureLeaflet = () => {
@@ -530,7 +551,7 @@ index 95868ef2bec95ad87f439720d726e9ecfe16d03a..a591fb7953114e9e834d3f61ac5e57eb
 -    };
 -
 -    ensureLeaflet();
- 
+-
 -    return () => {
 -      if (mapInstance) {
 -        mapInstance.remove();
@@ -542,7 +563,7 @@ index 95868ef2bec95ad87f439720d726e9ecfe16d03a..a591fb7953114e9e834d3f61ac5e57eb
 -      }
 -    };
 -  }, [providers]);
- }
+-}
 -
  function AdminDashboard() {
    const [serviceCharge, setServiceCharge] = useState(10);

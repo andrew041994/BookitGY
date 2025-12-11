@@ -95,7 +95,7 @@ const signupHistory = [
 ];
 
 function Login({ onLogin }) {
-  const [email, setEmail] = useState('customer@guyana.com');
+  const [email, setEmail] = useState('admin@guyana.com');
   const [password, setPassword] = useState('pass');
   const navigate = useNavigate();
 
