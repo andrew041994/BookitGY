@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Link, Navigate, useLocation, useNavigate 
 import axios from 'axios';
 
 const API = 'http://localhost:8000';
+const DEFAULT_SERVICE_CHARGE = 10;
 
 const sampleProviders = [
   {
@@ -368,17 +369,19 @@ function AdminDashboard() {
     return new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), 1)).toISOString().slice(0, 10);
   }, []);
 
-  const [serviceCharge, setServiceCharge] = useState(10);
+  const [serviceCharge, setServiceCharge] = useState(DEFAULT_SERVICE_CHARGE);
+  const [serviceChargeDraft, setServiceChargeDraft] = useState(DEFAULT_SERVICE_CHARGE);
   const [providers, setProviders] = useState(sampleProviders);
   const [charges, setCharges] = useState(() =>
-    sampleCharges.map((charge) =>
-      charge.month === billingCycleStart
-        ? {
-            ...charge,
-            isPaid: false,
-          }
-        : charge,
-    ),
+    sampleCharges.map((charge) => {
+      const baseServiceCost = Math.round((charge.amount / DEFAULT_SERVICE_CHARGE) * 100);
+
+      return {
+        ...charge,
+        baseServiceCost,
+        isPaid: charge.month === billingCycleStart ? false : charge.isPaid ?? false,
+      };
+    }),
   );
   const [selectedChargeIds, setSelectedChargeIds] = useState([]);
   const [creditInputs, setCreditInputs] = useState({});
@@ -488,6 +491,21 @@ function AdminDashboard() {
     setCreditInputs((prev) => ({ ...prev, [providerId]: '' }));
   };
 
+  const recalculateChargesForRate = (rate) => {
+    const safeRate = Math.max(0, Math.min(100, Number(rate) || 0));
+    setCharges((prev) => prev.map((c) => ({ ...c, amount: Math.round(c.baseServiceCost * (safeRate / 100)) })));
+    setServiceCharge(safeRate);
+    setServiceChargeDraft(safeRate);
+  };
+
+  const saveServiceCharge = () => {
+    recalculateChargesForRate(serviceChargeDraft);
+  };
+
+  const resetServiceCharge = () => {
+    recalculateChargesForRate(DEFAULT_SERVICE_CHARGE);
+  };
+
   const toggleLock = (providerId) => {
     setProviders((prev) => prev.map((p) => (p.id === providerId ? { ...p, isLocked: !p.isLocked } : p)));
   };
@@ -551,27 +569,27 @@ function AdminDashboard() {
                   type="number"
                   min="0"
                   max="100"
-                  value={serviceCharge}
-                  onChange={(e) => setServiceCharge(Number(e.target.value))}
+                  value={serviceChargeDraft}
+                  onChange={(e) => setServiceChargeDraft(Number(e.target.value))}
                   style={{ padding: '10px', borderRadius: '8px', border: '1px solid #d1d5db', width: '120px' }}
                 />
                 <span style={{ color: '#9ca3af' }}>
-                  % of service cost (default 10%). Current billing cycle starts {billingCycleStart}.
+                  % of service cost (default {DEFAULT_SERVICE_CHARGE}%). Current billing cycle starts {billingCycleStart}. Saved rate: {serviceCharge}%.
                 </span>
               </div>
             </div>
             <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
               <button
                 style={{ padding: '10px 14px', background: '#16a34a', color: 'white', borderRadius: '10px', border: 'none', fontWeight: 700 }}
-                onClick={() => alert(`Service charge updated to ${serviceCharge}%`)}
+                onClick={saveServiceCharge}
               >
                 Save Changes
               </button>
               <button
                 style={{ padding: '10px 14px', background: '#f3f4f6', color: '#111827', borderRadius: '10px', border: '1px solid #e5e7eb', fontWeight: 700 }}
-                onClick={() => setServiceCharge(10)}
+                onClick={resetServiceCharge}
               >
-                Reset to 10%
+                Reset to {DEFAULT_SERVICE_CHARGE}%
               </button>
             </div>
           </div>
