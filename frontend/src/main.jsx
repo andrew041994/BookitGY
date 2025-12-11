@@ -1,14 +1,27 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
-import { BrowserRouter, Routes, Route, Link, useNavigate } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, Link, NavLink, useNavigate, Navigate, Outlet, useLocation } from 'react-router-dom'
 import axios from 'axios'
 import './login.css'
 
 const API = 'http://localhost:8000'
+const DEFAULT_SERVICE_CHARGE = 10
+const SERVICE_CHARGE_STORAGE_KEY = 'bookitgy.service_charge_rate'
+
+const normalizeServiceCharge = (value) => Math.max(0, Math.min(100, Number(value) || 0))
+
+const loadStoredServiceCharge = () => {
+  const stored = localStorage.getItem(SERVICE_CHARGE_STORAGE_KEY)
+  if (stored === null) return null
+  return normalizeServiceCharge(stored)
+}
+
+const persistServiceCharge = (rate) => {
+  localStorage.setItem(SERVICE_CHARGE_STORAGE_KEY, String(rate))
+}
 
 function App() {
   const [token, setToken] = React.useState(localStorage.getItem('token') || '')
-  const [user, setUser] = React.useState(null)
 
   React.useEffect(() => {
     if (token) {
@@ -137,18 +150,84 @@ function App() {
     }
 
     return (
-      <div className="p-10">
-        <h1 className="text-4xl mb-8">Admin – Editable Promotions</h1>
-        <div className="bg-gray-100 p-8 rounded max-w-lg">
-          <input value={providerId} onChange={e => setProviderId(e.target.value)} className="border p-3 mr-4" placeholder="Provider ID" />
-          <input value={free} onChange={e => setFree(e.target.value)} className="border p-3 mr-4" placeholder="Free bookings" />
-          <button onClick={apply} className="bg-green-600 text-white px-6 py-3 rounded">Apply Promotion</button>
+      <div className="admin-page">
+        <div className="admin-header">
+          <div>
+            <p className="eyebrow">Marketing</p>
+            <h1>Admin – Editable Promotions</h1>
+            <p className="header-subtitle">Grant bonus bookings to providers whenever you need.</p>
+          </div>
         </div>
-        <p className="mt-6 text-gray-600">Example: Give provider ID 1 → 50 free bookings anytime!</p>
+        <div className="admin-card">
+          <div className="form-grid">
+            <label className="form-field">
+              <span>Provider ID</span>
+              <input value={providerId} onChange={e => setProviderId(e.target.value)} placeholder="Provider ID" />
+            </label>
+            <label className="form-field">
+              <span>Free bookings</span>
+              <input value={free} onChange={e => setFree(e.target.value)} placeholder="Free bookings" />
+            </label>
+          </div>
+          <button onClick={apply} className="primary-btn">Apply Promotion</button>
+          <p className="muted">Example: Give provider ID 1 → 50 free bookings anytime!</p>
+        </div>
       </div>
     )
-  }   
-      const Home = () => (
+  }
+
+  const ServiceChargeSettings = () => {
+    const [draft, setDraft] = React.useState(() => loadStoredServiceCharge() ?? DEFAULT_SERVICE_CHARGE)
+    const [savedRate, setSavedRate] = React.useState(() => loadStoredServiceCharge() ?? DEFAULT_SERVICE_CHARGE)
+
+    const save = () => {
+      const normalized = normalizeServiceCharge(draft)
+      persistServiceCharge(normalized)
+      setSavedRate(normalized)
+      setDraft(normalized)
+      alert(`Service charge saved at ${normalized}%`)
+    }
+
+    const reset = () => {
+      persistServiceCharge(DEFAULT_SERVICE_CHARGE)
+      setSavedRate(DEFAULT_SERVICE_CHARGE)
+      setDraft(DEFAULT_SERVICE_CHARGE)
+    }
+
+    return (
+      <div className="admin-page">
+        <div className="admin-header">
+          <div>
+            <p className="eyebrow">Billing</p>
+            <h1>Service Charge</h1>
+            <p className="header-subtitle">Control the percentage fee applied to each service cost.</p>
+          </div>
+        </div>
+
+        <div className="admin-card">
+          <div className="form-grid single">
+            <label className="form-field">
+              <span>Service charge percentage</span>
+              <input
+                type="number"
+                min="0"
+                max="100"
+                value={draft}
+                onChange={(e) => setDraft(Number(e.target.value))}
+              />
+            </label>
+          </div>
+          <p className="muted">Current saved rate: <strong>{savedRate}%</strong>. Values are clamped between 0% and 100%.</p>
+          <div className="button-row">
+            <button onClick={save} className="primary-btn">Save service charge</button>
+            <button onClick={reset} className="ghost-btn">Reset to default ({DEFAULT_SERVICE_CHARGE}%)</button>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  const Home = () => (
     <div className="landing-shell">
       <div className="landing-glow landing-glow-one" />
       <div className="landing-glow landing-glow-two" />
@@ -165,19 +244,57 @@ function App() {
         <div className="landing-actions">
           <Link className="primary-btn" to={token ? '/admin/promotions' : '/login'}>
             {token ? 'Go to dashboard' : 'Login'}
-
           </Link>
-        {/* STOP */}
           {!token && (
             <p className="credentials-hint">
               Demo login: <strong>customer@guyana.com</strong> / <strong>pass</strong>
             </p>
-       
           )}
         </div>
       </div>
     </div>
   )
+
+  const ProtectedRoute = ({ children }) => {
+    const location = useLocation()
+    if (!token) {
+      return <Navigate to="/login" replace state={{ from: location }} />
+    }
+    return children
+  }
+
+  const AdminLayout = () => {
+    const location = useLocation()
+    return (
+      <div className="admin-shell">
+        <aside className="admin-sidebar">
+          <div className="sidebar-header">
+            <div className="logo-circle small">
+              <img src="/bookitgy-logo.png" alt="BookitGY" />
+            </div>
+            <div>
+              <p className="eyebrow">Admin</p>
+              <strong>BookitGY</strong>
+            </div>
+          </div>
+          <nav className="sidebar-nav">
+            <NavLink to="/admin/promotions" className={({ isActive }) => isActive ? 'sidebar-link active' : 'sidebar-link'}>
+              Promotions
+            </NavLink>
+            <NavLink to="/admin/service-charge" className={({ isActive }) => isActive ? 'sidebar-link active' : 'sidebar-link'}>
+              Service Charge
+            </NavLink>
+          </nav>
+          <div className="sidebar-footer">
+            Logged in · {token ? 'Authenticated' : 'Guest'}
+          </div>
+        </aside>
+        <main className="admin-main" key={location.pathname}>
+          <Outlet />
+        </main>
+      </div>
+    )
+  }
 
   return (
     <BrowserRouter>
@@ -212,7 +329,18 @@ function App() {
       <Routes>
         <Route path="/" element={<Home />} />
         <Route path="/login" element={<Login />} />
-        <Route path="/admin/promotions" element={token ? <AdminPromotions /> : <Login />} />
+        <Route
+          path="/admin"
+          element={(
+            <ProtectedRoute>
+              <AdminLayout />
+            </ProtectedRoute>
+          )}
+        >
+          <Route index element={<Navigate to="/admin/promotions" replace />} />
+          <Route path="promotions" element={<AdminPromotions />} />
+          <Route path="service-charge" element={<ServiceChargeSettings />} />
+        </Route>
       </Routes>
     </BrowserRouter>
   )
