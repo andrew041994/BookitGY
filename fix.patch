@@ -1,5 +1,5 @@
 diff --git a/mobile/App.js b/mobile/App.js
-index 8455b941c9468f35e8eb77d3c82e5fb39826a553..de20f34a542eeddf2d89956f7d2e999d6a2025b9 100644
+index 8455b941c9468f35e8eb77d3c82e5fb39826a553..ef0157f70a5711d0abcea98a8cd5e9605ba4514a 100644
 --- a/mobile/App.js
 +++ b/mobile/App.js
 @@ -1,30 +1,30 @@
@@ -34,7 +34,7 @@ index 8455b941c9468f35e8eb77d3c82e5fb39826a553..de20f34a542eeddf2d89956f7d2e999d
    console.log("### API base URL =", API);
  
    const isValidEmail = (value) => {
-@@ -722,50 +722,51 @@ function SignupScreen({ goToLogin, goBack, showFlash }) {
+@@ -722,50 +722,158 @@ function SignupScreen({ goToLogin, goBack, showFlash }) {
    );
  }
  
@@ -61,176 +61,73 @@ index 8455b941c9468f35e8eb77d3c82e5fb39826a553..de20f34a542eeddf2d89956f7d2e999d
    const [bookingsError, setBookingsError] = useState("");
    const [avatarUrl, setAvatarUrl] = useState(null);
 +  const [refreshing, setRefreshing] = useState(false);
- 
- 
-   const uploadAvatar = async (uri) => {
-     try{
-       const token = await AsyncStorage.getItem("accessToken");
-       if (!token) {
-         alert("No access token found. Please log in again.");
-         return;
-       }
- 
-       const filename = uri.split("/").pop() || "avatar.jpg";
-       const match = /\.(\w+)$/.exec(filename);
-       const ext = match ? match[1] : "jpg";
-       const mimeType = ext === "png" ? "image/png" : "image/jpeg";
- 
-       const formData = new FormData();
-       formData.append("file", {
-         uri,
-         name: filename,
-         type: mimeType,
-       });
- 
-       const res = await axios.post(`${API}/users/me/avatar`, formData, {
-         headers: {
-           "Content-Type": "multipart/form-data",
-@@ -811,53 +812,54 @@ function ProfileScreen({ setToken, showFlash, token }) {
-     await uploadAvatar(asset.uri);
-     } catch (err) {
-       console.log("Image picker error:", err);
-     }
-   };
- 
- 
- 
-   const logout = async () => {
-     try {
-       await AsyncStorage.removeItem("accessToken");
-       if (setToken) {
-         setToken(null);
-       }
-       if (showFlash) {
-         showFlash("success", "Logged out successfully");
-       }
-     } catch (err) {
-       console.error("Error during logout", err);
-       if (showFlash) {
-         showFlash("error", "Could not log out. Please try again.");
-       }
-     }
-   };
- 
--  useEffect(() => {
--    const loadProfile = async () => {
++
 +  const loadProfile = useCallback(
 +    async (useRefresh = false) => {
-       try {
++      try {
 +        if (useRefresh) setRefreshing(true);
-         setLoading(true);
-         setError("");
- 
-         const tokenValue = await AsyncStorage.getItem("accessToken");
- 
-         if (!tokenValue) {
-           setError("No access token found. Please log in again.");
-           setLoading(false);
-           return;
-         }
- 
-         const headers = {
-           Authorization: `Bearer ${tokenValue}`,
-         };
- 
-         // 1) Load base user info
-         const res = await axios.get(`${API}/users/me`, { headers });
- 
-         setUser(res.data);
-         setEditProfile({
-           full_name: res.data.full_name || "",
-           phone: res.data.phone || "",
-           whatsapp: res.data.whatsapp || "",
-           location: res.data.location || "",
-         });
-@@ -870,55 +872,59 @@ function ProfileScreen({ setToken, showFlash, token }) {
-           try {
-             const provRes = await axios.get(
-               `${API}/providers/me/profile`,
-               { headers }
-             );
-             if (provRes.data.avatar_url) {
-               avatar = provRes.data.avatar_url;
-             }
-           } catch (err) {
-             console.log(
-               "Error loading provider avatar for profile",
-               err.response?.data || err.message
-             );
-           }
-         }
- 
-         setAvatarUrl(avatar);
-       } catch (err) {
-         console.error("Error loading profile", err);
-         setError("Could not load profile.");
-         if (showFlash) {
-           showFlash("error", "Could not load profile information.");
-         }
-       } finally {
-         setLoading(false);
++        setLoading(true);
++        setError("");
++
++        const tokenValue = await AsyncStorage.getItem("accessToken");
++
++        if (!tokenValue) {
++          setError("No access token found. Please log in again.");
++          setLoading(false);
++          return;
++        }
++
++        const headers = {
++          Authorization: `Bearer ${tokenValue}`,
++        };
++
++        // 1) Load base user info
++        const res = await axios.get(`${API}/users/me`, { headers });
++
++        setUser(res.data);
++        setEditProfile({
++          full_name: res.data.full_name || "",
++          phone: res.data.phone || "",
++          whatsapp: res.data.whatsapp || "",
++          location: res.data.location || "",
++        });
++
++        // 2) Try to get avatar
++        let avatar = res.data.avatar_url || null;
++
++        // If this user is a provider, also check provider profile
++        if ((token && token.isProvider) || res.data.is_provider) {
++          try {
++            const provRes = await axios.get(
++              `${API}/providers/me/profile`,
++              { headers }
++            );
++            if (provRes.data.avatar_url) {
++              avatar = provRes.data.avatar_url;
++            }
++          } catch (err) {
++            console.log(
++              "Error loading provider avatar for profile",
++              err.response?.data || err.message
++            );
++          }
++        }
++
++        setAvatarUrl(avatar);
++      } catch (err) {
++        console.error("Error loading profile", err);
++        setError("Could not load profile.");
++        if (showFlash) {
++          showFlash("error", "Could not load profile information.");
++        }
++      } finally {
++        setLoading(false);
 +        if (useRefresh) setRefreshing(false);
-       }
--    };
++      }
 +    },
 +    [showFlash, token]
 +  );
- 
-+  useEffect(() => {
-     loadProfile();
--  }, [token]);
-+  }, [loadProfile, token]);
- 
-     const toggleEditProfile = () => {
-     // ensure form reflects current user
-     if (user && !showEdit) {
-       setEditProfile({
-         full_name: user.full_name || "",
-         phone: user.phone || "",
-         whatsapp: user.whatsapp || "",
-         location: user.location || "",
-       });
-     }
-     setShowEdit((prev) => !prev);
-   };
- 
-   const saveProfileChanges = async () => {
-     try {
-       setEditSaving(true);
-       const token = await AsyncStorage.getItem("accessToken");
-       if (!token) {
-         if (showFlash) showFlash("error", "No access token found. Please log in again.");
-         return;
-       }
- 
-       const payload = {
-         full_name: editProfile.full_name,
-@@ -938,144 +944,148 @@ function ProfileScreen({ setToken, showFlash, token }) {
-       );
- 
- 
-       // Refresh local user state so top card updates
-       setUser((prev) => ({
-         ...prev,
-         full_name: res.data.full_name,
-         phone: res.data.phone,
-         whatsapp: res.data.whatsapp,
-         location: res.data.location,
-       }));
- 
-       if (showFlash) showFlash("success", "Profile updated");
-       setShowEdit(false);
-     } catch (err) {
-       console.log("Error saving profile", err.response?.data || err.message);
-       const detail =
-         err.response?.data?.detail || "Could not save profile changes.";
-       if (showFlash) showFlash("error", detail);
-     } finally {
-       setEditSaving(false);
-     }
-   };
- 
- 
++
 +  const loadMyBookings = useCallback(async () => {
 +    try {
 +      setBookingsLoading(true);
@@ -268,6 +165,176 @@ index 8455b941c9468f35e8eb77d3c82e5fb39826a553..de20f34a542eeddf2d89956f7d2e999d
 +    }
 +  }, [loadMyBookings, loadProfile, showBookings]);
 +
++  useEffect(() => {
++    loadProfile();
++  }, [loadProfile, token]);
+ 
+ 
+   const uploadAvatar = async (uri) => {
+     try{
+       const token = await AsyncStorage.getItem("accessToken");
+       if (!token) {
+         alert("No access token found. Please log in again.");
+         return;
+       }
+ 
+       const filename = uri.split("/").pop() || "avatar.jpg";
+       const match = /\.(\w+)$/.exec(filename);
+       const ext = match ? match[1] : "jpg";
+       const mimeType = ext === "png" ? "image/png" : "image/jpeg";
+ 
+       const formData = new FormData();
+       formData.append("file", {
+         uri,
+         name: filename,
+         type: mimeType,
+       });
+ 
+       const res = await axios.post(`${API}/users/me/avatar`, formData, {
+         headers: {
+           "Content-Type": "multipart/form-data",
+@@ -811,115 +919,50 @@ function ProfileScreen({ setToken, showFlash, token }) {
+     await uploadAvatar(asset.uri);
+     } catch (err) {
+       console.log("Image picker error:", err);
+     }
+   };
+ 
+ 
+ 
+   const logout = async () => {
+     try {
+       await AsyncStorage.removeItem("accessToken");
+       if (setToken) {
+         setToken(null);
+       }
+       if (showFlash) {
+         showFlash("success", "Logged out successfully");
+       }
+     } catch (err) {
+       console.error("Error during logout", err);
+       if (showFlash) {
+         showFlash("error", "Could not log out. Please try again.");
+       }
+     }
+   };
+ 
+-  useEffect(() => {
+-    const loadProfile = async () => {
+-      try {
+-        setLoading(true);
+-        setError("");
+-
+-        const tokenValue = await AsyncStorage.getItem("accessToken");
+-
+-        if (!tokenValue) {
+-          setError("No access token found. Please log in again.");
+-          setLoading(false);
+-          return;
+-        }
+-
+-        const headers = {
+-          Authorization: `Bearer ${tokenValue}`,
+-        };
+-
+-        // 1) Load base user info
+-        const res = await axios.get(`${API}/users/me`, { headers });
+-
+-        setUser(res.data);
+-        setEditProfile({
+-          full_name: res.data.full_name || "",
+-          phone: res.data.phone || "",
+-          whatsapp: res.data.whatsapp || "",
+-          location: res.data.location || "",
+-        });
+-
+-        // 2) Try to get avatar
+-        let avatar = res.data.avatar_url || null;
+-
+-        // If this user is a provider, also check provider profile
+-        if ((token && token.isProvider) || res.data.is_provider) {
+-          try {
+-            const provRes = await axios.get(
+-              `${API}/providers/me/profile`,
+-              { headers }
+-            );
+-            if (provRes.data.avatar_url) {
+-              avatar = provRes.data.avatar_url;
+-            }
+-          } catch (err) {
+-            console.log(
+-              "Error loading provider avatar for profile",
+-              err.response?.data || err.message
+-            );
+-          }
+-        }
+-
+-        setAvatarUrl(avatar);
+-      } catch (err) {
+-        console.error("Error loading profile", err);
+-        setError("Could not load profile.");
+-        if (showFlash) {
+-          showFlash("error", "Could not load profile information.");
+-        }
+-      } finally {
+-        setLoading(false);
+-      }
+-    };
+-
+-    loadProfile();
+-  }, [token]);
+-
+     const toggleEditProfile = () => {
+     // ensure form reflects current user
+     if (user && !showEdit) {
+       setEditProfile({
+         full_name: user.full_name || "",
+         phone: user.phone || "",
+         whatsapp: user.whatsapp || "",
+         location: user.location || "",
+       });
+     }
+     setShowEdit((prev) => !prev);
+   };
+ 
+   const saveProfileChanges = async () => {
+     try {
+       setEditSaving(true);
+       const token = await AsyncStorage.getItem("accessToken");
+       if (!token) {
+         if (showFlash) showFlash("error", "No access token found. Please log in again.");
+         return;
+       }
+ 
+       const payload = {
+         full_name: editProfile.full_name,
+         phone: editProfile.phone,
+@@ -938,144 +981,111 @@ function ProfileScreen({ setToken, showFlash, token }) {
+       );
+ 
+ 
+       // Refresh local user state so top card updates
+       setUser((prev) => ({
+         ...prev,
+         full_name: res.data.full_name,
+         phone: res.data.phone,
+         whatsapp: res.data.whatsapp,
+         location: res.data.location,
+       }));
+ 
+       if (showFlash) showFlash("success", "Profile updated");
+       setShowEdit(false);
+     } catch (err) {
+       console.log("Error saving profile", err.response?.data || err.message);
+       const detail =
+         err.response?.data?.detail || "Could not save profile changes.";
+       if (showFlash) showFlash("error", detail);
+     } finally {
+       setEditSaving(false);
+     }
+   };
+ 
+ 
 +  const toggleMyBookings = async () => {
 +    const next = !showBookings;
 +    setShowBookings(next);
