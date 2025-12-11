@@ -4746,6 +4746,14 @@ function ProviderBillingScreen({ token, showFlash }) {
   const [bills, setBills] = useState([]);
   const [billingLoading, setBillingLoading] = useState(false);
   const [billingError, setBillingError] = useState("");
+  const [expandedBills, setExpandedBills] = useState({});
+
+  const toggleBillExpanded = (billId) => {
+    setExpandedBills((prev) => ({
+      ...prev,
+      [billId]: !prev[billId],
+    }));
+  };
 
   const formatMoney = (value) => {
     const amount = Number.isFinite(value) ? value : 0;
@@ -4802,8 +4810,12 @@ function ProviderBillingScreen({ token, showFlash }) {
               booking.user,
             date: normalizeStart(booking),
             amount:
-              Number(booking.price_gyd ?? booking.total_price_gyd ?? booking.price) ||
-              0,
+              Number(
+                booking.service_price_gyd ??
+                  booking.price_gyd ??
+                  booking.total_price_gyd ??
+                  booking.price
+              ) || 0,
           }))
         : [
             {
@@ -4968,27 +4980,44 @@ function ProviderBillingScreen({ token, showFlash }) {
               Invoice date (auto on the 1st): {formatDate(bill.invoiceDate)}
             </Text>
 
-            <View style={styles.billingLineItems}>
-              {bill.lineItems.map((item) => (
-                <View
-                  key={item.bookingId || item.description}
-                  style={styles.billingLineItem}
-                >
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.billingLineLabel}>{item.description}</Text>
-                    {item.client ? (
-                      <Text style={styles.billingMeta}>Client: {item.client}</Text>
-                    ) : null}
-                    {item.date ? (
-                      <Text style={styles.billingMeta}>
-                        Service date: {formatDate(item.date)}
-                      </Text>
-                    ) : null}
+           <TouchableOpacity
+              style={styles.billingToggleRow}
+              onPress={() => toggleBillExpanded(bill.id)}
+            >
+              <Text style={styles.billingToggleText}>
+                {expandedBills[bill.id] ? "Hide services" : "Show services"}
+              </Text>
+              <Ionicons
+                name={expandedBills[bill.id] ? "chevron-up" : "chevron-down"}
+                size={18}
+                color="#0B6BF2"
+              />
+            </TouchableOpacity>
+
+            {expandedBills[bill.id] ? (
+              <View style={styles.billingLineItems}>
+                {bill.lineItems.map((item) => (
+                  <View
+                    key={item.bookingId || item.description}
+                    style={styles.billingLineItem}
+                  >
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.billingLineLabel}>{item.description}</Text>
+                      {item.client ? (
+                        <Text style={styles.billingMeta}>Client: {item.client}</Text>
+                      ) : null}
+                      {item.date ? (
+                        <Text style={styles.billingMeta}>
+                          Service date: {formatDate(item.date)}
+                        </Text>
+                      ) : null}
+                    </View>
+                    <Text style={styles.billingAmount}>{formatMoney(item.amount)}</Text>
+
                   </View>
-                  <Text style={styles.billingAmount}>{formatMoney(item.amount)}</Text>
-                </View>
-              ))}
-            </View>
+                   ))}
+              </View>
+            ) : null}
 
             <View style={styles.billingTotalsRow}>
               <Text style={styles.billingTotalsLabel}>Services total</Text>
@@ -6198,6 +6227,21 @@ billingStatusUpcoming: {
   borderColor: "#bfdbfe",
   borderWidth: 1,
 },
+
+billingToggleRow: {
+  flexDirection: "row",
+  alignItems: "center",
+  justifyContent: "flex-start",
+  marginTop: 10,
+},
+
+billingToggleText: {
+  fontSize: 14,
+  fontWeight: "700",
+  color: "#0B6BF2",
+  marginRight: 6,
+},
+
 
 billingLineItems: {
   marginTop: 12,
