@@ -1,42 +1,53 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
 diff --git a/backend/app/crud.py b/backend/app/crud.py
-index a647a6186ca6ba888dc082d803370e80eff3161c..35bda4e800e232f76e5796fd69747fcaf36270fa 100644
+index 35bda4e800e232f76e5796fd69747fcaf36270fa..9b2cc161df63533bfec23008e65c21d21fcf29f6 100644
 --- a/backend/app/crud.py
 +++ b/backend/app/crud.py
-@@ -1,29 +1,29 @@
- import os
- from datetime import datetime, timedelta, date
- from dateutil import tz
--from decimal import Decimal
-+from decimal import Decimal, ROUND_HALF_UP
- from typing import Optional, List
- from sqlalchemy import func
- from sqlalchemy.orm import Session
- from passlib.context import CryptContext
- from twilio.rest import Client
- import requests
- import hashlib
- from sqlalchemy import func
- from . import models, schemas
- from typing import Optional
- from dotenv import load_dotenv, find_dotenv
+@@ -685,105 +685,116 @@ def generate_monthly_bills(db: Session, month: date):
+             # Don't overwrite already-paid bills
+             if existing_bill.is_paid:
+                 continue
  
- load_dotenv(find_dotenv(), override=False)
+             existing_bill.total_gyd = total
+             existing_bill.fee_gyd = fee
+             existing_bill.due_date = due
+         else:
+             bill = models.Bill(
+                 provider_id=prov.id,
+                 month=start,
+                 total_gyd=total,
+                 fee_gyd=fee,
+                 due_date=due,
+             )
+             db.add(bill)
  
- 
- 
- # ---------------------------------------------------------------------------
- # Password hashing
- # ---------------------------------------------------------------------------
- 
- LOCAL_TZ = tz.gettz("America/Guyana")
- 
- pwd_context = CryptContext(schemes=["pbkdf2_sha256"], deprecated="auto")
+     db.commit()
  
  
-@@ -708,58 +708,60 @@ def generate_monthly_bills(db: Session, month: date):
  
  
+ 
+ 
+ 
++def _calculate_bill_total_due(db: Session, bill: models.Bill, provider_id: int) -> float:
++    """Mirror the provider-facing bill "Total due" for a given bill."""
++
++    total_due = Decimal(str(bill.fee_gyd or 0)).quantize(
++        Decimal("1"), rounding=ROUND_HALF_UP
++    )
++    credits = Decimal(str(get_provider_credit_balance(db, provider_id) or 0))
++    # Bill credits should only ever reduce what a provider owes. If the balance is
++    # negative (e.g., from a bad manual entry), clamp it to zero so we don't
++    # accidentally inflate the amount due.
++    credits = max(credits, Decimal("0"))
++
++    net_due = (total_due - credits).quantize(Decimal("1"), rounding=ROUND_HALF_UP)
++    if net_due < 0:
++        net_due = Decimal("0")
++
++    return float(net_due)
++
++
  def get_provider_fees_due(db: Session, provider_id: int) -> float:
      """
      Amount due for the most recent unpaid bill for this provider, in GYD.
@@ -59,27 +70,26 @@ index a647a6186ca6ba888dc082d803370e80eff3161c..35bda4e800e232f76e5796fd69747fca
      if not latest_unpaid_bill:
          return 0.0
  
-     # Billing for providers should only charge the platform fee, not their gross booking revenue.
--    total_due = Decimal(str(latest_unpaid_bill.fee_gyd or 0))
-+    total_due = Decimal(str(latest_unpaid_bill.fee_gyd or 0)).quantize(
-+        Decimal("1"), rounding=ROUND_HALF_UP
-+    )
-     credits = Decimal(str(get_provider_credit_balance(db, provider_id) or 0))
-     # Bill credits should only ever reduce what a provider owes. If the balance is
-     # negative (e.g., from a bad manual entry), clamp it to zero so we don't
-     # accidentally inflate the amount due.
-     credits = max(credits, Decimal("0"))
- 
--    net_due = total_due - credits
-+    net_due = (total_due - credits).quantize(Decimal("1"), rounding=ROUND_HALF_UP)
-     if net_due < 0:
-         net_due = Decimal("0")
- 
-     return float(net_due)
+-    # Billing for providers should only charge the platform fee, not their gross booking revenue.
+-    total_due = Decimal(str(latest_unpaid_bill.fee_gyd or 0)).quantize(
+-        Decimal("1"), rounding=ROUND_HALF_UP
+-    )
+-    credits = Decimal(str(get_provider_credit_balance(db, provider_id) or 0))
+-    # Bill credits should only ever reduce what a provider owes. If the balance is
+-    # negative (e.g., from a bad manual entry), clamp it to zero so we don't
+-    # accidentally inflate the amount due.
+-    credits = max(credits, Decimal("0"))
+-
+-    net_due = (total_due - credits).quantize(Decimal("1"), rounding=ROUND_HALF_UP)
+-    if net_due < 0:
+-        net_due = Decimal("0")
+-
+-    return float(net_due)
++    return _calculate_bill_total_due(db, latest_unpaid_bill, provider_id)
  
  
  def _provider_billing_row(db: Session, provider: models.Provider, user: models.User):
-     amount_due = get_provider_fees_due(db, provider.id)
+-    amount_due = get_provider_fees_due(db, provider.id)
      latest_bill = (
          db.query(models.Bill)
          .filter(models.Bill.provider_id == provider.id)
@@ -87,15 +97,45 @@ index a647a6186ca6ba888dc082d803370e80eff3161c..35bda4e800e232f76e5796fd69747fca
          .first()
      )
  
++    if latest_bill:
++        amount_due = _calculate_bill_total_due(db, latest_bill, provider.id)
++        is_paid = bool(latest_bill.is_paid)
++    else:
++        amount_due = 0.0
++        is_paid = True
++
      return {
          "provider_id": provider.id,
          "name": user.full_name or "",
          "account_number": provider.account_number or "",
          "phone": user.phone or "",
          "amount_due_gyd": float(amount_due or 0.0),
-         "is_paid": amount_due <= 0,
+-        "is_paid": amount_due <= 0,
++        "is_paid": is_paid,
          "last_due_date": latest_bill.due_date if latest_bill else None,
      }
+ 
+ 
+ def list_provider_billing_rows(db: Session):
+     rows = (
+         db.query(models.Provider, models.User)
+         .join(models.User, models.Provider.user_id == models.User.id)
+         .all()
+     )
+ 
+     return [_provider_billing_row(db, provider, user) for provider, user in rows]
+ 
+ 
+ def get_provider_billing_row(db: Session, provider_id: int):
+     row = (
+         db.query(models.Provider, models.User)
+         .join(models.User, models.Provider.user_id == models.User.id)
+         .filter(models.Provider.id == provider_id)
+         .first()
+     )
+ 
+     if not row:
+         return None
  
  
 EOF

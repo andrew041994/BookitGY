@@ -707,6 +707,25 @@ def generate_monthly_bills(db: Session, month: date):
 
 
 
+def _calculate_bill_total_due(db: Session, bill: models.Bill, provider_id: int) -> float:
+    """Mirror the provider-facing bill "Total due" for a given bill."""
+
+    total_due = Decimal(str(bill.fee_gyd or 0)).quantize(
+        Decimal("1"), rounding=ROUND_HALF_UP
+    )
+    credits = Decimal(str(get_provider_credit_balance(db, provider_id) or 0))
+    # Bill credits should only ever reduce what a provider owes. If the balance is
+    # negative (e.g., from a bad manual entry), clamp it to zero so we don't
+    # accidentally inflate the amount due.
+    credits = max(credits, Decimal("0"))
+
+    net_due = (total_due - credits).quantize(Decimal("1"), rounding=ROUND_HALF_UP)
+    if net_due < 0:
+        net_due = Decimal("0")
+
+    return float(net_due)
+
+
 def get_provider_fees_due(db: Session, provider_id: int) -> float:
     """
     Amount due for the most recent unpaid bill for this provider, in GYD.
@@ -729,25 +748,10 @@ def get_provider_fees_due(db: Session, provider_id: int) -> float:
     if not latest_unpaid_bill:
         return 0.0
 
-    # Billing for providers should only charge the platform fee, not their gross booking revenue.
-    total_due = Decimal(str(latest_unpaid_bill.fee_gyd or 0)).quantize(
-        Decimal("1"), rounding=ROUND_HALF_UP
-    )
-    credits = Decimal(str(get_provider_credit_balance(db, provider_id) or 0))
-    # Bill credits should only ever reduce what a provider owes. If the balance is
-    # negative (e.g., from a bad manual entry), clamp it to zero so we don't
-    # accidentally inflate the amount due.
-    credits = max(credits, Decimal("0"))
-
-    net_due = (total_due - credits).quantize(Decimal("1"), rounding=ROUND_HALF_UP)
-    if net_due < 0:
-        net_due = Decimal("0")
-
-    return float(net_due)
+    return _calculate_bill_total_due(db, latest_unpaid_bill, provider_id)
 
 
 def _provider_billing_row(db: Session, provider: models.Provider, user: models.User):
-    amount_due = get_provider_fees_due(db, provider.id)
     latest_bill = (
         db.query(models.Bill)
         .filter(models.Bill.provider_id == provider.id)
@@ -755,13 +759,20 @@ def _provider_billing_row(db: Session, provider: models.Provider, user: models.U
         .first()
     )
 
+    if latest_bill:
+        amount_due = _calculate_bill_total_due(db, latest_bill, provider.id)
+        is_paid = bool(latest_bill.is_paid)
+    else:
+        amount_due = 0.0
+        is_paid = True
+
     return {
         "provider_id": provider.id,
         "name": user.full_name or "",
         "account_number": provider.account_number or "",
         "phone": user.phone or "",
         "amount_due_gyd": float(amount_due or 0.0),
-        "is_paid": amount_due <= 0,
+        "is_paid": is_paid,
         "last_due_date": latest_bill.due_date if latest_bill else None,
     }
 
