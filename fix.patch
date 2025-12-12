@@ -1,189 +1,147 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
-diff --git a/mobile/App.js b/mobile/App.js
-index 437042de73e3c1777e95c791918a85a3ab4bcf96..95f773002a23e69303c16b55c24443fa147868d9 100644
---- a/mobile/App.js
-+++ b/mobile/App.js
-@@ -5064,51 +5064,57 @@ function ProviderBillingScreen({ token, showFlash }) {
-   };
+diff --git a/backend/app/crud.py b/backend/app/crud.py
+index be03bf21322e60e539087ed2f36213b144ae7414..f43917f43d1d2e1e6e99dfd119d5e9a3837e2bd6 100644
+--- a/backend/app/crud.py
++++ b/backend/app/crud.py
+@@ -429,50 +429,70 @@ def get_promotion(db: Session, provider_id: int):
+         .filter(models.Promotion.provider_id == provider_id)
+         .first()
+     )
  
-   const formatMoney = (value) => {
-     const amount = Number.isFinite(value) ? value : 0;
-     return `GYD ${Math.round(amount).toLocaleString()}`;
-   };
  
-   const formatDate = (value) => {
-     if (!value) return "-";
-     const dateObj = value instanceof Date ? value : new Date(value);
-     if (Number.isNaN(dateObj.getTime())) return "-";
-     return dateObj.toLocaleDateString("en-US", {
-       month: "short",
-       day: "numeric",
-       year: "numeric",
-     });
-   };
+ def upsert_promotion(db: Session, provider_id: int, free_total: int):
+     promo = get_promotion(db, provider_id)
+     if promo:
+         promo.free_bookings_total = free_total
+         # Ensure used count isn't above new total
+         if free_total < promo.free_bookings_used:
+             promo.free_bookings_used = free_total
+     else:
+         promo = models.Promotion(
+             provider_id=provider_id,
+             free_bookings_total=free_total,
+             free_bookings_used=0,
+         )
+         db.add(promo)
  
-   const normalizeStart = (booking) => {
-     const raw = booking?.start_time || booking?.start;
-     if (!raw) return null;
-     const dateObj = new Date(raw);
-     return Number.isNaN(dateObj.getTime()) ? null : dateObj;
-   };
+     db.commit()
+     db.refresh(promo)
+     return promo
  
--  const buildBills = useCallback((bookingList, chargePct = 10, creditBalance = 0) => {
-+  const buildBills = useCallback(
-+    (
-+      bookingList,
-+      chargePct = 10,
-+      creditBalance = 0,
-+      currentMonthDueOverride = null
-+    ) => {
-     const now = new Date();
-     const statements = [];
-     const monthsToShow = 6;
  
-     const feeRate = Math.max(chargePct, 0) / 100;
-     let remainingCredits = Math.max(Number(creditBalance) || 0, 0);
- 
-     for (let i = 0; i < monthsToShow; i += 1) {
-       const coverageStart = new Date(now.getFullYear(), now.getMonth() - i, 1);
-       const coverageEnd = new Date(now.getFullYear(), now.getMonth() - i + 1, 0);
-       const invoiceDate = new Date(
-         coverageStart.getFullYear(),
-         coverageStart.getMonth() + 1,
-         1
-       );
- 
-       const monthBookings = bookingList.filter((booking) => {
-         const start = normalizeStart(booking);
-         if (!start) return false;
-         return start >= coverageStart && start <= coverageEnd;
-       });
- 
-       const lineItems = monthBookings.length
-         ? monthBookings.map((booking) => ({
-             bookingId: booking.id || booking.booking_id,
-@@ -5124,54 +5130,65 @@ function ProviderBillingScreen({ token, showFlash }) {
-               Number(
-                 booking.service_price_gyd ??
-                   booking.price_gyd ??
-                   booking.total_price_gyd ??
-                   booking.price
-               ) || 0,
-           }))
-         : [
-             {
-               bookingId: `empty-${coverageStart.toISOString()}`,
-               description: "No completed bookings recorded",
-               client: "",
-               date: null,
-               amount: 0,
-             },
-           ];
- 
-       const servicesTotal = lineItems.reduce(
-         (sum, item) => sum + (Number.isFinite(item.amount) ? item.amount : 0),
-         0
-       );
- 
-         const platformFee = Math.max(Math.round(servicesTotal * feeRate), 0);
-         const statementId = `${coverageStart.getFullYear()}-${coverageStart.getMonth() + 1}`;
- 
--        const billCreditsApplied = Math.min(remainingCredits, platformFee);
-+        let billCreditsApplied = Math.min(remainingCredits, platformFee);
-       remainingCredits -= billCreditsApplied;
- 
--      const totalDue = Math.max(platformFee - billCreditsApplied, 0);
-+      let totalDue = Math.max(platformFee - billCreditsApplied, 0);
++def create_bill_credit(db: Session, provider_id: int, amount_gyd: float):
++    credit = models.BillCredit(
++        provider_id=provider_id,
++        amount_gyd=Decimal(str(amount_gyd or 0)),
++    )
++    db.add(credit)
++    db.commit()
++    db.refresh(credit)
++    return credit
 +
-+      // Always mirror the backend-calculated amount for the current month so
-+      // the provider's bill matches the admin dashboard.
-+      if (i === 0 && Number.isFinite(currentMonthDueOverride)) {
-+        totalDue = Math.max(Number(currentMonthDueOverride) || 0, 0);
-+        billCreditsApplied = Math.min(
-+          platformFee,
-+          Math.max(platformFee - totalDue, 0)
-+        );
-+        remainingCredits = Math.max(remainingCredits - billCreditsApplied, 0);
-+      }
++
++def get_provider_credit_balance(db: Session, provider_id: int) -> float:
++    total = (
++        db.query(func.coalesce(func.sum(models.BillCredit.amount_gyd), 0))
++        .filter(models.BillCredit.provider_id == provider_id)
++        .scalar()
++    )
++    return float(total or 0.0)
++
++
+ # ---------------------------------------------------------------------------
+ # Booking with promotion + lock check
+ # ---------------------------------------------------------------------------
  
-       statements.push({
-         id: statementId,
-         coverageStart,
-         coverageEnd,
-         invoiceDate,
-         status: invoiceDate <= now ? "Generated" : "Scheduled",
-         servicesTotal,
-         platformFee,
-         billCreditsApplied,
-         totalDue,
-         lineItems,
-       });
-     }
+ def create_booking(
+     db: Session,
+     customer_id: int,
+     booking: schemas.BookingCreate,
+ ) -> Optional[models.Booking]:
+     """
+     Create a new booking for a customer.
  
-     statements.sort((a, b) => b.invoiceDate - a.invoiceDate);
-     setBills(statements);
-   }, []);
+     Flow:
+     1. Validate service / provider.
+     2. Validate that the selected slot is not already booked.
+     3. Create booking (confirmed).
+     4. Dispatch notifications (single helper).
+     """
  
-   const fetchBilling = useCallback(async () => {
-     try {
-       setBillingLoading(true);
-       setBillingError("");
+     # Load service
+     service = (
+         db.query(models.Service)
+         .filter(models.Service.id == booking.service_id)
+         .first()
+     )
+@@ -668,59 +688,65 @@ def generate_monthly_bills(db: Session, month: date):
  
-       const storedToken = await AsyncStorage.getItem("accessToken");
-@@ -5186,51 +5203,52 @@ function ProviderBillingScreen({ token, showFlash }) {
-         axios.get(`${API}/providers/me/bookings`, {
-           headers: { Authorization: `Bearer ${authToken}` },
-         }),
-         axios
-           .get(`${API}/providers/me/summary`, {
-             headers: { Authorization: `Bearer ${authToken}` },
-           })
-           .catch(() => null),
-       ]);
+             existing_bill.total_gyd = total
+             existing_bill.fee_gyd = fee
+             existing_bill.due_date = due
+         else:
+             bill = models.Bill(
+                 provider_id=prov.id,
+                 month=start,
+                 total_gyd=total,
+                 fee_gyd=fee,
+                 due_date=due,
+             )
+             db.add(bill)
  
-       const bookingList = Array.isArray(bookingsRes.data)
-         ? bookingsRes.data
-         : bookingsRes.data?.bookings || bookingsRes.data?.results || [];
+     db.commit()
  
-       const summaryData = summaryRes?.data || null;
-       setBillingSummary(summaryData);
  
-       const creditBalance = Math.max(
-         Number(summaryData?.total_credit_balance_gyd) || 0,
-         0
-       );
  
-       const resolvedChargePct = resolveServiceChargePct(summaryData);
-       setServiceChargePct(resolvedChargePct);
  
--      buildBills(bookingList, resolvedChargePct, creditBalance);
-+      const netDue = Number(summaryData?.total_fees_due_gyd);
-+      buildBills(bookingList, resolvedChargePct, creditBalance, netDue);
-     } catch (err) {
-       console.log("Error loading billing", err.response?.data || err.message);
-       setBillingError("Could not load billing statements.");
-       if (showFlash) {
-         showFlash("error", "Could not load billing statements.");
-       }
-     } finally {
-       setBillingLoading(false);
-     }
-   }, [buildBills, showFlash, token?.token]);
  
-   useEffect(() => {
-     fetchBilling();
-   }, [fetchBilling]);
+ def get_provider_fees_due(db: Session, provider_id: int) -> float:
+     """
+     Sum of all unpaid fees for this provider, in GYD.
+     Assumes Bill.fee_gyd is only populated after appointments have finished.
+     """
+-    total = (
++    total_fees = (
+         db.query(func.coalesce(func.sum(models.Bill.fee_gyd), 0))
+         .filter(
+             models.Bill.provider_id == provider_id,
+             models.Bill.is_paid == False,  # unpaid only
+         )
+         .scalar()
+     )
+-    return float(total or 0.0)
++    credits = get_provider_credit_balance(db, provider_id)
++
++    net_due = Decimal(str(total_fees or 0)) - Decimal(str(credits or 0))
++    if net_due < 0:
++        net_due = Decimal("0")
++
++    return float(net_due)
  
-   useFocusEffect(
-     useCallback(() => {
-       fetchBilling();
-       return () => {};
-     }, [fetchBilling])
-   );
  
-   const handleRefresh = useCallback(async () => {
-     setRefreshing(true);
-     await fetchBilling();
+ def list_bookings_for_provider(db: Session, provider_id: int):
+     """Return upcoming bookings for this provider (from now onwards)."""
+     now = datetime.utcnow()
+ 
+     rows = (
+         db.query(
+             models.Booking.id,
+             models.Booking.start_time,
+             models.Booking.end_time,
+             models.Booking.status,
+             models.Service.name.label("service_name"),
+             models.Service.price_gyd.label("service_price_gyd"),
+             models.User.full_name.label("customer_name"),
+             
+         )
+         .join(models.Service, models.Booking.service_id == models.Service.id)
+         .join(models.Provider, models.Service.provider_id == models.Provider.id)
+         .join(models.User, models.Booking.customer_id == models.User.id)
+         .filter(
+             models.Provider.id == provider_id,
+             models.Booking.start_time >= now,
+         )
+         .order_by(models.Booking.start_time.asc())
  
 EOF
 )
