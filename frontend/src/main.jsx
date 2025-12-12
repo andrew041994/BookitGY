@@ -340,49 +340,63 @@ function App() {
       fetchBillingRows()
     }, [fetchBillingRows])
 
-    const updateProviderStatus = async (providerId, isPaid) => {
-      try {
-        const res = await axios.put(
-          `${API}/admin/billing/${providerId}/status`,
+const updateProviderStatus = async (providerId, isPaid) => {
+  // optimistic update (UI changes instantly)
+  setBillingRows((prev) =>
+    prev.map((row) =>
+      row.provider_id === providerId ? { ...row, is_paid: isPaid } : row
+    )
+  )
+
+  try {
+    await axios.put(
+      `${API}/admin/billing/${providerId}/status`,
+      { is_paid: isPaid },
+      { headers: { Authorization: `Bearer ${token}` } }
+    )
+
+    // OPTIONAL: if you want truth from server, refetch after success
+    // await fetchBillingRows()
+  } catch (err) {
+    console.error(err)
+    setError("Failed to update provider billing status.")
+    // rollback safely
+    fetchBillingRows()
+  }
+}
+
+
+  const markAll = async (isPaid) => {
+  if (!billingRows.length) return
+  setBulkUpdating(true)
+  setError('')
+
+  // Optimistic UI update
+  setBillingRows((prev) => prev.map((row) => ({ ...row, is_paid: isPaid })))
+
+  try {
+    await Promise.all(
+      billingRows.map((row) =>
+        axios.put(
+          `${API}/admin/billing/${row.provider_id}/status`,
           { is_paid: isPaid },
           { headers: { Authorization: `Bearer ${token}` } }
         )
-        setBillingRows((prev) =>
-          prev.map((row) => (row.provider_id === providerId ? res.data : row))
-        )
-      } catch (err) {
-        console.error(err)
-        setError('Failed to update provider billing status.')
-      }
-    }
+      )
+    )
 
-    const markAll = async (isPaid) => {
-      if (!billingRows.length) return
-      setBulkUpdating(true)
-      setError('')
-      try {
-        const responses = await Promise.all(
-          billingRows.map((row) =>
-            axios.put(
-              `${API}/admin/billing/${row.provider_id}/status`,
-              { is_paid: isPaid },
-              { headers: { Authorization: `Bearer ${token}` } }
-            )
-          )
-        )
+    // Single refetch = clean + guaranteed correct
+    await fetchBillingRows()
+  } catch (err) {
+    console.error(err)
+    setError('Failed to update all provider statuses.')
+    await fetchBillingRows()
+  } finally {
+    setBulkUpdating(false)
+  }
+}
 
-        const nextRows = responses.map((res) => res.data)
-        setBillingRows((prev) => {
-          const mapped = new Map(nextRows.map((row) => [row.provider_id, row]))
-          return prev.map((row) => mapped.get(row.provider_id) || row)
-        })
-      } catch (err) {
-        console.error(err)
-        setError('Failed to update all provider statuses.')
-      } finally {
-        setBulkUpdating(false)
-      }
-    }
+
 
     const normalizedSearch = searchTerm.trim().toLowerCase()
 
