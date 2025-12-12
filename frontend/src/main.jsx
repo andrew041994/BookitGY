@@ -385,6 +385,12 @@ function App() {
     }
 
     const normalizedSearch = searchTerm.trim().toLowerCase()
+
+    const formatAmount = (value) =>
+      Number(value ?? 0).toLocaleString(undefined, {
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 2,
+      })
     const filteredRows = billingRows.filter((row) => {
       if (!normalizedSearch) return true
       const accountNumber = (row.account_number || '').toLowerCase()
@@ -440,7 +446,7 @@ function App() {
                 </div>
                 <strong>{row.account_number || 'N/A'}</strong>
                 <span>{row.phone || 'No phone added'}</span>
-                <strong>{Number(row.amount_due_gyd || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })} GYD</strong>
+                <strong>{formatAmount(row.amount_due_gyd)} GYD</strong>
                 <span className={row.is_paid ? 'status-pill paid' : 'status-pill unpaid'}>
                   {row.is_paid ? 'Paid' : 'Unpaid'}
                 </span>

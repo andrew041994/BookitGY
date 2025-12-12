@@ -1,189 +1,118 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
-diff --git a/mobile/App.js b/mobile/App.js
-index 95f773002a23e69303c16b55c24443fa147868d9..41f25bedd5318c30ea68fa81d4f42f869db75672 100644
---- a/mobile/App.js
-+++ b/mobile/App.js
-@@ -5068,52 +5068,51 @@ function ProviderBillingScreen({ token, showFlash }) {
-     return `GYD ${Math.round(amount).toLocaleString()}`;
-   };
+diff --git a/frontend/src/main.jsx b/frontend/src/main.jsx
+index ce9dae0adf631995a44d41400c84825cd9b00ce7..c92c79bd75f3f257233ee022dce1d2b644305538 100644
+--- a/frontend/src/main.jsx
++++ b/frontend/src/main.jsx
+@@ -363,50 +363,56 @@ function App() {
+       try {
+         const responses = await Promise.all(
+           billingRows.map((row) =>
+             axios.put(
+               `${API}/admin/billing/${row.provider_id}/status`,
+               { is_paid: isPaid },
+               { headers: { Authorization: `Bearer ${token}` } }
+             )
+           )
+         )
  
-   const formatDate = (value) => {
-     if (!value) return "-";
-     const dateObj = value instanceof Date ? value : new Date(value);
-     if (Number.isNaN(dateObj.getTime())) return "-";
-     return dateObj.toLocaleDateString("en-US", {
-       month: "short",
-       day: "numeric",
-       year: "numeric",
-     });
-   };
- 
-   const normalizeStart = (booking) => {
-     const raw = booking?.start_time || booking?.start;
-     if (!raw) return null;
-     const dateObj = new Date(raw);
-     return Number.isNaN(dateObj.getTime()) ? null : dateObj;
-   };
- 
-   const buildBills = useCallback(
-     (
-       bookingList,
-       chargePct = 10,
--      creditBalance = 0,
--      currentMonthDueOverride = null
-+      creditBalance = 0
-     ) => {
-     const now = new Date();
-     const statements = [];
-     const monthsToShow = 6;
- 
-     const feeRate = Math.max(chargePct, 0) / 100;
-     let remainingCredits = Math.max(Number(creditBalance) || 0, 0);
- 
-     for (let i = 0; i < monthsToShow; i += 1) {
-       const coverageStart = new Date(now.getFullYear(), now.getMonth() - i, 1);
-       const coverageEnd = new Date(now.getFullYear(), now.getMonth() - i + 1, 0);
-       const invoiceDate = new Date(
-         coverageStart.getFullYear(),
-         coverageStart.getMonth() + 1,
-         1
-       );
- 
-       const monthBookings = bookingList.filter((booking) => {
-         const start = normalizeStart(booking);
-         if (!start) return false;
-         return start >= coverageStart && start <= coverageEnd;
-       });
- 
-       const lineItems = monthBookings.length
-         ? monthBookings.map((booking) => ({
-@@ -5127,69 +5126,58 @@ function ProviderBillingScreen({ token, showFlash }) {
-               booking.user,
-             date: normalizeStart(booking),
-             amount:
-               Number(
-                 booking.service_price_gyd ??
-                   booking.price_gyd ??
-                   booking.total_price_gyd ??
-                   booking.price
-               ) || 0,
-           }))
-         : [
-             {
-               bookingId: `empty-${coverageStart.toISOString()}`,
-               description: "No completed bookings recorded",
-               client: "",
-               date: null,
-               amount: 0,
-             },
-           ];
- 
-       const servicesTotal = lineItems.reduce(
-         (sum, item) => sum + (Number.isFinite(item.amount) ? item.amount : 0),
-         0
-       );
- 
--        const platformFee = Math.max(Math.round(servicesTotal * feeRate), 0);
--        const statementId = `${coverageStart.getFullYear()}-${coverageStart.getMonth() + 1}`;
-+      const platformFee = Math.max(Math.round(servicesTotal * feeRate), 0);
-+      const statementId = `${coverageStart.getFullYear()}-${coverageStart.getMonth() + 1}`;
- 
--        let billCreditsApplied = Math.min(remainingCredits, platformFee);
-+      let billCreditsApplied = Math.min(remainingCredits, platformFee);
-       remainingCredits -= billCreditsApplied;
- 
-       let totalDue = Math.max(platformFee - billCreditsApplied, 0);
- 
--      // Always mirror the backend-calculated amount for the current month so
--      // the provider's bill matches the admin dashboard.
--      if (i === 0 && Number.isFinite(currentMonthDueOverride)) {
--        totalDue = Math.max(Number(currentMonthDueOverride) || 0, 0);
--        billCreditsApplied = Math.min(
--          platformFee,
--          Math.max(platformFee - totalDue, 0)
--        );
--        remainingCredits = Math.max(remainingCredits - billCreditsApplied, 0);
--      }
--
-       statements.push({
-         id: statementId,
-         coverageStart,
-         coverageEnd,
-         invoiceDate,
-         status: invoiceDate <= now ? "Generated" : "Scheduled",
-         servicesTotal,
-         platformFee,
-         billCreditsApplied,
-         totalDue,
-         lineItems,
-       });
-     }
- 
-     statements.sort((a, b) => b.invoiceDate - a.invoiceDate);
-     setBills(statements);
-   }, []);
- 
-   const fetchBilling = useCallback(async () => {
-     try {
-       setBillingLoading(true);
-       setBillingError("");
- 
-       const storedToken = await AsyncStorage.getItem("accessToken");
-       const authToken = token?.token || storedToken;
-@@ -5203,52 +5191,51 @@ function ProviderBillingScreen({ token, showFlash }) {
-         axios.get(`${API}/providers/me/bookings`, {
-           headers: { Authorization: `Bearer ${authToken}` },
-         }),
-         axios
-           .get(`${API}/providers/me/summary`, {
-             headers: { Authorization: `Bearer ${authToken}` },
-           })
-           .catch(() => null),
-       ]);
- 
-       const bookingList = Array.isArray(bookingsRes.data)
-         ? bookingsRes.data
-         : bookingsRes.data?.bookings || bookingsRes.data?.results || [];
- 
-       const summaryData = summaryRes?.data || null;
-       setBillingSummary(summaryData);
- 
-       const creditBalance = Math.max(
-         Number(summaryData?.total_credit_balance_gyd) || 0,
-         0
-       );
- 
-       const resolvedChargePct = resolveServiceChargePct(summaryData);
-       setServiceChargePct(resolvedChargePct);
- 
--      const netDue = Number(summaryData?.total_fees_due_gyd);
--      buildBills(bookingList, resolvedChargePct, creditBalance, netDue);
-+      buildBills(bookingList, resolvedChargePct, creditBalance);
-     } catch (err) {
-       console.log("Error loading billing", err.response?.data || err.message);
-       setBillingError("Could not load billing statements.");
-       if (showFlash) {
-         showFlash("error", "Could not load billing statements.");
+         const nextRows = responses.map((res) => res.data)
+         setBillingRows((prev) => {
+           const mapped = new Map(nextRows.map((row) => [row.provider_id, row]))
+           return prev.map((row) => mapped.get(row.provider_id) || row)
+         })
+       } catch (err) {
+         console.error(err)
+         setError('Failed to update all provider statuses.')
+       } finally {
+         setBulkUpdating(false)
        }
-     } finally {
-       setBillingLoading(false);
      }
-   }, [buildBills, showFlash, token?.token]);
  
-   useEffect(() => {
-     fetchBilling();
-   }, [fetchBilling]);
+     const normalizedSearch = searchTerm.trim().toLowerCase()
++
++    const formatAmount = (value) =>
++      Number(value ?? 0).toLocaleString(undefined, {
++        minimumFractionDigits: 0,
++        maximumFractionDigits: 2,
++      })
+     const filteredRows = billingRows.filter((row) => {
+       if (!normalizedSearch) return true
+       const accountNumber = (row.account_number || '').toLowerCase()
+       const phone = (row.phone || '').toLowerCase()
+       return accountNumber.includes(normalizedSearch) || phone.includes(normalizedSearch)
+     })
  
-   useFocusEffect(
-     useCallback(() => {
-       fetchBilling();
-       return () => {};
-     }, [fetchBilling])
-   );
+     return (
+       <div className="admin-page">
+         <div className="admin-header">
+           <div>
+             <p className="eyebrow">Billing</p>
+             <h1>Provider Billing</h1>
+             <p className="header-subtitle">Monitor outstanding balances, search by account or phone, and mark charges as paid.</p>
+           </div>
+           <div className="button-row">
+             <button className="ghost-btn" onClick={() => markAll(false)} disabled={bulkUpdating || loading}>Mark all unpaid</button>
+             <button className="primary-btn" onClick={() => markAll(true)} disabled={bulkUpdating || loading}>Mark all paid</button>
+           </div>
+         </div>
  
-   const handleRefresh = useCallback(async () => {
-     setRefreshing(true);
-     await fetchBilling();
+         <div className="admin-card">
+           <div className="billing-toolbar">
+             <div className="billing-search">
+               <label htmlFor="billing-search-input">Filter by account or phone</label>
+@@ -418,51 +424,51 @@ function App() {
+                 onChange={(e) => setSearchTerm(e.target.value)}
+               />
+             </div>
+             {loading && <span className="muted">Loading providers…</span>}
+           </div>
+ 
+           {error && <p className="form-error">{error}</p>}
+ 
+           <div className="billing-table">
+             <div className="billing-table__head">
+               <span>Name</span>
+               <span>Account number</span>
+               <span>Phone number</span>
+               <span>Amount due (platform fees)</span>
+               <span>Status</span>
+               <span className="sr-only">Actions</span>
+             </div>
+             {filteredRows.map((row) => (
+               <div key={row.provider_id} className="billing-table__row">
+                 <div>
+                   <p className="billing-provider">{row.name || 'Unnamed provider'}</p>
+                   <p className="muted">ID #{row.provider_id}</p>
+                 </div>
+                 <strong>{row.account_number || 'N/A'}</strong>
+                 <span>{row.phone || 'No phone added'}</span>
+-                <strong>{Number(row.amount_due_gyd || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })} GYD</strong>
++                <strong>{formatAmount(row.amount_due_gyd)} GYD</strong>
+                 <span className={row.is_paid ? 'status-pill paid' : 'status-pill unpaid'}>
+                   {row.is_paid ? 'Paid' : 'Unpaid'}
+                 </span>
+                 <div className="billing-actions">
+                   <button className="ghost-btn" onClick={() => updateProviderStatus(row.provider_id, false)} disabled={loading}>
+                     Unpaid
+                   </button>
+                   <button className="primary-btn" onClick={() => updateProviderStatus(row.provider_id, true)} disabled={loading}>
+                     Paid
+                   </button>
+                 </div>
+               </div>
+             ))}
+ 
+             {!loading && filteredRows.length === 0 && (
+               <p className="muted">No providers match that account number or phone.</p>
+             )}
+           </div>
+         </div>
+       </div>
+     )
+   }
+ 
+   const AdminLayout = () => {
+     const location = useLocation()
  
 EOF
 )
