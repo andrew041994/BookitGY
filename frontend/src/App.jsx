@@ -293,6 +293,8 @@ function useBillingCore() {
         providerName: providerById[charge.providerId]?.name || charge.providerName || 'Provider',
         accountNumber: providerById[charge.providerId]?.accountNumber || charge.accountNumber || '—',
         phoneNumber: providerById[charge.providerId]?.phoneNumber || charge.phoneNumber || '—',
+        isLocked: providerById[charge.providerId]?.isLocked || false,
+        autoSuspended: providerById[charge.providerId]?.autoSuspended || false,
         isCurrentCycle: charge.month === billingCycleStart,
       })),
     [charges, providerById, billingCycleStart],
@@ -311,6 +313,10 @@ function useBillingCore() {
 
   const toggleLock = (providerId) => {
     setProviders((prev) => prev.map((p) => (p.id === providerId ? { ...p, isLocked: !p.isLocked } : p)));
+  };
+
+  const setProviderLockState = (providerId, locked) => {
+    setProviders((prev) => prev.map((p) => (p.id === providerId ? { ...p, isLocked: locked } : p)));
   };
 
   const toggleChargeSelection = (chargeId) => {
@@ -353,6 +359,7 @@ function useBillingCore() {
     toggleAllChargesSelection,
     toggleChargeSelection,
     toggleLock,
+    setProviderLockState,
     updateSingleChargeStatus,
   };
 }
@@ -636,6 +643,7 @@ function BillingActionsPanel({
   updateSingleChargeStatus,
   billingCycleStart,
   suspensionCutoffLabel,
+  setProviderLockState,
 }) {
   const [searchTerm, setSearchTerm] = useState('');
 
@@ -692,6 +700,13 @@ function BillingActionsPanel({
               const statusLabel = charge.isPaid ? 'Paid' : charge.isCurrentCycle ? 'Unpaid (current)' : 'Unpaid';
               const badgeBackground = charge.isPaid ? '#dcfce7' : charge.isCurrentCycle ? '#fee2e2' : '#fef9c3';
               const badgeColor = charge.isPaid ? '#15803d' : charge.isCurrentCycle ? '#b91c1c' : '#92400e';
+              const suspended = charge.isLocked || charge.autoSuspended;
+              const accountStatusLabel = charge.autoSuspended
+                ? 'Suspended (Unpaid)'
+                : charge.isLocked
+                  ? 'Suspended by Admin'
+                  : 'Active';
+              const suspendDisabled = charge.autoSuspended && !charge.isLocked;
 
               return (
                 <tr key={charge.id} style={{ borderBottom: '1px solid #e5e7eb' }}>
@@ -719,9 +734,17 @@ function BillingActionsPanel({
                     >
                       {statusLabel}
                     </span>
+                    <div style={{ marginTop: '6px', fontSize: '12px', color: suspended ? '#b91c1c' : '#15803d', fontWeight: 700 }}>
+                      {accountStatusLabel}
+                    </div>
+                    {charge.autoSuspended && (
+                      <div style={{ fontSize: '12px', color: '#92400e', marginTop: '2px' }}>
+                        Auto-suspended on the 15th when current charges are unpaid.
+                      </div>
+                    )}
                   </td>
                   <td style={{ padding: '10px' }}>
-                    <div style={{ display: 'flex', gap: '8px' }}>
+                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
                       <button
                         onClick={() => updateSingleChargeStatus(charge.id, true)}
                         style={{ padding: '8px 12px', background: '#16a34a', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 700 }}
@@ -734,6 +757,26 @@ function BillingActionsPanel({
                       >
                         Mark Unpaid
                       </button>
+                      <button
+                        onClick={() => setProviderLockState(charge.providerId, !charge.isLocked)}
+                        disabled={suspendDisabled}
+                        style={{
+                          padding: '8px 12px',
+                          borderRadius: '8px',
+                          border: '1px solid #e5e7eb',
+                          background: charge.isLocked ? '#ecfdf3' : '#fee2e2',
+                          color: charge.isLocked ? '#15803d' : '#b91c1c',
+                          fontWeight: 700,
+                          opacity: suspendDisabled ? 0.6 : 1,
+                          cursor: suspendDisabled ? 'not-allowed' : 'pointer',
+                        }}
+                      >
+                        {charge.isLocked ? 'Restore account' : 'Suspend account'}
+                      </button>
+                    </div>
+                    <div style={{ color: '#6b7280', fontSize: '12px', marginTop: '6px', maxWidth: '320px' }}>
+                      Suspended providers are hidden from searches and cannot accept appointments.
+                      {suspendDisabled && ' Mark the current cycle as paid to restore automatically.'}
                     </div>
                   </td>
                 </tr>
@@ -879,6 +922,7 @@ function AdminDashboard() {
     toggleAllChargesSelection,
     toggleChargeSelection,
     toggleLock,
+    setProviderLockState,
     updateSingleChargeStatus,
   } = useBillingCore();
 
@@ -1047,6 +1091,7 @@ function AdminDashboard() {
           toggleAllChargesSelection={toggleAllChargesSelection}
           toggleChargeSelection={toggleChargeSelection}
           updateSingleChargeStatus={updateSingleChargeStatus}
+          setProviderLockState={setProviderLockState}
         />
       </ReportSection>
 
@@ -1162,6 +1207,7 @@ function BillingManagement() {
     toggleAllChargesSelection,
     toggleChargeSelection,
     toggleLock,
+    setProviderLockState,
     updateSingleChargeStatus,
     setCreditInputs,
   } = useBillingCore();
@@ -1212,6 +1258,7 @@ function BillingManagement() {
           toggleAllChargesSelection={toggleAllChargesSelection}
           toggleChargeSelection={toggleChargeSelection}
           updateSingleChargeStatus={updateSingleChargeStatus}
+          setProviderLockState={setProviderLockState}
         />
       </ReportSection>
 
