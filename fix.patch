@@ -1,118 +1,79 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
-diff --git a/frontend/src/main.jsx b/frontend/src/main.jsx
-index ce9dae0adf631995a44d41400c84825cd9b00ce7..c92c79bd75f3f257233ee022dce1d2b644305538 100644
---- a/frontend/src/main.jsx
-+++ b/frontend/src/main.jsx
-@@ -363,50 +363,56 @@ function App() {
-       try {
-         const responses = await Promise.all(
-           billingRows.map((row) =>
-             axios.put(
-               `${API}/admin/billing/${row.provider_id}/status`,
-               { is_paid: isPaid },
-               { headers: { Authorization: `Bearer ${token}` } }
+diff --git a/backend/app/crud.py b/backend/app/crud.py
+index b8ddabfa8f7aef79573a7bf4d7fd1ce102a02446..d3d4bfe1d81b853c67c84b45d2b46c52322cdd70 100644
+--- a/backend/app/crud.py
++++ b/backend/app/crud.py
+@@ -689,67 +689,68 @@ def generate_monthly_bills(db: Session, month: date):
+             existing_bill.total_gyd = total
+             existing_bill.fee_gyd = fee
+             existing_bill.due_date = due
+         else:
+             bill = models.Bill(
+                 provider_id=prov.id,
+                 month=start,
+                 total_gyd=total,
+                 fee_gyd=fee,
+                 due_date=due,
              )
-           )
+             db.add(bill)
+ 
+     db.commit()
+ 
+ 
+ 
+ 
+ 
+ def get_provider_fees_due(db: Session, provider_id: int) -> float:
+     """
+     Amount due for the most recent unpaid bill for this provider, in GYD.
+ 
+     This mirrors the "Total due" shown on the provider-facing bill by:
+     - Taking the latest unpaid bill (so we don't aggregate across months),
+-    - Using the total bill amount (total_gyd), and
++    - Using only the platform fee amount (fee_gyd), and
+     - Applying any available bill credits.
+     """
+     latest_unpaid_bill = (
+         db.query(models.Bill)
+         .filter(
+             models.Bill.provider_id == provider_id,
+             models.Bill.is_paid == False,
          )
- 
-         const nextRows = responses.map((res) => res.data)
-         setBillingRows((prev) => {
-           const mapped = new Map(nextRows.map((row) => [row.provider_id, row]))
-           return prev.map((row) => mapped.get(row.provider_id) || row)
-         })
-       } catch (err) {
-         console.error(err)
-         setError('Failed to update all provider statuses.')
-       } finally {
-         setBulkUpdating(false)
-       }
-     }
- 
-     const normalizedSearch = searchTerm.trim().toLowerCase()
-+
-+    const formatAmount = (value) =>
-+      Number(value ?? 0).toLocaleString(undefined, {
-+        minimumFractionDigits: 0,
-+        maximumFractionDigits: 2,
-+      })
-     const filteredRows = billingRows.filter((row) => {
-       if (!normalizedSearch) return true
-       const accountNumber = (row.account_number || '').toLowerCase()
-       const phone = (row.phone || '').toLowerCase()
-       return accountNumber.includes(normalizedSearch) || phone.includes(normalizedSearch)
-     })
- 
-     return (
-       <div className="admin-page">
-         <div className="admin-header">
-           <div>
-             <p className="eyebrow">Billing</p>
-             <h1>Provider Billing</h1>
-             <p className="header-subtitle">Monitor outstanding balances, search by account or phone, and mark charges as paid.</p>
-           </div>
-           <div className="button-row">
-             <button className="ghost-btn" onClick={() => markAll(false)} disabled={bulkUpdating || loading}>Mark all unpaid</button>
-             <button className="primary-btn" onClick={() => markAll(true)} disabled={bulkUpdating || loading}>Mark all paid</button>
-           </div>
-         </div>
- 
-         <div className="admin-card">
-           <div className="billing-toolbar">
-             <div className="billing-search">
-               <label htmlFor="billing-search-input">Filter by account or phone</label>
-@@ -418,51 +424,51 @@ function App() {
-                 onChange={(e) => setSearchTerm(e.target.value)}
-               />
-             </div>
-             {loading && <span className="muted">Loading providers…</span>}
-           </div>
- 
-           {error && <p className="form-error">{error}</p>}
- 
-           <div className="billing-table">
-             <div className="billing-table__head">
-               <span>Name</span>
-               <span>Account number</span>
-               <span>Phone number</span>
-               <span>Amount due (platform fees)</span>
-               <span>Status</span>
-               <span className="sr-only">Actions</span>
-             </div>
-             {filteredRows.map((row) => (
-               <div key={row.provider_id} className="billing-table__row">
-                 <div>
-                   <p className="billing-provider">{row.name || 'Unnamed provider'}</p>
-                   <p className="muted">ID #{row.provider_id}</p>
-                 </div>
-                 <strong>{row.account_number || 'N/A'}</strong>
-                 <span>{row.phone || 'No phone added'}</span>
--                <strong>{Number(row.amount_due_gyd || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })} GYD</strong>
-+                <strong>{formatAmount(row.amount_due_gyd)} GYD</strong>
-                 <span className={row.is_paid ? 'status-pill paid' : 'status-pill unpaid'}>
-                   {row.is_paid ? 'Paid' : 'Unpaid'}
-                 </span>
-                 <div className="billing-actions">
-                   <button className="ghost-btn" onClick={() => updateProviderStatus(row.provider_id, false)} disabled={loading}>
-                     Unpaid
-                   </button>
-                   <button className="primary-btn" onClick={() => updateProviderStatus(row.provider_id, true)} disabled={loading}>
-                     Paid
-                   </button>
-                 </div>
-               </div>
-             ))}
- 
-             {!loading && filteredRows.length === 0 && (
-               <p className="muted">No providers match that account number or phone.</p>
-             )}
-           </div>
-         </div>
-       </div>
+         .order_by(models.Bill.due_date.desc())
+         .first()
      )
-   }
  
-   const AdminLayout = () => {
-     const location = useLocation()
+     if not latest_unpaid_bill:
+         return 0.0
+ 
+-    total_due = Decimal(str(latest_unpaid_bill.total_gyd or 0))
++    # Billing for providers should only charge the platform fee, not their gross booking revenue.
++    total_due = Decimal(str(latest_unpaid_bill.fee_gyd or 0))
+     credits = Decimal(str(get_provider_credit_balance(db, provider_id) or 0))
+ 
+     net_due = total_due - credits
+     if net_due < 0:
+         net_due = Decimal("0")
+ 
+     return float(net_due)
+ 
+ 
+ def _provider_billing_row(db: Session, provider: models.Provider, user: models.User):
+     amount_due = get_provider_fees_due(db, provider.id)
+     latest_bill = (
+         db.query(models.Bill)
+         .filter(models.Bill.provider_id == provider.id)
+         .order_by(models.Bill.due_date.desc())
+         .first()
+     )
+ 
+     return {
+         "provider_id": provider.id,
+         "name": user.full_name or "",
+         "account_number": provider.account_number or "",
+         "phone": user.phone or "",
+         "amount_due_gyd": float(amount_due or 0.0),
+         "is_paid": amount_due <= 0,
  
 EOF
 )
