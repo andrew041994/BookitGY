@@ -157,11 +157,16 @@ class ProviderBillingRow(BaseModel):
     phone: Optional[str] = None
     amount_due_gyd: float
     is_paid: bool
+    is_locked: bool = False
     last_due_date: Optional[datetime] = None
 
 
 class BillingStatusUpdate(BaseModel):
     is_paid: bool
+
+
+class ProviderLockUpdate(BaseModel):
+    is_locked: bool
 
 
 class ProviderProfileOut(BaseModel):

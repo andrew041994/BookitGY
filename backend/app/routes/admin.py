@@ -99,3 +99,31 @@ def update_provider_billing_status(
         raise HTTPException(status_code=404, detail="Provider not found")
 
     return summary
+
+
+@router.put(
+    "/billing/{provider_id}/lock",
+    response_model=schemas.ProviderBillingRow,
+)
+def update_provider_lock_state(
+    provider_id: int,
+    payload: schemas.ProviderLockUpdate,
+    db: Session = Depends(get_db),
+    _: models.User = Depends(_require_admin),
+):
+    provider = (
+        db.query(models.Provider)
+        .filter(models.Provider.id == provider_id)
+        .first()
+    )
+
+    if not provider:
+        raise HTTPException(status_code=404, detail="Provider not found")
+
+    crud.set_provider_lock_state(db, provider_id, payload.is_locked)
+    summary = crud.get_provider_billing_row(db, provider_id)
+
+    if not summary:
+        raise HTTPException(status_code=404, detail="Provider not found")
+
+    return summary

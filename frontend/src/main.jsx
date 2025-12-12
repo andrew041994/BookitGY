@@ -368,6 +368,29 @@ function App() {
     }
 
 
+    const toggleProviderLock = async (providerId, shouldLock) => {
+      setBillingRows((prev) =>
+        prev.map((row) =>
+          row.provider_id === providerId ? { ...row, is_locked: shouldLock } : row
+        )
+      )
+
+      try {
+        await axios.put(
+          `${API}/admin/billing/${providerId}/lock`,
+          { is_locked: shouldLock },
+          { headers: { Authorization: `Bearer ${token}` } }
+        )
+
+        await fetchBillingRows()
+      } catch (err) {
+        console.error(err)
+        setError('Failed to update provider account status.')
+        fetchBillingRows()
+      }
+    }
+
+
     const markAll = async (isPaid) => {
       if (!billingRows.length) return
       setBulkUpdating(true)
@@ -508,6 +531,7 @@ function App() {
               <span>Amount due (platform fees)</span>
               <span>Last due date</span>
               <span>Status</span>
+              <span>Account status</span>
               <span className="sr-only">Actions</span>
             </div>
             {filteredRows.map((row) => (
@@ -523,12 +547,22 @@ function App() {
                 <span className={row.is_paid ? 'status-pill paid' : 'status-pill unpaid'}>
                   {row.is_paid ? 'Paid' : 'Unpaid'}
                 </span>
+                <span className={row.is_locked ? 'status-pill unpaid' : 'status-pill paid'}>
+                  {row.is_locked ? 'Suspended' : 'Active'}
+                </span>
                 <div className="billing-actions">
                   <button className="ghost-btn" onClick={() => updateProviderStatus(row.provider_id, false)} disabled={loading}>
                     Unpaid
                   </button>
                   <button className="primary-btn" onClick={() => updateProviderStatus(row.provider_id, true)} disabled={loading}>
                     Paid
+                  </button>
+                  <button
+                    className={row.is_locked ? 'primary-btn' : 'ghost-btn'}
+                    onClick={() => toggleProviderLock(row.provider_id, !row.is_locked)}
+                    disabled={loading}
+                  >
+                    {row.is_locked ? 'Restore account' : 'Suspend account'}
                   </button>
                 </div>
               </div>

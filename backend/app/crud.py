@@ -898,6 +898,7 @@ def _provider_billing_row(db: Session, provider: models.Provider, user: models.U
         "phone": user.phone or "",
         "amount_due_gyd": float(amount_due or 0.0),
         "is_paid": is_paid,
+        "is_locked": bool(getattr(provider, "is_locked", False)),
         "last_due_date": latest_bill.due_date if latest_bill else None,
     }
 
@@ -932,6 +933,17 @@ def set_provider_bills_paid_state(db: Session, provider_id: int, is_paid: bool) 
         db.query(models.Bill)
         .filter(models.Bill.provider_id == provider_id)
         .update({models.Bill.is_paid: is_paid}, synchronize_session=False)
+    )
+
+    db.commit()
+    return updated
+
+
+def set_provider_lock_state(db: Session, provider_id: int, is_locked: bool) -> int:
+    updated = (
+        db.query(models.Provider)
+        .filter(models.Provider.id == provider_id)
+        .update({models.Provider.is_locked: is_locked}, synchronize_session=False)
     )
 
     db.commit()

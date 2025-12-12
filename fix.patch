@@ -1,114 +1,166 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
-diff --git a/frontend/src/App.jsx b/frontend/src/App.jsx
-index 984a3b5e8071ce54151f4639e708fb34bfa7d470..481091a954e79090b364f1fc1952eef13ee9f300 100644
---- a/frontend/src/App.jsx
-+++ b/frontend/src/App.jsx
-@@ -652,51 +652,51 @@ function BillingActionsPanel({
-     if (!term) return resolvedCharges;
+diff --git a/frontend/src/main.jsx b/frontend/src/main.jsx
+index 98e924bb1e59904ac3dc722c7d1c919f4a38d1c2..08d27c5bf86f4b306bff6d5b0cc0ec4d236f486e 100644
+--- a/frontend/src/main.jsx
++++ b/frontend/src/main.jsx
+@@ -346,50 +346,73 @@ function App() {
+       // optimistic update (UI changes instantly)
+       setBillingRows((prev) =>
+         prev.map((row) =>
+           row.provider_id === providerId ? { ...row, is_paid: isPaid } : row
+         )
+       )
  
-     return resolvedCharges.filter((charge) => {
-       const account = (charge.accountNumber || '').toLowerCase();
-       const phone = (charge.phoneNumber || '').toLowerCase();
-       return account.includes(term) || phone.includes(term);
-     });
-   }, [resolvedCharges, searchTerm]);
+       try {
+         await axios.put(
+           `${API}/admin/billing/${providerId}/status`,
+           { is_paid: isPaid },
+           { headers: { Authorization: `Bearer ${token}` } }
+         )
  
-   const filteredChargeIds = filteredCharges.map((c) => c.id);
-   const allVisibleSelected =
-     filteredCharges.length > 0 && filteredCharges.every((charge) => selectedChargeIds.includes(charge.id));
+         // OPTIONAL: if you want truth from server, refetch after success
+         // await fetchBillingRows()
+       } catch (err) {
+         console.error(err)
+         setError("Failed to update provider billing status.")
+         // rollback safely
+         fetchBillingRows()
+       }
+     }
  
-   return (
-     <>
-       <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '12px' }}>
-         <input
-           type="text"
-           value={searchTerm}
-           onChange={(e) => setSearchTerm(e.target.value)}
-           placeholder="Search by account # or phone"
-           style={{ padding: '10px', borderRadius: '10px', border: '1px solid #d1d5db', minWidth: '260px' }}
-         />
-       </div>
-       <div style={{ overflowX: 'auto' }}>
--        <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '1100px' }}>
-+        <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '1300px' }}>
-           <thead>
-             <tr style={{ textAlign: 'left', background: '#f3f4f6' }}>
-               <th style={{ padding: '10px' }}>
-                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                   <input
-                     type="checkbox"
-                     checked={allVisibleSelected}
-                     onChange={() => toggleAllChargesSelection(filteredChargeIds)}
-                   />
-                   <span>Select</span>
+ 
++    const toggleProviderLock = async (providerId, shouldLock) => {
++      setBillingRows((prev) =>
++        prev.map((row) =>
++          row.provider_id === providerId ? { ...row, is_locked: shouldLock } : row
++        )
++      )
++
++      try {
++        await axios.put(
++          `${API}/admin/billing/${providerId}/lock`,
++          { is_locked: shouldLock },
++          { headers: { Authorization: `Bearer ${token}` } }
++        )
++
++        await fetchBillingRows()
++      } catch (err) {
++        console.error(err)
++        setError('Failed to update provider account status.')
++        fetchBillingRows()
++      }
++    }
++
++
+     const markAll = async (isPaid) => {
+       if (!billingRows.length) return
+       setBulkUpdating(true)
+       setError('')
+ 
+       // Optimistic UI update
+       setBillingRows((prev) => prev.map((row) => ({ ...row, is_paid: isPaid })))
+ 
+       try {
+         await Promise.all(
+           billingRows.map((row) =>
+             axios.put(
+               `${API}/admin/billing/${row.provider_id}/status`,
+               { is_paid: isPaid },
+               { headers: { Authorization: `Bearer ${token}` } }
+             )
+           )
+         )
+ 
+         // Single refetch = clean + guaranteed correct
+         await fetchBillingRows()
+       } catch (err) {
+         console.error(err)
+         setError('Failed to update all provider statuses.')
+         await fetchBillingRows()
+@@ -486,72 +509,83 @@ function App() {
+                   onChange={(e) => setStartDate(e.target.value)}
+                   aria-label="Start date"
+                 />
+                 <span aria-hidden="true">—</span>
+                 <input
+                   type="date"
+                   value={endDate}
+                   onChange={(e) => setEndDate(e.target.value)}
+                   aria-label="End date"
+                 />
+               </div>
+             </div>
+             {loading && <span className="muted">Loading providers…</span>}
+           </div>
+ 
+           {error && <p className="form-error">{error}</p>}
+ 
+           <div className="billing-table">
+             <div className="billing-table__head">
+               <span>Name</span>
+               <span>Account number</span>
+               <span>Phone number</span>
+               <span>Amount due (platform fees)</span>
+               <span>Last due date</span>
+               <span>Status</span>
++              <span>Account status</span>
+               <span className="sr-only">Actions</span>
+             </div>
+             {filteredRows.map((row) => (
+               <div key={row.provider_id} className="billing-table__row">
+                 <div>
+                   <p className="billing-provider">{row.name || 'Unnamed provider'}</p>
+                   <p className="muted">ID #{row.provider_id}</p>
                  </div>
-               </th>
-               <th style={{ padding: '10px' }}>Name</th>
-               <th style={{ padding: '10px' }}>Account Number</th>
-               <th style={{ padding: '10px' }}>Phone Number</th>
-               <th style={{ padding: '10px' }}>Amount Due (Platform Fees)</th>
-               <th style={{ padding: '10px' }}>Status</th>
-               <th style={{ padding: '10px' }}>Actions</th>
-             </tr>
-           </thead>
-           <tbody>
-             {filteredCharges.map((charge) => {
-               const statusLabel = charge.isPaid ? 'Paid' : charge.isCurrentCycle ? 'Unpaid (current)' : 'Unpaid';
-               const badgeBackground = charge.isPaid ? '#dcfce7' : charge.isCurrentCycle ? '#fee2e2' : '#fef9c3';
-               const badgeColor = charge.isPaid ? '#15803d' : charge.isCurrentCycle ? '#b91c1c' : '#92400e';
-@@ -788,51 +788,51 @@ function BillingActionsPanel({
-       <div style={{ display: 'flex', gap: '10px', marginTop: '12px', flexWrap: 'wrap', alignItems: 'center' }}>
-         <button
-           onClick={() => setChargesPaidState(true)}
-           style={{ padding: '10px 14px', background: '#16a34a', color: 'white', border: 'none', borderRadius: '10px', fontWeight: 700 }}
-         >
-           Mark Paid
-         </button>
-         <button
-           onClick={() => setChargesPaidState(false)}
-           style={{ padding: '10px 14px', background: '#f3f4f6', color: '#111827', border: '1px solid #e5e7eb', borderRadius: '10px', fontWeight: 700 }}
-         >
-           Mark Unpaid
-         </button>
-         <div style={{ color: '#6b7280', fontSize: '14px' }}>
-           Charges default to <strong>Unpaid</strong> on the 1st of each month (current cycle: {billingCycleStart}). Accounts
-           automatically suspend at midnight on the 15th ({suspensionCutoffLabel}) if the current cycle remains unpaid.
+                 <strong>{row.account_number || 'N/A'}</strong>
+                 <span>{row.phone || 'No phone added'}</span>
+                 <strong>{formatAmount(row.amount_due_gyd)} GYD</strong>
+                 <span>{formatDueDate(row.last_due_date)}</span>
+                 <span className={row.is_paid ? 'status-pill paid' : 'status-pill unpaid'}>
+                   {row.is_paid ? 'Paid' : 'Unpaid'}
+                 </span>
++                <span className={row.is_locked ? 'status-pill unpaid' : 'status-pill paid'}>
++                  {row.is_locked ? 'Suspended' : 'Active'}
++                </span>
+                 <div className="billing-actions">
+                   <button className="ghost-btn" onClick={() => updateProviderStatus(row.provider_id, false)} disabled={loading}>
+                     Unpaid
+                   </button>
+                   <button className="primary-btn" onClick={() => updateProviderStatus(row.provider_id, true)} disabled={loading}>
+                     Paid
+                   </button>
++                  <button
++                    className={row.is_locked ? 'primary-btn' : 'ghost-btn'}
++                    onClick={() => toggleProviderLock(row.provider_id, !row.is_locked)}
++                    disabled={loading}
++                  >
++                    {row.is_locked ? 'Restore account' : 'Suspend account'}
++                  </button>
+                 </div>
+               </div>
+             ))}
+ 
+             {!loading && filteredRows.length === 0 && (
+               <p className="muted">No providers match that account, phone, or date range.</p>
+             )}
+           </div>
          </div>
        </div>
-     </>
-   );
- }
+     )
+   }
  
- function ProviderAccountsTable({ providers, creditInputs, setCreditInputs, applyCredit, toggleLock }) {
-   return (
-     <div style={{ overflowX: 'auto' }}>
--      <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '1100px' }}>
-+      <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '1300px' }}>
-         <thead>
-           <tr style={{ background: '#f3f4f6', textAlign: 'left' }}>
-             <th style={{ padding: '10px' }}>Provider</th>
-             <th style={{ padding: '10px' }}>Outstanding</th>
-             <th style={{ padding: '10px' }}>Credit</th>
-             <th style={{ padding: '10px' }}>Apply Credit</th>
-             <th style={{ padding: '10px' }}>Status</th>
-             <th style={{ padding: '10px' }}>Actions</th>
-           </tr>
-         </thead>
-         <tbody>
-           {providers.map((provider) => {
-             const suspended = provider.isLocked || provider.autoSuspended;
-             const statusLabel = provider.autoSuspended ? 'Suspended (Unpaid)' : provider.isLocked ? 'Suspended' : 'Active';
-             const toggleDisabled = provider.autoSuspended && !provider.isLocked;
- 
-             return (
-               <tr key={provider.id} style={{ borderBottom: '1px solid #e5e7eb' }}>
-                 <td style={{ padding: '10px' }}>
-                   <div style={{ fontWeight: 700 }}>{provider.name}</div>
-                   <div style={{ color: '#6b7280' }}>{provider.location}</div>
-                 </td>
-                 <td style={{ padding: '10px' }}>GYD {provider.outstanding.toLocaleString()}</td>
-                 <td style={{ padding: '10px' }}>GYD {provider.credit.toLocaleString()}</td>
-                 <td style={{ padding: '10px' }}>
+   const AdminLayout = () => {
+     const location = useLocation()
+     return (
+       <div className="admin-shell">
+         <aside className="admin-sidebar">
+           <nav className="sidebar-nav">
+             <NavLink to="/admin/promotions" className={({ isActive }) => isActive ? 'sidebar-link active' : 'sidebar-link'}>
+               Promotions
+             </NavLink>
+             <NavLink to="/admin/service-charge" className={({ isActive }) => isActive ? 'sidebar-link active' : 'sidebar-link'}>
+               Service Charge
+             </NavLink>
  
 EOF
 )
