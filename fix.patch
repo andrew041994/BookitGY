@@ -1,350 +1,68 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
-diff --git a/mobile/App.js b/mobile/App.js
-index 68092658658288c719e7108624b9f198e4ee53bf..6c770223e2ce4c4c9901841d6897f723d4b3c63a 100644
---- a/mobile/App.js
-+++ b/mobile/App.js
-@@ -4983,51 +4983,50 @@ const loadProviderSummary = async () => {
-                   }}
-                 >
-                   <Marker
-                     coordinate={{
-                       latitude: providerLocation.lat,
-                       longitude: providerLocation.long,
-                     }}
-                     title="Your business location"
-                   />
-                 </MapView>
-             </View>
+diff --git a/frontend/src/main.jsx b/frontend/src/main.jsx
+index 04889df66031a3f0817bf330d709034e7e5dea06..23a1c05b6fe5656a571dffbb13892255fff73232 100644
+--- a/frontend/src/main.jsx
++++ b/frontend/src/main.jsx
+@@ -296,59 +296,50 @@ function App() {
+             {token ? 'Go to dashboard' : 'Login'}
+           </Link>
+           {!token && (
+             <p className="credentials-hint">
+               Demo login: <strong>customer@guyana.com</strong> / <strong>pass</strong>
+             </p>
            )}
-         </View>
-       </ScrollView>
-     </View>
-   );
- }
+         </div>
+       </div>
+     </div>
+   )
  
- function ProviderBillingScreen({ token, showFlash }) {
-   const [billingSummary, setBillingSummary] = useState(null);
-   const [bills, setBills] = useState([]);
-   const [billingLoading, setBillingLoading] = useState(false);
-   const [billingError, setBillingError] = useState("");
-   const [expandedBills, setExpandedBills] = useState({});
-   const [serviceChargePct, setServiceChargePct] = useState(10);
--  const [unusedBillCredits, setUnusedBillCredits] = useState(0);
- 
-   const resolveServiceChargePct = (summaryData) => {
-     const rawValue =
-       summaryData?.service_charge_percentage ??
-       summaryData?.service_charge_percent ??
-       summaryData?.service_charge_rate ??
-       summaryData?.service_charge;
- 
-     const numeric = Number(rawValue);
-     if (!Number.isFinite(numeric)) return 10;
- 
-     // Allow either fractional (0.1) or whole-number (10) representations.
-     const pctValue = numeric <= 1 ? numeric * 100 : numeric;
-     return Math.max(pctValue, 0);
-   };
- 
-   const toggleBillExpanded = (billId) => {
-     setExpandedBills((prev) => ({
-       ...prev,
-       [billId]: !prev[billId],
-     }));
-   };
- 
-   const formatMoney = (value) => {
-     const amount = Number.isFinite(value) ? value : 0;
-@@ -5037,226 +5036,210 @@ function ProviderBillingScreen({ token, showFlash }) {
-   const formatDate = (value) => {
-     if (!value) return "-";
-     const dateObj = value instanceof Date ? value : new Date(value);
-     if (Number.isNaN(dateObj.getTime())) return "-";
-     return dateObj.toLocaleDateString("en-US", {
-       month: "short",
-       day: "numeric",
-       year: "numeric",
-     });
-   };
- 
-   const normalizeStart = (booking) => {
-     const raw = booking?.start_time || booking?.start;
-     if (!raw) return null;
-     const dateObj = new Date(raw);
-     return Number.isNaN(dateObj.getTime()) ? null : dateObj;
-   };
- 
-   const buildBills = useCallback((bookingList, chargePct = 10, creditBalance = 0) => {
-     const now = new Date();
-     const statements = [];
-     const monthsToShow = 6;
- 
-     const feeRate = Math.max(chargePct, 0) / 100;
-     let remainingCredits = Math.max(Number(creditBalance) || 0, 0);
--    let appliedBillId = null;
- 
-     for (let i = 0; i < monthsToShow; i += 1) {
-       const coverageStart = new Date(now.getFullYear(), now.getMonth() - i, 1);
-       const coverageEnd = new Date(now.getFullYear(), now.getMonth() - i + 1, 0);
-       const invoiceDate = new Date(
-         coverageStart.getFullYear(),
-         coverageStart.getMonth() + 1,
-         1
-       );
- 
-       const monthBookings = bookingList.filter((booking) => {
-         const start = normalizeStart(booking);
-         if (!start) return false;
-         return start >= coverageStart && start <= coverageEnd;
-       });
- 
-       const lineItems = monthBookings.length
-         ? monthBookings.map((booking) => ({
-             bookingId: booking.id || booking.booking_id,
-             description: booking.service_name || "Service booking",
-             client:
-               booking.client_name ||
-               booking.customer_name ||
-               booking.user_name ||
-               booking.client ||
-               booking.user,
-             date: normalizeStart(booking),
-             amount:
-               Number(
-                 booking.service_price_gyd ??
-                   booking.price_gyd ??
-                   booking.total_price_gyd ??
-                   booking.price
-               ) || 0,
-           }))
-         : [
-             {
-               bookingId: `empty-${coverageStart.toISOString()}`,
-               description: "No completed bookings recorded",
-               client: "",
-               date: null,
-               amount: 0,
-             },
-           ];
- 
-       const servicesTotal = lineItems.reduce(
-         (sum, item) => sum + (Number.isFinite(item.amount) ? item.amount : 0),
-         0
-       );
- 
--      const platformFee = Math.max(Math.round(servicesTotal * feeRate), 0);
-+        const platformFee = Math.max(Math.round(servicesTotal * feeRate), 0);
-+        const statementId = `${coverageStart.getFullYear()}-${coverageStart.getMonth() + 1}`;
- 
--      let billCreditsApplied = 0;
--      const statementId = `${coverageStart.getFullYear()}-${coverageStart.getMonth() + 1}`;
--
--      if (invoiceDate <= now && remainingCredits > 0 && !appliedBillId) {
--        billCreditsApplied = Math.min(remainingCredits, platformFee);
--        remainingCredits -= billCreditsApplied;
--        appliedBillId = statementId;
--      }
-+        const billCreditsApplied = Math.min(remainingCredits, platformFee);
-+      remainingCredits -= billCreditsApplied;
- 
-       const totalDue = Math.max(platformFee - billCreditsApplied, 0);
- 
-       statements.push({
-         id: statementId,
-         coverageStart,
-         coverageEnd,
-         invoiceDate,
-         status: invoiceDate <= now ? "Generated" : "Scheduled",
-         servicesTotal,
-         platformFee,
-         billCreditsApplied,
-         totalDue,
-         lineItems,
-       });
+   const ProtectedRoute = ({ children }) => {
+     const location = useLocation()
+     if (!token) {
+       return <Navigate to="/login" replace state={{ from: location }} />
      }
+     return children
+   }
  
-     statements.sort((a, b) => b.invoiceDate - a.invoiceDate);
-     setBills(statements);
--    setUnusedBillCredits(remainingCredits);
-   }, []);
- 
-   const fetchBilling = useCallback(async () => {
-     try {
-       setBillingLoading(true);
-       setBillingError("");
- 
-       const storedToken = await AsyncStorage.getItem("accessToken");
-       const authToken = token?.token || storedToken;
- 
-       if (!authToken) {
-         setBillingError("No access token found. Please log in again.");
-         return;
-       }
- 
-       const [bookingsRes, summaryRes] = await Promise.all([
-         axios.get(`${API}/providers/me/bookings`, {
-           headers: { Authorization: `Bearer ${authToken}` },
-         }),
-         axios
-           .get(`${API}/providers/me/summary`, {
-             headers: { Authorization: `Bearer ${authToken}` },
-           })
-           .catch(() => null),
-       ]);
- 
-       const bookingList = Array.isArray(bookingsRes.data)
-         ? bookingsRes.data
-         : bookingsRes.data?.bookings || bookingsRes.data?.results || [];
- 
-       const summaryData = summaryRes?.data || null;
-       setBillingSummary(summaryData);
- 
-       const creditBalance = Math.max(
-         Number(summaryData?.total_credit_balance_gyd) || 0,
-         0
-       );
- 
--      setUnusedBillCredits(creditBalance);
--
-       const resolvedChargePct = resolveServiceChargePct(summaryData);
-       setServiceChargePct(resolvedChargePct);
- 
-       buildBills(bookingList, resolvedChargePct, creditBalance);
-     } catch (err) {
-       console.log("Error loading billing", err.response?.data || err.message);
-       setBillingError("Could not load billing statements.");
-       if (showFlash) {
-         showFlash("error", "Could not load billing statements.");
-       }
-     } finally {
-       setBillingLoading(false);
-     }
-   }, [buildBills, showFlash, token?.token]);
- 
-   useEffect(() => {
-     fetchBilling();
-   }, [fetchBilling]);
- 
-   useFocusEffect(
-     useCallback(() => {
-       fetchBilling();
-       return () => {};
-     }, [fetchBilling])
-   );
- 
-   const now = new Date();
-   const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-   const outstandingFees =
-     now >= endOfMonth ? billingSummary?.total_fees_due_gyd || 0 : 0;
+   const AdminLayout = () => {
+     const location = useLocation()
+     return (
+       <div className="admin-shell">
+         <aside className="admin-sidebar">
+-          <div className="sidebar-header">
+-            <div className="logo-circle small">
+-              <img src="/bookitgy-logo.png" alt="BookitGY" />
+-            </div>
+-            <div>
+-              <p className="eyebrow">Admin</p>
+-              <strong>BookitGY</strong>
+-            </div>
+-          </div>
+           <nav className="sidebar-nav">
+             <NavLink to="/admin/promotions" className={({ isActive }) => isActive ? 'sidebar-link active' : 'sidebar-link'}>
+               Promotions
+             </NavLink>
+             <NavLink to="/admin/service-charge" className={({ isActive }) => isActive ? 'sidebar-link active' : 'sidebar-link'}>
+               Service Charge
+             </NavLink>
+           </nav>
+           <div className="sidebar-footer">
+             Logged in · {token ? 'Authenticated' : 'Guest'}
+           </div>
+         </aside>
+         <main className="admin-main" key={location.pathname}>
+           <Outlet />
+         </main>
+       </div>
+     )
+   }
  
    return (
-     <ScrollView contentContainerStyle={styles.providerBillingScroll}>
-       <Text style={styles.profileTitle}>Billing</Text>
-       <Text style={styles.subtitleSmall}>
-         Bills populate automatically on the 1st of each month with booking
-         details.
-       </Text>
- 
-       {billingSummary && (
-         <View style={styles.providerSummaryCard}>
-           <Text style={styles.providerSummaryLabel}>Account number</Text>
-           <Text style={styles.providerSummaryValue}>
-             {billingSummary.account_number || "N/A"}
-           </Text>
- 
-           <View style={{ height: 8 }} />
- 
--          <Text style={styles.providerSummaryLabel}>Bill credits</Text>
--          <Text style={styles.providerSummaryValue}>
--            {formatMoney(unusedBillCredits)}
--          </Text>
--
--          <View style={{ height: 8 }} />
--
-           <Text style={styles.providerSummaryLabel}>Outstanding fees</Text>
-           <Text style={styles.providerSummaryValue}>
-             {formatMoney(outstandingFees)}
-           </Text>
-         </View>
-       )}
- 
-       {billingLoading && (
-         <View style={styles.card}>
-           <ActivityIndicator />
-           <Text style={styles.serviceMeta}>Loading billing history…</Text>
-         </View>
-       )}
- 
-       {billingError ? (
-         <View style={styles.card}>
-           <Text style={styles.errorText}>{billingError}</Text>
-         </View>
-       ) : null}
- 
-       {!billingLoading && !billingError && bills.length === 0 && (
-         <View style={styles.card}>
-           <Text style={styles.serviceMeta}>No billing statements yet.</Text>
-         </View>
-       )}
-@@ -5325,58 +5308,56 @@ function ProviderBillingScreen({ token, showFlash }) {
-                           Service date: {formatDate(item.date)}
-                         </Text>
-                       ) : null}
-                     </View>
-                     <Text style={styles.billingAmount}>{formatMoney(item.amount)}</Text>
- 
-                   </View>
-                    ))}
-               </View>
-             ) : null}
- 
-             <View style={styles.billingTotalsRow}>
-               <Text style={styles.billingTotalsLabel}>Services total</Text>
-               <Text style={styles.billingTotalsValue}>
-                 {formatMoney(bill.servicesTotal)}
-               </Text>
-             </View>
-             <View style={styles.billingTotalsRow}>
-               <Text style={styles.billingTotalsLabel}>
-                 Platform fee ({serviceChargePct}%)
-               </Text>
-               <Text style={styles.billingTotalsValue}>
-                 {formatMoney(bill.platformFee)}
-               </Text>
-             </View>
--            {bill.billCreditsApplied ? (
-               <View style={styles.billingTotalsRow}>
-                 <Text style={styles.billingTotalsLabel}>Bill credits</Text>
-                 <Text style={styles.billingTotalsValue}>
-                   -{formatMoney(bill.billCreditsApplied)}
-                 </Text>
-               </View>
--            ) : null}
-             <View style={styles.billingTotalsRow}>
-               <Text style={styles.billingTotalsLabel}>Total due</Text>
-               <Text style={styles.billingTotalsValue}>{formatMoney(bill.totalDue)}</Text>
-             </View>
-           </View>
-         ))}
-     </ScrollView>
-   );
- }
- 
- 
- // Tabs after login
- function MainApp({ token, setToken, showFlash }) {
-    const {
-     favoriteIds,
-     favoriteProviders,
-     favoritesLoading,
-     toggleFavorite,
-     isFavorite,
-     syncFavoritesFromList,
-     refreshFavoriteProviders,
-   } = useFavoriteProviders(token?.email || token?.userId);
-   return (
-     <NavigationContainer>
-       {token.isProvider ? (
+     <BrowserRouter>
+       <nav className="app-nav">
+         <div className="nav-inner">
+           <Link to="/" className="nav-brand" aria-label="BookitGY home">
+             <img src="/bookitgy-logo.png" alt="BookitGY" />
  
 EOF
 )

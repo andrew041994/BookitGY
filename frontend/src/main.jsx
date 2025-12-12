@@ -318,15 +318,6 @@ function App() {
     return (
       <div className="admin-shell">
         <aside className="admin-sidebar">
-          <div className="sidebar-header">
-            <div className="logo-circle small">
-              <img src="/bookitgy-logo.png" alt="BookitGY" />
-            </div>
-            <div>
-              <p className="eyebrow">Admin</p>
-              <strong>BookitGY</strong>
-            </div>
-          </div>
           <nav className="sidebar-nav">
             <NavLink to="/admin/promotions" className={({ isActive }) => isActive ? 'sidebar-link active' : 'sidebar-link'}>
               Promotions
