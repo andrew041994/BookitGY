@@ -506,7 +506,7 @@ body {
 .billing-table__head,
 .billing-table__row {
   display: grid;
-  grid-template-columns: 1.4fr 1fr 1fr 1fr 0.8fr 1.2fr;
+  grid-template-columns: 1.4fr 1fr 1fr 1fr 1fr 0.8fr 1.2fr;
   align-items: center;
   gap: 12px;
 }
@@ -558,6 +558,26 @@ body {
 }
 
 .billing-search input {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  padding: 10px 12px;
+  border-radius: 8px;
+  color: #fff;
+}
+
+.billing-date-range {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.billing-date-range__inputs {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.billing-date-range input[type="date"] {
   background: rgba(255, 255, 255, 0.06);
   border: 1px solid rgba(255, 255, 255, 0.08);
   padding: 10px 12px;

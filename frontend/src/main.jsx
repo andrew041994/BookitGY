@@ -318,6 +318,8 @@ function App() {
     const [loading, setLoading] = React.useState(false)
     const [error, setError] = React.useState('')
     const [searchTerm, setSearchTerm] = React.useState('')
+    const [startDate, setStartDate] = React.useState('')
+    const [endDate, setEndDate] = React.useState('')
     const [bulkUpdating, setBulkUpdating] = React.useState(false)
 
     const fetchBillingRows = React.useCallback(async () => {
@@ -340,61 +342,61 @@ function App() {
       fetchBillingRows()
     }, [fetchBillingRows])
 
-const updateProviderStatus = async (providerId, isPaid) => {
-  // optimistic update (UI changes instantly)
-  setBillingRows((prev) =>
-    prev.map((row) =>
-      row.provider_id === providerId ? { ...row, is_paid: isPaid } : row
-    )
-  )
+    const updateProviderStatus = async (providerId, isPaid) => {
+      // optimistic update (UI changes instantly)
+      setBillingRows((prev) =>
+        prev.map((row) =>
+          row.provider_id === providerId ? { ...row, is_paid: isPaid } : row
+        )
+      )
 
-  try {
-    await axios.put(
-      `${API}/admin/billing/${providerId}/status`,
-      { is_paid: isPaid },
-      { headers: { Authorization: `Bearer ${token}` } }
-    )
-
-    // OPTIONAL: if you want truth from server, refetch after success
-    // await fetchBillingRows()
-  } catch (err) {
-    console.error(err)
-    setError("Failed to update provider billing status.")
-    // rollback safely
-    fetchBillingRows()
-  }
-}
-
-
-  const markAll = async (isPaid) => {
-  if (!billingRows.length) return
-  setBulkUpdating(true)
-  setError('')
-
-  // Optimistic UI update
-  setBillingRows((prev) => prev.map((row) => ({ ...row, is_paid: isPaid })))
-
-  try {
-    await Promise.all(
-      billingRows.map((row) =>
-        axios.put(
-          `${API}/admin/billing/${row.provider_id}/status`,
+      try {
+        await axios.put(
+          `${API}/admin/billing/${providerId}/status`,
           { is_paid: isPaid },
           { headers: { Authorization: `Bearer ${token}` } }
         )
-      )
-    )
 
-    // Single refetch = clean + guaranteed correct
-    await fetchBillingRows()
-  } catch (err) {
-    console.error(err)
-    setError('Failed to update all provider statuses.')
-    await fetchBillingRows()
-  } finally {
-    setBulkUpdating(false)
-  }
-}
+        // OPTIONAL: if you want truth from server, refetch after success
+        // await fetchBillingRows()
+      } catch (err) {
+        console.error(err)
+        setError("Failed to update provider billing status.")
+        // rollback safely
+        fetchBillingRows()
+      }
+    }
+
+
+    const markAll = async (isPaid) => {
+      if (!billingRows.length) return
+      setBulkUpdating(true)
+      setError('')
+
+      // Optimistic UI update
+      setBillingRows((prev) => prev.map((row) => ({ ...row, is_paid: isPaid })))
+
+      try {
+        await Promise.all(
+          billingRows.map((row) =>
+            axios.put(
+              `${API}/admin/billing/${row.provider_id}/status`,
+              { is_paid: isPaid },
+              { headers: { Authorization: `Bearer ${token}` } }
+            )
+          )
+        )
+
+        // Single refetch = clean + guaranteed correct
+        await fetchBillingRows()
+      } catch (err) {
+        console.error(err)
+        setError('Failed to update all provider statuses.')
+        await fetchBillingRows()
+      } finally {
+        setBulkUpdating(false)
+      }
+    }
 
 
 
@@ -405,12 +407,49 @@ const updateProviderStatus = async (providerId, isPaid) => {
         minimumFractionDigits: 0,
         maximumFractionDigits: 2,
       })
+    const isWithinDateRange = (row) => {
+      if (!startDate && !endDate) return true
+      if (!row.last_due_date) return false
+
+      const dueDate = new Date(row.last_due_date)
+      if (Number.isNaN(dueDate.getTime())) return false
+
+      if (startDate) {
+        const start = new Date(startDate)
+        start.setHours(0, 0, 0, 0)
+        if (dueDate < start) return false
+      }
+
+      if (endDate) {
+        const end = new Date(endDate)
+        end.setHours(23, 59, 59, 999)
+        if (dueDate > end) return false
+      }
+
+      return true
+    }
+
     const filteredRows = billingRows.filter((row) => {
-      if (!normalizedSearch) return true
       const accountNumber = (row.account_number || '').toLowerCase()
       const phone = (row.phone || '').toLowerCase()
-      return accountNumber.includes(normalizedSearch) || phone.includes(normalizedSearch)
+      const matchesSearch =
+        !normalizedSearch ||
+        accountNumber.includes(normalizedSearch) ||
+        phone.includes(normalizedSearch)
+
+      return matchesSearch && isWithinDateRange(row)
     })
+
+    const formatDueDate = (value) => {
+      if (!value) return 'No bill yet'
+      const parsed = new Date(value)
+      if (Number.isNaN(parsed.getTime())) return 'Unknown date'
+      return parsed.toLocaleDateString(undefined, {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+      })
+    }
 
     return (
       <div className="admin-page">
@@ -438,6 +477,24 @@ const updateProviderStatus = async (providerId, isPaid) => {
                 onChange={(e) => setSearchTerm(e.target.value)}
               />
             </div>
+            <div className="billing-date-range">
+              <label>Date range (last due date)</label>
+              <div className="billing-date-range__inputs">
+                <input
+                  type="date"
+                  value={startDate}
+                  onChange={(e) => setStartDate(e.target.value)}
+                  aria-label="Start date"
+                />
+                <span aria-hidden="true">—</span>
+                <input
+                  type="date"
+                  value={endDate}
+                  onChange={(e) => setEndDate(e.target.value)}
+                  aria-label="End date"
+                />
+              </div>
+            </div>
             {loading && <span className="muted">Loading providers…</span>}
           </div>
 
@@ -449,6 +506,7 @@ const updateProviderStatus = async (providerId, isPaid) => {
               <span>Account number</span>
               <span>Phone number</span>
               <span>Amount due (platform fees)</span>
+              <span>Last due date</span>
               <span>Status</span>
               <span className="sr-only">Actions</span>
             </div>
@@ -461,6 +519,7 @@ const updateProviderStatus = async (providerId, isPaid) => {
                 <strong>{row.account_number || 'N/A'}</strong>
                 <span>{row.phone || 'No phone added'}</span>
                 <strong>{formatAmount(row.amount_due_gyd)} GYD</strong>
+                <span>{formatDueDate(row.last_due_date)}</span>
                 <span className={row.is_paid ? 'status-pill paid' : 'status-pill unpaid'}>
                   {row.is_paid ? 'Paid' : 'Unpaid'}
                 </span>
@@ -476,7 +535,7 @@ const updateProviderStatus = async (providerId, isPaid) => {
             ))}
 
             {!loading && filteredRows.length === 0 && (
-              <p className="muted">No providers match that account number or phone.</p>
+              <p className="muted">No providers match that account, phone, or date range.</p>
             )}
           </div>
         </div>
