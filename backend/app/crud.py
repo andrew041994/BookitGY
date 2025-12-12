@@ -726,29 +726,154 @@ def _calculate_bill_total_due(db: Session, bill: models.Bill, provider_id: int) 
     return float(net_due)
 
 
+from datetime import date
+from decimal import Decimal
+
+from app.config import get_settings
+from app import models
+# get_provider_credit_balance should already be defined in this file
+
+
 def get_provider_fees_due(db: Session, provider_id: int) -> float:
     """
-    Amount due for the most recent unpaid bill for this provider, in GYD.
+    Compute the *current month's* amount due for this provider in GYD,
+    using the same logic as the provider-facing billing screen.
 
-    This mirrors the "Total due" shown on the provider-facing bill by:
-    - Taking the latest unpaid bill (so we don't aggregate across months),
-    - Using only the platform fee amount (fee_gyd), and
-    - Applying any available bill credits.
+    Logic:
+    - Look at the provider's *upcoming* bookings (same as /providers/me/bookings),
+    - Take only those in the *current calendar month*,
+    - Sum the service prices for those bookings,
+    - Apply the platform service charge percentage,
+    - Subtract bill credits (but never go below 0).
+
+    This intentionally ignores the stored Bill rows and instead computes
+    the amount due from live booking data so the admin dashboard matches
+    what the provider sees.
     """
-    latest_unpaid_bill = (
-        db.query(models.Bill)
-        .filter(
-            models.Bill.provider_id == provider_id,
-            models.Bill.is_paid == False,
+    # "Upcoming bookings" definition must match list_bookings_for_provider
+    now_utc = datetime.utcnow()
+    today = now_utc.date()
+
+    # 1) Load upcoming bookings for this provider, joined with service prices
+    rows = (
+        db.query(
+            models.Booking.start_time,
+            models.Service.price_gyd.label("service_price_gyd"),
         )
-        .order_by(models.Bill.due_date.desc())
-        .first()
+        .join(models.Service, models.Booking.service_id == models.Service.id)
+        .join(models.Provider, models.Service.provider_id == models.Provider.id)
+        .filter(
+            models.Provider.id == provider_id,
+            models.Booking.start_time >= now_utc,
+        )
+        .all()
     )
 
-    if not latest_unpaid_bill:
+    # 2) Sum service prices for bookings that fall in the current month
+    services_total = Decimal("0")
+    for r in rows:
+        start = r.start_time
+        if not start:
+            continue
+        if start.year != today.year or start.month != today.month:
+            continue
+
+        price = r.service_price_gyd or 0
+        services_total += Decimal(str(price))
+
+    # If there are no relevant bookings, nothing is due
+    if services_total <= 0:
         return 0.0
 
-    return _calculate_bill_total_due(db, latest_unpaid_bill, provider_id)
+    # 3) Resolve the platform fee percentage (same as provider summary)
+    service_charge_pct = get_platform_service_charge_percentage(db)
+    fee_rate = Decimal(str(max(service_charge_pct, 0))) / Decimal("100")
+
+    platform_fee = services_total * fee_rate
+    # mirror Math.round to whole-dollar (GYD) values
+    platform_fee = platform_fee.quantize(Decimal("1"))
+
+    if platform_fee <= 0:
+        return 0.0
+
+    # 4) Apply credits, but don't go below 0
+    credits = Decimal(str(get_provider_credit_balance(db, provider_id) or 0))
+    applied_credits = min(credits, platform_fee)
+    total_due = platform_fee - applied_credits
+
+    if total_due < 0:
+        total_due = Decimal("0")
+
+    return float(total_due)
+
+
+
+
+def get_provider_current_month_due_from_upcoming_bookings(
+    db: Session, provider_id: int
+) -> float:
+    """
+    Compute the provider's current-month amount due based on upcoming bookings.
+
+    This is intentionally aligned with the provider-facing billing screen logic:
+    - Uses /providers/me/bookings semantics (upcoming bookings from now onward),
+    - Filters those bookings to the current calendar month,
+    - Applies the platform service charge percentage,
+    - Applies available bill credits, but never returns a negative value.
+    """
+    now = datetime.utcnow()
+    today = now.date()
+
+    # Mirror list_bookings_for_provider: upcoming bookings from now onward
+    rows = (
+        db.query(
+            models.Booking.start_time,
+            models.Service.price_gyd.label("service_price_gyd"),
+        )
+        .join(models.Service, models.Booking.service_id == models.Service.id)
+        .join(models.Provider, models.Service.provider_id == models.Provider.id)
+        .filter(
+            models.Provider.id == provider_id,
+            models.Booking.start_time >= now,
+        )
+        .order_by(models.Booking.start_time.asc())
+        .all()
+    )
+
+    services_total = Decimal("0")
+    for r in rows:
+        start = r.start_time
+        if not start:
+            continue
+        # Only include bookings in the current calendar month
+        if start.year != today.year or start.month != today.month:
+            continue
+        price = r.service_price_gyd or 0
+        services_total += Decimal(str(price))
+
+    if services_total <= 0:
+        return 0.0
+
+    # Same platform fee percentage used for billing
+    service_charge_pct = get_platform_service_charge_percentage(db)
+    fee_rate = Decimal(str(max(service_charge_pct, 0))) / Decimal("100")
+    platform_fee = services_total * fee_rate
+
+    # Mirror Math.round in JS to whole GYD amounts
+    platform_fee = platform_fee.quantize(Decimal("1"))
+    if platform_fee <= 0:
+        return 0.0
+
+    credits = Decimal(str(get_provider_credit_balance(db, provider_id) or 0))
+    applied_credits = min(credits, platform_fee)
+    total_due = platform_fee - applied_credits
+
+    if total_due < 0:
+        total_due = Decimal("0")
+
+    return float(total_due)
+
+
 
 
 def _provider_billing_row(db: Session, provider: models.Provider, user: models.User):
@@ -760,7 +885,7 @@ def _provider_billing_row(db: Session, provider: models.Provider, user: models.U
     )
 
     if latest_bill:
-        amount_due = _calculate_bill_total_due(db, latest_bill, provider.id)
+        amount_due = get_provider_current_month_due_from_upcoming_bookings(db, provider.id)
         is_paid = bool(latest_bill.is_paid)
     else:
         amount_due = 0.0
