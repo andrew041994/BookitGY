@@ -512,6 +512,7 @@ body {
 }
 
 .billing-table__head {
+  pointer-events: none;
   padding: 8px 10px;
   color: var(--muted);
   font-weight: 600;
@@ -522,6 +523,7 @@ body {
 }
 
 .billing-table__row {
+  pointer-events: auto;
   padding: 12px 10px;
   border-radius: 12px;
   background: rgba(255, 255, 255, 0.02);
