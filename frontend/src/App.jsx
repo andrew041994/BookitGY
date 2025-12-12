@@ -1156,24 +1156,6 @@ function AdminLayout() {
             <span style={{ fontSize: '12px', color: 'rgba(255,255,255,0.8)', fontWeight: 500 }}>Overview</span>
           </NavLink>
           <NavLink
-            to="/admin/billing"
-            style={({ isActive }) => ({
-              display: 'flex',
-              flexDirection: 'column',
-              gap: '2px',
-              padding: '12px',
-              borderRadius: '10px',
-              textDecoration: 'none',
-              color: 'inherit',
-              background: isActive ? '#10b981' : 'rgba(255,255,255,0.04)',
-              border: isActive ? '1px solid rgba(255,255,255,0.35)' : '1px solid rgba(255,255,255,0.08)',
-              fontWeight: 700,
-            })}
-          >
-            <span>Billing</span>
-            <span style={{ fontSize: '12px', color: 'rgba(255,255,255,0.8)', fontWeight: 500 }}>Mark payments</span>
-          </NavLink>
-          <NavLink
             to="/admin/service-charge"
             style={({ isActive }) => ({
               display: 'flex',
@@ -1190,6 +1172,24 @@ function AdminLayout() {
           >
             <span>Service Charge</span>
             <span style={{ fontSize: '12px', color: 'rgba(255,255,255,0.8)', fontWeight: 500 }}>Adjust admin fee</span>
+          </NavLink>
+          <NavLink
+            to="/admin/billing"
+            style={({ isActive }) => ({
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '2px',
+              padding: '12px',
+              borderRadius: '10px',
+              textDecoration: 'none',
+              color: 'inherit',
+              background: isActive ? '#10b981' : 'rgba(255,255,255,0.04)',
+              border: isActive ? '1px solid rgba(255,255,255,0.35)' : '1px solid rgba(255,255,255,0.08)',
+              fontWeight: 700,
+            })}
+          >
+            <span>Billing</span>
+            <span style={{ fontSize: '12px', color: 'rgba(255,255,255,0.8)', fontWeight: 500 }}>Mark provider fees paid</span>
           </NavLink>
         </nav>
         <div style={{ marginTop: 'auto', fontSize: '12px', color: 'rgba(255,255,255,0.7)' }}>
