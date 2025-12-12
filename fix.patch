@@ -1,170 +1,400 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
-diff --git a/frontend/src/main.jsx b/frontend/src/main.jsx
-index 23a1c05b6fe5656a571dffbb13892255fff73232..90aa84b11206a5b85982e30f5710882af624ff0b 100644
---- a/frontend/src/main.jsx
-+++ b/frontend/src/main.jsx
-@@ -291,62 +291,127 @@ function App() {
-           Modern tools for managing providers, bookings, and promotions—protected behind a secure login.
-         </p>
+diff --git a/frontend/src/App.jsx b/frontend/src/App.jsx
+index a48831647992520670a6ac62d01d3cb291e09517..04abda75bbaad32fe3e900e871b5880e8b36c3e7 100644
+--- a/frontend/src/App.jsx
++++ b/frontend/src/App.jsx
+@@ -1,85 +1,93 @@
+ import React, { useEffect, useMemo, useState } from 'react';
+ import { BrowserRouter, Routes, Route, Link, Navigate, useLocation, useNavigate } from 'react-router-dom';
+ import axios from 'axios';
  
-         <div className="landing-actions">
-           <Link className="primary-btn" to={token ? '/admin/promotions' : '/login'}>
-             {token ? 'Go to dashboard' : 'Login'}
-           </Link>
-           {!token && (
-             <p className="credentials-hint">
-               Demo login: <strong>customer@guyana.com</strong> / <strong>pass</strong>
-             </p>
-           )}
-         </div>
-       </div>
-     </div>
-   )
+ const API = 'http://localhost:8000';
+ const DEFAULT_SERVICE_CHARGE = 10;
+ const SERVICE_CHARGE_STORAGE_KEY = 'bookitgy.service_charge_rate';
  
-   const ProtectedRoute = ({ children }) => {
-     const location = useLocation()
-     if (!token) {
-       return <Navigate to="/login" replace state={{ from: location }} />
+ const sampleProviders = [
+   {
+     id: 1,
+     name: 'Ariana De Freitas',
++    accountNumber: 'ACC-0001',
++    phoneNumber: '592-600-1001',
+     location: 'Georgetown',
+     lat: 6.8013,
+     long: -58.155,
+     outstanding: 32000,
+     credit: 5000,
+     isLocked: false,
+     autoSuspended: false,
+     lastActive: '2024-10-10',
+     totalBookings: 42,
+     cancellations: 3,
+     noShows: 1,
+     services: ['Makeup', 'Hair Styling'],
+   },
+   {
+     id: 2,
+     name: 'Jamall Adams',
++    accountNumber: 'ACC-0002',
++    phoneNumber: '592-600-1002',
+     location: 'East Bank',
+     lat: 6.7484,
+     long: -58.2439,
+     outstanding: 18000,
+     credit: 0,
+     isLocked: false,
+     autoSuspended: false,
+     lastActive: '2024-09-28',
+     totalBookings: 18,
+     cancellations: 4,
+     noShows: 0,
+     services: ['Barber', 'Beard Trim'],
+   },
+   {
+     id: 3,
+     name: 'Kittisha Jones',
++    accountNumber: 'ACC-0003',
++    phoneNumber: '592-600-1003',
+     location: 'Kitty',
+     lat: 6.8236,
+     long: -58.151,
+     outstanding: 52000,
+     credit: 15000,
+     isLocked: true,
+     autoSuspended: false,
+     lastActive: '2024-08-30',
+     totalBookings: 7,
+     cancellations: 2,
+     noShows: 1,
+     services: ['Massage'],
+   },
+   {
+     id: 4,
+     name: 'Linden Collective',
++    accountNumber: 'ACC-0004',
++    phoneNumber: '592-600-1004',
+     location: 'Linden',
+     lat: 5.9896,
+     long: -58.2705,
+     outstanding: 12000,
+     credit: 0,
+     isLocked: false,
+     autoSuspended: false,
+     lastActive: '2024-10-11',
+     totalBookings: 26,
+     cancellations: 1,
+     noShows: 0,
+     services: ['Spa', 'Nails'],
+   },
+ ];
+ 
+ const sampleCharges = [
+   { id: 101, providerId: 1, month: '2024-10-01', amount: 26000, isPaid: false },
+   { id: 102, providerId: 1, month: '2024-09-01', amount: 15000, isPaid: true },
+   { id: 103, providerId: 2, month: '2024-10-01', amount: 9000, isPaid: false },
+   { id: 104, providerId: 3, month: '2024-10-01', amount: 22000, isPaid: false },
+   { id: 105, providerId: 4, month: '2024-10-01', amount: 12000, isPaid: true },
+ ];
+ 
+ const sampleBookings = [
+   { id: 1, providerId: 1, clientId: 10, status: 'completed', startTime: '2024-10-12T12:00:00Z' },
+@@ -141,134 +149,166 @@ function useBillingCore() {
+         baseServiceCost,
+         isPaid: charge.month === billingCycleStart ? false : charge.isPaid ?? false,
+       };
+     }),
+   );
+   const [selectedChargeIds, setSelectedChargeIds] = useState([]);
+   const [creditInputs, setCreditInputs] = useState({});
+   const [loadingProviders, setLoadingProviders] = useState(false);
+   const [suspensionClock, setSuspensionClock] = useState(() => Date.now());
+   const suspensionCutoffLabel = useMemo(() => getSuspensionCutoffDate().toISOString().slice(0, 10), []);
+ 
+   useEffect(() => {
+     const interval = setInterval(() => setSuspensionClock(Date.now()), 1000 * 60 * 30);
+     return () => clearInterval(interval);
+   }, []);
+ 
+   useEffect(() => {
+     const fetchProviders = async () => {
+       try {
+         setLoadingProviders(true);
+         const res = await axios.get(`${API}/providers`);
+         if (Array.isArray(res.data) && res.data.length) {
+           const normalized = res.data.map((p) => ({
+             id: p.provider_id || p.id,
+             name: p.name || 'Provider',
++            accountNumber: p.account_number || p.accountNumber || '—',
++            phoneNumber: p.phone || p.phone_number || '—',
+             location: p.location || 'Unknown area',
+             lat: p.lat,
+             long: p.long,
+             outstanding: Math.floor(Math.random() * 40000) + 5000,
+             credit: 0,
+             isLocked: false,
+             autoSuspended: false,
+             lastActive: '2024-10-10',
+             totalBookings: Math.floor(Math.random() * 40) + 5,
+             cancellations: Math.floor(Math.random() * 5),
+             noShows: Math.floor(Math.random() * 2),
+             services: p.services || [],
+           }));
+           setProviders(normalized);
+         }
+       } catch (e) {
+         console.log('Using sample providers', e.message);
+       } finally {
+         setLoadingProviders(false);
+       }
+     };
+ 
+     fetchProviders();
+   }, []);
+ 
++  useEffect(() => {
++    setCharges((prev) => {
++      if (!providers.length) return prev;
++
++      let nextId = prev.reduce((max, c) => Math.max(max, c.id), 0) + 1;
++      let updated = [...prev];
++
++      providers.forEach((provider) => {
++        const existing = updated.find((c) => c.providerId === provider.id);
++        if (!existing) {
++          const amount = provider.outstanding || Math.floor(Math.random() * 20000) + 5000;
++          updated.push({
++            id: nextId++,
++            providerId: provider.id,
++            month: billingCycleStart,
++            amount,
++            baseServiceCost: Math.round((amount / DEFAULT_SERVICE_CHARGE) * 100),
++            isPaid: false,
++          });
++        }
++      });
++
++      return updated;
++    });
++  }, [providers, billingCycleStart]);
++
+   useEffect(() => {
+     const inSuspensionWindow = isPastSuspensionCutoff();
+ 
+     setProviders((prev) =>
+       prev.map((provider) => {
+         const hasUnpaidCurrentCharge = charges.some(
+           (charge) => charge.providerId === provider.id && charge.month === billingCycleStart && !charge.isPaid,
+         );
+         const autoSuspended = inSuspensionWindow && hasUnpaidCurrentCharge;
+ 
+         if (provider.autoSuspended === autoSuspended) return provider;
+ 
+         return { ...provider, autoSuspended };
+       }),
+     );
+   }, [billingCycleStart, charges, suspensionClock]);
+ 
+   const providerById = useMemo(() => {
+     const map = {};
+     providers.forEach((p) => {
+       map[p.id] = p;
+     });
+     return map;
+   }, [providers]);
+ 
+   const resolvedCharges = useMemo(
+     () =>
+       charges.map((charge) => ({
+         ...charge,
+         providerName: providerById[charge.providerId]?.name || 'Provider',
++        accountNumber: providerById[charge.providerId]?.accountNumber || '—',
++        phoneNumber: providerById[charge.providerId]?.phoneNumber || '—',
+         isCurrentCycle: charge.month === billingCycleStart,
+       })),
+     [charges, providerById, billingCycleStart],
+   );
+ 
+   const applyCredit = (providerId) => {
+     const creditValue = Number(creditInputs[providerId] || 0);
+     if (!creditValue) return;
+     setProviders((prev) =>
+       prev.map((p) =>
+         p.id === providerId ? { ...p, credit: p.credit + creditValue, outstanding: Math.max(0, p.outstanding - creditValue) } : p,
+       ),
+     );
+     setCreditInputs((prev) => ({ ...prev, [providerId]: '' }));
+   };
+ 
+   const toggleLock = (providerId) => {
+     setProviders((prev) => prev.map((p) => (p.id === providerId ? { ...p, isLocked: !p.isLocked } : p)));
+   };
+ 
+   const toggleChargeSelection = (chargeId) => {
+     setSelectedChargeIds((prev) => (prev.includes(chargeId) ? prev.filter((id) => id !== chargeId) : [...prev, chargeId]));
+   };
+ 
+-  const toggleAllChargesSelection = () => {
+-    if (selectedChargeIds.length === charges.length) {
+-      setSelectedChargeIds([]);
++  const toggleAllChargesSelection = (chargeIds = charges.map((c) => c.id)) => {
++    const allSelected = chargeIds.length && chargeIds.every((id) => selectedChargeIds.includes(id));
++
++    if (allSelected) {
++      setSelectedChargeIds((prev) => prev.filter((id) => !chargeIds.includes(id)));
+     } else {
+-      setSelectedChargeIds(charges.map((c) => c.id));
++      setSelectedChargeIds((prev) => Array.from(new Set([...prev, ...chargeIds])));
      }
-     return children
-   }
+   };
  
-+  const AdminBilling = () => {
-+    const [charges, setCharges] = React.useState([
-+      { id: 1, provider: 'Ariana De Freitas', month: 'Oct 2024', amount: 26000, isPaid: false },
-+      { id: 2, provider: 'Jamall Adams', month: 'Oct 2024', amount: 9000, isPaid: false },
-+      { id: 3, provider: 'Kittisha Jones', month: 'Oct 2024', amount: 22000, isPaid: true },
-+      { id: 4, provider: 'Linden Collective', month: 'Oct 2024', amount: 12000, isPaid: true },
-+    ])
-+
-+    const togglePaid = (chargeId, nextState) => {
-+      setCharges((prev) => prev.map((charge) => (charge.id === chargeId ? { ...charge, isPaid: nextState } : charge)))
-+    }
-+
-+    const markSelected = (paidState) => {
-+      setCharges((prev) => prev.map((charge) => ({ ...charge, isPaid: paidState })))
-+    }
-+
-+    return (
-+      <div className="admin-page">
-+        <div className="admin-header">
-+          <div>
-+            <p className="eyebrow">Billing</p>
-+            <h1>Provider Billing</h1>
-+            <p className="header-subtitle">Monitor outstanding balances and mark charges as paid.</p>
-+          </div>
-+          <div className="button-row">
-+            <button className="ghost-btn" onClick={() => markSelected(false)}>Mark all unpaid</button>
-+            <button className="primary-btn" onClick={() => markSelected(true)}>Mark all paid</button>
-+          </div>
-+        </div>
-+
-+        <div className="admin-card">
-+          <div className="billing-table">
-+            <div className="billing-table__head">
-+              <span>Provider</span>
-+              <span>Month</span>
-+              <span>Amount (GYD)</span>
-+              <span>Status</span>
-+              <span className="sr-only">Actions</span>
-+            </div>
-+            {charges.map((charge) => (
-+              <div key={charge.id} className="billing-table__row">
-+                <div>
-+                  <p className="billing-provider">{charge.provider}</p>
-+                  <p className="muted">Invoice #{charge.id}</p>
-+                </div>
-+                <span>{charge.month}</span>
-+                <strong>{charge.amount.toLocaleString()}</strong>
-+                <span className={charge.isPaid ? 'status-pill paid' : 'status-pill unpaid'}>
-+                  {charge.isPaid ? 'Paid' : 'Unpaid'}
-+                </span>
-+                <div className="billing-actions">
-+                  <button className="ghost-btn" onClick={() => togglePaid(charge.id, false)}>Unpaid</button>
-+                  <button className="primary-btn" onClick={() => togglePaid(charge.id, true)}>Paid</button>
-+                </div>
-+              </div>
-+            ))}
-+          </div>
-+        </div>
-+      </div>
-+    )
-+  }
-+
-   const AdminLayout = () => {
-     const location = useLocation()
-     return (
-       <div className="admin-shell">
-         <aside className="admin-sidebar">
-           <nav className="sidebar-nav">
-             <NavLink to="/admin/promotions" className={({ isActive }) => isActive ? 'sidebar-link active' : 'sidebar-link'}>
-               Promotions
-             </NavLink>
-             <NavLink to="/admin/service-charge" className={({ isActive }) => isActive ? 'sidebar-link active' : 'sidebar-link'}>
-               Service Charge
-             </NavLink>
-+            <NavLink to="/admin/billing" className={({ isActive }) => isActive ? 'sidebar-link active' : 'sidebar-link'}>
-+              Billing
-+            </NavLink>
-           </nav>
-           <div className="sidebar-footer">
-             Logged in · {token ? 'Authenticated' : 'Guest'}
-           </div>
-         </aside>
-         <main className="admin-main" key={location.pathname}>
-           <Outlet />
-         </main>
-       </div>
-     )
-   }
+   const setChargesPaidState = (paidState) => {
+     setCharges((prev) => prev.map((c) => (selectedChargeIds.includes(c.id) ? { ...c, isPaid: paidState } : c)));
+     setSelectedChargeIds([]);
+   };
  
-   return (
-     <BrowserRouter>
-       <nav className="app-nav">
-         <div className="nav-inner">
-           <Link to="/" className="nav-brand" aria-label="BookitGY home">
-             <img src="/bookitgy-logo.png" alt="BookitGY" />
-             <div className="brand-text">
-               <span className="brand-name">BookitGY</span>
-               <span className="brand-subtitle">BookitGY</span>
-             </div>
-           </Link>
-           <div className="nav-actions">
-             {token ? (
-@@ -359,32 +424,33 @@ function App() {
-               >
-                 Logout
-               </button>
-             ) : (
-               <Link className="nav-button" to="/login">
-                 Login
-               </Link>
-             )}
-           </div>
-         </div>
-       </nav>
-       <Routes>
-         <Route path="/" element={<Home />} />
-         <Route path="/login" element={<Login />} />
-         <Route
-           path="/admin"
-           element={(
-             <ProtectedRoute>
-               <AdminLayout />
-             </ProtectedRoute>
-           )}
-         >
-           <Route index element={<Navigate to="/admin/promotions" replace />} />
-           <Route path="promotions" element={<AdminPromotions />} />
-           <Route path="service-charge" element={<ServiceChargeSettings />} />
-+          <Route path="billing" element={<AdminBilling />} />
-         </Route>
-       </Routes>
-     </BrowserRouter>
-   )
+   const updateSingleChargeStatus = (chargeId, paidState) => {
+     setCharges((prev) => prev.map((c) => (c.id === chargeId ? { ...c, isPaid: paidState } : c)));
+     setSelectedChargeIds((prev) => prev.filter((id) => id !== chargeId));
+   };
+ 
+   return {
+     applyCredit,
+     billingCycleStart,
+     charges,
+     creditInputs,
+     loadingProviders,
+     providers,
+     resolvedCharges,
+     selectedChargeIds,
+     setCharges,
+     setCreditInputs,
+     setChargesPaidState,
+@@ -538,87 +578,119 @@ function useLeafletMap(providers) {
+     ensureLeaflet();
+ 
+     return () => {
+       if (mapInstance) {
+         mapInstance.remove();
+       }
+       const mapElement = document.getElementById('provider-map');
+       if (mapElement) {
+         mapElement.dataset.ready = 'false';
+         mapElement.innerHTML = '';
+       }
+     };
+   }, [providers]);
  }
  
- ReactDOM.createRoot(document.getElementById('root')).render(<App />)
+ function BillingActionsPanel({
+   resolvedCharges,
+   selectedChargeIds,
+   toggleAllChargesSelection,
+   toggleChargeSelection,
+   setChargesPaidState,
+   updateSingleChargeStatus,
+   billingCycleStart,
+   suspensionCutoffLabel,
+ }) {
++  const [searchTerm, setSearchTerm] = useState('');
++
++  const filteredCharges = useMemo(() => {
++    const term = searchTerm.trim().toLowerCase();
++    if (!term) return resolvedCharges;
++
++    return resolvedCharges.filter((charge) => {
++      const account = (charge.accountNumber || '').toLowerCase();
++      const phone = (charge.phoneNumber || '').toLowerCase();
++      return account.includes(term) || phone.includes(term);
++    });
++  }, [resolvedCharges, searchTerm]);
++
++  const filteredChargeIds = filteredCharges.map((c) => c.id);
++  const allVisibleSelected =
++    filteredCharges.length > 0 && filteredCharges.every((charge) => selectedChargeIds.includes(charge.id));
++
+   return (
+     <>
++      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '12px' }}>
++        <input
++          type="text"
++          value={searchTerm}
++          onChange={(e) => setSearchTerm(e.target.value)}
++          placeholder="Search by account # or phone"
++          style={{ padding: '10px', borderRadius: '10px', border: '1px solid #d1d5db', minWidth: '260px' }}
++        />
++      </div>
+       <div style={{ overflowX: 'auto' }}>
+         <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '720px' }}>
+           <thead>
+             <tr style={{ textAlign: 'left', background: '#f3f4f6' }}>
+               <th style={{ padding: '10px' }}>
+                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+-                  <input type="checkbox" checked={selectedChargeIds.length === resolvedCharges.length} onChange={toggleAllChargesSelection} />
++                  <input
++                    type="checkbox"
++                    checked={allVisibleSelected}
++                    onChange={() => toggleAllChargesSelection(filteredChargeIds)}
++                  />
+                   <span>Select</span>
+                 </div>
+               </th>
+-              <th style={{ padding: '10px' }}>Provider</th>
+-              <th style={{ padding: '10px' }}>Month</th>
+-              <th style={{ padding: '10px' }}>Amount (GYD)</th>
++              <th style={{ padding: '10px' }}>Name</th>
++              <th style={{ padding: '10px' }}>Account Number</th>
++              <th style={{ padding: '10px' }}>Phone Number</th>
++              <th style={{ padding: '10px' }}>Amount Due (Platform Fees)</th>
+               <th style={{ padding: '10px' }}>Status</th>
+               <th style={{ padding: '10px' }}>Actions</th>
+             </tr>
+           </thead>
+           <tbody>
+-            {resolvedCharges.map((charge) => {
++            {filteredCharges.map((charge) => {
+               const statusLabel = charge.isPaid ? 'Paid' : charge.isCurrentCycle ? 'Unpaid (current)' : 'Unpaid';
+               const badgeBackground = charge.isPaid ? '#dcfce7' : charge.isCurrentCycle ? '#fee2e2' : '#fef9c3';
+               const badgeColor = charge.isPaid ? '#15803d' : charge.isCurrentCycle ? '#b91c1c' : '#92400e';
+ 
+               return (
+                 <tr key={charge.id} style={{ borderBottom: '1px solid #e5e7eb' }}>
+                   <td style={{ padding: '10px' }}>
+                     <input
+                       type="checkbox"
+                       checked={selectedChargeIds.includes(charge.id)}
+                       onChange={() => toggleChargeSelection(charge.id)}
+                     />
+                   </td>
+                   <td style={{ padding: '10px' }}>{charge.providerName}</td>
+-                  <td style={{ padding: '10px' }}>{charge.month}</td>
+-                  <td style={{ padding: '10px' }}>{charge.amount.toLocaleString()}</td>
++                  <td style={{ padding: '10px' }}>{charge.accountNumber}</td>
++                  <td style={{ padding: '10px' }}>{charge.phoneNumber}</td>
++                  <td style={{ padding: '10px' }}>GYD {charge.amount.toLocaleString()}</td>
+                   <td style={{ padding: '10px' }}>
+                     <span
+                       style={{
+                         padding: '4px 8px',
+                         borderRadius: '999px',
+                         background: badgeBackground,
+                         color: badgeColor,
+                         fontWeight: 700,
+                         fontSize: '12px',
+                       }}
+                     >
+                       {statusLabel}
+                     </span>
+                   </td>
+                   <td style={{ padding: '10px' }}>
+                     <div style={{ display: 'flex', gap: '8px' }}>
+                       <button
+                         onClick={() => updateSingleChargeStatus(charge.id, true)}
+                         style={{ padding: '8px 12px', background: '#16a34a', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 700 }}
+                       >
+                         Mark Paid
+                       </button>
+                       <button
+                         onClick={() => updateSingleChargeStatus(charge.id, false)}
+                         style={{ padding: '8px 12px', background: '#f3f4f6', color: '#111827', border: '1px solid #e5e7eb', borderRadius: '8px', fontWeight: 700 }}
  
 EOF
 )

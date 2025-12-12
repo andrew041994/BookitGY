@@ -10,6 +10,8 @@ const sampleProviders = [
   {
     id: 1,
     name: 'Ariana De Freitas',
+    accountNumber: 'ACC-0001',
+    phoneNumber: '592-600-1001',
     location: 'Georgetown',
     lat: 6.8013,
     long: -58.155,
@@ -26,6 +28,8 @@ const sampleProviders = [
   {
     id: 2,
     name: 'Jamall Adams',
+    accountNumber: 'ACC-0002',
+    phoneNumber: '592-600-1002',
     location: 'East Bank',
     lat: 6.7484,
     long: -58.2439,
@@ -42,6 +46,8 @@ const sampleProviders = [
   {
     id: 3,
     name: 'Kittisha Jones',
+    accountNumber: 'ACC-0003',
+    phoneNumber: '592-600-1003',
     location: 'Kitty',
     lat: 6.8236,
     long: -58.151,
@@ -58,6 +64,8 @@ const sampleProviders = [
   {
     id: 4,
     name: 'Linden Collective',
+    accountNumber: 'ACC-0004',
+    phoneNumber: '592-600-1004',
     location: 'Linden',
     lat: 5.9896,
     long: -58.2705,
@@ -163,6 +171,8 @@ function useBillingCore() {
           const normalized = res.data.map((p) => ({
             id: p.provider_id || p.id,
             name: p.name || 'Provider',
+            accountNumber: p.account_number || p.accountNumber || '—',
+            phoneNumber: p.phone || p.phone_number || '—',
             location: p.location || 'Unknown area',
             lat: p.lat,
             long: p.long,
@@ -187,6 +197,32 @@ function useBillingCore() {
 
     fetchProviders();
   }, []);
+
+  useEffect(() => {
+    setCharges((prev) => {
+      if (!providers.length) return prev;
+
+      let nextId = prev.reduce((max, c) => Math.max(max, c.id), 0) + 1;
+      let updated = [...prev];
+
+      providers.forEach((provider) => {
+        const existing = updated.find((c) => c.providerId === provider.id);
+        if (!existing) {
+          const amount = provider.outstanding || Math.floor(Math.random() * 20000) + 5000;
+          updated.push({
+            id: nextId++,
+            providerId: provider.id,
+            month: billingCycleStart,
+            amount,
+            baseServiceCost: Math.round((amount / DEFAULT_SERVICE_CHARGE) * 100),
+            isPaid: false,
+          });
+        }
+      });
+
+      return updated;
+    });
+  }, [providers, billingCycleStart]);
 
   useEffect(() => {
     const inSuspensionWindow = isPastSuspensionCutoff();
@@ -218,6 +254,8 @@ function useBillingCore() {
       charges.map((charge) => ({
         ...charge,
         providerName: providerById[charge.providerId]?.name || 'Provider',
+        accountNumber: providerById[charge.providerId]?.accountNumber || '—',
+        phoneNumber: providerById[charge.providerId]?.phoneNumber || '—',
         isCurrentCycle: charge.month === billingCycleStart,
       })),
     [charges, providerById, billingCycleStart],
@@ -242,11 +280,13 @@ function useBillingCore() {
     setSelectedChargeIds((prev) => (prev.includes(chargeId) ? prev.filter((id) => id !== chargeId) : [...prev, chargeId]));
   };
 
-  const toggleAllChargesSelection = () => {
-    if (selectedChargeIds.length === charges.length) {
-      setSelectedChargeIds([]);
+  const toggleAllChargesSelection = (chargeIds = charges.map((c) => c.id)) => {
+    const allSelected = chargeIds.length && chargeIds.every((id) => selectedChargeIds.includes(id));
+
+    if (allSelected) {
+      setSelectedChargeIds((prev) => prev.filter((id) => !chargeIds.includes(id)));
     } else {
-      setSelectedChargeIds(charges.map((c) => c.id));
+      setSelectedChargeIds((prev) => Array.from(new Set([...prev, ...chargeIds])));
     }
   };
 
@@ -560,27 +600,58 @@ function BillingActionsPanel({
   billingCycleStart,
   suspensionCutoffLabel,
 }) {
+  const [searchTerm, setSearchTerm] = useState('');
+
+  const filteredCharges = useMemo(() => {
+    const term = searchTerm.trim().toLowerCase();
+    if (!term) return resolvedCharges;
+
+    return resolvedCharges.filter((charge) => {
+      const account = (charge.accountNumber || '').toLowerCase();
+      const phone = (charge.phoneNumber || '').toLowerCase();
+      return account.includes(term) || phone.includes(term);
+    });
+  }, [resolvedCharges, searchTerm]);
+
+  const filteredChargeIds = filteredCharges.map((c) => c.id);
+  const allVisibleSelected =
+    filteredCharges.length > 0 && filteredCharges.every((charge) => selectedChargeIds.includes(charge.id));
+
   return (
     <>
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '12px' }}>
+        <input
+          type="text"
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+          placeholder="Search by account # or phone"
+          style={{ padding: '10px', borderRadius: '10px', border: '1px solid #d1d5db', minWidth: '260px' }}
+        />
+      </div>
       <div style={{ overflowX: 'auto' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '720px' }}>
           <thead>
             <tr style={{ textAlign: 'left', background: '#f3f4f6' }}>
               <th style={{ padding: '10px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <input type="checkbox" checked={selectedChargeIds.length === resolvedCharges.length} onChange={toggleAllChargesSelection} />
+                  <input
+                    type="checkbox"
+                    checked={allVisibleSelected}
+                    onChange={() => toggleAllChargesSelection(filteredChargeIds)}
+                  />
                   <span>Select</span>
                 </div>
               </th>
-              <th style={{ padding: '10px' }}>Provider</th>
-              <th style={{ padding: '10px' }}>Month</th>
-              <th style={{ padding: '10px' }}>Amount (GYD)</th>
+              <th style={{ padding: '10px' }}>Name</th>
+              <th style={{ padding: '10px' }}>Account Number</th>
+              <th style={{ padding: '10px' }}>Phone Number</th>
+              <th style={{ padding: '10px' }}>Amount Due (Platform Fees)</th>
               <th style={{ padding: '10px' }}>Status</th>
               <th style={{ padding: '10px' }}>Actions</th>
             </tr>
           </thead>
           <tbody>
-            {resolvedCharges.map((charge) => {
+            {filteredCharges.map((charge) => {
               const statusLabel = charge.isPaid ? 'Paid' : charge.isCurrentCycle ? 'Unpaid (current)' : 'Unpaid';
               const badgeBackground = charge.isPaid ? '#dcfce7' : charge.isCurrentCycle ? '#fee2e2' : '#fef9c3';
               const badgeColor = charge.isPaid ? '#15803d' : charge.isCurrentCycle ? '#b91c1c' : '#92400e';
@@ -595,8 +666,9 @@ function BillingActionsPanel({
                     />
                   </td>
                   <td style={{ padding: '10px' }}>{charge.providerName}</td>
-                  <td style={{ padding: '10px' }}>{charge.month}</td>
-                  <td style={{ padding: '10px' }}>{charge.amount.toLocaleString()}</td>
+                  <td style={{ padding: '10px' }}>{charge.accountNumber}</td>
+                  <td style={{ padding: '10px' }}>{charge.phoneNumber}</td>
+                  <td style={{ padding: '10px' }}>GYD {charge.amount.toLocaleString()}</td>
                   <td style={{ padding: '10px' }}>
                     <span
                       style={{
