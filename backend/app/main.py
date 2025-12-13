@@ -27,6 +27,17 @@ app = FastAPI(title="BookitGY")
 scheduler = BackgroundScheduler()
 
 
+@app.get("/")
+def root():
+    return {"ok": True, "service": "bookitgy-api"}
+
+@app.head("/")
+def root_head():
+    return Response(status_code=200)
+
+@app.get("/healthz")
+def healthz():
+    return {"ok": True}
 
 
 
