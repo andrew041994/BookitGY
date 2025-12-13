@@ -24,7 +24,7 @@ import { SafeAreaProvider,SafeAreaView } from "react-native-safe-area-context";
 
 
 
-  const API = "https://bookitgy.onrender.com";
+const API = import.meta.env.VITE_API_URL || "https://bookitgy.onrender.com";
   console.log("### API base URL =", API);
 
   const isValidEmail = (value) => {

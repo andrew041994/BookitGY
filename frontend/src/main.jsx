@@ -4,7 +4,8 @@ import { BrowserRouter, Routes, Route, Link, NavLink, useNavigate, Navigate, Out
 import axios from 'axios'
 import './login.css'
 
-const API = 'http://localhost:8000'
+const API = import.meta.env.VITE_API_URL || "https://bookitgy.onrender.com";
+  console.log("### API base URL =", API);
 const DEFAULT_SERVICE_CHARGE = 10
 const SERVICE_CHARGE_STORAGE_KEY = 'bookitgy.service_charge_rate'
 

@@ -2,7 +2,9 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { BrowserRouter, Routes, Route, Link, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import axios from 'axios';
 
-const API = 'http://localhost:8000';
+const API = import.meta.env.VITE_API_URL || "https://bookitgy.onrender.com";
+;
+  console.log("### API base URL =", API);
 const DEFAULT_SERVICE_CHARGE = 10;
 const SERVICE_CHARGE_STORAGE_KEY = 'bookitgy.service_charge_rate';
 
