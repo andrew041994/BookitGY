@@ -367,7 +367,7 @@ function LoginScreen({
         isAdmin: res.data.is_admin,
       });
 
-      setIsAdmin(normalizedEmail === ADMIN_EMAIL.toLowerCase());
+      setIsAdmin(!!res.data.is_admin);
 
     if (showFlash) {
         showFlash("success", "Logged in successfully");
