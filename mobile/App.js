@@ -19,12 +19,18 @@ import { SafeAreaProvider,SafeAreaView } from "react-native-safe-area-context";
 
 
 
+
 // import { API } from "./App"; // wherever you define your base URL
 
 
 
 
-const API = import.meta.env.VITE_API_URL || "https://bookitgy.onrender.com";
+
+const API =
+  Constants.expoConfig?.extra?.API_URL ||
+  Constants.manifest?.extra?.API_URL ||
+  "https://bookitgy.onrender.com";  
+  
   console.log("### API base URL =", API);
 
   const isValidEmail = (value) => {
@@ -682,6 +688,12 @@ function SignupScreen({ goToLogin, goBack, showFlash }) {
 
 
   return (
+    <KeyboardAvoidingView
+      style={styles.avoider}
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
+      keyboardVerticalOffset={Platform.OS === "ios" ? 40 : 0} // tweak if needed
+
+    > 
     <View style={styles.container}>
       <Text style={styles.title}>Create Account</Text>
 
@@ -752,6 +764,7 @@ function SignupScreen({ goToLogin, goBack, showFlash }) {
         </View>
       )}
     </View>
+    </KeyboardAvoidingView>
   );
 }
 
