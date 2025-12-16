@@ -41,7 +41,7 @@ def upgrade() -> None:
 
         connection.execute(
             text(
-                "UPDATE users SET username = :u, is_email_verified = 1 "
+                "UPDATE users SET username = :u, is_email_verified = TRUE "
                 "WHERE id = :id"
             ),
             {"u": candidate, "id": row.id},
