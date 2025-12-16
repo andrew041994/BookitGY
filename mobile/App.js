@@ -1170,20 +1170,10 @@ function ProfileScreen({ setToken, showFlash, token }) {
         booking.provider_long != null
       ) {
         const dest = `${booking.provider_lat},${booking.provider_long}`;
-        if (Platform.OS === "ios") {
-          // Apple Maps on iOS
-          url = `http://maps.apple.com/?daddr=${dest}`;
-        } else {
-          // Google Maps / browser on Android
-          url = `https://www.google.com/maps/dir/?api=1&destination=${dest}`;
-        }
+        url = `https://www.google.com/maps/dir/?api=1&destination=${dest}`;
       } else if (booking.provider_location) {
         const q = encodeURIComponent(booking.provider_location);
-        if (Platform.OS === "ios") {
-          url = `http://maps.apple.com/?q=${q}`;
-        } else {
-          url = `https://www.google.com/maps/search/?api=1&query=${q}`;
-        }
+        url = `https://www.google.com/maps/search/?api=1&query=${q}`;
       } else {
         if (showFlash) {
           showFlash(
@@ -2045,16 +2035,10 @@ function AppointmentsScreen({ token, showFlash }) {
         booking?.provider_long != null
       ) {
         const dest = `${booking.provider_lat},${booking.provider_long}`;
-        url =
-          Platform.OS === "ios"
-            ? `http://maps.apple.com/?daddr=${dest}`
-            : `https://www.google.com/maps/dir/?api=1&destination=${dest}`;
+        url = `https://www.google.com/maps/dir/?api=1&destination=${dest}`;
       } else if (booking?.provider_location) {
         const q = encodeURIComponent(booking.provider_location);
-        url =
-          Platform.OS === "ios"
-            ? `http://maps.apple.com/?q=${q}`
-            : `https://www.google.com/maps/search/?api=1&query=${q}`;
+        url = `https://www.google.com/maps/search/?api=1&query=${q}`;
       } else {
         showFlash &&
           showFlash("error", "No location is available yet for this booking.");
