@@ -176,18 +176,20 @@ function useFavoriteProviders(userKey) {
 
 
 // ✅ add this block:
+
+
 let MapView;
 let Marker;
 
 if (Platform.OS !== "web") {
-  const RNMaps = require("react-native-maps");
-  MapView = RNMaps.default;
-  Marker = RNMaps.Marker;
+  const { default: MV, Marker: MK } = require("react-native-maps");
+  MapView = MV;
+  Marker = MK;
 } else {
-  // Simple fallbacks so web doesn’t crash
   MapView = (props) => <View {...props} />;
   Marker = (props) => <View {...props} />;
 }
+
 
 
 const PROFESSION_OPTIONS = [
