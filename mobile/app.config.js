@@ -1,57 +1,58 @@
-import 'dotenv/config';
+import "dotenv/config";
+
+console.log(">>> USING app.config.js <<<");
 
 export default {
-  expo: {
-    name: "BookitGY",
-    slug: "bookitgy",
-    version: "1.0.0",
-    orientation: "portrait",
-    icon: "./assets/icon.png",
-    userInterfaceStyle: "light",
-    splash: {
-      image: "./assets/splash.png",
-      resizeMode: "contain",
+  name: "BookitGY",
+  slug: "bookitgy",
+  version: "1.0.0",
+  orientation: "portrait",
+  icon: "./assets/icon.png",
+  userInterfaceStyle: "light",
+  splash: {
+    image: "./assets/splash.png",
+    resizeMode: "contain",
+    backgroundColor: "#16a34a",
+  },
+  assetBundlePatterns: ["**/*"],
+
+  ios: {
+    supportsTablet: true,
+    bundleIdentifier: "com.bookitgy.app",
+    buildNumber: "1",
+    infoPlist: {
+      NSLocationWhenInUseUsageDescription:
+        "BookitGY uses your location to show nearby service providers and enable navigation.",
+      NSLocationAlwaysAndWhenInUseUsageDescription:
+        "Location access allows providers to share their business location with customers.",
+      ITSAppUsesNonExemptEncryption: false,
+    },
+    config: {
+      googleMapsApiKey: process.env.IOS_GOOGLE_MAPS_API_KEY,
+    },
+  },
+
+  android: {
+    package: "com.bookitgy.app",
+    versionCode: 1,
+    permissions: ["ACCESS_FINE_LOCATION", "ACCESS_COARSE_LOCATION"],
+    adaptiveIcon: {
+      foregroundImage: "./assets/adaptive-icon.png",
       backgroundColor: "#16a34a",
     },
-    assetBundlePatterns: ["**/*"],
-
-    ios: {
-      supportsTablet: true,
-      bundleIdentifier: "com.bookitgy.app",
-      buildNumber: "1",
-      infoPlist: {
-        NSLocationWhenInUseUsageDescription:
-          "BookitGY uses your location to show nearby service providers and enable navigation.",
-        NSLocationAlwaysAndWhenInUseUsageDescription:
-          "Location access allows providers to share their business location with customers.",
-        ITSAppUsesNonExemptEncryption: false,
+    config: {
+      googleMaps: {
+        apiKey: process.env.ANDROID_GOOGLE_MAPS_API_KEY,
       },
     },
+  },
 
-    android: {
-      package: "com.bookitgy.app",
-      versionCode: 1,
-      permissions: ["ACCESS_FINE_LOCATION", "ACCESS_COARSE_LOCATION"],
-      adaptiveIcon: {
-        foregroundImage: "./assets/adaptive-icon.png",
-        backgroundColor: "#16a34a",
-      },
-      config: {
-        googleMaps: {
-          apiKey: process.env.ANDROID_GOOGLE_MAPS_API_KEY,
-        },
-      },
-    },
+  web: { favicon: "./assets/favicon.png" },
 
-    web: {
-      favicon: "./assets/favicon.png",
-    },
-
-    extra: {
-      eas: {
-        projectId: "ba67429b-0180-4382-bb17-633982e5a5f8",
-        API_URL: "https://bookitgy.onrender.com",
-      },
+  extra: {
+    eas: {
+      projectId: "ba67429b-0180-4382-bb17-633982e5a5f8",
+      API_URL: process.env.API_URL || "https://bookitgy.onrender.com",
     },
   },
 };
