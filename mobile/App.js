@@ -11,6 +11,7 @@ import * as Location from "expo-location";
 import * as Notifications from "expo-notifications";
 import Constants from "expo-constants";
 import * as ImagePicker from "expo-image-picker";
+import * as Clipboard from "expo-clipboard";
 import BookitGYLogo from "./assets/bookitgy-logo.png";
 import BookitGYLogoTransparent from "./assets/bookitgy-logo-transparent.png"
 import { Ionicons } from "@expo/vector-icons";
@@ -47,8 +48,18 @@ const API =
     return `${API}${normalizedPath}`;
   };
 
-  const FAVORITES_STORAGE_KEY = (userKey) =>
-    userKey ? `favoriteProviders:${userKey}` : "favoriteProviders";
+const FAVORITES_STORAGE_KEY = (userKey) =>
+  userKey ? `favoriteProviders:${userKey}` : "favoriteProviders";
+
+const slugifyHandle = (value) => {
+  if (!value || typeof value !== "string") return "";
+  const normalized = value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+
+  return normalized || "";
+};
 
 const getProviderId = (provider) =>
   provider?.provider_id ?? provider?.id ?? provider?._id ?? null;
@@ -3257,6 +3268,30 @@ const [catalogLoading, setCatalogLoading] = useState(false);
 const [catalogError, setCatalogError] = useState("");
 const [catalogUploading, setCatalogUploading] = useState(false);
 
+const profileHandleSource =
+  profile.full_name ||
+  (token?.email ? token.email.split("@")[0] : "") ||
+  "";
+const profileSlug = slugifyHandle(profileHandleSource) || "provider";
+const profilePathLink = `https://bookitgy.com/${profileSlug}`;
+const profileSubdomainLink = `https://${profileSlug}.bookitgy.com`;
+
+const copyProfileLink = async (link) => {
+  try {
+    await Clipboard.setStringAsync(link);
+    if (showFlash) {
+      showFlash("success", "Profile link copied to clipboard");
+    } else {
+      Alert.alert("Copied", "Profile link copied to clipboard");
+    }
+  } catch (err) {
+    console.log("Error copying profile link", err?.message || err);
+    if (showFlash) {
+      showFlash("error", "Could not copy profile link");
+    }
+  }
+};
+
 
 
 
@@ -4743,6 +4778,27 @@ const loadProviderSummary = async () => {
             <Text style={styles.hoursHelp}>
               This is what clients will see on your public profile.
             </Text>
+
+            <View style={styles.profileLinkBox}>
+              <Text style={styles.sectionTitle}>Profile link</Text>
+              <Text style={styles.hoursHelp}>
+                Share this with clients so they can book you directly.
+              </Text>
+
+              {[profilePathLink, profileSubdomainLink].map((link) => (
+                <View key={link} style={styles.profileLinkRow}>
+                  <Text style={styles.profileLinkText} numberOfLines={1}>
+                    {link}
+                  </Text>
+                  <TouchableOpacity
+                    style={styles.profileLinkCopy}
+                    onPress={() => copyProfileLink(link)}
+                  >
+                    <Text style={styles.profileLinkCopyText}>Copy</Text>
+                  </TouchableOpacity>
+                </View>
+              ))}
+            </View>
 
             {profileLoading && (
               <View style={{ paddingVertical: 10 }}>
@@ -6318,6 +6374,45 @@ mapContainer: {
     fontWeight: "600",
     color: "#065F46",
     marginBottom: 8,
+  },
+  profileLinkBox: {
+    width: "100%",
+    padding: 12,
+    backgroundColor: "#F0FDF4",
+    borderWidth: 1,
+    borderColor: "#BBF7D0",
+    borderRadius: 10,
+    marginBottom: 12,
+  },
+  profileLinkRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    backgroundColor: "#fff",
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginTop: 8,
+    gap: 12,
+  },
+  profileLinkText: {
+    flex: 1,
+    fontSize: 14,
+    color: "#065F46",
+    fontWeight: "600",
+  },
+  profileLinkCopy: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    backgroundColor: "#16A34A",
+  },
+  profileLinkCopyText: {
+    color: "#fff",
+    fontWeight: "700",
+    fontSize: 13,
   },
   serviceRow: {
     paddingVertical: 10,
