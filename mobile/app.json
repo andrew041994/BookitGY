@@ -20,7 +20,8 @@
       "buildNumber": "1",
       "infoPlist": {
         "NSLocationWhenInUseUsageDescription": "BookitGY uses your location to show nearby service providers and enable navigation.",
-        "NSLocationAlwaysAndWhenInUseUsageDescription": "Location access allows providers to share their business location with customers."
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "Location access allows providers to share their business location with customers.",
+        "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {
@@ -42,7 +43,6 @@
       "eas": {
         "projectId": "ba67429b-0180-4382-bb17-633982e5a5f8",
         "API_URL": "https://bookitgy.onrender.com"
-
       }
     }
   }

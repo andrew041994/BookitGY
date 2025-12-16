@@ -1,166 +1,126 @@
- (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
-diff --git a/frontend/src/main.jsx b/frontend/src/main.jsx
-index 98e924bb1e59904ac3dc722c7d1c919f4a38d1c2..08d27c5bf86f4b306bff6d5b0cc0ec4d236f486e 100644
---- a/frontend/src/main.jsx
-+++ b/frontend/src/main.jsx
-@@ -346,50 +346,73 @@ function App() {
-       // optimistic update (UI changes instantly)
-       setBillingRows((prev) =>
-         prev.map((row) =>
-           row.provider_id === providerId ? { ...row, is_paid: isPaid } : row
-         )
-       )
+diff --git a/mobile/App.js b/mobile/App.js
+index ef6fc462f09cb6eff4904fa2be1e11266e958fce..0180d9111af3ad51cb92567469257622fc61c217 100644
+--- a/mobile/App.js
++++ b/mobile/App.js
+@@ -297,101 +297,106 @@ function LandingScreen({ goToLogin, goToSignup }) {
+ // 🔹 Dedicated login screen component
+ function LoginScreen({
+   setToken,
+   setIsAdmin,
+   goToSignup,
+   goToForgot,
+   goBack,
+   showFlash,
+ }) {
+   const [email, setEmail] = useState("");
+   const [password, setPassword] = useState("");
+   const [loading, setLoading] = useState(false);
  
-       try {
-         await axios.put(
-           `${API}/admin/billing/${providerId}/status`,
-           { is_paid: isPaid },
-           { headers: { Authorization: `Bearer ${token}` } }
-         )
  
-         // OPTIONAL: if you want truth from server, refetch after success
-         // await fetchBillingRows()
-       } catch (err) {
-         console.error(err)
-         setError("Failed to update provider billing status.")
-         // rollback safely
-         fetchBillingRows()
+   const login = async () => {
+     const trimmedEmail = email.trim();
+     const normalizedEmail = trimmedEmail.toLowerCase();
+ 
+     if (!trimmedEmail || !isValidEmail(trimmedEmail)) {
+       if (showFlash) {
+         showFlash("error", "Please enter a valid email address");
+       } else {
+         Alert.alert("Error", "Please enter a valid email address");
        }
-     }
- 
- 
-+    const toggleProviderLock = async (providerId, shouldLock) => {
-+      setBillingRows((prev) =>
-+        prev.map((row) =>
-+          row.provider_id === providerId ? { ...row, is_locked: shouldLock } : row
-+        )
-+      )
-+
-+      try {
-+        await axios.put(
-+          `${API}/admin/billing/${providerId}/lock`,
-+          { is_locked: shouldLock },
-+          { headers: { Authorization: `Bearer ${token}` } }
-+        )
-+
-+        await fetchBillingRows()
-+      } catch (err) {
-+        console.error(err)
-+        setError('Failed to update provider account status.')
-+        fetchBillingRows()
-+      }
+       return;
+-  }
 +    }
-+
-+
-     const markAll = async (isPaid) => {
-       if (!billingRows.length) return
-       setBulkUpdating(true)
-       setError('')
  
-       // Optimistic UI update
-       setBillingRows((prev) => prev.map((row) => ({ ...row, is_paid: isPaid })))
+-  setLoading(true);
++    setLoading(true);
  
+     try {
+       const body = new URLSearchParams({
+         username: normalizedEmail,
+         password: password,
+       }).toString();
+ 
+-    const res = await axios.post(`${API}/auth/login`, body, {
++      const res = await axios.post(`${API}/auth/login`, body, {
+         headers: {
+           "Content-Type": "application/x-www-form-urlencoded",
+         },
+       });
+ 
+-    // Try to register push token, but don't fail login if this breaks
+-    await AsyncStorage.setItem("accessToken", res.data.access_token);
++      const userData = res?.data || {};
++      const accessToken = userData.access_token;
++
++      if (!accessToken) {
++        throw new Error("Login succeeded but no token returned");
++      }
++
++      // Store token for later restores
++      await AsyncStorage.setItem("accessToken", accessToken);
+ 
+       // Try to register push token, but don't fail login if this breaks
        try {
-         await Promise.all(
-           billingRows.map((row) =>
-             axios.put(
-               `${API}/admin/billing/${row.provider_id}/status`,
-               { is_paid: isPaid },
-               { headers: { Authorization: `Bearer ${token}` } }
-             )
-           )
-         )
- 
-         // Single refetch = clean + guaranteed correct
-         await fetchBillingRows()
+         const expoPushToken = await registerForPushNotificationsAsync();
+         if (expoPushToken) {
+           await axios.put(
+             `${API}/users/me`,
+             { expo_push_token: expoPushToken },
+             {
+               headers: {
+-                Authorization: `Bearer ${res.data.access_token}`,
++                Authorization: `Bearer ${accessToken}`,
+               },
+             }
+           );
+         }
        } catch (err) {
-         console.error(err)
-         setError('Failed to update all provider statuses.')
-         await fetchBillingRows()
-@@ -486,72 +509,83 @@ function App() {
-                   onChange={(e) => setStartDate(e.target.value)}
-                   aria-label="Start date"
-                 />
-                 <span aria-hidden="true">—</span>
-                 <input
-                   type="date"
-                   value={endDate}
-                   onChange={(e) => setEndDate(e.target.value)}
-                   aria-label="End date"
-                 />
-               </div>
-             </div>
-             {loading && <span className="muted">Loading providers…</span>}
-           </div>
+         console.log("Failed to register push token", err);
+       }
+-   
  
-           {error && <p className="form-error">{error}</p>}
+-    // Successful login
+       // Successful login
+       setToken({
+-        token: res.data.access_token,
+-        userId: res.data.user_id,
+-        email: res.data.email,
+-        isProvider: res.data.is_provider,
+-        isAdmin: res.data.is_admin,
++        token: accessToken,
++        userId: userData.user_id,
++        email: userData.email,
++        isProvider: !!userData.is_provider,
++        isAdmin: !!userData.is_admin,
+       });
  
-           <div className="billing-table">
-             <div className="billing-table__head">
-               <span>Name</span>
-               <span>Account number</span>
-               <span>Phone number</span>
-               <span>Amount due (platform fees)</span>
-               <span>Last due date</span>
-               <span>Status</span>
-+              <span>Account status</span>
-               <span className="sr-only">Actions</span>
-             </div>
-             {filteredRows.map((row) => (
-               <div key={row.provider_id} className="billing-table__row">
-                 <div>
-                   <p className="billing-provider">{row.name || 'Unnamed provider'}</p>
-                   <p className="muted">ID #{row.provider_id}</p>
-                 </div>
-                 <strong>{row.account_number || 'N/A'}</strong>
-                 <span>{row.phone || 'No phone added'}</span>
-                 <strong>{formatAmount(row.amount_due_gyd)} GYD</strong>
-                 <span>{formatDueDate(row.last_due_date)}</span>
-                 <span className={row.is_paid ? 'status-pill paid' : 'status-pill unpaid'}>
-                   {row.is_paid ? 'Paid' : 'Unpaid'}
-                 </span>
-+                <span className={row.is_locked ? 'status-pill unpaid' : 'status-pill paid'}>
-+                  {row.is_locked ? 'Suspended' : 'Active'}
-+                </span>
-                 <div className="billing-actions">
-                   <button className="ghost-btn" onClick={() => updateProviderStatus(row.provider_id, false)} disabled={loading}>
-                     Unpaid
-                   </button>
-                   <button className="primary-btn" onClick={() => updateProviderStatus(row.provider_id, true)} disabled={loading}>
-                     Paid
-                   </button>
-+                  <button
-+                    className={row.is_locked ? 'primary-btn' : 'ghost-btn'}
-+                    onClick={() => toggleProviderLock(row.provider_id, !row.is_locked)}
-+                    disabled={loading}
-+                  >
-+                    {row.is_locked ? 'Restore account' : 'Suspend account'}
-+                  </button>
-                 </div>
-               </div>
-             ))}
+-      setIsAdmin(normalizedEmail === ADMIN_EMAIL.toLowerCase());
++      setIsAdmin(!!userData.is_admin);
  
-             {!loading && filteredRows.length === 0 && (
-               <p className="muted">No providers match that account, phone, or date range.</p>
-             )}
-           </div>
-         </div>
-       </div>
-     )
-   }
+-    if (showFlash) {
++      if (showFlash) {
+         showFlash("success", "Logged in successfully");
+       }
+     } catch (e) {
+       console.log("Login error:", e.response?.data || e.message);
+       if (showFlash) {
+         showFlash(
+           "error",
+           "Login failed: wrong email/password or server unreachable"
+         );
+       }
+     } finally {
+       setLoading(false);
+     }
+   };
  
-   const AdminLayout = () => {
-     const location = useLocation()
-     return (
-       <div className="admin-shell">
-         <aside className="admin-sidebar">
-           <nav className="sidebar-nav">
-             <NavLink to="/admin/promotions" className={({ isActive }) => isActive ? 'sidebar-link active' : 'sidebar-link'}>
-               Promotions
-             </NavLink>
-             <NavLink to="/admin/service-charge" className={({ isActive }) => isActive ? 'sidebar-link active' : 'sidebar-link'}>
-               Service Charge
-             </NavLink>
+ return (
+     <KeyboardAvoidingView
+       style={styles.avoider}
+       behavior={Platform.OS === "ios" ? "padding" : "height"}
+       keyboardVerticalOffset={Platform.OS === "ios" ? 40 : 0} // tweak if needed
  
-EOF
-)
+     >
+       <ScrollView
+         contentContainerStyle={styles.scrollContent}
+         keyboardShouldPersistTaps="handled"
