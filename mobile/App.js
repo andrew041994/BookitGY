@@ -1114,6 +1114,12 @@ function ProfileScreen({ setToken, showFlash, token }) {
   const isAdmin = user.is_admin;
   const isProvider = user.is_provider;
   const role = isAdmin ? "Admin" : isProvider ? "Provider" : "Client";
+  const profileHandleSource =
+    user.full_name?.trim() ||
+    (user.email ? user.email.split("@")[0] : "") ||
+    "provider";
+  const providerProfileLink =
+    `https://bookitgy.com/${slugifyHandle(profileHandleSource) || "provider"}`;
 
   const toggleMyBookings = async () => {
     const next = !showBookings;
@@ -1270,6 +1276,31 @@ function ProfileScreen({ setToken, showFlash, token }) {
       </View>
 
       <View style={styles.card}>
+        {isProvider && (
+          <View style={{ marginBottom: 16 }}>
+            <Text style={styles.label}>Profile link</Text>
+            <View style={styles.profileLinkRow}>
+              <Text style={[styles.profileLinkText, { flex: 1 }]} numberOfLines={1}>
+                {providerProfileLink}
+              </Text>
+              <TouchableOpacity
+                style={styles.profileLinkCopy}
+                onPress={async () => {
+                  try {
+                    await Clipboard.setStringAsync(providerProfileLink);
+                    showFlash?.("success", "Profile link copied to clipboard");
+                  } catch (err) {
+                    console.log("Error copying profile link", err?.message || err);
+                    showFlash?.("error", "Could not copy profile link");
+                  }
+                }}
+              >
+                <Text style={styles.profileLinkCopyText}>Copy</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        )}
+
         <Text style={styles.label}>Email</Text>
         <Text style={styles.value}>{user.email}</Text>
 
@@ -3273,8 +3304,7 @@ const profileHandleSource =
   (token?.email ? token.email.split("@")[0] : "") ||
   "";
 const profileSlug = slugifyHandle(profileHandleSource) || "provider";
-const profilePathLink = `https://bookitgy.com/${profileSlug}`;
-const profileSubdomainLink = `https://${profileSlug}.bookitgy.com`;
+const profileLink = `https://bookitgy.com/${profileSlug}`;
 
 const copyProfileLink = async (link) => {
   try {
@@ -4785,19 +4815,17 @@ const loadProviderSummary = async () => {
                 Share this with clients so they can book you directly.
               </Text>
 
-              {[profilePathLink, profileSubdomainLink].map((link) => (
-                <View key={link} style={styles.profileLinkRow}>
-                  <Text style={styles.profileLinkText} numberOfLines={1}>
-                    {link}
-                  </Text>
-                  <TouchableOpacity
-                    style={styles.profileLinkCopy}
-                    onPress={() => copyProfileLink(link)}
-                  >
-                    <Text style={styles.profileLinkCopyText}>Copy</Text>
-                  </TouchableOpacity>
-                </View>
-              ))}
+              <View style={styles.profileLinkRow}>
+                <Text style={styles.profileLinkText} numberOfLines={1}>
+                  {profileLink}
+                </Text>
+                <TouchableOpacity
+                  style={styles.profileLinkCopy}
+                  onPress={() => copyProfileLink(profileLink)}
+                >
+                  <Text style={styles.profileLinkCopyText}>Copy</Text>
+                </TouchableOpacity>
+              </View>
             </View>
 
             {profileLoading && (
