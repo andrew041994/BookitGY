@@ -11,7 +11,7 @@
       "resizeMode": "contain",
       "backgroundColor": "#16a34a"
     },
-    "assetBundlePatterns": [
+   "assetBundlePatterns": [
       "**/*"
     ],
     "ios": {
@@ -34,7 +34,12 @@
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#16a34a"
-      }
+      },
+      "config": {
+        "googleMaps": {
+          "apiKey": "AIzaSyCtCm_jnGsYdTJGqplKjTgbGx9EYnwnrys"}
+        }
+      
     },
     "web": {
       "favicon": "./assets/favicon.png"
