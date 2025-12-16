@@ -1,270 +1,111 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
-diff --git a/mobile/App.js b/mobile/App.js
-index fdae8d3650c610bff4e8f7ba448d3aa734a7bded..02bba7c7b09ec1b94d3d657b90265ee3172e2055 100644
---- a/mobile/App.js
-+++ b/mobile/App.js
-@@ -1092,50 +1092,56 @@ function ProfileScreen({ setToken, showFlash, token }) {
-         <ActivityIndicator size="large" />
-         <Text style={styles.loadingText}>Loading profile…</Text>
-       </View>
-     );
-   }
- 
-   if (error) {
-     return (
-       <View style={styles.center}>
-         <Text style={styles.errorText}>{error}</Text>
-       </View>
-     );
-   }
- 
-   if (!user) {
-     return (
-       <View style={styles.center}>
-         <Text style={styles.errorText}>No user data.</Text>
-       </View>
-     );
-   }
- 
-   const isAdmin = user.is_admin;
-   const isProvider = user.is_provider;
-   const role = isAdmin ? "Admin" : isProvider ? "Provider" : "Client";
-+  const profileHandleSource =
-+    user.full_name?.trim() ||
-+    (user.email ? user.email.split("@")[0] : "") ||
-+    "provider";
-+  const providerProfileLink =
-+    `https://bookitgy.com/${slugifyHandle(profileHandleSource) || "provider"}`;
- 
-   const toggleMyBookings = async () => {
-     const next = !showBookings;
-     setShowBookings(next);
-     if (next) {
-       await loadMyBookings();
-     }
-   };
- 
-   const handleClientCancelBooking = (bookingId) => {
-     Alert.alert(
-       "Cancel booking",
-       "Are you sure you want to cancel this booking?",
-       [
-         { text: "No", style: "cancel" },
-         {
-           text: "Yes, cancel",
-           style: "destructive",
-           onPress: async () => {
-             try {
-               const token = await AsyncStorage.getItem("accessToken");
-               if (!token) {
-                 if (showFlash)
-                   showFlash("error", "No access token found. Please log in.");
-                 return;
-@@ -1248,50 +1254,75 @@ function ProfileScreen({ setToken, showFlash, token }) {
-           </TouchableOpacity>
-         </View>
+diff --git a/backend/app/schemas.py b/backend/app/schemas.py
+index cdf8a1b2a91350ad39562947706121a0649a782a..1907a585bc466867496aacfd4d49d864215875f6 100644
+--- a/backend/app/schemas.py
++++ b/backend/app/schemas.py
+@@ -1,95 +1,102 @@
+ from pydantic import BaseModel
+ from datetime import datetime, date
+ from typing import Optional, List
+ from decimal import Decimal
  
  
-         {/* Name + role */}
-         <View style={{ flex: 1, marginLeft: 12 }}>
-           <Text style={styles.profileTitle}>
-             {user.full_name || "My Profile"}
-           </Text>
-           <View
-             style={[
-               styles.roleBadge,
-               isAdmin
-                 ? styles.roleBadgeAdmin
-                 : isProvider
-                 ? styles.roleBadgeProvider
-                 : styles.roleBadgeClient,
-             ]}
-           >
-             <Text style={styles.roleBadgeText}>{role}</Text>
-           </View>
-         </View>
-       </View>
  
-       <View style={styles.card}>
-+        {isProvider && (
-+          <View style={{ marginBottom: 16 }}>
-+            <Text style={styles.label}>Profile link</Text>
-+            <View style={styles.profileLinkRow}>
-+              <Text style={[styles.profileLinkText, { flex: 1 }]} numberOfLines={1}>
-+                {providerProfileLink}
-+              </Text>
-+              <TouchableOpacity
-+                style={styles.profileLinkCopy}
-+                onPress={async () => {
-+                  try {
-+                    await Clipboard.setStringAsync(providerProfileLink);
-+                    showFlash?.("success", "Profile link copied to clipboard");
-+                  } catch (err) {
-+                    console.log("Error copying profile link", err?.message || err);
-+                    showFlash?.("error", "Could not copy profile link");
-+                  }
-+                }}
-+              >
-+                <Text style={styles.profileLinkCopyText}>Copy</Text>
-+              </TouchableOpacity>
-+            </View>
-+          </View>
-+        )}
+ 
+ class UserBase(BaseModel):
++    username: str
+     email: str
+     full_name: str
+     phone: str
+     whatsapp: Optional[str] = None
+     location: str
+     lat: Optional[float] = None
+     long: Optional[float] = None
+     avatar_url: Optional[str] = None  # 👈 NEW
+ 
+ 
+ class User(UserBase):
+     id: int
+     is_provider: bool
++    is_email_verified: bool
+     expo_push_token: Optional[str] = None
+ 
+     class Config:
+         orm_mode = True
+ 
+ class UserUpdate(BaseModel):
+     full_name: Optional[str] = None
+     phone: Optional[str] = None
+     whatsapp: Optional[str] = None
+     location: Optional[str] = None
+ 
+     lat: Optional[float] = None
+     long: Optional[float] = None
+     avatar_url: Optional[str] = None  # 👈 NEW
+ 
+ 
+ 
+ class ProviderUpdate(BaseModel):
+     bio: Optional[str] = None
+     location: Optional[str] = None  # human-readable address / area
+     whatsapp: Optional[str] = None
+     professions: Optional[List[str]] = None
+     is_active: Optional[bool] = None
+ 
+ 
+ 
+ class UserCreate(UserBase):
+     password: str
+     is_provider: bool = False
+ 
+ 
+ class LoginByEmailPayload(BaseModel):
+     email: str
+     password: str
+ 
+ class ForgotPasswordRequest(BaseModel):
+     email: str
+ 
+ 
+ class ResetPasswordPayload(BaseModel):
+     token: str
+     new_password: str
+ 
+ 
++class VerifyEmailPayload(BaseModel):
++    token: str
 +
-         <Text style={styles.label}>Email</Text>
-         <Text style={styles.value}>{user.email}</Text>
++
  
-         {user.phone && (
-           <>
-             <Text style={[styles.label, { marginTop: 16 }]}>Phone</Text>
-             <Text style={styles.value}>{user.phone}</Text>
-           </>
-         )}
- 
-         {user.location && (
-           <>
-             <Text style={[styles.label, { marginTop: 16 }]}>Location</Text>
-             <Text style={styles.value}>{user.location}</Text>
-           </>
-         )}
-       </View>
- 
-       {isAdmin && (
-         <View style={styles.adminBox}>
-           <Text style={styles.adminTitle}>Admin tools</Text>
-           <Text style={styles.adminText}>
-             You are logged in as an admin. In future versions, this area will
-             let you manage users, providers and bookings.
-           </Text>
-@@ -3251,52 +3282,51 @@ const providerLabel =
-   "Provider";
+ class UserOut(UserBase):
+     id: int
+     is_provider: bool
++    is_email_verified: bool
+     is_admin: bool           # 👈 add this
  
  
- const [customProfession, setCustomProfession] = useState("");
- const [providerSummary, setProviderSummary] = useState(null);
- const [todayBookings, setTodayBookings] = useState([]);
- const [todayLoading, setTodayLoading] = useState(false);
- const [todayError, setTodayError] = useState("");
- const [upcomingBookings, setUpcomingBookings] = useState([]);
- const [upcomingLoading, setUpcomingLoading] = useState(false);
- const [upcomingError, setUpcomingError] = useState("");
- const [providerLocation, setProviderLocation] = useState(null);
- const [focusedHoursField, setFocusedHoursField] = useState(null);
- const [avatarUrl, setAvatarUrl] = useState(null);
- // Catalog (portfolio images)
- const [catalog, setCatalog] = useState([]);
- const [catalogLoading, setCatalogLoading] = useState(false);
- const [catalogError, setCatalogError] = useState("");
- const [catalogUploading, setCatalogUploading] = useState(false);
+     class Config:
+         from_attributes = True
  
- const profileHandleSource =
-   profile.full_name ||
-   (token?.email ? token.email.split("@")[0] : "") ||
-   "";
- const profileSlug = slugifyHandle(profileHandleSource) || "provider";
--const profilePathLink = `https://bookitgy.com/${profileSlug}`;
--const profileSubdomainLink = `https://${profileSlug}.bookitgy.com`;
-+const profileLink = `https://bookitgy.com/${profileSlug}`;
+ class ServiceCreate(BaseModel):
+     name: str
+     description: str
+     price_gyd: float
+     duration_minutes: int
  
- const copyProfileLink = async (link) => {
-   try {
-     await Clipboard.setStringAsync(link);
-     if (showFlash) {
-       showFlash("success", "Profile link copied to clipboard");
-     } else {
-       Alert.alert("Copied", "Profile link copied to clipboard");
-     }
-   } catch (err) {
-     console.log("Error copying profile link", err?.message || err);
-     if (showFlash) {
-       showFlash("error", "Could not copy profile link");
-     }
-   }
- };
+ class ServiceUpdate(BaseModel):
+     name: Optional[str] = None
+     description: Optional[str] = None
+     price_gyd: Optional[float] = None
+     duration_minutes: Optional[int] = None
  
  
- 
- 
- 
- 
- 
- 
- 
-@@ -4763,63 +4793,61 @@ const loadProviderSummary = async () => {
- 
-             <View style={{ width: "100%", marginTop: 8 }}>
-               <Button
-                 title="Save working hours"
-                 onPress={saveWorkingHours}
-                 color="#16a34a"
-               />
-             </View>
-           </View>
-         )}
- 
-         {/* Provider profile editor */}
-         {showProfileEditor && (
-           <View style={styles.card}>
-             <Text style={styles.sectionTitle}>Provider profile</Text>
-             <Text style={styles.hoursHelp}>
-               This is what clients will see on your public profile.
-             </Text>
- 
-             <View style={styles.profileLinkBox}>
-               <Text style={styles.sectionTitle}>Profile link</Text>
-               <Text style={styles.hoursHelp}>
-                 Share this with clients so they can book you directly.
-               </Text>
- 
--              {[profilePathLink, profileSubdomainLink].map((link) => (
--                <View key={link} style={styles.profileLinkRow}>
--                  <Text style={styles.profileLinkText} numberOfLines={1}>
--                    {link}
--                  </Text>
--                  <TouchableOpacity
--                    style={styles.profileLinkCopy}
--                    onPress={() => copyProfileLink(link)}
--                  >
--                    <Text style={styles.profileLinkCopyText}>Copy</Text>
--                  </TouchableOpacity>
--                </View>
--              ))}
-+              <View style={styles.profileLinkRow}>
-+                <Text style={styles.profileLinkText} numberOfLines={1}>
-+                  {profileLink}
-+                </Text>
-+                <TouchableOpacity
-+                  style={styles.profileLinkCopy}
-+                  onPress={() => copyProfileLink(profileLink)}
-+                >
-+                  <Text style={styles.profileLinkCopyText}>Copy</Text>
-+                </TouchableOpacity>
-+              </View>
-             </View>
- 
-             {profileLoading && (
-               <View style={{ paddingVertical: 10 }}>
-                 <ActivityIndicator />
-                 <Text style={styles.serviceMeta}>Loading profile…</Text>
-               </View>
-             )}
- 
-             {profileError ? (
-               <Text style={styles.errorText}>{profileError}</Text>
-             ) : null}
- 
-             {!profileLoading && (
-               <>
-                 <TextInput
-                   style={styles.input}
-                   placeholder="Business / display name"
-                   value={profile.full_name}
-                   onChangeText={(text) =>
-                     setProfile((prev) => ({ ...prev, full_name: text }))
-                   }
-                 />
-                 <TextInput
-                   style={styles.input}
+ class ServiceOut(BaseModel):
+     id: int
+     provider_id: int
+     name: str
+     description: str
+     price_gyd: float
  
 EOF
 )

@@ -90,9 +90,12 @@ def _seed_demo_users() -> None:
             customer = crud.create_user(
                 db,
                 schemas.UserCreate(
+                    username="demo_customer",
                     email="customer@guyana.com",
                     password=demo_password,
                     full_name="Demo Customer",
+                    phone="0000000",
+                    location="Georgetown",
                 ),
             )
 
@@ -102,9 +105,12 @@ def _seed_demo_users() -> None:
             provider_user = crud.create_user(
                 db,
                 schemas.UserCreate(
+                    username="demo_provider",
                     email="provider@guyana.com",
                     password=demo_password,
                     full_name="Demo Provider",
+                    phone="0000000",
+                    location="Georgetown",
                 ),
             )
 
@@ -113,6 +119,12 @@ def _seed_demo_users() -> None:
             provider_user.is_provider = True
             db.commit()
             db.refresh(provider_user)
+
+        # Mark demo users as verified so they can log in without the email flow
+        for demo_user in [customer, provider_user]:
+            if demo_user and not getattr(demo_user, "is_email_verified", False):
+                demo_user.is_email_verified = True
+        db.commit()
 
         crud.get_or_create_provider_for_user(db, provider_user.id)
 

@@ -7,6 +7,7 @@ from decimal import Decimal
 
 
 class UserBase(BaseModel):
+    username: str
     email: str
     full_name: str
     phone: str
@@ -20,6 +21,7 @@ class UserBase(BaseModel):
 class User(UserBase):
     id: int
     is_provider: bool
+    is_email_verified: bool
     expo_push_token: Optional[str] = None
 
     class Config:
@@ -64,10 +66,15 @@ class ResetPasswordPayload(BaseModel):
     new_password: str
 
 
+class VerifyEmailPayload(BaseModel):
+    token: str
+
+
 
 class UserOut(UserBase):
     id: int
     is_provider: bool
+    is_email_verified: bool
     is_admin: bool           # 👈 add this
 
 

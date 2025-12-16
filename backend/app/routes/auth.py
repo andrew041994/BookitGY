@@ -2,8 +2,9 @@ from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
-from jose import jwt
+from jose import JWTError, jwt
 from sqlalchemy.orm import Session
+import secrets
 
 from app.config import get_settings
 from app.database import get_db
@@ -23,9 +24,16 @@ def signup(user: schemas.UserCreate, db: Session = Depends(get_db)):
             detail="Email already registered",
         )
 
+    username_taken = crud.get_user_by_username(db, user.username)
+    if username_taken:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Username already taken",
+        )
+
     # Create user
     created = crud.create_user(db, user)
-      # If the user chose to register as a provider, ensure the flag is stored
+    # If the user chose to register as a provider, ensure the flag is stored
     # and create their provider row too.
     if user.is_provider:
         if not getattr(created, "is_provider", False):
@@ -34,7 +42,18 @@ def signup(user: schemas.UserCreate, db: Session = Depends(get_db)):
             db.refresh(created)
 
         crud.get_or_create_provider_for_user(db, created.id)
-    return created
+
+    verification_token = _create_email_verification_token(created.email)
+    verification_link = f"{settings.EMAIL_VERIFICATION_URL}?token={verification_token}"
+    print(
+        f"[VERIFY EMAIL] Send this link to {created.email}: {verification_link}"
+    )
+
+    response = {"user": created, "message": "Verification email sent."}
+    if settings.ENV == "dev":
+        response["verification_link"] = verification_link
+
+    return response
 
 
 def _create_access_token(subject: str) -> str:
@@ -80,6 +99,25 @@ def _create_password_reset_token(email: str) -> str:
     )
 
 
+def _create_email_verification_token(email: str) -> str:
+    now = datetime.utcnow()
+    expire = now + timedelta(hours=48)
+
+    payload = {
+        "sub": email,
+        "type": "email_verification",
+        "exp": expire,
+        "iat": int(now.timestamp()),
+        "nonce": secrets.token_urlsafe(8),
+    }
+
+    return jwt.encode(
+        payload,
+        settings.JWT_SECRET_KEY,
+        algorithm=settings.JWT_ALGORITHM,
+    )
+
+
 def _decode_password_reset_token(token: str) -> str:
     try:
         payload = jwt.decode(
@@ -109,6 +147,35 @@ def _decode_password_reset_token(token: str) -> str:
     return email
 
 
+def _decode_email_verification_token(token: str) -> str:
+    try:
+        payload = jwt.decode(
+            token,
+            settings.JWT_SECRET_KEY,
+            algorithms=[settings.JWT_ALGORITHM],
+        )
+    except JWTError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or expired verification token",
+        )
+
+    if payload.get("type") != "email_verification":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid verification token",
+        )
+
+    email = payload.get("sub")
+    if not email:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid verification token payload",
+        )
+
+    return email
+
+
 @router.post("/auth/login")
 def login(
     form_data: OAuth2PasswordRequestForm = Depends(),
@@ -125,6 +192,12 @@ def login(
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect email or password",
+        )
+
+    if not getattr(user, "is_email_verified", False):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Please verify your email before logging in.",
         )
 
     access_token = _create_access_token(user.email)
@@ -157,6 +230,12 @@ def login_by_email(
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect email or password",
+        )
+
+    if not getattr(user, "is_email_verified", False):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Please verify your email before logging in.",
         )
 
     access_token = _create_access_token(user.email)
@@ -208,3 +287,21 @@ def reset_password(payload: schemas.ResetPasswordPayload, db: Session = Depends(
     crud.set_user_password(db, user, payload.new_password)
 
     return {"message": "Password updated successfully"}
+
+
+@router.post("/auth/verify-email")
+def verify_email(payload: schemas.VerifyEmailPayload, db: Session = Depends(get_db)):
+    email = _decode_email_verification_token(payload.token)
+    user = crud.get_user_by_email(db, email)
+
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found",
+        )
+
+    if getattr(user, "is_email_verified", False):
+        return {"message": "Email already verified"}
+
+    crud.verify_user_email(db, user)
+    return {"message": "Email verified successfully"}

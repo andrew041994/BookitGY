@@ -106,6 +106,14 @@ class Settings:
         )
 
         # -----------------------------
+        # Email verification
+        # -----------------------------
+        # Used to build the verification link that gets emailed/logged.
+        self.EMAIL_VERIFICATION_URL: str = os.getenv(
+            "EMAIL_VERIFICATION_URL", "http://localhost:5173/verify-email"
+        )
+
+        # -----------------------------
         # Cloudinary (for image uploads)
         # -----------------------------
         self.CLOUDINARY_CLOUD_NAME: str = os.getenv("CLOUDINARY_CLOUD_NAME", "")

@@ -20,6 +20,7 @@ from sqlalchemy.orm import relationship
 class User(Base):
     __tablename__ = "users"
     id = Column(Integer, primary_key=True, index=True)
+    username = Column(String, unique=True, index=True, nullable=False)
     email = Column(String, unique=True, index=True)
     hashed_password = Column(String)
     full_name = Column(String)
@@ -31,6 +32,7 @@ class User(Base):
     long = Column(Float, nullable=True)
     is_provider = Column(Boolean, default=False)
     is_admin = Column(Boolean, default=False)
+    is_email_verified = Column(Boolean, default=False)
     created_at = Column(DateTime, default=datetime.utcnow)
     avatar_url = Column(String, nullable=True)   # 👈 NEW
 

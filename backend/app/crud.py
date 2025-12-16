@@ -349,6 +349,7 @@ def create_user(db: Session, user: schemas.UserCreate) -> models.User:
     db_user = models.User(
         **user.dict(exclude={"password"}),
         hashed_password=hashed,
+        is_email_verified=False,
     )
     db.add(db_user)
     db.commit()
@@ -359,6 +360,11 @@ def create_user(db: Session, user: schemas.UserCreate) -> models.User:
 def get_user_by_email(db: Session, email: str):
     """Return user by email, or None if not found."""
     return db.query(models.User).filter(models.User.email == email).first()
+
+
+def get_user_by_username(db: Session, username: str):
+    """Return user by username, or None if not found."""
+    return db.query(models.User).filter(models.User.username == username).first()
 
 
 def authenticate_user(db: Session, email: str, password: str):
@@ -376,6 +382,14 @@ def authenticate_user(db: Session, email: str, password: str):
     if not verify_password(password, user.hashed_password):
         return None
 
+    return user
+
+
+def verify_user_email(db: Session, user: models.User) -> models.User:
+    """Mark a user's email as verified."""
+    user.is_email_verified = True
+    db.commit()
+    db.refresh(user)
     return user
 
 def update_user(
