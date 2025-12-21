@@ -5665,8 +5665,42 @@ function App() {
 
   const [flash, setFlash] = useState(null);
 
+  const formatFlashText = (text) => {
+    if (typeof text === "string") return text;
+    if (text == null) return "Something went wrong.";
+
+    const formatErrorItem = (item) => {
+      if (typeof item === "string") return item;
+      if (!item || typeof item !== "object") return String(item);
+
+      const message = item.msg || item.message;
+      if (Array.isArray(item.loc) && item.loc.length > 0) {
+        const field = item.loc[item.loc.length - 1];
+        return message ? `${field}: ${message}` : String(item);
+      }
+      if (message) return message;
+      return JSON.stringify(item);
+    };
+
+    if (Array.isArray(text)) {
+      return text.map(formatErrorItem).filter(Boolean).join("\n");
+    }
+
+    if (typeof text === "object") {
+      if (Array.isArray(text.detail)) {
+        return formatFlashText(text.detail);
+      }
+      if (typeof text.detail === "string") return text.detail;
+      if (typeof text.message === "string") return text.message;
+      if (typeof text.msg === "string") return text.msg;
+      return JSON.stringify(text);
+    }
+
+    return String(text);
+  };
+
   const showFlash = (type, text) => {
-    setFlash({ type, text });
+    setFlash({ type, text: formatFlashText(text) });
     setTimeout(() => {
       setFlash(null);
     }, 3000);
