@@ -23,7 +23,6 @@ class User(Base):
     username = Column(String, unique=True, index=True, nullable=False)
     email = Column(String, unique=True, index=True)
     hashed_password = Column(String)
-    full_name = Column(String)
     phone = Column(String)
     whatsapp = Column(String)  # e.g. whatsapp:+592xxxxxxx
     expo_push_token = Column(String, nullable=True)

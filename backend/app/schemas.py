@@ -7,16 +7,19 @@ from decimal import Decimal
 
 
 class UserBase(BaseModel):
+    email: EmailStr
     username: str
-    email: str
-    full_name: str
     phone: str
+    location: Optional[str] = None
     whatsapp: Optional[str] = None
-    location: str
     lat: Optional[float] = None
     long: Optional[float] = None
     avatar_url: Optional[str] = None  # 👈 NEW
 
+
+class UserCreate(UserBase):
+    password: str
+    is_provider: bool = False
 
 class User(UserBase):
     id: int
@@ -48,9 +51,7 @@ class ProviderUpdate(BaseModel):
 
 
 
-class UserCreate(UserBase):
-    password: str
-    is_provider: bool = False
+
 
 
 class LoginByEmailPayload(BaseModel):

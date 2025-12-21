@@ -674,7 +674,7 @@ function SignupScreen({ goToLogin, goBack, showFlash }) {
       await axios.post(`${API}/auth/signup`, {
         email: normalizedEmail,
         password: trimmedPassword,
-        full_name: trimmedUsername,
+        username: trimmedUsername,
         phone: trimmedPhone,          // plain phone as user entered
         location: "Georgetown",
         whatsapp: whatsappValue,      // normalized WhatsApp format
