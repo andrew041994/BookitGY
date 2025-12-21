@@ -113,6 +113,36 @@ class Settings:
             "EMAIL_VERIFICATION_URL", "http://localhost:5173/verify-email"
         )
 
+        self.EMAIL_TOKEN_EXPIRES_MINUTES: int = int(
+            os.getenv("EMAIL_TOKEN_EXPIRES_MINUTES", "2880")
+        )
+        email_token_secret = os.getenv("EMAIL_TOKEN_SECRET")
+        if not email_token_secret:
+            if self.ENV == "prod":
+                raise RuntimeError(
+                    "EMAIL_TOKEN_SECRET is not set. "
+                    "Set it to a strong, unique value."
+                )
+            email_token_secret = self.JWT_SECRET_KEY
+        self.EMAIL_TOKEN_SECRET: str = email_token_secret
+
+        # -----------------------------
+        # SendGrid email
+        # -----------------------------
+        self.SENDGRID_API_KEY: str = os.getenv("SENDGRID_API_KEY", "")
+        self.SENDGRID_FROM_EMAIL: str = os.getenv("SENDGRID_FROM_EMAIL", "")
+        if self.ENV == "prod":
+            missing = []
+            if not self.SENDGRID_API_KEY:
+                missing.append("SENDGRID_API_KEY")
+            if not self.SENDGRID_FROM_EMAIL:
+                missing.append("SENDGRID_FROM_EMAIL")
+            if missing:
+                raise RuntimeError(
+                    "Missing required email settings: "
+                    + ", ".join(missing)
+                )
+
         # -----------------------------
         # Cloudinary (for image uploads)
         # -----------------------------

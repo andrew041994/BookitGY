@@ -9,6 +9,7 @@ import secrets
 from app.config import get_settings
 from app.database import get_db
 from app import crud, schemas
+from app.utils.email import send_verification_email
 
 router = APIRouter(tags=["auth"])
 settings = get_settings()
@@ -44,12 +45,14 @@ def signup(user: schemas.UserCreate, db: Session = Depends(get_db)):
         crud.get_or_create_provider_for_user(db, created.id)
 
     verification_token = _create_email_verification_token(created.email)
-    verification_link = f"{settings.EMAIL_VERIFICATION_URL}?token={verification_token}"
-    print(
-        f"[VERIFY EMAIL] Send this link to {created.email}: {verification_link}"
+    verification_link = (
+        f"{settings.EMAIL_VERIFICATION_URL}?token={verification_token}"
     )
 
-    response = {"user": created, "message": "Verification email sent."}
+    send_verification_email(created.email, verification_link)
+
+    safe_user = schemas.UserOut.model_validate(created)
+    response = {"user": safe_user, "message": "Verification email sent."}
     if settings.ENV == "dev":
         response["verification_link"] = verification_link
 
@@ -101,7 +104,7 @@ def _create_password_reset_token(email: str) -> str:
 
 def _create_email_verification_token(email: str) -> str:
     now = datetime.utcnow()
-    expire = now + timedelta(hours=48)
+    expire = now + timedelta(minutes=settings.EMAIL_TOKEN_EXPIRES_MINUTES)
 
     payload = {
         "sub": email,
@@ -113,7 +116,7 @@ def _create_email_verification_token(email: str) -> str:
 
     return jwt.encode(
         payload,
-        settings.JWT_SECRET_KEY,
+        settings.EMAIL_TOKEN_SECRET,
         algorithm=settings.JWT_ALGORITHM,
     )
 
@@ -151,7 +154,7 @@ def _decode_email_verification_token(token: str) -> str:
     try:
         payload = jwt.decode(
             token,
-            settings.JWT_SECRET_KEY,
+            settings.EMAIL_TOKEN_SECRET,
             algorithms=[settings.JWT_ALGORITHM],
         )
     except JWTError:
@@ -291,7 +294,16 @@ def reset_password(payload: schemas.ResetPasswordPayload, db: Session = Depends(
 
 @router.post("/auth/verify-email")
 def verify_email(payload: schemas.VerifyEmailPayload, db: Session = Depends(get_db)):
-    email = _decode_email_verification_token(payload.token)
+    return _verify_email_token(payload.token, db)
+
+
+@router.get("/auth/verify")
+def verify_email_link(token: str, db: Session = Depends(get_db)):
+    return _verify_email_token(token, db)
+
+
+def _verify_email_token(token: str, db: Session) -> dict:
+    email = _decode_email_verification_token(token)
     user = crud.get_user_by_email(db, email)
 
     if not user:
