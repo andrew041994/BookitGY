@@ -1165,6 +1165,49 @@ def cancel_booking_for_customer(
     booking.status = "cancelled"
     db.commit()
     db.refresh(booking)
+
+    service = (
+        db.query(models.Service)
+        .filter(models.Service.id == booking.service_id)
+        .first()
+    )
+    provider_user = None
+    if service:
+        provider = (
+            db.query(models.Provider)
+            .filter(models.Provider.id == service.provider_id)
+            .first()
+        )
+        if provider:
+            provider_user = (
+                db.query(models.User)
+                .filter(models.User.id == provider.user_id)
+                .first()
+            )
+
+    customer = (
+        db.query(models.User)
+        .filter(models.User.id == booking.customer_id)
+        .first()
+    )
+
+    if provider_user and service and customer:
+        send_whatsapp(
+            provider_user.whatsapp,
+            (
+                "❌ Booking cancelled by customer.\n"
+                f"{get_display_name(customer)} cancelled {service.name}\n"
+                f"{booking.start_time.strftime('%d %b %Y at %I:%M %p')}"
+            ),
+        )
+
+        send_push(
+            provider_user.expo_push_token,
+            "Booking cancelled",
+            f"{get_display_name(customer)} cancelled {service.name} on "
+            f"{booking.start_time.strftime('%d %b %Y at %I:%M %p')}",
+        )
+
     return booking
 
 
