@@ -1,9 +1,61 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
 diff --git a/mobile/App.js b/mobile/App.js
-index 02bba7c7b09ec1b94d3d657b90265ee3172e2055..9bb23543a35326387c96fb0ae520584c995c6125 100644
+index 02bba7c7b09ec1b94d3d657b90265ee3172e2055..b252364d10633940f95964c0ed1440e794879443 100644
 --- a/mobile/App.js
 +++ b/mobile/App.js
-@@ -5643,52 +5643,86 @@ function FlashMessage({ flash }) {
+@@ -650,50 +650,51 @@ function SignupScreen({ goToLogin, goBack, showFlash }) {
+ 
+     // ✅ Normalize phone into WhatsApp format: whatsapp:+...
+     let whatsappValue = trimmedPhone;
+ 
+     // Strip existing 'whatsapp:' if user typed it
+     if (whatsappValue.startsWith("whatsapp:")) {
+       whatsappValue = whatsappValue.replace(/^whatsapp:/, "");
+     }
+ 
+     // Ensure it starts with +
+     if (!whatsappValue.startsWith("+")) {
+       // If it starts with 592, assume +592...
+       if (whatsappValue.startsWith("592")) {
+         whatsappValue = `+${whatsappValue}`;
+       } else {
+         // Fallback: just prefix +
+         whatsappValue = `+${whatsappValue}`;
+       }
+     }
+ 
+     // Final WhatsApp format
+     whatsappValue = `whatsapp:${whatsappValue}`;
+ 
+     try {
+       await axios.post(`${API}/auth/signup`, {
++        username: trimmedUsername,
+         email: normalizedEmail,
+         password: trimmedPassword,
+         full_name: trimmedUsername,
+         phone: trimmedPhone,          // plain phone as user entered
+         location: "Georgetown",
+         whatsapp: whatsappValue,      // normalized WhatsApp format
+         is_provider: isProvider,      // tell backend this is a provider
+       });
+ 
+       if (showFlash) {
+         showFlash("success", "Account created! Please log in.");
+       } else {
+         Alert.alert("Success", "Account created! Now login");
+       }
+ 
+       if (goToLogin) goToLogin();
+     } catch (e) {
+       console.log("Signup error:", e.response?.data || e.message);
+       const detail = e.response?.data?.detail || "Signup failed. Try again.";
+       if (showFlash) {
+         showFlash("error", detail);
+       } else {
+         Alert.alert("Error", detail);
+       }
+     }
+@@ -5643,52 +5644,86 @@ function FlashMessage({ flash }) {
    return (
  
      <View
