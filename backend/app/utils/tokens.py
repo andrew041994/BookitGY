@@ -1,0 +1,65 @@
+from datetime import datetime, timedelta
+
+from fastapi import HTTPException, status
+from jose import JWTError, jwt
+
+from app.config import get_settings
+
+settings = get_settings()
+
+
+def create_password_reset_token(email: str) -> str:
+    now = datetime.utcnow()
+    expire = now + timedelta(minutes=settings.PASSWORD_RESET_EXPIRES_MINUTES)
+
+    payload = {
+        "sub": email,
+        "type": "password_reset",
+        "exp": expire,
+        "iat": int(now.timestamp()),
+    }
+
+    return jwt.encode(
+        payload,
+        settings.EMAIL_TOKEN_SECRET,
+        algorithm=settings.JWT_ALGORITHM,
+    )
+
+
+def verify_password_reset_token(token: str) -> dict:
+    try:
+        payload = jwt.decode(
+            token,
+            settings.EMAIL_TOKEN_SECRET,
+            algorithms=[settings.JWT_ALGORITHM],
+        )
+    except JWTError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or expired reset token",
+        ) from exc
+
+    if payload.get("type") != "password_reset":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid reset token",
+        )
+
+    email = payload.get("sub")
+    issued_at = payload.get("iat")
+
+    if not email or not issued_at:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid reset token payload",
+        )
+
+    try:
+        issued_at_dt = datetime.utcfromtimestamp(int(issued_at))
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid reset token payload",
+        ) from exc
+
+    return {"email": email, "issued_at": issued_at_dt}

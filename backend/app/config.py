@@ -97,12 +97,22 @@ class Settings:
             os.getenv("ENABLE_DEMO_SEED", "false").lower() == "true"
         )
 
-         # -----------------------------
+        # -----------------------------
         # Password reset
         # -----------------------------
         # Used to build the reset link that gets emailed/logged.
-        self.PASSWORD_RESET_URL: str = os.getenv(
-            "PASSWORD_RESET_URL", "http://localhost:5173/reset-password"
+        password_reset_url = os.getenv("PASSWORD_RESET_URL")
+        if self.ENV == "prod" and not password_reset_url:
+            raise RuntimeError(
+                "PASSWORD_RESET_URL is not set. "
+                "Set it to the production reset password page URL."
+            )
+        self.PASSWORD_RESET_URL: str = (
+            password_reset_url or "http://localhost:5173/reset-password"
+        )
+
+        self.PASSWORD_RESET_EXPIRES_MINUTES: int = int(
+            os.getenv("PASSWORD_RESET_EXPIRES_MINUTES", "60")
         )
 
         # -----------------------------

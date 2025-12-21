@@ -10,8 +10,9 @@ import secrets
 from app.config import get_settings
 from app.database import get_db
 from app import crud, schemas
-from app.utils.email import send_verification_email
+from app.utils.email import send_password_reset_email, send_verification_email
 from app.utils.passwords import validate_password, PASSWORD_REQUIREMENTS_MESSAGE
+from app.utils.tokens import create_password_reset_token, verify_password_reset_token
 
 router = APIRouter(tags=["auth"])
 settings = get_settings()
@@ -108,24 +109,6 @@ def _create_access_token(subject: str) -> str:
         algorithm=settings.JWT_ALGORITHM,
     )
 
-def _create_password_reset_token(email: str) -> str:
-    now = datetime.utcnow()
-    expire = now + timedelta(minutes=30)
-
-    payload = {
-        "sub": email,
-        "type": "password_reset",
-        "exp": expire,
-        "iat": int(now.timestamp()),
-    }
-
-    return jwt.encode(
-        payload,
-        settings.JWT_SECRET_KEY,
-        algorithm=settings.JWT_ALGORITHM,
-    )
-
-
 def _create_email_verification_token(email: str) -> str:
     now = datetime.utcnow()
     expire = now + timedelta(minutes=settings.EMAIL_TOKEN_EXPIRES_MINUTES)
@@ -143,35 +126,6 @@ def _create_email_verification_token(email: str) -> str:
         settings.EMAIL_TOKEN_SECRET,
         algorithm=settings.JWT_ALGORITHM,
     )
-
-
-def _decode_password_reset_token(token: str) -> str:
-    try:
-        payload = jwt.decode(
-            token,
-            settings.JWT_SECRET_KEY,
-            algorithms=[settings.JWT_ALGORITHM],
-        )
-    except JWTError:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid or expired reset token",
-        )
-
-    if payload.get("type") != "password_reset":
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid reset token",
-        )
-
-    email = payload.get("sub")
-    if not email:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid reset token payload",
-        )
-
-    return email
 
 
 def _decode_email_verification_token(token: str) -> str:
@@ -286,9 +240,9 @@ def forgot_password(
     reset_link = None
 
     if user:
-        token = _create_password_reset_token(user.email)
+        token = create_password_reset_token(user.email)
         reset_link = f"{settings.PASSWORD_RESET_URL}?token={token}"
-        print(f"[RESET PASSWORD] Send this link to {user.email}: {reset_link}")
+        send_password_reset_email(user.email, reset_link)
 
     response = {
         "message": "If an account exists for that email, a reset link has been sent.",
@@ -302,13 +256,20 @@ def forgot_password(
 
 @router.post("/auth/reset-password")
 def reset_password(payload: schemas.ResetPasswordPayload, db: Session = Depends(get_db)):
-    email = _decode_password_reset_token(payload.token)
-    user = crud.get_user_by_email(db, email)
+    token_data = verify_password_reset_token(payload.token)
+    user = crud.get_user_by_email(db, token_data["email"])
 
     if not user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="User not found",
+        )
+
+    reset_at = getattr(user, "password_reset_at", None)
+    if reset_at and token_data["issued_at"] <= reset_at:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or expired reset token",
         )
 
     try:
@@ -319,7 +280,7 @@ def reset_password(payload: schemas.ResetPasswordPayload, db: Session = Depends(
             detail=PASSWORD_REQUIREMENTS_MESSAGE,
         )
 
-    crud.set_user_password(db, user, payload.new_password)
+    crud.set_user_password_reset(db, user, payload.new_password)
 
     return {"message": "Password updated successfully"}
 
