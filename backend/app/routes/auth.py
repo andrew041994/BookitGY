@@ -11,6 +11,7 @@ from app.config import get_settings
 from app.database import get_db
 from app import crud, schemas
 from app.utils.email import send_verification_email
+from app.utils.passwords import validate_password, PASSWORD_REQUIREMENTS_MESSAGE
 
 router = APIRouter(tags=["auth"])
 settings = get_settings()
@@ -18,6 +19,14 @@ settings = get_settings()
 
 @router.post("/auth/signup")
 def signup(user: schemas.UserCreate, db: Session = Depends(get_db)):
+    try:
+        validate_password(user.password)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=PASSWORD_REQUIREMENTS_MESSAGE,
+        )
+
     # Check if email already exists
     existing = crud.get_user_by_email(db, user.email)
     if existing:
@@ -300,6 +309,14 @@ def reset_password(payload: schemas.ResetPasswordPayload, db: Session = Depends(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="User not found",
+        )
+
+    try:
+        validate_password(payload.new_password)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=PASSWORD_REQUIREMENTS_MESSAGE,
         )
 
     crud.set_user_password(db, user, payload.new_password)
