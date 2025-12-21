@@ -1,6 +1,6 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
 diff --git a/mobile/App.js b/mobile/App.js
-index 02bba7c7b09ec1b94d3d657b90265ee3172e2055..b252364d10633940f95964c0ed1440e794879443 100644
+index 9bb23543a35326387c96fb0ae520584c995c6125..b252364d10633940f95964c0ed1440e794879443 100644
 --- a/mobile/App.js
 +++ b/mobile/App.js
 @@ -650,50 +650,51 @@ function SignupScreen({ goToLogin, goBack, showFlash }) {
@@ -55,94 +55,6 @@ index 02bba7c7b09ec1b94d3d657b90265ee3172e2055..b252364d10633940f95964c0ed1440e7
          Alert.alert("Error", detail);
        }
      }
-@@ -5643,52 +5644,86 @@ function FlashMessage({ flash }) {
-   return (
- 
-     <View
-       style={[
-         styles.flashContainer,
-         { backgroundColor, borderColor },
-       ]}
-     >
-       <Text style={[styles.flashText, { color: textColor }]}>
-         {flash.text}
-       </Text>
-     </View>
-   );
- }
- 
- 
- // 🔹 App orchestrates landing/login/signup/forgot-password vs main app
- 
- function App() {
-   const [token, setToken] = useState(null);
-   const [authMode, setAuthMode] = useState("landing"); // 'landing' | 'login' | 'signup' | 'forgot'
-   const [isAdmin, setIsAdmin] = useState(false);
- 
-   const [flash, setFlash] = useState(null);
- 
-+  const formatFlashText = (text) => {
-+    if (typeof text === "string") return text;
-+    if (text == null) return "Something went wrong.";
-+
-+    const formatErrorItem = (item) => {
-+      if (typeof item === "string") return item;
-+      if (!item || typeof item !== "object") return String(item);
-+
-+      const message = item.msg || item.message;
-+      if (Array.isArray(item.loc) && item.loc.length > 0) {
-+        const field = item.loc[item.loc.length - 1];
-+        return message ? `${field}: ${message}` : String(item);
-+      }
-+      if (message) return message;
-+      return JSON.stringify(item);
-+    };
-+
-+    if (Array.isArray(text)) {
-+      return text.map(formatErrorItem).filter(Boolean).join("\n");
-+    }
-+
-+    if (typeof text === "object") {
-+      if (Array.isArray(text.detail)) {
-+        return formatFlashText(text.detail);
-+      }
-+      if (typeof text.detail === "string") return text.detail;
-+      if (typeof text.message === "string") return text.message;
-+      if (typeof text.msg === "string") return text.msg;
-+      return JSON.stringify(text);
-+    }
-+
-+    return String(text);
-+  };
-+
-   const showFlash = (type, text) => {
--    setFlash({ type, text });
-+    setFlash({ type, text: formatFlashText(text) });
-     setTimeout(() => {
-       setFlash(null);
-     }, 3000);
-   };
- 
-   return (
-     <SafeAreaProvider>
-       <SafeAreaView style={{ flex: 1 }} edges={["top", "bottom"]}>
-         <FlashMessage flash={flash} />
- 
-         {!token ? (
-           <>
-             {authMode === "landing" && (
-               <LandingScreen
-                 goToLogin={() => setAuthMode("login")}
-                 goToSignup={() => setAuthMode("signup")}
-               />
-             )}
- 
-             {authMode === "login" && (
-               <LoginScreen
-                 setToken={setToken}
-                 setIsAdmin={setIsAdmin}
-                 goToSignup={() => setAuthMode("signup")}
-                 goToForgot={() => setAuthMode("forgot")}
  
 EOF
 )
