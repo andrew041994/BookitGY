@@ -79,6 +79,37 @@ def now_local_naive():
 # provider dashboard
 # ---------------------------------------------------------------------------
 
+def _normalize_display_name(name: Optional[str]) -> Optional[str]:
+    if name is None:
+        return None
+    cleaned = name.strip()
+    return cleaned or None
+
+
+def get_display_name(user: Optional[models.User]) -> str:
+    if not user:
+        return ""
+    return user.username or user.email or ""
+
+
+def set_username_from_full_name(
+    db: Session,
+    user: models.User,
+    full_name: Optional[str],
+) -> None:
+    normalized = _normalize_display_name(full_name)
+    if not normalized:
+        return
+
+    if user.username == normalized:
+        return
+
+    existing = get_user_by_username(db, normalized)
+    if existing and existing.id != user.id:
+        raise ValueError("Username already taken")
+
+    user.username = normalized
+
 def get_provider_by_user_id(db: Session, user_id: int):
     return db.query(models.Provider).filter(models.Provider.user_id == user_id).first()
 
@@ -134,7 +165,7 @@ def list_providers(db: Session, profession: Optional[str] = None):
         results.append(
             {
                 "provider_id": provider.id,
-                "name": user.full_name or "",
+                "name": get_display_name(user),
                 "location": user.location or "",
                 "lat": user.lat,
                 "long": user.long,
@@ -304,7 +335,7 @@ def notify_booking_created(
             customer.whatsapp,
             (
                 "Booking confirmed!\n"
-                f"{service.name} with {provider_user.full_name}\n"
+                f"{service.name} with {get_display_name(provider_user)}\n"
                 f"{booking.start_time.strftime('%d %b %Y at %I:%M %p')}\n"
                 f"GYD {service.price_gyd}"
             ),
@@ -316,7 +347,7 @@ def notify_booking_created(
             provider_user.whatsapp,
             (
                 "New booking!\n"
-                f"{customer.full_name} booked {service.name}\n"
+                f"{get_display_name(customer)} booked {service.name}\n"
                 f"{booking.start_time.strftime('%d %b %Y at %I:%M %p')}"
             ),
         )
@@ -325,14 +356,14 @@ def notify_booking_created(
     send_push(
         customer.expo_push_token,
         "Booking confirmed",
-        f"{service.name} with {provider_user.full_name} on "
+        f"{service.name} with {get_display_name(provider_user)} on "
         f"{booking.start_time.strftime('%d %b %Y at %I:%M %p')}",
     )
 
     send_push(
         provider_user.expo_push_token,
         "New booking",
-        f"{customer.full_name} booked {service.name} on "
+        f"{get_display_name(customer)} booked {service.name} on "
         f"{booking.start_time.strftime('%d %b %Y at %I:%M %p')}",
     )
 
@@ -410,7 +441,6 @@ def update_user(
 
     # Explicit whitelist of user fields that may be updated from the API
     ALLOWED_USER_FIELDS = {
-        "full_name",
         "whatsapp",
         "location",
         "avatar_url",
@@ -420,6 +450,8 @@ def update_user(
         if field in ALLOWED_USER_FIELDS:
             setattr(user, field, value)
 
+    if "full_name" in update_data:
+        set_username_from_full_name(db, user, update_data.get("full_name"))
 
     db.commit()
     db.refresh(user)
@@ -907,7 +939,7 @@ def _provider_billing_row(db: Session, provider: models.Provider, user: models.U
 
     return {
         "provider_id": provider.id,
-        "name": user.full_name or "",
+        "name": get_display_name(user),
         "account_number": provider.account_number or "",
         "phone": user.phone or "",
         "amount_due_gyd": float(amount_due or 0.0),
@@ -976,7 +1008,7 @@ def list_bookings_for_provider(db: Session, provider_id: int):
             models.Booking.status,
             models.Service.name.label("service_name"),
             models.Service.price_gyd.label("service_price_gyd"),
-            models.User.full_name.label("customer_name"),
+            models.User.username.label("customer_name"),
             
         )
         .join(models.Service, models.Booking.service_id == models.Service.id)
@@ -1045,7 +1077,7 @@ def list_bookings_for_customer(db: Session, customer_id: int):
                     .first()
                 )
                 if provider_user:
-                    provider_name = provider_user.full_name or ""
+                    provider_name = get_display_name(provider_user)
                     provider_location = provider_user.location or ""
                     provider_lat = provider_user.lat
                     provider_long = provider_user.long
@@ -1063,7 +1095,7 @@ def list_bookings_for_customer(db: Session, customer_id: int):
                     if service and service.price_gyd is not None
                     else 0.0
                 ),
-                customer_name=user.full_name or "",
+                customer_name=get_display_name(user),
                 customer_phone=user.phone or "",
                 provider_name=provider_name,
                 provider_location=provider_location,
@@ -1492,7 +1524,7 @@ def list_todays_bookings_for_provider(db: Session, provider_id: int):
                 service_name=service.name,
                 service_duration_minutes=service.duration_minutes,
                 service_price_gyd=service.price_gyd or 0.0,
-                customer_name=customer.full_name or "",
+                customer_name=get_display_name(customer),
                 customer_phone=customer.phone or "",
             )
         )
@@ -1536,7 +1568,7 @@ def list_upcoming_bookings_for_provider(
                 service_name=service.name,
                 service_duration_minutes=service.duration_minutes,
                 service_price_gyd=service.price_gyd or 0.0,
-                customer_name=customer.full_name or "",
+                customer_name=get_display_name(customer),
                 customer_phone=customer.phone or "",
             )
         )
@@ -1596,6 +1628,5 @@ def update_provider(
 #     booking.status = "cancelled"
 #     db.commit()
 #     return True
-
 
 

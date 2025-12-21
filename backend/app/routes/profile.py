@@ -83,7 +83,7 @@ def read_my_provider_profile(
     professions = crud.get_professions_for_provider(db, provider.id)
 
     return schemas.ProviderProfileOut(
-        full_name=user.full_name or "",
+        full_name=crud.get_display_name(user),
         phone=user.phone or "",
         whatsapp=user.whatsapp,
         location=user.location or "",
@@ -121,7 +121,13 @@ def update_my_provider_profile(
 
     # Update basic user fields
     if payload.full_name is not None:
-        user.full_name = payload.full_name
+        try:
+            crud.set_username_from_full_name(db, user, payload.full_name)
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=str(exc),
+            )
 
     if payload.phone is not None:
         user.phone = payload.phone
@@ -153,7 +159,7 @@ def update_my_provider_profile(
     db.refresh(provider)
 
     return schemas.ProviderProfileOut(
-        full_name=user.full_name or "",
+        full_name=crud.get_display_name(user),
         phone=user.phone or "",
         whatsapp=user.whatsapp,
         location=user.location or "",
@@ -229,7 +235,7 @@ def read_my_provider_profile(
     professions = crud.get_professions_for_provider(db, provider.id)
 
     return schemas.ProviderProfileOut(
-        full_name=user.full_name or "",
+        full_name=crud.get_display_name(user),
         phone=user.phone or "",
         whatsapp=user.whatsapp,
         location=user.location or "",
@@ -252,7 +258,13 @@ def update_my_profile(
     db: Session = Depends(get_db),
 ):
     if payload.full_name is not None:
-        user.full_name = payload.full_name
+        try:
+            crud.set_username_from_full_name(db, user, payload.full_name)
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=str(exc),
+            )
 
     if payload.phone is not None:
         user.phone = payload.phone
@@ -270,7 +282,7 @@ def update_my_profile(
     db.refresh(user)
 
     return schemas.UserProfileOut(
-        full_name=user.full_name or "",
+        full_name=crud.get_display_name(user),
         phone=user.phone or "",
         whatsapp=user.whatsapp,
         location=user.location or "",

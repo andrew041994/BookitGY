@@ -1,60 +1,91 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
-diff --git a/mobile/App.js b/mobile/App.js
-index 9bb23543a35326387c96fb0ae520584c995c6125..b252364d10633940f95964c0ed1440e794879443 100644
---- a/mobile/App.js
-+++ b/mobile/App.js
-@@ -650,50 +650,51 @@ function SignupScreen({ goToLogin, goBack, showFlash }) {
+diff --git a/backend/app/routes/users.py b/backend/app/routes/users.py
+index dc87f4ffe4604faf3f998fbf7106ad2bc739350a..e6a8d65b9fe7c119a6ce8d95e77308d9e556c411 100644
+--- a/backend/app/routes/users.py
++++ b/backend/app/routes/users.py
+@@ -74,50 +74,55 @@ def _validate_client_image(contents: bytes) -> None:
+             detail="Avatar image dimensions are too large.",
+         )
  
-     // ✅ Normalize phone into WhatsApp format: whatsapp:+...
-     let whatsappValue = trimmedPhone;
  
-     // Strip existing 'whatsapp:' if user typed it
-     if (whatsappValue.startsWith("whatsapp:")) {
-       whatsappValue = whatsappValue.replace(/^whatsapp:/, "");
-     }
+ @router.get("/users/me")
+ def read_users_me(
+     current_user: models.User = Depends(get_current_user_from_header),
+ ):
+     return current_user
  
-     // Ensure it starts with +
-     if (!whatsappValue.startsWith("+")) {
-       // If it starts with 592, assume +592...
-       if (whatsappValue.startsWith("592")) {
-         whatsappValue = `+${whatsappValue}`;
-       } else {
-         // Fallback: just prefix +
-         whatsappValue = `+${whatsappValue}`;
-       }
-     }
  
-     // Final WhatsApp format
-     whatsappValue = `whatsapp:${whatsappValue}`;
  
-     try {
-       await axios.post(`${API}/auth/signup`, {
-+        username: trimmedUsername,
-         email: normalizedEmail,
-         password: trimmedPassword,
-         full_name: trimmedUsername,
-         phone: trimmedPhone,          // plain phone as user entered
-         location: "Georgetown",
-         whatsapp: whatsappValue,      // normalized WhatsApp format
-         is_provider: isProvider,      // tell backend this is a provider
-       });
  
-       if (showFlash) {
-         showFlash("success", "Account created! Please log in.");
-       } else {
-         Alert.alert("Success", "Account created! Now login");
-       }
+ @router.put("/users/me")
+ def update_users_me(
+     user_update: schemas.UserUpdate,
+     db: Session = Depends(get_db),
+     current_user: models.User = Depends(get_current_user_from_header),
+ ):
+     """
+     Partially update the current user.
+     Only fields that are actually sent by the client are changed.
+     """
+     try:
+         updated_user = crud.update_user(db, current_user.id, user_update)
++    except ValueError as exc:
++        raise HTTPException(
++            status_code=status.HTTP_400_BAD_REQUEST,
++            detail=str(exc),
++        )
+     except SQLAlchemyError as e:
+         # This will show up in `docker compose logs backend`
+         print("ERROR updating user in /users/me:", repr(e))
+         traceback.print_exc()
+         raise HTTPException(
+             status_code=500,
+             detail="Database error while updating user profile.",
+         )
  
-       if (goToLogin) goToLogin();
-     } catch (e) {
-       console.log("Signup error:", e.response?.data || e.message);
-       const detail = e.response?.data?.detail || "Signup failed. Try again.";
-       if (showFlash) {
-         showFlash("error", detail);
-       } else {
-         Alert.alert("Error", detail);
-       }
-     }
+     if updated_user is None:
+         raise HTTPException(status_code=404, detail="User not found")
+ 
+     return updated_user
+ 
+ @router.post("/users/me/avatar")
+ async def upload_my_avatar(
+     file: UploadFile = File(...),
+     db: Session = Depends(get_db),
+     current_user: models.User = Depends(get_current_user_from_header),
+ ):
+     """
+     Upload/update avatar for the *current user* (clients or providers).
+ 
+     Stores the Cloudinary URL in users.avatar_url.
+     """
+@@ -157,26 +162,25 @@ async def upload_my_avatar(
+         )
+     finally:
+         try:
+             os.remove(tmp_path)
+         except Exception:
+             pass
+ 
+     secure_url = (
+         upload_result.get("secure_url")
+         if isinstance(upload_result, dict)
+         else str(upload_result)
+     )
+ 
+     if not secure_url:
+         raise HTTPException(
+             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+             detail="Avatar upload did not return a valid URL",
+         )
+ 
+     current_user.avatar_url = secure_url
+     db.commit()
+     db.refresh(current_user)
+ 
+     return {"avatar_url": secure_url}
+ 
+-
  
 EOF
 )

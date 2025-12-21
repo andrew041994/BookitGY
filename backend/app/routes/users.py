@@ -96,6 +96,11 @@ def update_users_me(
     """
     try:
         updated_user = crud.update_user(db, current_user.id, user_update)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        )
     except SQLAlchemyError as e:
         # This will show up in `docker compose logs backend`
         print("ERROR updating user in /users/me:", repr(e))
@@ -178,5 +183,4 @@ async def upload_my_avatar(
     db.refresh(current_user)
 
     return {"avatar_url": secure_url}
-
 
