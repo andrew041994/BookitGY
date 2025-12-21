@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
 from jose import JWTError, jwt
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import IntegrityError
 import secrets
 
 from app.config import get_settings
@@ -33,7 +34,21 @@ def signup(user: schemas.UserCreate, db: Session = Depends(get_db)):
         )
 
     # Create user
-    created = crud.create_user(db, user)
+    try:
+        created = crud.create_user(db, user)
+    except IntegrityError as exc:
+        detail = str(getattr(exc, "orig", exc))
+        if "users_username_lower_unique" in detail:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Username already taken",
+            )
+        if "ix_users_email" in detail or "users_email" in detail:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Email already registered",
+            )
+        raise
     # If the user chose to register as a provider, ensure the flag is stored
     # and create their provider row too.
     if user.is_provider:

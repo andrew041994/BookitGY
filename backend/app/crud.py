@@ -5,6 +5,7 @@ from decimal import Decimal, ROUND_HALF_UP
 from typing import Optional, List
 from sqlalchemy import func
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import IntegrityError
 from passlib.context import CryptContext
 from twilio.rest import Client
 import requests
@@ -82,8 +83,12 @@ def now_local_naive():
 def _normalize_display_name(name: Optional[str]) -> Optional[str]:
     if name is None:
         return None
-    cleaned = name.strip()
+    cleaned = name.strip().lower()
     return cleaned or None
+
+
+def normalize_username(username: str) -> str:
+    return (username or "").strip().lower()
 
 
 def get_display_name(user: Optional[models.User]) -> str:
@@ -377,13 +382,19 @@ def notify_booking_created(
 def create_user(db: Session, user: schemas.UserCreate) -> models.User:
     """Create a new user with hashed password."""
     hashed = hash_password(user.password)
+    user_data = user.dict(exclude={"password"})
+    user_data["username"] = normalize_username(user.username)
     db_user = models.User(
-        **user.dict(exclude={"password"}),
+        **user_data,
         hashed_password=hashed,
         is_email_verified=False,
     )
     db.add(db_user)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise
     db.refresh(db_user)
     return db_user
 
@@ -395,7 +406,12 @@ def get_user_by_email(db: Session, email: str):
 
 def get_user_by_username(db: Session, username: str):
     """Return user by username, or None if not found."""
-    return db.query(models.User).filter(models.User.username == username).first()
+    normalized = normalize_username(username)
+    return (
+        db.query(models.User)
+        .filter(func.lower(models.User.username) == normalized)
+        .first()
+    )
 
 
 def authenticate_user(db: Session, email: str, password: str):
@@ -1628,5 +1644,3 @@ def update_provider(
 #     booking.status = "cancelled"
 #     db.commit()
 #     return True
-
-

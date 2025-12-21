@@ -3,6 +3,7 @@ from urllib.parse import urlparse
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import IntegrityError
 
 from app.database import get_db
 from app import models, schemas, crud
@@ -154,7 +155,17 @@ def update_my_provider_profile(
     else:
         professions = crud.get_professions_for_provider(db, provider.id)
 
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        detail = str(getattr(exc, "orig", exc))
+        if "users_username_lower_unique" in detail:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Username already taken",
+            )
+        raise
     db.refresh(user)
     db.refresh(provider)
 
