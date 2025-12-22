@@ -365,13 +365,13 @@ function Login({ onLogin }) {
 
   const login = async () => {
     try {
-      const res = await axios.post(`${API}/auth/login`, new URLSearchParams({
+      const res = await apiClient.post('/auth/login', new URLSearchParams({
         username: email,
         password: password,
       }));
       const token = res.data.access_token;
       localStorage.setItem('token', token);
-      axios.defaults.headers.common.Authorization = `Bearer ${token}`;
+      apiClient.defaults.headers.common.Authorization = `Bearer ${token}`;
       onLogin?.(token);
       navigate('/admin');
     } catch {
@@ -1427,9 +1427,9 @@ export default function App() {
 
   useEffect(() => {
     if (token) {
-      axios.defaults.headers.common.Authorization = `Bearer ${token}`;
+      apiClient.defaults.headers.common.Authorization = `Bearer ${token}`;
     } else {
-      delete axios.defaults.headers.common.Authorization;
+      delete apiClient.defaults.headers.common.Authorization;
     }
   }, [token]);
 

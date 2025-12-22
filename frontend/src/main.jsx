@@ -193,7 +193,7 @@ function App() {
         if (import.meta.env?.DEV) {
           console.log(`[reset-password] token present: ${resetToken.length > 0}`)
         }
-        await axios.post(`${API}/auth/reset-password`, {
+        await apiClient.post('/auth/reset-password', {
           token: resetToken,
           new_password: newPassword
         })
@@ -281,9 +281,7 @@ function App() {
     const [credit, setCredit] = React.useState('2000')
 
     const apply = async () => {
-      await axios.put(`${API}/admin/promotions/${accountNumber}`, { credit_gyd: Number(credit) }, {
-        headers: { Authorization: `Bearer ${token}` }
-      })
+      await apiClient.put(`/admin/promotions/${accountNumber}`, { credit_gyd: Number(credit) })
       alert(`Bill credit applied! ${credit} GYD added to ${accountNumber}`)
     }
 
@@ -332,7 +330,7 @@ function App() {
         try {
           setLoading(true)
           setError("")
-          const res = await axios.get(`${API}/admin/service-charge`)
+          const res = await apiClient.get('/admin/service-charge')
           const rate =
             res.data?.service_charge_percentage ??
             res.data?.service_charge_percent ??
@@ -358,7 +356,7 @@ function App() {
       try {
         setLoading(true)
         setError("")
-        const res = await axios.put(`${API}/admin/service-charge`, {
+        const res = await apiClient.put('/admin/service-charge', {
           service_charge_percentage: normalized,
         })
         const rate =
@@ -465,17 +463,7 @@ function App() {
       setLoading(true)
       setError('')
       try {
-        const res = await apiClient.get('/admin/billing', {
-          headers: { Authorization: `Bearer ${token}` }
-        })
-        const requestUrl = res.config?.baseURL
-          ? new URL(res.config.url || '', res.config.baseURL).toString()
-          : res.config?.url
-        console.log('[Admin Billing] request', {
-          url: requestUrl,
-          params: res.config?.params
-        })
-
+        const res = await apiClient.get('/admin/billing')
         const responseData = res.data
         const hasValidRows =
           Array.isArray(responseData) ||
@@ -489,20 +477,7 @@ function App() {
               ? responseData.data
               : []
 
-        console.log('[Admin Billing] response meta', {
-          status: res.status,
-          shape: Array.isArray(responseData) ? 'array' : typeof responseData,
-          keys: responseData && typeof responseData === 'object' ? Object.keys(responseData) : null,
-          count: responseRows.length
-        })
-        console.log('[Admin Billing] response data', responseData)
-
         if (!hasValidRows) {
-          console.error({
-            url: requestUrl,
-            status: res.status,
-            responseText: JSON.stringify(responseData)
-          })
           setError('Unable to load provider billing details. Please refresh and try again.')
           setBillingRows([])
           return
@@ -516,7 +491,7 @@ function App() {
         setLoading(false)
         setHasLoaded(true)
       }
-    }, [token])
+    }, [])
 
     React.useEffect(() => {
       fetchBillingRows()
@@ -533,8 +508,7 @@ function App() {
       try {
         await apiClient.put(
           `/admin/billing/${providerId}/status`,
-          { is_paid: isPaid },
-          { headers: { Authorization: `Bearer ${token}` } }
+          { is_paid: isPaid }
         )
 
         // OPTIONAL: if you want truth from server, refetch after success
@@ -558,8 +532,7 @@ function App() {
       try {
         await apiClient.put(
           `/admin/billing/${providerId}/lock`,
-          { is_locked: shouldLock },
-          { headers: { Authorization: `Bearer ${token}` } }
+          { is_locked: shouldLock }
         )
 
         await fetchBillingRows()
@@ -584,8 +557,7 @@ function App() {
           billingRows.map((row) =>
             apiClient.put(
               `/admin/billing/${row.provider_id}/status`,
-              { is_paid: isPaid },
-              { headers: { Authorization: `Bearer ${token}` } }
+              { is_paid: isPaid }
             )
           )
         )
