@@ -1,157 +1,68 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
-diff --git a/frontend/src/main.jsx b/frontend/src/main.jsx
-index 16acb0799e07d2f158bec410b8fdfed25fefd526..82e5a922e70a39e74e38bb7b9605ecc22b4a1049 100644
---- a/frontend/src/main.jsx
-+++ b/frontend/src/main.jsx
-@@ -134,79 +134,90 @@ function App() {
-             <p className="credentials-hint">
-               Demo login: <strong>customer@guyana.com</strong> / <strong>pass</strong>
-             </p>
-           </form>
-         </div>
-       </div>
-     )
-   }
+diff --git a/backend/app/main.py b/backend/app/main.py
+index cee42096ffe1c61a4e46c5e1d6d1e88bec5bbf76..fff861796b7c767d3d520e58cb7dabe72caf726f 100644
+--- a/backend/app/main.py
++++ b/backend/app/main.py
+@@ -4,56 +4,53 @@ from fastapi import FastAPI, Depends, HTTPException, Response
+ from fastapi.middleware.cors import CORSMiddleware
+ from sqlalchemy.orm import Session
+ from apscheduler.schedulers.background import BackgroundScheduler
  
-   const PASSWORD_REQUIREMENTS =
-     'Password must be 6–8 characters and include uppercase, lowercase, number, and special character.'
+ from app.config import get_settings
+ from app.database import get_db, SessionLocal
+ from app import crud, schemas, models
+ from app.routes import auth as auth_routes
+ from app.routes import users as users_routes
+ from app.routes import providers as providers_routes
+ from app.routes import bookings as bookings_routes
+ from app.routes import profile as profile_routes
+ from app.routes import admin as admin_routes
+ from app.security import get_current_user_from_header
+ from app.workers.cron import registerCronJobs
+ from sqlalchemy.orm import Session
+ from app.database import SessionLocal
+ from app import crud, schemas
+ from app.config import get_settings
  
-   const meetsPasswordPolicy = (value) => {
-     if (value.length < 6 || value.length > 8) return false
-     if (!/[A-Z]/.test(value)) return false
-     if (!/[a-z]/.test(value)) return false
-     if (!/[0-9]/.test(value)) return false
-     if (!/[^A-Za-z0-9]/.test(value)) return false
-     return true
-   }
+ settings = get_settings()
  
-   const ResetPassword = () => {
-     const location = useLocation()
-     const navigate = useNavigate()
-     const query = new URLSearchParams(location.search)
--    const resetToken = (query.get('token') || '').trim()
-+    const rawToken = query.get('token')
-+    let resetToken = ''
-+    if (rawToken) {
-+      try {
-+        resetToken = decodeURIComponent(rawToken).trim()
-+      } catch {
-+        resetToken = rawToken.trim()
-+      }
-+    }
-     const tokenMissing = !resetToken
-     const [newPassword, setNewPassword] = React.useState('')
-     const [confirmPassword, setConfirmPassword] = React.useState('')
-     const [loading, setLoading] = React.useState(false)
-     const [error, setError] = React.useState('')
-     const [success, setSuccess] = React.useState(false)
+ app = FastAPI(title="BookitGY")
+ scheduler = BackgroundScheduler()
  
-     const submitReset = async (event) => {
-       event.preventDefault()
-       setError('')
+-origins = [
+-    "https://bookitgy.vercel.app",
+-    "https://bookitgy.com",          # if you use it
+-    "http://localhost:5173",         # local admin dev
+-    "http://localhost:3000",         # if you use it
+-]
++origins = settings.CORS_ALLOW_ORIGINS
++if settings.ENV == "dev":
++    print(f"[CORS] Allowed origins: {', '.join(origins)}")
  
-       if (!resetToken) {
--        setError('Missing reset token. Please use the link from your email.')
-+        setError('Missing reset token.')
-         return
-       }
+ app.add_middleware(
+     CORSMiddleware,
+     allow_origins=origins,
+     allow_credentials=True,
+     allow_methods=["*"],
+     allow_headers=["*"],
+ )
  
-       if (newPassword !== confirmPassword) {
-         setError('Passwords do not match.')
-         return
-       }
+ @app.get("/")
+ def root():
+     return {"ok": True, "service": "bookitgy-api"}
  
-       if (!meetsPasswordPolicy(newPassword)) {
-         setError(PASSWORD_REQUIREMENTS)
-         return
-       }
+ @app.head("/")
+ def root_head():
+     return Response(status_code=200)
  
-       setLoading(true)
-       try {
-+        if (import.meta.env?.DEV) {
-+          console.log(`[reset-password] token present: ${resetToken.length > 0}`)
-+        }
-         await axios.post(`${API}/auth/reset-password`, {
-           token: resetToken,
-           new_password: newPassword
-         })
-         setSuccess(true)
-       } catch (err) {
-         const detail = err?.response?.data?.detail
-         setError(detail || 'Unable to reset your password. Please try again.')
-       } finally {
-         setLoading(false)
-       }
-     }
+ @app.get("/healthz")
+ def healthz():
+     return {"ok": True}
  
-     return (
-       <div className="login-shell">
-         <div className="landing-glow landing-glow-one" />
-         <div className="landing-glow landing-glow-two" />
-         <div className="landing-card reset-card">
-           <div className="logo-circle">
-             <img src="/bookitgy-logo.png" alt="BookitGY" />
-           </div>
-           <p className="eyebrow">Reset password</p>
-           <h1>Choose a new password</h1>
-           <p className="subtitle">
-             {success
-@@ -219,51 +230,54 @@ function App() {
-               <label className="form-field">
-                 <span>New password</span>
-                 <input
-                   type="password"
-                   autoComplete="new-password"
-                   value={newPassword}
-                   onChange={(e) => setNewPassword(e.target.value)}
-                   placeholder="••••••••"
-                 />
-               </label>
  
-               <label className="form-field">
-                 <span>Confirm password</span>
-                 <input
-                   type="password"
-                   autoComplete="new-password"
-                   value={confirmPassword}
-                   onChange={(e) => setConfirmPassword(e.target.value)}
-                   placeholder="••••••••"
-                 />
-               </label>
  
-               <p className="muted reset-hint">{PASSWORD_REQUIREMENTS}</p>
- 
-               {tokenMissing && (
--                <p className="form-error">Missing reset token. Please use the link from your email.</p>
-+                <p className="form-error">
-+                  Missing reset token.{' '}
-+                  <Link to="/login">Request a new reset link.</Link>
-+                </p>
-               )}
- 
-               {error && <p className="form-error">{error}</p>}
- 
-               <button className="primary-btn" disabled={loading || tokenMissing}>
-                 {loading ? 'Resetting…' : 'Reset password'}
-               </button>
-             </form>
-           ) : (
-             <div className="reset-success">
-               <button
-                 className="primary-btn"
-                 onClick={() => navigate('/login')}
-               >
-                 Go to login
-               </button>
-             </div>
-           )}
-         </div>
-       </div>
-     )
-   }
- 
-   const AdminPromotions = () => {
-     const [accountNumber, setAccountNumber] = React.useState('ACC-')
+ def _seed_demo_users() -> None:
+     """
  
 EOF
 )

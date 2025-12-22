@@ -26,12 +26,9 @@ settings = get_settings()
 app = FastAPI(title="BookitGY")
 scheduler = BackgroundScheduler()
 
-origins = [
-    "https://bookitgy.vercel.app",
-    "https://bookitgy.com",          # if you use it
-    "http://localhost:5173",         # local admin dev
-    "http://localhost:3000",         # if you use it
-]
+origins = settings.CORS_ALLOW_ORIGINS
+if settings.ENV == "dev":
+    print(f"[CORS] Allowed origins: {', '.join(origins)}")
 
 app.add_middleware(
     CORSMiddleware,
