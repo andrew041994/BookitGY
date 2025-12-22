@@ -404,6 +404,11 @@ def get_user_by_email(db: Session, email: str):
     return db.query(models.User).filter(models.User.email == email).first()
 
 
+def get_user_by_id(db: Session, user_id: int):
+    """Return user by id, or None if not found."""
+    return db.query(models.User).filter(models.User.id == user_id).first()
+
+
 def get_user_by_username(db: Session, username: str):
     """Return user by username, or None if not found."""
     normalized = normalize_username(username)
@@ -494,6 +499,65 @@ def set_user_password_reset(
     db.commit()
     db.refresh(user)
     return user
+
+
+def invalidate_password_reset_tokens(
+    db: Session,
+    user_id: int,
+) -> int:
+    """Mark all unused password reset tokens as used for a given user."""
+    now = datetime.utcnow()
+    tokens = (
+        db.query(models.PasswordResetToken)
+        .filter(
+            models.PasswordResetToken.user_id == user_id,
+            models.PasswordResetToken.used_at.is_(None),
+        )
+        .all()
+    )
+    for token in tokens:
+        token.used_at = now
+    if tokens:
+        db.commit()
+    return len(tokens)
+
+
+def create_password_reset_token(
+    db: Session,
+    user_id: int,
+    token_hash: str,
+    expires_at: datetime,
+) -> models.PasswordResetToken:
+    token = models.PasswordResetToken(
+        user_id=user_id,
+        token_hash=token_hash,
+        expires_at=expires_at,
+    )
+    db.add(token)
+    db.commit()
+    db.refresh(token)
+    return token
+
+
+def get_password_reset_token_by_hash(
+    db: Session,
+    token_hash: str,
+) -> Optional[models.PasswordResetToken]:
+    return (
+        db.query(models.PasswordResetToken)
+        .filter(models.PasswordResetToken.token_hash == token_hash)
+        .first()
+    )
+
+
+def mark_password_reset_token_used(
+    db: Session,
+    token: models.PasswordResetToken,
+) -> models.PasswordResetToken:
+    token.used_at = datetime.utcnow()
+    db.commit()
+    db.refresh(token)
+    return token
 
 # ---------------------------------------------------------------------------
 # Promotion CRUD

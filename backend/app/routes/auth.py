@@ -12,7 +12,13 @@ from app.database import get_db
 from app import crud, schemas
 from app.utils.email import send_password_reset_email, send_verification_email
 from app.utils.passwords import validate_password, PASSWORD_REQUIREMENTS_MESSAGE
-from app.utils.tokens import create_password_reset_token, verify_password_reset_token
+from app.utils.tokens import (
+    build_reset_token_expiration,
+    constant_time_compare,
+    create_password_reset_token,
+    hash_password_reset_token,
+    validate_reset_token_expiration,
+)
 
 router = APIRouter(tags=["auth"])
 settings = get_settings()
@@ -240,15 +246,19 @@ def forgot_password(
     reset_link = None
 
     if user:
-        token = create_password_reset_token(user.email)
-        reset_link = f"{settings.PASSWORD_RESET_URL}?token={token}"
+        raw_token = create_password_reset_token()
+        token_hash = hash_password_reset_token(raw_token)
+        expires_at = build_reset_token_expiration()
+        crud.invalidate_password_reset_tokens(db, user.id)
+        crud.create_password_reset_token(db, user.id, token_hash, expires_at)
+        reset_link = f"{settings.PASSWORD_RESET_URL}?token={raw_token}"
         send_password_reset_email(user.email, reset_link)
 
     response = {
         "message": "If an account exists for that email, a reset link has been sent.",
     }
 
-    if settings.ENV == "dev":
+    if settings.ENV == "dev" and reset_link:
         response["reset_link"] = reset_link
 
     return response
@@ -256,20 +266,34 @@ def forgot_password(
 
 @router.post("/auth/reset-password")
 def reset_password(payload: schemas.ResetPasswordPayload, db: Session = Depends(get_db)):
-    token_data = verify_password_reset_token(payload.token)
-    user = crud.get_user_by_email(db, token_data["email"])
+    token_hash = hash_password_reset_token(payload.token)
+    token_record = crud.get_password_reset_token_by_hash(db, token_hash)
 
+    if not token_record:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or expired reset token",
+        )
+
+    if token_record.used_at is not None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or expired reset token",
+        )
+
+    if not constant_time_compare(token_record.token_hash, token_hash):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or expired reset token",
+        )
+
+    validate_reset_token_expiration(token_record.expires_at)
+
+    user = crud.get_user_by_id(db, token_record.user_id)
     if not user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="User not found",
-        )
-
-    reset_at = getattr(user, "password_reset_at", None)
-    if reset_at and token_data["issued_at"] <= reset_at:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid or expired reset token",
         )
 
     try:
@@ -281,6 +305,7 @@ def reset_password(payload: schemas.ResetPasswordPayload, db: Session = Depends(
         )
 
     crud.set_user_password_reset(db, user, payload.new_password)
+    crud.mark_password_reset_token_used(db, token_record)
 
     return {"message": "Password updated successfully"}
 

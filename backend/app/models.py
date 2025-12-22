@@ -9,7 +9,8 @@ from sqlalchemy import (
     Float,
     Date,
     Numeric,
-    Enum,)
+    Enum,
+)
 
 from .database import Base
 from datetime import datetime
@@ -35,6 +36,17 @@ class User(Base):
     password_reset_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     avatar_url = Column(String, nullable=True)   # 👈 NEW
+
+
+class PasswordResetToken(Base):
+    __tablename__ = "password_reset_tokens"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), index=True, nullable=False)
+    token_hash = Column(String, index=True, nullable=False)
+    expires_at = Column(DateTime, nullable=False)
+    used_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
 
 
 class Provider(Base):

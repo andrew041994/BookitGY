@@ -57,7 +57,11 @@ def send_verification_email(to_email: str, verification_link: str) -> None:
 
 
 def send_password_reset_email(to_email: str, reset_link: str) -> None:
-    _ensure_email_configured()
+    if not settings.SENDGRID_API_KEY or not settings.SENDGRID_FROM_EMAIL:
+        if settings.ENV != "prod":
+            print(f"[dev] Password reset link for {to_email}: {reset_link}")
+            return
+        _ensure_email_configured()
 
     subject = "Reset your BookitGY password"
     plain_text = (

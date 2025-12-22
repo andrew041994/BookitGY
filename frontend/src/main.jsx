@@ -140,6 +140,131 @@ function App() {
     )
   }
 
+  const PASSWORD_REQUIREMENTS =
+    'Password must be 6–8 characters and include uppercase, lowercase, number, and special character.'
+
+  const meetsPasswordPolicy = (value) => {
+    if (value.length < 6 || value.length > 8) return false
+    if (!/[A-Z]/.test(value)) return false
+    if (!/[a-z]/.test(value)) return false
+    if (!/[0-9]/.test(value)) return false
+    if (!/[^A-Za-z0-9]/.test(value)) return false
+    return true
+  }
+
+  const ResetPassword = () => {
+    const location = useLocation()
+    const navigate = useNavigate()
+    const query = new URLSearchParams(location.search)
+    const resetToken = (query.get('token') || '').trim()
+    const tokenMissing = !resetToken
+    const [newPassword, setNewPassword] = React.useState('')
+    const [confirmPassword, setConfirmPassword] = React.useState('')
+    const [loading, setLoading] = React.useState(false)
+    const [error, setError] = React.useState('')
+    const [success, setSuccess] = React.useState(false)
+
+    const submitReset = async (event) => {
+      event.preventDefault()
+      setError('')
+
+      if (!resetToken) {
+        setError('Missing reset token. Please use the link from your email.')
+        return
+      }
+
+      if (newPassword !== confirmPassword) {
+        setError('Passwords do not match.')
+        return
+      }
+
+      if (!meetsPasswordPolicy(newPassword)) {
+        setError(PASSWORD_REQUIREMENTS)
+        return
+      }
+
+      setLoading(true)
+      try {
+        await axios.post(`${API}/auth/reset-password`, {
+          token: resetToken,
+          new_password: newPassword
+        })
+        setSuccess(true)
+      } catch (err) {
+        const detail = err?.response?.data?.detail
+        setError(detail || 'Unable to reset your password. Please try again.')
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    return (
+      <div className="login-shell">
+        <div className="landing-glow landing-glow-one" />
+        <div className="landing-glow landing-glow-two" />
+        <div className="landing-card reset-card">
+          <div className="logo-circle">
+            <img src="/bookitgy-logo.png" alt="BookitGY" />
+          </div>
+          <p className="eyebrow">Reset password</p>
+          <h1>Choose a new password</h1>
+          <p className="subtitle">
+            {success
+              ? 'Your password has been updated. You can sign in with your new credentials.'
+              : 'Enter a new password that meets the security requirements below.'}
+          </p>
+
+          {!success ? (
+            <form className="login-form reset-form" onSubmit={submitReset}>
+              <label className="form-field">
+                <span>New password</span>
+                <input
+                  type="password"
+                  autoComplete="new-password"
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  placeholder="••••••••"
+                />
+              </label>
+
+              <label className="form-field">
+                <span>Confirm password</span>
+                <input
+                  type="password"
+                  autoComplete="new-password"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  placeholder="••••••••"
+                />
+              </label>
+
+              <p className="muted reset-hint">{PASSWORD_REQUIREMENTS}</p>
+
+              {tokenMissing && (
+                <p className="form-error">Missing reset token. Please use the link from your email.</p>
+              )}
+
+              {error && <p className="form-error">{error}</p>}
+
+              <button className="primary-btn" disabled={loading || tokenMissing}>
+                {loading ? 'Resetting…' : 'Reset password'}
+              </button>
+            </form>
+          ) : (
+            <div className="reset-success">
+              <button
+                className="primary-btn"
+                onClick={() => navigate('/login')}
+              >
+                Go to login
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+    )
+  }
+
   const AdminPromotions = () => {
     const [accountNumber, setAccountNumber] = React.useState('ACC-')
     const [credit, setCredit] = React.useState('2000')
@@ -639,6 +764,7 @@ function App() {
       <Routes>
         <Route path="/" element={<Home />} />
         <Route path="/login" element={<Login />} />
+        <Route path="/reset-password" element={<ResetPassword />} />
         <Route
           path="/admin"
           element={(
