@@ -419,21 +419,23 @@ return (
             </View>
         <Text style={styles.title}>Login</Text>
 
-          <TextInput
-              style={styles.input}
-              placeholder="Email"
-              value={email}
-              autoCapitalize="none"
-              onChangeText={setEmail}
-            />
+        <TextInput
+          style={styles.input}
+          placeholder="Email"
+          placeholderTextColor={styles.inputPlaceholder.color}
+          value={email}
+          autoCapitalize="none"
+          onChangeText={setEmail}
+        />
 
-            <TextInput
-              style={styles.input}
-              placeholder="Password"
-              value={password}
-              onChangeText={setPassword}
-              secureTextEntry
-            />
+        <TextInput
+          style={styles.input}
+          placeholder="Password"
+          placeholderTextColor={styles.inputPlaceholder.color}
+          value={password}
+          onChangeText={setPassword}
+          secureTextEntry
+        />
 
           {goToSignup && (
             <View style={{ width: "100%", marginBottom: 10 }}>
@@ -446,12 +448,10 @@ return (
           )}
 
           {goToForgot && (
-              <TouchableOpacity onPress={goToForgot} style={{ marginBottom: 6 }}>
-                <Text style={{ color: "#0f172a", textDecorationLine: "underline" }}>
-                  Forgot password?
-                </Text>
-              </TouchableOpacity>
-            )}
+            <TouchableOpacity onPress={goToForgot} style={styles.forgotLink}>
+              <Text style={styles.forgotLinkText}>Forgot password?</Text>
+            </TouchableOpacity>
+          )}
 
             {goToSignup && (
               <View style={{ width: "100%", marginBottom: 10 }}>
@@ -536,6 +536,7 @@ function ForgotPasswordScreen({ goToLogin, goBack, showFlash }) {
             <TextInput
               style={styles.input}
               placeholder="Email"
+              placeholderTextColor={styles.inputPlaceholder.color}
               value={email}
               onChangeText={setEmail}
               autoCapitalize="none"
@@ -714,6 +715,7 @@ function SignupScreen({ goToLogin, goBack, showFlash }) {
       <TextInput
         style={styles.input}
         placeholder="Username"
+        placeholderTextColor={styles.inputPlaceholder.color}
         value={username}
         onChangeText={setUsername}
       />
@@ -721,6 +723,7 @@ function SignupScreen({ goToLogin, goBack, showFlash }) {
       <TextInput
         style={styles.input}
         placeholder="Email"
+        placeholderTextColor={styles.inputPlaceholder.color}
         value={email}
         onChangeText={setEmail}
         keyboardType="email-address"
@@ -730,6 +733,7 @@ function SignupScreen({ goToLogin, goBack, showFlash }) {
       <TextInput
         style={styles.input}
         placeholder="Phone (592XXXXXXX)"
+        placeholderTextColor={styles.inputPlaceholder.color}
         value={phone}
         onChangeText={setPhone}
         keyboardType="phone-pad"
@@ -744,6 +748,7 @@ function SignupScreen({ goToLogin, goBack, showFlash }) {
       <TextInput
         style={styles.input}
         placeholder="Password"
+        placeholderTextColor={styles.inputPlaceholder.color}
         value={password}
         onChangeText={setPassword}
         secureTextEntry
@@ -752,6 +757,7 @@ function SignupScreen({ goToLogin, goBack, showFlash }) {
       <TextInput
         style={styles.input}
         placeholder="Confirm Password"
+        placeholderTextColor={styles.inputPlaceholder.color}
         value={confirmPassword}
         onChangeText={setConfirmPassword}
         secureTextEntry
@@ -5776,10 +5782,31 @@ const styles = StyleSheet.create({
     backgroundColor: "white",
     borderRadius: 8,
     paddingHorizontal: 12,
-    paddingVertical: 10,
+    paddingVertical: 12,
     marginBottom: 12,
     borderWidth: 1,
     borderColor: "#bbf7d0",
+    color: "#0f172a",
+    minHeight: 48,
+    textAlignVertical: "center",
+    ...Platform.select({
+      android: {
+        includeFontPadding: false,
+      },
+    }),
+  },
+  inputPlaceholder: {
+    color: "#64748b",
+  },
+  forgotLink: {
+    marginBottom: 6,
+    alignSelf: "center",
+    paddingVertical: 4,
+  },
+  forgotLinkText: {
+    color: "#0f172a",
+    textDecorationLine: "underline",
+    textAlign: "center",
   },
   subtitle: { fontSize: 22, color: "#166534", marginTop: 20, textAlign: "center" },
   text: { fontSize: 18, color: "#166534", marginTop: 15, textAlign: "center" },
