@@ -1,25 +1,9 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
 diff --git a/frontend/src/main.jsx b/frontend/src/main.jsx
-index f9cdfb6efdbd13b3d55e78aa3ca8fea08adf87ac..16acb0799e07d2f158bec410b8fdfed25fefd526 100644
+index 16acb0799e07d2f158bec410b8fdfed25fefd526..82e5a922e70a39e74e38bb7b9605ecc22b4a1049 100644
 --- a/frontend/src/main.jsx
 +++ b/frontend/src/main.jsx
-@@ -118,50 +118,175 @@ function App() {
-               <input
-                 type="password"
-                 name="password"
-                 value={password}
-                 onChange={(e) => setPassword(e.target.value)}
-                 placeholder="••••••••"
-                 autoComplete="current-password"
-               />
-             </label>
- 
-             {error && <p className="form-error">{error}</p>}
- 
-             <button className="primary-btn" disabled={loading}>
-               {loading ? 'Signing in…' : 'Continue'}
-             </button>
- 
+@@ -134,79 +134,90 @@ function App() {
              <p className="credentials-hint">
                Demo login: <strong>customer@guyana.com</strong> / <strong>pass</strong>
              </p>
@@ -29,202 +13,145 @@ index f9cdfb6efdbd13b3d55e78aa3ca8fea08adf87ac..16acb0799e07d2f158bec410b8fdfed2
      )
    }
  
-+  const PASSWORD_REQUIREMENTS =
-+    'Password must be 6–8 characters and include uppercase, lowercase, number, and special character.'
-+
-+  const meetsPasswordPolicy = (value) => {
-+    if (value.length < 6 || value.length > 8) return false
-+    if (!/[A-Z]/.test(value)) return false
-+    if (!/[a-z]/.test(value)) return false
-+    if (!/[0-9]/.test(value)) return false
-+    if (!/[^A-Za-z0-9]/.test(value)) return false
-+    return true
-+  }
-+
-+  const ResetPassword = () => {
-+    const location = useLocation()
-+    const navigate = useNavigate()
-+    const query = new URLSearchParams(location.search)
-+    const resetToken = (query.get('token') || '').trim()
-+    const tokenMissing = !resetToken
-+    const [newPassword, setNewPassword] = React.useState('')
-+    const [confirmPassword, setConfirmPassword] = React.useState('')
-+    const [loading, setLoading] = React.useState(false)
-+    const [error, setError] = React.useState('')
-+    const [success, setSuccess] = React.useState(false)
-+
-+    const submitReset = async (event) => {
-+      event.preventDefault()
-+      setError('')
-+
-+      if (!resetToken) {
-+        setError('Missing reset token. Please use the link from your email.')
-+        return
-+      }
-+
-+      if (newPassword !== confirmPassword) {
-+        setError('Passwords do not match.')
-+        return
-+      }
-+
-+      if (!meetsPasswordPolicy(newPassword)) {
-+        setError(PASSWORD_REQUIREMENTS)
-+        return
-+      }
-+
-+      setLoading(true)
+   const PASSWORD_REQUIREMENTS =
+     'Password must be 6–8 characters and include uppercase, lowercase, number, and special character.'
+ 
+   const meetsPasswordPolicy = (value) => {
+     if (value.length < 6 || value.length > 8) return false
+     if (!/[A-Z]/.test(value)) return false
+     if (!/[a-z]/.test(value)) return false
+     if (!/[0-9]/.test(value)) return false
+     if (!/[^A-Za-z0-9]/.test(value)) return false
+     return true
+   }
+ 
+   const ResetPassword = () => {
+     const location = useLocation()
+     const navigate = useNavigate()
+     const query = new URLSearchParams(location.search)
+-    const resetToken = (query.get('token') || '').trim()
++    const rawToken = query.get('token')
++    let resetToken = ''
++    if (rawToken) {
 +      try {
-+        await axios.post(`${API}/auth/reset-password`, {
-+          token: resetToken,
-+          new_password: newPassword
-+        })
-+        setSuccess(true)
-+      } catch (err) {
-+        const detail = err?.response?.data?.detail
-+        setError(detail || 'Unable to reset your password. Please try again.')
-+      } finally {
-+        setLoading(false)
++        resetToken = decodeURIComponent(rawToken).trim()
++      } catch {
++        resetToken = rawToken.trim()
 +      }
 +    }
-+
-+    return (
-+      <div className="login-shell">
-+        <div className="landing-glow landing-glow-one" />
-+        <div className="landing-glow landing-glow-two" />
-+        <div className="landing-card reset-card">
-+          <div className="logo-circle">
-+            <img src="/bookitgy-logo.png" alt="BookitGY" />
-+          </div>
-+          <p className="eyebrow">Reset password</p>
-+          <h1>Choose a new password</h1>
-+          <p className="subtitle">
-+            {success
-+              ? 'Your password has been updated. You can sign in with your new credentials.'
-+              : 'Enter a new password that meets the security requirements below.'}
-+          </p>
-+
-+          {!success ? (
-+            <form className="login-form reset-form" onSubmit={submitReset}>
-+              <label className="form-field">
-+                <span>New password</span>
-+                <input
-+                  type="password"
-+                  autoComplete="new-password"
-+                  value={newPassword}
-+                  onChange={(e) => setNewPassword(e.target.value)}
-+                  placeholder="••••••••"
-+                />
-+              </label>
-+
-+              <label className="form-field">
-+                <span>Confirm password</span>
-+                <input
-+                  type="password"
-+                  autoComplete="new-password"
-+                  value={confirmPassword}
-+                  onChange={(e) => setConfirmPassword(e.target.value)}
-+                  placeholder="••••••••"
-+                />
-+              </label>
-+
-+              <p className="muted reset-hint">{PASSWORD_REQUIREMENTS}</p>
-+
-+              {tokenMissing && (
-+                <p className="form-error">Missing reset token. Please use the link from your email.</p>
-+              )}
-+
-+              {error && <p className="form-error">{error}</p>}
-+
-+              <button className="primary-btn" disabled={loading || tokenMissing}>
-+                {loading ? 'Resetting…' : 'Reset password'}
-+              </button>
-+            </form>
-+          ) : (
-+            <div className="reset-success">
-+              <button
-+                className="primary-btn"
-+                onClick={() => navigate('/login')}
-+              >
-+                Go to login
-+              </button>
-+            </div>
-+          )}
-+        </div>
-+      </div>
-+    )
-+  }
-+
-   const AdminPromotions = () => {
-     const [accountNumber, setAccountNumber] = React.useState('ACC-')
-     const [credit, setCredit] = React.useState('2000')
+     const tokenMissing = !resetToken
+     const [newPassword, setNewPassword] = React.useState('')
+     const [confirmPassword, setConfirmPassword] = React.useState('')
+     const [loading, setLoading] = React.useState(false)
+     const [error, setError] = React.useState('')
+     const [success, setSuccess] = React.useState(false)
  
-     const apply = async () => {
-       await axios.put(`${API}/admin/promotions/${accountNumber}`, { credit_gyd: Number(credit) }, {
-         headers: { Authorization: `Bearer ${token}` }
-       })
-       alert(`Bill credit applied! ${credit} GYD added to ${accountNumber}`)
+     const submitReset = async (event) => {
+       event.preventDefault()
+       setError('')
+ 
+       if (!resetToken) {
+-        setError('Missing reset token. Please use the link from your email.')
++        setError('Missing reset token.')
+         return
+       }
+ 
+       if (newPassword !== confirmPassword) {
+         setError('Passwords do not match.')
+         return
+       }
+ 
+       if (!meetsPasswordPolicy(newPassword)) {
+         setError(PASSWORD_REQUIREMENTS)
+         return
+       }
+ 
+       setLoading(true)
+       try {
++        if (import.meta.env?.DEV) {
++          console.log(`[reset-password] token present: ${resetToken.length > 0}`)
++        }
+         await axios.post(`${API}/auth/reset-password`, {
+           token: resetToken,
+           new_password: newPassword
+         })
+         setSuccess(true)
+       } catch (err) {
+         const detail = err?.response?.data?.detail
+         setError(detail || 'Unable to reset your password. Please try again.')
+       } finally {
+         setLoading(false)
+       }
      }
  
      return (
-       <div className="admin-page">
-         <div className="admin-header">
-           <div>
-             <p className="eyebrow">Marketing</p>
-             <h1>Admin – Editable Promotions</h1>
-             <p className="header-subtitle">Apply bill credits to provider accounts whenever you need.</p>
+       <div className="login-shell">
+         <div className="landing-glow landing-glow-one" />
+         <div className="landing-glow landing-glow-two" />
+         <div className="landing-card reset-card">
+           <div className="logo-circle">
+             <img src="/bookitgy-logo.png" alt="BookitGY" />
            </div>
-         </div>
-         <div className="admin-card">
-           <div className="form-grid">
-             <label className="form-field">
-               <span>Provider account number</span>
-               <input value={accountNumber} onChange={e => setAccountNumber(e.target.value)} placeholder="Account number" />
-@@ -617,44 +742,45 @@ function App() {
-               <span className="brand-subtitle">BookitGY</span>
-             </div>
-           </Link>
-           <div className="nav-actions">
-             {token ? (
-               <button
-                 className="nav-button danger"
-                 onClick={() => {
-                   localStorage.removeItem('token')
-                   setToken('')
-                 }}
-               >
-                 Logout
-               </button>
-             ) : (
-               <Link className="nav-button" to="/login">
-                 Login
-               </Link>
-             )}
-           </div>
-         </div>
-       </nav>
-       <Routes>
-         <Route path="/" element={<Home />} />
-         <Route path="/login" element={<Login />} />
-+        <Route path="/reset-password" element={<ResetPassword />} />
-         <Route
-           path="/admin"
-           element={(
-             <ProtectedRoute>
-               <AdminLayout />
-             </ProtectedRoute>
-           )}
-         >
-           <Route index element={<Navigate to="/admin/promotions" replace />} />
-           <Route path="promotions" element={<AdminPromotions />} />
-           <Route path="service-charge" element={<ServiceChargeSettings />} />
-           <Route path="billing" element={<AdminBilling />} />
-         </Route>
-       </Routes>
-     </BrowserRouter>
-   )
- }
+           <p className="eyebrow">Reset password</p>
+           <h1>Choose a new password</h1>
+           <p className="subtitle">
+             {success
+@@ -219,51 +230,54 @@ function App() {
+               <label className="form-field">
+                 <span>New password</span>
+                 <input
+                   type="password"
+                   autoComplete="new-password"
+                   value={newPassword}
+                   onChange={(e) => setNewPassword(e.target.value)}
+                   placeholder="••••••••"
+                 />
+               </label>
  
- ReactDOM.createRoot(document.getElementById('root')).render(<App />)
+               <label className="form-field">
+                 <span>Confirm password</span>
+                 <input
+                   type="password"
+                   autoComplete="new-password"
+                   value={confirmPassword}
+                   onChange={(e) => setConfirmPassword(e.target.value)}
+                   placeholder="••••••••"
+                 />
+               </label>
+ 
+               <p className="muted reset-hint">{PASSWORD_REQUIREMENTS}</p>
+ 
+               {tokenMissing && (
+-                <p className="form-error">Missing reset token. Please use the link from your email.</p>
++                <p className="form-error">
++                  Missing reset token.{' '}
++                  <Link to="/login">Request a new reset link.</Link>
++                </p>
+               )}
+ 
+               {error && <p className="form-error">{error}</p>}
+ 
+               <button className="primary-btn" disabled={loading || tokenMissing}>
+                 {loading ? 'Resetting…' : 'Reset password'}
+               </button>
+             </form>
+           ) : (
+             <div className="reset-success">
+               <button
+                 className="primary-btn"
+                 onClick={() => navigate('/login')}
+               >
+                 Go to login
+               </button>
+             </div>
+           )}
+         </div>
+       </div>
+     )
+   }
+ 
+   const AdminPromotions = () => {
+     const [accountNumber, setAccountNumber] = React.useState('ACC-')
  
 EOF
 )

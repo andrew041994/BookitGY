@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta
+import logging
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
@@ -9,19 +10,23 @@ import secrets
 
 from app.config import get_settings
 from app.database import get_db
-from app import crud, schemas
+from app import crud, schemas, models
+from app.security import get_current_user_from_header
 from app.utils.email import send_password_reset_email, send_verification_email
 from app.utils.passwords import validate_password, PASSWORD_REQUIREMENTS_MESSAGE
 from app.utils.tokens import (
     build_reset_token_expiration,
     constant_time_compare,
     create_password_reset_token,
-    hash_password_reset_token,
+    hash_token,
     validate_reset_token_expiration,
+    is_reset_token_expired,
+    normalize_utc,
 )
 
 router = APIRouter(tags=["auth"])
 settings = get_settings()
+logger = logging.getLogger(__name__)
 
 
 @router.post("/auth/signup")
@@ -247,7 +252,7 @@ def forgot_password(
 
     if user:
         raw_token = create_password_reset_token()
-        token_hash = hash_password_reset_token(raw_token)
+        token_hash = hash_token(raw_token)
         expires_at = build_reset_token_expiration()
         crud.invalidate_password_reset_tokens(db, user.id)
         crud.create_password_reset_token(db, user.id, token_hash, expires_at)
@@ -266,22 +271,40 @@ def forgot_password(
 
 @router.post("/auth/reset-password")
 def reset_password(payload: schemas.ResetPasswordPayload, db: Session = Depends(get_db)):
-    token_hash = hash_password_reset_token(payload.token)
+    raw_token = (payload.token or "").strip()
+    if not raw_token:
+        logger.info("Password reset token validation failed: missing token")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or expired reset token",
+        )
+
+    token_hash = hash_token(raw_token)
     token_record = crud.get_password_reset_token_by_hash(db, token_hash)
 
     if not token_record:
+        logger.info("Password reset token validation failed: not found")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid or expired reset token",
         )
 
     if token_record.used_at is not None:
+        logger.info("Password reset token validation failed: already used")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid or expired reset token",
         )
 
     if not constant_time_compare(token_record.token_hash, token_hash):
+        logger.info("Password reset token validation failed: hash mismatch")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or expired reset token",
+        )
+
+    if is_reset_token_expired(token_record.expires_at):
+        logger.info("Password reset token validation failed: expired")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid or expired reset token",
@@ -308,6 +331,41 @@ def reset_password(payload: schemas.ResetPasswordPayload, db: Session = Depends(
     crud.mark_password_reset_token_used(db, token_record)
 
     return {"message": "Password updated successfully"}
+
+
+@router.get("/auth/reset-password/debug")
+def reset_password_debug(
+    token: str,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user_from_header),
+):
+    if settings.ENV == "prod":
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
+
+    if settings.ENV != "dev" and not getattr(current_user, "is_admin", False):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not authorized",
+        )
+
+    token_hash = hash_token(token)
+    token_record = crud.get_password_reset_token_by_hash(db, token_hash)
+
+    if not token_record:
+        return {
+            "found": False,
+            "expired": False,
+            "used": False,
+            "expires_at": None,
+        }
+
+    expires_at = normalize_utc(token_record.expires_at)
+    return {
+        "found": True,
+        "expired": is_reset_token_expired(token_record.expires_at),
+        "used": token_record.used_at is not None,
+        "expires_at": expires_at.isoformat(),
+    }
 
 
 @router.post("/auth/verify-email")

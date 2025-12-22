@@ -156,7 +156,15 @@ function App() {
     const location = useLocation()
     const navigate = useNavigate()
     const query = new URLSearchParams(location.search)
-    const resetToken = (query.get('token') || '').trim()
+    const rawToken = query.get('token')
+    let resetToken = ''
+    if (rawToken) {
+      try {
+        resetToken = decodeURIComponent(rawToken).trim()
+      } catch {
+        resetToken = rawToken.trim()
+      }
+    }
     const tokenMissing = !resetToken
     const [newPassword, setNewPassword] = React.useState('')
     const [confirmPassword, setConfirmPassword] = React.useState('')
@@ -169,7 +177,7 @@ function App() {
       setError('')
 
       if (!resetToken) {
-        setError('Missing reset token. Please use the link from your email.')
+        setError('Missing reset token.')
         return
       }
 
@@ -185,6 +193,9 @@ function App() {
 
       setLoading(true)
       try {
+        if (import.meta.env?.DEV) {
+          console.log(`[reset-password] token present: ${resetToken.length > 0}`)
+        }
         await axios.post(`${API}/auth/reset-password`, {
           token: resetToken,
           new_password: newPassword
@@ -241,7 +252,10 @@ function App() {
               <p className="muted reset-hint">{PASSWORD_REQUIREMENTS}</p>
 
               {tokenMissing && (
-                <p className="form-error">Missing reset token. Please use the link from your email.</p>
+                <p className="form-error">
+                  Missing reset token.{' '}
+                  <Link to="/login">Request a new reset link.</Link>
+                </p>
               )}
 
               {error && <p className="form-error">{error}</p>}

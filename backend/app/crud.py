@@ -1,5 +1,5 @@
 import os
-from datetime import datetime, timedelta, date
+from datetime import datetime, timedelta, date, timezone
 from dateutil import tz
 from decimal import Decimal, ROUND_HALF_UP
 from typing import Optional, List
@@ -495,7 +495,7 @@ def set_user_password_reset(
     """Update a user's password and mark the reset timestamp."""
 
     user.hashed_password = hash_password(new_password)
-    user.password_reset_at = datetime.utcnow()
+    user.password_reset_at = datetime.now(timezone.utc)
     db.commit()
     db.refresh(user)
     return user
@@ -506,7 +506,7 @@ def invalidate_password_reset_tokens(
     user_id: int,
 ) -> int:
     """Mark all unused password reset tokens as used for a given user."""
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     tokens = (
         db.query(models.PasswordResetToken)
         .filter(
@@ -554,7 +554,7 @@ def mark_password_reset_token_used(
     db: Session,
     token: models.PasswordResetToken,
 ) -> models.PasswordResetToken:
-    token.used_at = datetime.utcnow()
+    token.used_at = datetime.now(timezone.utc)
     db.commit()
     db.refresh(token)
     return token
