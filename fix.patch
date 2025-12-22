@@ -1,29 +1,177 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
-diff --git a/frontend/vercel.json b/frontend/vercel.json
-index b020da5fc083e3113918569e99282668d9807206..9990d5a87d8999533a6a896235d5ae10b7e44da6 100644
---- a/frontend/vercel.json
-+++ b/frontend/vercel.json
-@@ -1,19 +1,9 @@
- {
-   "rewrites": [
-     {
-       "source": "/api/:path*",
-       "destination": "https://bookitgy.onrender.com/:path*"
-     },
--    {
--      "source": "/:path*",
--      "has": [
--        {
--          "type": "header",
--          "key": "accept",
--          "value": "text/html"
--        }
--      ],
--      "destination": "/index.html"
--    }
-+    { "source": "/(.*)", "destination": "/index.html" }
-   ]
- }
+diff --git a/frontend/src/main.jsx b/frontend/src/main.jsx
+index ad6e54788a98636106f33607316e2440204f8596..01b01059aae4d3394b232b71da95c20315ea3513 100644
+--- a/frontend/src/main.jsx
++++ b/frontend/src/main.jsx
+@@ -446,61 +446,90 @@ function App() {
+   const ProtectedRoute = ({ children }) => {
+     const location = useLocation()
+     if (!token) {
+       return <Navigate to="/login" replace state={{ from: location }} />
+     }
+     return children
+   }
+ 
+   const AdminBilling = () => {
+     const [billingRows, setBillingRows] = React.useState([])
+     const [loading, setLoading] = React.useState(false)
+     const [error, setError] = React.useState('')
+     const [hasLoaded, setHasLoaded] = React.useState(false)
+     const [searchTerm, setSearchTerm] = React.useState('')
+     const [startDate, setStartDate] = React.useState('')
+     const [endDate, setEndDate] = React.useState('')
+     const [bulkUpdating, setBulkUpdating] = React.useState(false)
+ 
+     const fetchBillingRows = React.useCallback(async () => {
+       setLoading(true)
+       setError('')
+       try {
+         const res = await apiClient.get('/admin/billing', {
+           headers: { Authorization: `Bearer ${token}` }
+         })
+-        if (!Array.isArray(res.data)) {
++        const requestUrl = res.config?.baseURL
++          ? new URL(res.config.url || '', res.config.baseURL).toString()
++          : res.config?.url
++        console.log('[Admin Billing] request', {
++          url: requestUrl,
++          params: res.config?.params
++        })
++
++        const responseData = res.data
++        const hasValidRows =
++          Array.isArray(responseData) ||
++          Array.isArray(responseData?.providers) ||
++          Array.isArray(responseData?.data)
++        const responseRows = Array.isArray(responseData)
++          ? responseData
++          : Array.isArray(responseData?.providers)
++            ? responseData.providers
++            : Array.isArray(responseData?.data)
++              ? responseData.data
++              : []
++
++        console.log('[Admin Billing] response meta', {
++          status: res.status,
++          shape: Array.isArray(responseData) ? 'array' : typeof responseData,
++          keys: responseData && typeof responseData === 'object' ? Object.keys(responseData) : null,
++          count: responseRows.length
++        })
++        console.log('[Admin Billing] response data', responseData)
++
++        if (!hasValidRows) {
+           console.error({
+-            url: res.config?.baseURL ? new URL(res.config.url || '', res.config.baseURL).toString() : res.config?.url,
++            url: requestUrl,
+             status: res.status,
+-            responseText: JSON.stringify(res.data)
++            responseText: JSON.stringify(responseData)
+           })
+           setError('Unable to load provider billing details. Please refresh and try again.')
+           setBillingRows([])
+           return
+         }
+-        setBillingRows(res.data)
++        setBillingRows(responseRows)
+       } catch (err) {
+         logApiError(err)
+         setError('Unable to load provider billing details. Please refresh and try again.')
+         setBillingRows([])
+       } finally {
+         setLoading(false)
+         setHasLoaded(true)
+       }
+     }, [token])
+ 
+     React.useEffect(() => {
+       fetchBillingRows()
+     }, [fetchBillingRows])
+ 
+     const updateProviderStatus = async (providerId, isPaid) => {
+       // optimistic update (UI changes instantly)
+       setBillingRows((prev) =>
+         prev.map((row) =>
+           row.provider_id === providerId ? { ...row, is_paid: isPaid } : row
+         )
+       )
+ 
+       try {
+         await apiClient.put(
+           `/admin/billing/${providerId}/status`,
+@@ -581,60 +610,63 @@ function App() {
+         minimumFractionDigits: 0,
+         maximumFractionDigits: 2,
+       })
+     const isWithinDateRange = (row) => {
+       if (!startDate && !endDate) return true
+       if (!row.last_due_date) return false
+ 
+       const dueDate = new Date(row.last_due_date)
+       if (Number.isNaN(dueDate.getTime())) return false
+ 
+       if (startDate) {
+         const start = new Date(startDate)
+         start.setHours(0, 0, 0, 0)
+         if (dueDate < start) return false
+       }
+ 
+       if (endDate) {
+         const end = new Date(endDate)
+         end.setHours(23, 59, 59, 999)
+         if (dueDate > end) return false
+       }
+ 
+       return true
+     }
+ 
+-    const filteredRows = billingRows.filter((row) => {
+-      const accountNumber = (row.account_number || '').toLowerCase()
+-      const phone = (row.phone || '').toLowerCase()
+-      const matchesSearch =
+-        !normalizedSearch ||
+-        accountNumber.includes(normalizedSearch) ||
+-        phone.includes(normalizedSearch)
+-
+-      return matchesSearch && isWithinDateRange(row)
+-    })
++    const hasActiveFilters = Boolean(normalizedSearch || startDate || endDate)
++    const filteredRows = hasActiveFilters
++      ? billingRows.filter((row) => {
++        const accountNumber = (row.account_number || '').toLowerCase()
++        const phone = (row.phone || '').toLowerCase()
++        const matchesSearch =
++          !normalizedSearch ||
++          accountNumber.includes(normalizedSearch) ||
++          phone.includes(normalizedSearch)
++
++        return matchesSearch && isWithinDateRange(row)
++      })
++      : billingRows
+ 
+     const showEmptyState = hasLoaded && !loading && !error && billingRows.length === 0
+     const showNoMatches = hasLoaded && !loading && !error && billingRows.length > 0 && filteredRows.length === 0
+ 
+     const formatDueDate = (value) => {
+       if (!value) return 'No bill yet'
+       const parsed = new Date(value)
+       if (Number.isNaN(parsed.getTime())) return 'Unknown date'
+       return parsed.toLocaleDateString(undefined, {
+         year: 'numeric',
+         month: 'short',
+         day: 'numeric',
+       })
+     }
+ 
+     return (
+       <div className="admin-page">
+         <div className="admin-header">
+           <div>
+             <p className="eyebrow">Billing</p>
+             <h1>Provider Billing</h1>
+             <p className="header-subtitle">Monitor outstanding balances, search by account or phone, and mark charges as paid.</p>
+           </div>
+           <div className="button-row">
+             <button className="ghost-btn" onClick={() => markAll(false)} disabled={bulkUpdating || loading}>Mark all unpaid</button>
  
 EOF
 )

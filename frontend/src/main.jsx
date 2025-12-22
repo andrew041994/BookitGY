@@ -468,17 +468,46 @@ function App() {
         const res = await apiClient.get('/admin/billing', {
           headers: { Authorization: `Bearer ${token}` }
         })
-        if (!Array.isArray(res.data)) {
+        const requestUrl = res.config?.baseURL
+          ? new URL(res.config.url || '', res.config.baseURL).toString()
+          : res.config?.url
+        console.log('[Admin Billing] request', {
+          url: requestUrl,
+          params: res.config?.params
+        })
+
+        const responseData = res.data
+        const hasValidRows =
+          Array.isArray(responseData) ||
+          Array.isArray(responseData?.providers) ||
+          Array.isArray(responseData?.data)
+        const responseRows = Array.isArray(responseData)
+          ? responseData
+          : Array.isArray(responseData?.providers)
+            ? responseData.providers
+            : Array.isArray(responseData?.data)
+              ? responseData.data
+              : []
+
+        console.log('[Admin Billing] response meta', {
+          status: res.status,
+          shape: Array.isArray(responseData) ? 'array' : typeof responseData,
+          keys: responseData && typeof responseData === 'object' ? Object.keys(responseData) : null,
+          count: responseRows.length
+        })
+        console.log('[Admin Billing] response data', responseData)
+
+        if (!hasValidRows) {
           console.error({
-            url: res.config?.baseURL ? new URL(res.config.url || '', res.config.baseURL).toString() : res.config?.url,
+            url: requestUrl,
             status: res.status,
-            responseText: JSON.stringify(res.data)
+            responseText: JSON.stringify(responseData)
           })
           setError('Unable to load provider billing details. Please refresh and try again.')
           setBillingRows([])
           return
         }
-        setBillingRows(res.data)
+        setBillingRows(responseRows)
       } catch (err) {
         logApiError(err)
         setError('Unable to load provider billing details. Please refresh and try again.')
@@ -603,16 +632,19 @@ function App() {
       return true
     }
 
-    const filteredRows = billingRows.filter((row) => {
-      const accountNumber = (row.account_number || '').toLowerCase()
-      const phone = (row.phone || '').toLowerCase()
-      const matchesSearch =
-        !normalizedSearch ||
-        accountNumber.includes(normalizedSearch) ||
-        phone.includes(normalizedSearch)
+    const hasActiveFilters = Boolean(normalizedSearch || startDate || endDate)
+    const filteredRows = hasActiveFilters
+      ? billingRows.filter((row) => {
+        const accountNumber = (row.account_number || '').toLowerCase()
+        const phone = (row.phone || '').toLowerCase()
+        const matchesSearch =
+          !normalizedSearch ||
+          accountNumber.includes(normalizedSearch) ||
+          phone.includes(normalizedSearch)
 
-      return matchesSearch && isWithinDateRange(row)
-    })
+        return matchesSearch && isWithinDateRange(row)
+      })
+      : billingRows
 
     const showEmptyState = hasLoaded && !loading && !error && billingRows.length === 0
     const showNoMatches = hasLoaded && !loading && !error && billingRows.length > 0 && filteredRows.length === 0
