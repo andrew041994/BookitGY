@@ -401,7 +401,14 @@ def create_user(db: Session, user: schemas.UserCreate) -> models.User:
 
 def get_user_by_email(db: Session, email: str):
     """Return user by email, or None if not found."""
-    return db.query(models.User).filter(models.User.email == email).first()
+    if not email:
+        return None
+    normalized = email.strip().lower()
+    return (
+        db.query(models.User)
+        .filter(func.lower(models.User.email) == normalized)
+        .first()
+    )
 
 
 def get_user_by_id(db: Session, user_id: int):

@@ -1,370 +1,68 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
-diff --git a/frontend/src/main.jsx b/frontend/src/main.jsx
-index 01b01059aae4d3394b232b71da95c20315ea3513..60d0bc8e42ee5d985ee6acf3a5062f8ca4efe465 100644
---- a/frontend/src/main.jsx
-+++ b/frontend/src/main.jsx
-@@ -171,51 +171,51 @@ function App() {
+diff --git a/backend/app/crud.py b/backend/app/crud.py
+index 147234b3fe78ab8ad5e0670236fc60e0e6cff5e7..ad05de0b9e357ff56c6bb427eb9d345202034d95 100644
+--- a/backend/app/crud.py
++++ b/backend/app/crud.py
+@@ -379,51 +379,58 @@ def notify_booking_created(
+ # User CRUD + authentication
+ # ---------------------------------------------------------------------------
  
-     const submitReset = async (event) => {
-       event.preventDefault()
-       setError('')
- 
-       if (!resetToken) {
-         setError('Missing reset token.')
-         return
-       }
- 
-       if (newPassword !== confirmPassword) {
-         setError('Passwords do not match.')
-         return
-       }
- 
-       if (!meetsPasswordPolicy(newPassword)) {
-         setError(PASSWORD_REQUIREMENTS)
-         return
-       }
- 
-       setLoading(true)
-       try {
-         if (import.meta.env?.DEV) {
-           console.log(`[reset-password] token present: ${resetToken.length > 0}`)
-         }
--        await axios.post(`${API}/auth/reset-password`, {
-+        await apiClient.post('/auth/reset-password', {
-           token: resetToken,
-           new_password: newPassword
-         })
-         setSuccess(true)
-       } catch (err) {
-         const detail = err?.response?.data?.detail
-         setError(detail || 'Unable to reset your password. Please try again.')
-       } finally {
-         setLoading(false)
-       }
-     }
- 
-     return (
-       <div className="login-shell">
-         <div className="landing-glow landing-glow-one" />
-         <div className="landing-glow landing-glow-two" />
-         <div className="landing-card reset-card">
-           <div className="logo-circle">
-             <img src="/bookitgy-logo.png" alt="BookitGY" />
-           </div>
-           <p className="eyebrow">Reset password</p>
-           <h1>Choose a new password</h1>
-           <p className="subtitle">
-             {success
-               ? 'Your password has been updated. You can sign in with your new credentials.'
-@@ -259,128 +259,126 @@ function App() {
- 
-               <button className="primary-btn" disabled={loading || tokenMissing}>
-                 {loading ? 'Resetting…' : 'Reset password'}
-               </button>
-             </form>
-           ) : (
-             <div className="reset-success">
-               <button
-                 className="primary-btn"
-                 onClick={() => navigate('/login')}
-               >
-                 Go to login
-               </button>
-             </div>
-           )}
-         </div>
-       </div>
+ def create_user(db: Session, user: schemas.UserCreate) -> models.User:
+     """Create a new user with hashed password."""
+     hashed = hash_password(user.password)
+     user_data = user.dict(exclude={"password"})
+     user_data["username"] = normalize_username(user.username)
+     db_user = models.User(
+         **user_data,
+         hashed_password=hashed,
+         is_email_verified=False,
      )
-   }
+     db.add(db_user)
+     try:
+         db.commit()
+     except IntegrityError:
+         db.rollback()
+         raise
+     db.refresh(db_user)
+     return db_user
  
-   const AdminPromotions = () => {
-     const [accountNumber, setAccountNumber] = React.useState('ACC-')
-     const [credit, setCredit] = React.useState('2000')
  
-     const apply = async () => {
--      await axios.put(`${API}/admin/promotions/${accountNumber}`, { credit_gyd: Number(credit) }, {
--        headers: { Authorization: `Bearer ${token}` }
--      })
-+      await apiClient.put(`/admin/promotions/${accountNumber}`, { credit_gyd: Number(credit) })
-       alert(`Bill credit applied! ${credit} GYD added to ${accountNumber}`)
-     }
+ def get_user_by_email(db: Session, email: str):
+     """Return user by email, or None if not found."""
+-    return db.query(models.User).filter(models.User.email == email).first()
++    if not email:
++        return None
++    normalized = email.strip().lower()
++    return (
++        db.query(models.User)
++        .filter(func.lower(models.User.email) == normalized)
++        .first()
++    )
  
+ 
+ def get_user_by_id(db: Session, user_id: int):
+     """Return user by id, or None if not found."""
+     return db.query(models.User).filter(models.User.id == user_id).first()
+ 
+ 
+ def get_user_by_username(db: Session, username: str):
+     """Return user by username, or None if not found."""
+     normalized = normalize_username(username)
      return (
-       <div className="admin-page">
-         <div className="admin-header">
-           <div>
-             <p className="eyebrow">Marketing</p>
-             <h1>Admin – Editable Promotions</h1>
-             <p className="header-subtitle">Apply bill credits to provider accounts whenever you need.</p>
-           </div>
-         </div>
-         <div className="admin-card">
-           <div className="form-grid">
-             <label className="form-field">
-               <span>Provider account number</span>
-               <input value={accountNumber} onChange={e => setAccountNumber(e.target.value)} placeholder="Account number" />
-             </label>
-             <label className="form-field">
-               <span>Bill credit (GYD)</span>
-               <input value={credit} onChange={e => setCredit(e.target.value)} placeholder="Amount in GYD" />
-             </label>
-           </div>
-           <button onClick={apply} className="primary-btn">Apply Credit</button>
-           <p className="muted">Example: Add a $5,000 GYD credit to account ACC-1234 so it reduces their next bill.</p>
-         </div>
-       </div>
+         db.query(models.User)
+         .filter(func.lower(models.User.username) == normalized)
+         .first()
      )
-   }
- 
-   const ServiceChargeSettings = () => {
-     const [draft, setDraft] = React.useState(DEFAULT_SERVICE_CHARGE)
-     const [savedRate, setSavedRate] = React.useState(DEFAULT_SERVICE_CHARGE)
-     const [loading, setLoading] = React.useState(false)
-     const [error, setError] = React.useState("")
- 
-     const applyRate = (rate) => {
-       const normalized = normalizeServiceCharge(rate)
-       persistServiceCharge(normalized)
-       setSavedRate(normalized)
-       setDraft(normalized)
-     }
- 
-     React.useEffect(() => {
-       const fetchRate = async () => {
-         try {
-           setLoading(true)
-           setError("")
--          const res = await axios.get(`${API}/admin/service-charge`)
-+          const res = await apiClient.get('/admin/service-charge')
-           const rate =
-             res.data?.service_charge_percentage ??
-             res.data?.service_charge_percent ??
-             (res.data?.service_charge_rate ?? 0) * 100
-           applyRate(rate)
-         } catch (e) {
-           console.log("Falling back to cached service charge", e.message)
-           const storedRate = loadStoredServiceCharge()
-           if (storedRate !== null) {
-             applyRate(storedRate)
-           }
-           setError("Could not load the saved service charge. Showing last known rate.")
-         } finally {
-           setLoading(false)
-         }
-       }
- 
-       fetchRate()
-     }, [])
- 
-     const save = async () => {
-       const normalized = normalizeServiceCharge(draft)
-       try {
-         setLoading(true)
-         setError("")
--        const res = await axios.put(`${API}/admin/service-charge`, {
-+        const res = await apiClient.put('/admin/service-charge', {
-           service_charge_percentage: normalized,
-         })
-         const rate =
-           res.data?.service_charge_percentage ??
-           res.data?.service_charge_percent ??
-           (res.data?.service_charge_rate ?? 0) * 100
-         applyRate(rate)
-         alert(`Service charge saved at ${rate}%`)
-       } catch (e) {
-         console.error("Failed to save service charge", e.message)
-         setError("Could not save the service charge. Please try again.")
-       } finally {
-         setLoading(false)
-       }
-     }
- 
-     const reset = () => {
-       setDraft(DEFAULT_SERVICE_CHARGE)
-       save()
-     }
- 
-     return (
-       <div className="admin-page">
-         <div className="admin-header">
-           <div>
-@@ -443,171 +441,145 @@ function App() {
-     </div>
-   )
- 
-   const ProtectedRoute = ({ children }) => {
-     const location = useLocation()
-     if (!token) {
-       return <Navigate to="/login" replace state={{ from: location }} />
-     }
-     return children
-   }
- 
-   const AdminBilling = () => {
-     const [billingRows, setBillingRows] = React.useState([])
-     const [loading, setLoading] = React.useState(false)
-     const [error, setError] = React.useState('')
-     const [hasLoaded, setHasLoaded] = React.useState(false)
-     const [searchTerm, setSearchTerm] = React.useState('')
-     const [startDate, setStartDate] = React.useState('')
-     const [endDate, setEndDate] = React.useState('')
-     const [bulkUpdating, setBulkUpdating] = React.useState(false)
- 
-     const fetchBillingRows = React.useCallback(async () => {
-       setLoading(true)
-       setError('')
-       try {
--        const res = await apiClient.get('/admin/billing', {
--          headers: { Authorization: `Bearer ${token}` }
--        })
--        const requestUrl = res.config?.baseURL
--          ? new URL(res.config.url || '', res.config.baseURL).toString()
--          : res.config?.url
--        console.log('[Admin Billing] request', {
--          url: requestUrl,
--          params: res.config?.params
--        })
--
-+        const res = await apiClient.get('/admin/billing')
-         const responseData = res.data
-         const hasValidRows =
-           Array.isArray(responseData) ||
-           Array.isArray(responseData?.providers) ||
-           Array.isArray(responseData?.data)
-         const responseRows = Array.isArray(responseData)
-           ? responseData
-           : Array.isArray(responseData?.providers)
-             ? responseData.providers
-             : Array.isArray(responseData?.data)
-               ? responseData.data
-               : []
- 
--        console.log('[Admin Billing] response meta', {
--          status: res.status,
--          shape: Array.isArray(responseData) ? 'array' : typeof responseData,
--          keys: responseData && typeof responseData === 'object' ? Object.keys(responseData) : null,
--          count: responseRows.length
--        })
--        console.log('[Admin Billing] response data', responseData)
--
-         if (!hasValidRows) {
--          console.error({
--            url: requestUrl,
--            status: res.status,
--            responseText: JSON.stringify(responseData)
--          })
-           setError('Unable to load provider billing details. Please refresh and try again.')
-           setBillingRows([])
-           return
-         }
-         setBillingRows(responseRows)
-       } catch (err) {
-         logApiError(err)
-         setError('Unable to load provider billing details. Please refresh and try again.')
-         setBillingRows([])
-       } finally {
-         setLoading(false)
-         setHasLoaded(true)
-       }
--    }, [token])
-+    }, [])
- 
-     React.useEffect(() => {
-       fetchBillingRows()
-     }, [fetchBillingRows])
- 
-     const updateProviderStatus = async (providerId, isPaid) => {
-       // optimistic update (UI changes instantly)
-       setBillingRows((prev) =>
-         prev.map((row) =>
-           row.provider_id === providerId ? { ...row, is_paid: isPaid } : row
-         )
-       )
- 
-       try {
-         await apiClient.put(
-           `/admin/billing/${providerId}/status`,
--          { is_paid: isPaid },
--          { headers: { Authorization: `Bearer ${token}` } }
-+          { is_paid: isPaid }
-         )
- 
-         // OPTIONAL: if you want truth from server, refetch after success
-         // await fetchBillingRows()
-       } catch (err) {
-         logApiError(err)
-         setError("Failed to update provider billing status.")
-         // rollback safely
-         fetchBillingRows()
-       }
-     }
  
  
-     const toggleProviderLock = async (providerId, shouldLock) => {
-       setBillingRows((prev) =>
-         prev.map((row) =>
-           row.provider_id === providerId ? { ...row, is_locked: shouldLock } : row
-         )
-       )
+ def authenticate_user(db: Session, email: str, password: str):
+     """
+     Authenticate a user by email + password.
  
-       try {
-         await apiClient.put(
-           `/admin/billing/${providerId}/lock`,
--          { is_locked: shouldLock },
--          { headers: { Authorization: `Bearer ${token}` } }
-+          { is_locked: shouldLock }
-         )
- 
-         await fetchBillingRows()
-       } catch (err) {
-         logApiError(err)
-         setError('Failed to update provider account status.')
-         fetchBillingRows()
-       }
-     }
- 
- 
-     const markAll = async (isPaid) => {
-       if (!billingRows.length) return
-       setBulkUpdating(true)
-       setError('')
- 
-       // Optimistic UI update
-       setBillingRows((prev) => prev.map((row) => ({ ...row, is_paid: isPaid })))
- 
-       try {
-         await Promise.all(
-           billingRows.map((row) =>
-             apiClient.put(
-               `/admin/billing/${row.provider_id}/status`,
--              { is_paid: isPaid },
--              { headers: { Authorization: `Bearer ${token}` } }
-+              { is_paid: isPaid }
-             )
-           )
-         )
- 
-         // Single refetch = clean + guaranteed correct
-         await fetchBillingRows()
-       } catch (err) {
-         logApiError(err)
-         setError('Failed to update all provider statuses.')
-         await fetchBillingRows()
-       } finally {
-         setBulkUpdating(false)
-       }
-     }
- 
- 
- 
-     const normalizedSearch = searchTerm.trim().toLowerCase()
- 
-     const formatAmount = (value) =>
-       Number(value ?? 0).toLocaleString(undefined, {
-         minimumFractionDigits: 0,
-         maximumFractionDigits: 2,
-       })
-     const isWithinDateRange = (row) => {
+     Returns:
+         - user object if credentials are valid
+         - None if invalid
+     """
  
 EOF
 )
