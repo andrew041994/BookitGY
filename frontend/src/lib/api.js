@@ -1,13 +1,9 @@
 import axios from 'axios'
 
 const rawApiUrl = import.meta.env.VITE_API_URL
-const fallbackApiUrl =
-  import.meta.env.MODE === 'development'
-    ? 'http://localhost:8002'
-    : 'https://bookitgy.onrender.com'
+const fallbackApiUrl = '/api'
 
-export const API_BASE_URL =
-  rawApiUrl && rawApiUrl.trim() ? rawApiUrl.trim() : fallbackApiUrl
+export const API_BASE_URL = rawApiUrl && rawApiUrl.trim() ? rawApiUrl.trim() : fallbackApiUrl
 
 export const apiClient = axios.create({
   baseURL: API_BASE_URL

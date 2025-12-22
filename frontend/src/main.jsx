@@ -455,6 +455,7 @@ function App() {
     const [billingRows, setBillingRows] = React.useState([])
     const [loading, setLoading] = React.useState(false)
     const [error, setError] = React.useState('')
+    const [hasLoaded, setHasLoaded] = React.useState(false)
     const [searchTerm, setSearchTerm] = React.useState('')
     const [startDate, setStartDate] = React.useState('')
     const [endDate, setEndDate] = React.useState('')
@@ -467,12 +468,24 @@ function App() {
         const res = await apiClient.get('/admin/billing', {
           headers: { Authorization: `Bearer ${token}` }
         })
+        if (!Array.isArray(res.data)) {
+          console.error({
+            url: res.config?.baseURL ? new URL(res.config.url || '', res.config.baseURL).toString() : res.config?.url,
+            status: res.status,
+            responseText: JSON.stringify(res.data)
+          })
+          setError('Unable to load provider billing details. Please refresh and try again.')
+          setBillingRows([])
+          return
+        }
         setBillingRows(res.data)
       } catch (err) {
         logApiError(err)
         setError('Unable to load provider billing details. Please refresh and try again.')
+        setBillingRows([])
       } finally {
         setLoading(false)
+        setHasLoaded(true)
       }
     }, [token])
 
@@ -601,6 +614,9 @@ function App() {
       return matchesSearch && isWithinDateRange(row)
     })
 
+    const showEmptyState = hasLoaded && !loading && !error && billingRows.length === 0
+    const showNoMatches = hasLoaded && !loading && !error && billingRows.length > 0 && filteredRows.length === 0
+
     const formatDueDate = (value) => {
       if (!value) return 'No bill yet'
       const parsed = new Date(value)
@@ -706,7 +722,11 @@ function App() {
               </div>
             ))}
 
-            {!loading && filteredRows.length === 0 && (
+            {showNoMatches && (
+              <p className="muted">No providers match your current filters.</p>
+            )}
+
+            {showEmptyState && (
               <p className="muted">No providers match that account, phone, or date range.</p>
             )}
           </div>

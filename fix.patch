@@ -1,243 +1,29 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
-diff --git a/frontend/src/main.jsx b/frontend/src/main.jsx
-index 82e5a922e70a39e74e38bb7b9605ecc22b4a1049..15300cfb26097fc9f105f5fdb7574f601f93589c 100644
---- a/frontend/src/main.jsx
-+++ b/frontend/src/main.jsx
-@@ -1,79 +1,76 @@
- import React from 'react'
- import ReactDOM from 'react-dom/client'
- import { BrowserRouter, Routes, Route, Link, NavLink, useNavigate, Navigate, Outlet, useLocation } from 'react-router-dom'
--import axios from 'axios'
-+import { apiClient, logApiError } from './lib/api'
- import './login.css'
- 
--const API = import.meta.env.VITE_API_URL || "https://bookitgy.onrender.com";
--  console.log("### API base URL =", API);
--  
- const DEFAULT_SERVICE_CHARGE = 10
- const SERVICE_CHARGE_STORAGE_KEY = 'bookitgy.service_charge_rate'
- 
- const normalizeServiceCharge = (value) => Math.max(0, Math.min(100, Number(value) || 0))
- 
- const loadStoredServiceCharge = () => {
-   const stored = localStorage.getItem(SERVICE_CHARGE_STORAGE_KEY)
-   if (stored === null) return null
-   return normalizeServiceCharge(stored)
- }
- 
- const persistServiceCharge = (rate) => {
-   localStorage.setItem(SERVICE_CHARGE_STORAGE_KEY, String(rate))
- }
- 
- function App() {
-   const [token, setToken] = React.useState(localStorage.getItem('token') || '')
- 
-   React.useEffect(() => {
-     if (token) {
--      axios.defaults.headers.common.Authorization = `Bearer ${token}`
-+      apiClient.defaults.headers.common.Authorization = `Bearer ${token}`
-     } else {
--      delete axios.defaults.headers.common.Authorization
-+      delete apiClient.defaults.headers.common.Authorization
-     }
-   }, [token])
- 
-   const Login = () => {
-     const [email, setEmail] = React.useState('customer@guyana.com')
-     const [password, setPassword] = React.useState('pass')
-     const [loading, setLoading] = React.useState(false)
-     const [error, setError] = React.useState('')
-     const navigate = useNavigate()
- 
-     React.useEffect(() => {
-       if (token) {
-         navigate('/admin/promotions', { replace: true })
-       }
-     }, [token, navigate])
- 
-     const login = async (e) => {
-       e.preventDefault()
-       setError('')
-       setLoading(true)
-       try {
--        const res = await axios.post(`${API}/auth/login`, new URLSearchParams({
-+        const res = await apiClient.post('/auth/login', new URLSearchParams({
-           username: email,
-           password
-         }))
-         localStorage.setItem('token', res.data.access_token)
-         setToken(res.data.access_token)
-         navigate('/admin/promotions', { replace: true })
-       } catch {
-         setError('Wrong credentials – try customer@guyana.com with password pass')
-       } finally {
-         setLoading(false)
-       }
-     }
- 
-     return (
-       <div className="login-shell">
-         <div className="login-glow login-glow-one" />
-         <div className="login-glow login-glow-two" />
-         <div className="login-card">
-           <div className="login-hero">
-             <div className="logo-circle">
-               <img src="/bookitgy-logo.png" alt="BookitGY" />
-             </div>
-             <p className="eyebrow">Booking platform for Guyana</p>
-             <h1>Welcome back to BookitGY</h1>
-             <p className="subtitle">
-@@ -445,138 +442,138 @@ function App() {
-       </div>
-     </div>
-   )
- 
-   const ProtectedRoute = ({ children }) => {
-     const location = useLocation()
-     if (!token) {
-       return <Navigate to="/login" replace state={{ from: location }} />
-     }
-     return children
-   }
- 
-   const AdminBilling = () => {
-     const [billingRows, setBillingRows] = React.useState([])
-     const [loading, setLoading] = React.useState(false)
-     const [error, setError] = React.useState('')
-     const [searchTerm, setSearchTerm] = React.useState('')
-     const [startDate, setStartDate] = React.useState('')
-     const [endDate, setEndDate] = React.useState('')
-     const [bulkUpdating, setBulkUpdating] = React.useState(false)
- 
-     const fetchBillingRows = React.useCallback(async () => {
-       setLoading(true)
-       setError('')
-       try {
--        const res = await axios.get(`${API}/admin/billing`, {
-+        const res = await apiClient.get('/admin/billing', {
-           headers: { Authorization: `Bearer ${token}` }
-         })
-         setBillingRows(res.data)
-       } catch (err) {
--        console.error(err)
--        setError('Unable to load provider billing details right now.')
-+        logApiError(err)
-+        setError('Unable to load provider billing details. Please refresh and try again.')
-       } finally {
-         setLoading(false)
-       }
-     }, [token])
- 
-     React.useEffect(() => {
-       fetchBillingRows()
-     }, [fetchBillingRows])
- 
-     const updateProviderStatus = async (providerId, isPaid) => {
-       // optimistic update (UI changes instantly)
-       setBillingRows((prev) =>
-         prev.map((row) =>
-           row.provider_id === providerId ? { ...row, is_paid: isPaid } : row
-         )
-       )
- 
-       try {
--        await axios.put(
--          `${API}/admin/billing/${providerId}/status`,
-+        await apiClient.put(
-+          `/admin/billing/${providerId}/status`,
-           { is_paid: isPaid },
-           { headers: { Authorization: `Bearer ${token}` } }
-         )
- 
-         // OPTIONAL: if you want truth from server, refetch after success
-         // await fetchBillingRows()
-       } catch (err) {
--        console.error(err)
-+        logApiError(err)
-         setError("Failed to update provider billing status.")
-         // rollback safely
-         fetchBillingRows()
-       }
-     }
- 
- 
-     const toggleProviderLock = async (providerId, shouldLock) => {
-       setBillingRows((prev) =>
-         prev.map((row) =>
-           row.provider_id === providerId ? { ...row, is_locked: shouldLock } : row
-         )
-       )
- 
-       try {
--        await axios.put(
--          `${API}/admin/billing/${providerId}/lock`,
-+        await apiClient.put(
-+          `/admin/billing/${providerId}/lock`,
-           { is_locked: shouldLock },
-           { headers: { Authorization: `Bearer ${token}` } }
-         )
- 
-         await fetchBillingRows()
-       } catch (err) {
--        console.error(err)
-+        logApiError(err)
-         setError('Failed to update provider account status.')
-         fetchBillingRows()
-       }
-     }
- 
- 
-     const markAll = async (isPaid) => {
-       if (!billingRows.length) return
-       setBulkUpdating(true)
-       setError('')
- 
-       // Optimistic UI update
-       setBillingRows((prev) => prev.map((row) => ({ ...row, is_paid: isPaid })))
- 
-       try {
-         await Promise.all(
-           billingRows.map((row) =>
--            axios.put(
--              `${API}/admin/billing/${row.provider_id}/status`,
-+            apiClient.put(
-+              `/admin/billing/${row.provider_id}/status`,
-               { is_paid: isPaid },
-               { headers: { Authorization: `Bearer ${token}` } }
-             )
-           )
-         )
- 
-         // Single refetch = clean + guaranteed correct
-         await fetchBillingRows()
-       } catch (err) {
--        console.error(err)
-+        logApiError(err)
-         setError('Failed to update all provider statuses.')
-         await fetchBillingRows()
-       } finally {
-         setBulkUpdating(false)
-       }
-     }
- 
- 
- 
-     const normalizedSearch = searchTerm.trim().toLowerCase()
- 
-     const formatAmount = (value) =>
-       Number(value ?? 0).toLocaleString(undefined, {
-         minimumFractionDigits: 0,
-         maximumFractionDigits: 2,
-       })
-     const isWithinDateRange = (row) => {
-       if (!startDate && !endDate) return true
-       if (!row.last_due_date) return false
- 
-       const dueDate = new Date(row.last_due_date)
-       if (Number.isNaN(dueDate.getTime())) return false
- 
-       if (startDate) {
-         const start = new Date(startDate)
+diff --git a/frontend/vercel.json b/frontend/vercel.json
+new file mode 100644
+index 0000000000000000000000000000000000000000..b020da5fc083e3113918569e99282668d9807206
+--- /dev/null
++++ b/frontend/vercel.json
+@@ -0,0 +1,19 @@
++{
++  "rewrites": [
++    {
++      "source": "/api/:path*",
++      "destination": "https://bookitgy.onrender.com/:path*"
++    },
++    {
++      "source": "/:path*",
++      "has": [
++        {
++          "type": "header",
++          "key": "accept",
++          "value": "text/html"
++        }
++      ],
++      "destination": "/index.html"
++    }
++  ]
++}
  
 EOF
 )
