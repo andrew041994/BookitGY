@@ -1,29 +1,29 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
 diff --git a/frontend/vercel.json b/frontend/vercel.json
-new file mode 100644
-index 0000000000000000000000000000000000000000..b020da5fc083e3113918569e99282668d9807206
---- /dev/null
+index b020da5fc083e3113918569e99282668d9807206..9990d5a87d8999533a6a896235d5ae10b7e44da6 100644
+--- a/frontend/vercel.json
 +++ b/frontend/vercel.json
-@@ -0,0 +1,19 @@
-+{
-+  "rewrites": [
-+    {
-+      "source": "/api/:path*",
-+      "destination": "https://bookitgy.onrender.com/:path*"
-+    },
-+    {
-+      "source": "/:path*",
-+      "has": [
-+        {
-+          "type": "header",
-+          "key": "accept",
-+          "value": "text/html"
-+        }
-+      ],
-+      "destination": "/index.html"
-+    }
-+  ]
-+}
+@@ -1,19 +1,9 @@
+ {
+   "rewrites": [
+     {
+       "source": "/api/:path*",
+       "destination": "https://bookitgy.onrender.com/:path*"
+     },
+-    {
+-      "source": "/:path*",
+-      "has": [
+-        {
+-          "type": "header",
+-          "key": "accept",
+-          "value": "text/html"
+-        }
+-      ],
+-      "destination": "/index.html"
+-    }
++    { "source": "/(.*)", "destination": "/index.html" }
+   ]
+ }
  
 EOF
 )

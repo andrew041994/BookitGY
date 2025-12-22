@@ -1,9 +1,8 @@
 import axios from 'axios'
 
-const rawApiUrl = import.meta.env.VITE_API_URL
 const fallbackApiUrl = '/api'
 
-export const API_BASE_URL = rawApiUrl && rawApiUrl.trim() ? rawApiUrl.trim() : fallbackApiUrl
+export const API_BASE_URL = fallbackApiUrl
 
 export const apiClient = axios.create({
   baseURL: API_BASE_URL
@@ -28,13 +27,16 @@ const normalizeResponseText = (data) => {
 
 export const logApiError = (error) => {
   if (error?.response) {
+    const method = error.config?.method ? error.config.method.toUpperCase() : 'UNKNOWN'
     const configUrl = error.config?.url ?? ''
     const baseUrl = error.config?.baseURL ?? ''
     const url = baseUrl ? new URL(configUrl, baseUrl).toString() : configUrl
+    const responseText = normalizeResponseText(error.response.data)
     console.error({
+      method,
       url,
       status: error.response.status,
-      responseText: normalizeResponseText(error.response.data)
+      responseText
     })
     return
   }
