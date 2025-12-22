@@ -1,68 +1,92 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
-diff --git a/backend/app/crud.py b/backend/app/crud.py
-index 147234b3fe78ab8ad5e0670236fc60e0e6cff5e7..ad05de0b9e357ff56c6bb427eb9d345202034d95 100644
---- a/backend/app/crud.py
-+++ b/backend/app/crud.py
-@@ -379,51 +379,58 @@ def notify_booking_created(
- # User CRUD + authentication
- # ---------------------------------------------------------------------------
- 
- def create_user(db: Session, user: schemas.UserCreate) -> models.User:
-     """Create a new user with hashed password."""
-     hashed = hash_password(user.password)
-     user_data = user.dict(exclude={"password"})
-     user_data["username"] = normalize_username(user.username)
-     db_user = models.User(
-         **user_data,
-         hashed_password=hashed,
-         is_email_verified=False,
-     )
-     db.add(db_user)
-     try:
-         db.commit()
-     except IntegrityError:
-         db.rollback()
-         raise
-     db.refresh(db_user)
-     return db_user
+diff --git a/backend/app/schemas.py b/backend/app/schemas.py
+index 063db1ca54c59ec8375f8999cab3f8eba23080c2..c84d7c5086c87ac130370f9a96fd1d4f1b734eb4 100644
+--- a/backend/app/schemas.py
++++ b/backend/app/schemas.py
+@@ -50,50 +50,56 @@ class ProviderUpdate(BaseModel):
+     professions: Optional[List[str]] = None
+     is_active: Optional[bool] = None
  
  
- def get_user_by_email(db: Session, email: str):
-     """Return user by email, or None if not found."""
--    return db.query(models.User).filter(models.User.email == email).first()
-+    if not email:
-+        return None
-+    normalized = email.strip().lower()
-+    return (
-+        db.query(models.User)
-+        .filter(func.lower(models.User.email) == normalized)
-+        .first()
-+    )
  
  
- def get_user_by_id(db: Session, user_id: int):
-     """Return user by id, or None if not found."""
-     return db.query(models.User).filter(models.User.id == user_id).first()
  
  
- def get_user_by_username(db: Session, username: str):
-     """Return user by username, or None if not found."""
-     normalized = normalize_username(username)
-     return (
-         db.query(models.User)
-         .filter(func.lower(models.User.username) == normalized)
-         .first()
-     )
+ class LoginByEmailPayload(BaseModel):
+     email: str
+     password: str
+ 
+ class ForgotPasswordRequest(BaseModel):
+     email: str
  
  
- def authenticate_user(db: Session, email: str, password: str):
-     """
-     Authenticate a user by email + password.
+ class ResetPasswordPayload(BaseModel):
+     token: str
+     new_password: str
  
-     Returns:
-         - user object if credentials are valid
-         - None if invalid
-     """
+ 
+ class VerifyEmailPayload(BaseModel):
+     token: str
+ 
+ 
++class VerifyEmailStatus(BaseModel):
++    email: EmailStr
++    is_email_verified: bool
++    email_verified_at: Optional[datetime] = None
++
++
+ 
+ class UserOut(UserBase):
+     id: int
+     is_provider: bool
+     is_email_verified: bool
+     is_admin: bool           # 👈 add this
+ 
+ 
+     class Config:
+         from_attributes = True
+ 
+ class ServiceCreate(BaseModel):
+     name: str
+     description: str
+     price_gyd: float
+     duration_minutes: int
+ 
+ class ServiceUpdate(BaseModel):
+     name: Optional[str] = None
+     description: Optional[str] = None
+     price_gyd: Optional[float] = None
+     duration_minutes: Optional[int] = None
+ 
+ 
+ class ServiceOut(BaseModel):
+@@ -280,26 +286,25 @@ class TokenResponse(BaseModel):
+     email: str
+     is_provider: bool
+     is_admin: bool
+ 
+ class ProviderLocationUpdate(BaseModel):
+     lat: float
+     long: float
+     location: Optional[str] = None  # optional human-readable text
+ 
+ class ProviderCatalogImageOut(BaseModel):
+     id: int
+     image_url: str
+     caption: Optional[str] = None
+ 
+     class Config:
+         from_attributes = True
+ 
+ 
+ class ServiceChargeUpdate(BaseModel):
+     service_charge_percentage: float
+ 
+ 
+ class ServiceChargeOut(BaseModel):
+     service_charge_percentage: float
+ 
+-
  
 EOF
 )

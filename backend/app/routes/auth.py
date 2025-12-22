@@ -2,6 +2,7 @@ from datetime import datetime, timedelta
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.responses import RedirectResponse
 from fastapi.security import OAuth2PasswordRequestForm
 from jose import JWTError, jwt
 from sqlalchemy.orm import Session
@@ -375,7 +376,22 @@ def verify_email(payload: schemas.VerifyEmailPayload, db: Session = Depends(get_
 
 @router.get("/auth/verify")
 def verify_email_link(token: str, db: Session = Depends(get_db)):
-    return _verify_email_token(token, db)
+    try:
+        result = _verify_email_token(token, db)
+        if result.get("verified"):
+            redirect_url = f"{settings.FRONTEND_LOGIN_URL}?verified=1"
+        else:
+            redirect_url = (
+                f"{settings.FRONTEND_LOGIN_URL}"
+                "?verified=0&reason=invalid_or_expired"
+            )
+    except HTTPException:
+        redirect_url = (
+            f"{settings.FRONTEND_LOGIN_URL}"
+            "?verified=0&reason=invalid_or_expired"
+        )
+
+    return RedirectResponse(url=redirect_url, status_code=302)
 
 
 def _verify_email_token(token: str, db: Session) -> dict:
@@ -389,7 +405,49 @@ def _verify_email_token(token: str, db: Session) -> dict:
         )
 
     if getattr(user, "is_email_verified", False):
-        return {"message": "Email already verified"}
+        return {
+            "message": "Email already verified",
+            "verified": True,
+            "verified_at": user.email_verified_at,
+        }
 
     crud.verify_user_email(db, user)
-    return {"message": "Email verified successfully"}
+    logger.info(
+        "Email verified for user_id=%s email=%s",
+        user.id,
+        user.email,
+    )
+    return {
+        "message": "Email verified successfully",
+        "verified": True,
+        "verified_at": user.email_verified_at,
+    }
+
+
+@router.get(
+    "/auth/verify-status",
+    response_model=schemas.VerifyEmailStatus,
+)
+def verify_email_status(
+    email: str,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user_from_header),
+):
+    if not getattr(current_user, "is_admin", False):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not authorized",
+        )
+
+    user = crud.get_user_by_email(db, email)
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found",
+        )
+
+    return {
+        "email": user.email,
+        "is_email_verified": bool(user.is_email_verified),
+        "email_verified_at": user.email_verified_at,
+    }

@@ -119,8 +119,24 @@ class Settings:
         # Email verification
         # -----------------------------
         # Used to build the verification link that gets emailed/logged.
-        self.EMAIL_VERIFICATION_URL: str = os.getenv(
-            "EMAIL_VERIFICATION_URL", "http://localhost:5173/verify-email"
+        email_verification_url = os.getenv("EMAIL_VERIFICATION_URL")
+        if self.ENV == "prod" and not email_verification_url:
+            raise RuntimeError(
+                "EMAIL_VERIFICATION_URL is not set. "
+                "Set it to the production backend verify endpoint."
+            )
+        self.EMAIL_VERIFICATION_URL: str = (
+            email_verification_url or "http://localhost:8000/auth/verify"
+        )
+
+        frontend_login_url = os.getenv("FRONTEND_LOGIN_URL")
+        if self.ENV == "prod" and not frontend_login_url:
+            raise RuntimeError(
+                "FRONTEND_LOGIN_URL is not set. "
+                "Set it to the production login page URL."
+            )
+        self.FRONTEND_LOGIN_URL: str = (
+            frontend_login_url or "http://localhost:5173/login"
         )
 
         self.EMAIL_TOKEN_EXPIRES_MINUTES: int = int(

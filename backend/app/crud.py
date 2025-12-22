@@ -447,6 +447,7 @@ def authenticate_user(db: Session, email: str, password: str):
 def verify_user_email(db: Session, user: models.User) -> models.User:
     """Mark a user's email as verified."""
     user.is_email_verified = True
+    user.email_verified_at = datetime.utcnow()
     db.commit()
     db.refresh(user)
     return user

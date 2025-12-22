@@ -72,6 +72,12 @@ class VerifyEmailPayload(BaseModel):
     token: str
 
 
+class VerifyEmailStatus(BaseModel):
+    email: EmailStr
+    is_email_verified: bool
+    email_verified_at: Optional[datetime] = None
+
+
 
 class UserOut(UserBase):
     id: int
@@ -301,5 +307,4 @@ class ServiceChargeUpdate(BaseModel):
 
 class ServiceChargeOut(BaseModel):
     service_charge_percentage: float
-
 

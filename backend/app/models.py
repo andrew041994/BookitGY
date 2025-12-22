@@ -33,6 +33,7 @@ class User(Base):
     is_provider = Column(Boolean, default=False)
     is_admin = Column(Boolean, default=False)
     is_email_verified = Column(Boolean, default=False)
+    email_verified_at = Column(DateTime, nullable=True)
     password_reset_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     avatar_url = Column(String, nullable=True)   # 👈 NEW
