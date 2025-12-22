@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import RedirectResponse
 from fastapi.security import OAuth2PasswordRequestForm
 from jose import JWTError, jwt
@@ -173,42 +173,67 @@ def _decode_email_verification_token(token: str) -> str:
 def login(
     form_data: OAuth2PasswordRequestForm = Depends(),
     db: Session = Depends(get_db),
+    request: Request = None,
 ):
     """
     Form-style login:
     - username: email
     - password: password
     """
-    user = crud.authenticate_user(db, form_data.username, form_data.password)
+    identifier = (form_data.username or "").strip().lower()
 
-    if not user:
+    try:
+        user = crud.authenticate_user(db, identifier, form_data.password)
+
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Incorrect email or password",
+            )
+
+        if not getattr(user, "is_email_verified", False):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Please verify your email before logging in.",
+            )
+
+        access_token = _create_access_token(user.email)
+
+        return {
+            "access_token": access_token,
+            "token_type": "bearer",
+            "user_id": user.id,
+            "email": user.email,
+            "is_provider": user.is_provider,
+            "is_admin": getattr(user, "is_admin", False),
+        }
+    except HTTPException:
+        raise
+    except Exception:
+        db.rollback()
+        logger.exception(
+            "Unhandled login error",
+            extra={
+                "route": request.url.path if request else "/auth/login",
+                "identifier": identifier or None,
+            },
+        )
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect email or password",
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error",
         )
 
-    if not getattr(user, "is_email_verified", False):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Please verify your email before logging in.",
-        )
 
-    access_token = _create_access_token(user.email)
-
-    return {
-        "access_token": access_token,
-        "token_type": "bearer",
-        "user_id": user.id,
-        "email": user.email,
-        "is_provider": user.is_provider,
-        "is_admin": getattr(user, "is_admin", False),
-    }
+@router.get("/auth/ping")
+def auth_ping():
+    return {"ok": True}
 
 
 @router.post("/auth/login_by_email")
 def login_by_email(
     payload: schemas.LoginByEmailPayload,
     db: Session = Depends(get_db),
+    request: Request = None,
 ):
     """
     JSON-style login:
@@ -217,30 +242,48 @@ def login_by_email(
       "password": "..."
     }
     """
-    user = crud.authenticate_user(db, payload.email, payload.password)
+    identifier = (payload.email or "").strip().lower()
 
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect email or password",
+    try:
+        user = crud.authenticate_user(db, identifier, payload.password)
+
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Incorrect email or password",
+            )
+
+        if not getattr(user, "is_email_verified", False):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Please verify your email before logging in.",
+            )
+
+        access_token = _create_access_token(user.email)
+
+        return {
+            "access_token": access_token,
+            "token_type": "bearer",
+            "user_id": user.id,
+            "email": user.email,
+            "is_provider": user.is_provider,
+            "is_admin": getattr(user, "is_admin", False),
+        }
+    except HTTPException:
+        raise
+    except Exception:
+        db.rollback()
+        logger.exception(
+            "Unhandled login error",
+            extra={
+                "route": request.url.path if request else "/auth/login_by_email",
+                "identifier": identifier or None,
+            },
         )
-
-    if not getattr(user, "is_email_verified", False):
         raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Please verify your email before logging in.",
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error",
         )
-
-    access_token = _create_access_token(user.email)
-
-    return {
-        "access_token": access_token,
-        "token_type": "bearer",
-        "user_id": user.id,
-        "email": user.email,
-        "is_provider": user.is_provider,
-        "is_admin": getattr(user, "is_admin", False),
-    }
 
 
 @router.post("/auth/forgot-password")

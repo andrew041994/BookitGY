@@ -1,3 +1,4 @@
+import logging
 import os
 from datetime import datetime, timedelta, date, timezone
 from dateutil import tz
@@ -17,6 +18,7 @@ from dotenv import load_dotenv, find_dotenv
 
 load_dotenv(find_dotenv(), override=False)
 
+logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -434,11 +436,26 @@ def authenticate_user(db: Session, email: str, password: str):
         - user object if credentials are valid
         - None if invalid
     """
+    normalized_email = (email or "").strip().lower()
     user = get_user_by_email(db, email)
     if not user:
         return None
 
-    if not verify_password(password, user.hashed_password):
+    if not getattr(user, "hashed_password", None):
+        logger.warning(
+            "Login failed: missing password hash",
+            extra={"email": normalized_email or None},
+        )
+        return None
+
+    try:
+        if not verify_password(password, user.hashed_password):
+            return None
+    except Exception:
+        logger.exception(
+            "Login failed: password verification error",
+            extra={"email": normalized_email or None},
+        )
         return None
 
     return user
