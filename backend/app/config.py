@@ -118,6 +118,22 @@ class Settings:
         # -----------------------------
         # Email verification
         # -----------------------------
+        # -----------------------------
+        # Email verification redirect
+        # -----------------------------
+        confirmation_url = os.getenv("EMAIL_CONFIRMATION_URL")
+        if self.ENV == "prod" and not confirmation_url:
+            raise RuntimeError(
+                "EMAIL_CONFIRMATION_URL is not set. "
+                "Set it to the production confirmation page URL."
+            )
+        
+        self.EMAIL_CONFIRMATION_URL: str = (
+            confirmation_url or "http://localhost:5173/confirmation"
+        )
+
+
+
         # Used to build the verification link that gets emailed/logged.
         email_verification_url = os.getenv("EMAIL_VERIFICATION_URL")
         if self.ENV == "prod" and not email_verification_url:

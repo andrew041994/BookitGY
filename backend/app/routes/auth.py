@@ -422,19 +422,20 @@ def verify_email_link(token: str, db: Session = Depends(get_db)):
     try:
         result = _verify_email_token(token, db)
         if result.get("verified"):
-            redirect_url = f"{settings.FRONTEND_LOGIN_URL}?verified=1"
+            redirect_url = settings.EMAIL_CONFIRMATION_URL
         else:
             redirect_url = (
-                f"{settings.FRONTEND_LOGIN_URL}"
-                "?verified=0&reason=invalid_or_expired"
+                f"{settings.EMAIL_CONFIRMATION_URL}"
+                "?status=invalid_or_expired"
             )
     except HTTPException:
         redirect_url = (
-            f"{settings.FRONTEND_LOGIN_URL}"
-            "?verified=0&reason=invalid_or_expired"
+            f"{settings.EMAIL_CONFIRMATION_URL}"
+            "?status=invalid_or_expired"
         )
 
     return RedirectResponse(url=redirect_url, status_code=302)
+
 
 
 def _verify_email_token(token: str, db: Session) -> dict:
