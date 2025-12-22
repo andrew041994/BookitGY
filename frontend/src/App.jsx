@@ -1,10 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { BrowserRouter, Routes, Route, Link, Navigate, useLocation, useNavigate } from 'react-router-dom';
-import axios from 'axios';
+import { apiClient, logApiError } from './lib/api';
 
-const API = import.meta.env.VITE_API_URL || "https://bookitgy.onrender.com";
-;
-  console.log("### API base URL =", API);
 const DEFAULT_SERVICE_CHARGE = 10;
 const SERVICE_CHARGE_STORAGE_KEY = 'bookitgy.service_charge_rate';
 
@@ -160,13 +157,6 @@ function useBillingCore() {
   const suspensionCutoffLabel = useMemo(() => getSuspensionCutoffDate().toISOString().slice(0, 10), []);
 
   useEffect(() => {
-    const storedToken = localStorage.getItem('token');
-    if (storedToken) {
-      axios.defaults.headers.common.Authorization = `Bearer ${storedToken}`;
-    }
-  }, []);
-
-  useEffect(() => {
     const interval = setInterval(() => setSuspensionClock(Date.now()), 1000 * 60 * 30);
     return () => clearInterval(interval);
   }, []);
@@ -175,7 +165,7 @@ function useBillingCore() {
     const fetchProviders = async () => {
       try {
         setLoadingProviders(true);
-        const res = await axios.get(`${API}/providers`);
+        const res = await apiClient.get('/providers');
         if (Array.isArray(res.data) && res.data.length) {
           const normalized = res.data.map((p) => ({
             id: p.provider_id || p.id,
@@ -198,6 +188,7 @@ function useBillingCore() {
           setProviders(normalized);
         }
       } catch (e) {
+        logApiError(e);
         console.log('Using sample providers', e.message);
       } finally {
         setLoadingProviders(false);
@@ -210,7 +201,7 @@ function useBillingCore() {
   useEffect(() => {
     const fetchBilling = async () => {
       try {
-        const res = await axios.get(`${API}/admin/billing`);
+        const res = await apiClient.get('/admin/billing');
         if (!Array.isArray(res.data) || res.data.length === 0) return;
 
         setCharges(
@@ -230,6 +221,7 @@ function useBillingCore() {
           }),
         );
       } catch (e) {
+        logApiError(e);
         console.log('Using sample billing data', e.message);
       }
     };

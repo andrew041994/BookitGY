@@ -1,12 +1,9 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
 import { BrowserRouter, Routes, Route, Link, NavLink, useNavigate, Navigate, Outlet, useLocation } from 'react-router-dom'
-import axios from 'axios'
+import { apiClient, logApiError } from './lib/api'
 import './login.css'
 
-const API = import.meta.env.VITE_API_URL || "https://bookitgy.onrender.com";
-  console.log("### API base URL =", API);
-  
 const DEFAULT_SERVICE_CHARGE = 10
 const SERVICE_CHARGE_STORAGE_KEY = 'bookitgy.service_charge_rate'
 
@@ -27,9 +24,9 @@ function App() {
 
   React.useEffect(() => {
     if (token) {
-      axios.defaults.headers.common.Authorization = `Bearer ${token}`
+      apiClient.defaults.headers.common.Authorization = `Bearer ${token}`
     } else {
-      delete axios.defaults.headers.common.Authorization
+      delete apiClient.defaults.headers.common.Authorization
     }
   }, [token])
 
@@ -51,7 +48,7 @@ function App() {
       setError('')
       setLoading(true)
       try {
-        const res = await axios.post(`${API}/auth/login`, new URLSearchParams({
+        const res = await apiClient.post('/auth/login', new URLSearchParams({
           username: email,
           password
         }))
@@ -467,13 +464,13 @@ function App() {
       setLoading(true)
       setError('')
       try {
-        const res = await axios.get(`${API}/admin/billing`, {
+        const res = await apiClient.get('/admin/billing', {
           headers: { Authorization: `Bearer ${token}` }
         })
         setBillingRows(res.data)
       } catch (err) {
-        console.error(err)
-        setError('Unable to load provider billing details right now.')
+        logApiError(err)
+        setError('Unable to load provider billing details. Please refresh and try again.')
       } finally {
         setLoading(false)
       }
@@ -492,8 +489,8 @@ function App() {
       )
 
       try {
-        await axios.put(
-          `${API}/admin/billing/${providerId}/status`,
+        await apiClient.put(
+          `/admin/billing/${providerId}/status`,
           { is_paid: isPaid },
           { headers: { Authorization: `Bearer ${token}` } }
         )
@@ -501,7 +498,7 @@ function App() {
         // OPTIONAL: if you want truth from server, refetch after success
         // await fetchBillingRows()
       } catch (err) {
-        console.error(err)
+        logApiError(err)
         setError("Failed to update provider billing status.")
         // rollback safely
         fetchBillingRows()
@@ -517,15 +514,15 @@ function App() {
       )
 
       try {
-        await axios.put(
-          `${API}/admin/billing/${providerId}/lock`,
+        await apiClient.put(
+          `/admin/billing/${providerId}/lock`,
           { is_locked: shouldLock },
           { headers: { Authorization: `Bearer ${token}` } }
         )
 
         await fetchBillingRows()
       } catch (err) {
-        console.error(err)
+        logApiError(err)
         setError('Failed to update provider account status.')
         fetchBillingRows()
       }
@@ -543,8 +540,8 @@ function App() {
       try {
         await Promise.all(
           billingRows.map((row) =>
-            axios.put(
-              `${API}/admin/billing/${row.provider_id}/status`,
+            apiClient.put(
+              `/admin/billing/${row.provider_id}/status`,
               { is_paid: isPaid },
               { headers: { Authorization: `Bearer ${token}` } }
             )
@@ -554,7 +551,7 @@ function App() {
         // Single refetch = clean + guaranteed correct
         await fetchBillingRows()
       } catch (err) {
-        console.error(err)
+        logApiError(err)
         setError('Failed to update all provider statuses.')
         await fetchBillingRows()
       } finally {
