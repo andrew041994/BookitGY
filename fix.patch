@@ -1,82 +1,96 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
-diff --git a/backend/app/crud.py b/backend/app/crud.py
-index f34715b7f4fef05859f26bdde2ec7fe24c1ab080..b1ecfcaaf1b69d3958c9c0db5efc4b4dd633fc42 100644
---- a/backend/app/crud.py
-+++ b/backend/app/crud.py
-@@ -1339,66 +1339,70 @@ def list_bookings_for_customer(db: Session, customer_id: int):
-                 service_price_gyd=(
-                     float(service.price_gyd or 0.0)
-                     if service and service.price_gyd is not None
-                     else 0.0
-                 ),
-                 customer_name=get_display_name(user),
-                 customer_phone=user.phone or "",
-                 provider_name=provider_name,
-                 provider_location=provider_location,
-                 provider_lat=provider_lat,
-                 provider_long=provider_long,
-             )
-         )
+diff --git a/backend/tests/test_billing.py b/backend/tests/test_billing.py
+index 0231bf6115fc68489e64c2cad079ea5408d11c15..0f5f7326b015e2f47d9e3e54f726a9684704dd85 100644
+--- a/backend/tests/test_billing.py
++++ b/backend/tests/test_billing.py
+@@ -100,50 +100,87 @@ def test_cancelled_booking_not_billable(db_session):
  
-     return results
+ def test_cancelled_booking_not_auto_completed(db_session):
+     session, models, crud = db_session
+     provider, customer, service = _create_provider_graph(session, models)
  
+     now = datetime.utcnow()
+     start_time = _current_month_past_time(now) - timedelta(hours=1)
+     end_time = start_time + timedelta(hours=1)
  
- 
- def cancel_booking_for_customer(
-     db: Session, booking_id: int, customer_id: int
- ) -> Optional[models.Booking]:
-     """
-     Cancel a booking for a given customer.
- 
-     Returns the updated booking or None if not found / not owned by customer.
-+    If the booking has already been auto-completed, this still forces the status
-+    back to "cancelled" so it won't be billed.
-     """
-     booking = (
-         db.query(models.Booking)
-         .filter(
-             models.Booking.id == booking_id,
-             models.Booking.customer_id == customer_id,
-         )
-         .first()
+     booking = _add_booking(
+         session,
+         models,
+         customer=customer,
+         service=service,
+         start_time=start_time,
+         end_time=end_time,
+         status="cancelled",
      )
  
-     if not booking:
-         return None
+     crud._auto_complete_finished_bookings(session, as_of=now)
+     session.refresh(booking)
  
--    # Only allow cancellation from certain states
--    if booking.status not in ("confirmed", "pending"):
--        return booking  # already cancelled/completed, no-op
-+    normalized_status = (booking.status or "").strip().lower()
+     assert booking.status == "cancelled"
+ 
+ 
++def test_cancelling_booking_updates_monthly_bill(db_session):
++    session, models, crud = db_session
++    provider, customer, service = _create_provider_graph(session, models)
 +
-+    # If it's already cancelled, nothing to do
-+    if normalized_status in {"cancelled", "canceled"}:
-+        return booking
++    now = datetime.utcnow()
++    start_time = _current_month_past_time(now)
++    end_time = start_time + timedelta(hours=1)
++
++    booking = _add_booking(
++        session,
++        models,
++        customer=customer,
++        service=service,
++        start_time=start_time,
++        end_time=end_time,
++        status="completed",
++    )
++
++    crud.generate_monthly_bills(session, month=now.date())
++
++    bill = (
++        session.query(models.Bill)
++        .filter(models.Bill.provider_id == provider.id)
++        .first()
++    )
++
++    assert bill is not None
++    assert float(bill.total_gyd) > 0
++
++    crud.cancel_booking_for_customer(session, booking.id, customer.id)
++
++    session.refresh(bill)
++
++    assert float(bill.total_gyd) == 0
++    assert float(bill.fee_gyd) == 0
++
++
+ def test_completed_booking_counts_toward_fees(db_session):
+     session, models, crud = db_session
+     provider, customer, service = _create_provider_graph(session, models)
  
-     booking.status = "cancelled"
-     db.commit()
-     db.refresh(booking)
+     now = datetime.utcnow()
+     start_time = _current_month_past_time(now)
+     end_time = start_time + timedelta(hours=1)
  
-     service = (
-         db.query(models.Service)
-         .filter(models.Service.id == booking.service_id)
-         .first()
+     _add_booking(
+         session,
+         models,
+         customer=customer,
+         service=service,
+         start_time=start_time,
+         end_time=end_time,
+         status="completed",
      )
-     provider_user = None
-     if service:
-         provider = (
-             db.query(models.Provider)
-             .filter(models.Provider.id == service.provider_id)
-             .first()
-         )
-         if provider:
-             provider_user = (
-                 db.query(models.User)
-                 .filter(models.User.id == provider.user_id)
-                 .first()
-             )
  
-     customer = (
+     # Add noise bookings that shouldn't count
+     future_start = now + timedelta(days=1)
+     future_end = future_start + timedelta(hours=1)
+     _add_booking(
+         session,
+         models,
+         customer=customer,
  
 EOF
 )

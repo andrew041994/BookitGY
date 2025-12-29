@@ -3,7 +3,7 @@ from datetime import datetime, timedelta, date, timezone
 from dateutil import tz
 from decimal import Decimal, ROUND_HALF_UP
 from typing import Optional, List
-from sqlalchemy import func
+from sqlalchemy import func, cast, String
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
 from passlib.context import CryptContext
@@ -778,7 +778,7 @@ def _auto_complete_finished_bookings(
     blocked_statuses = {"cancelled", "canceled", "completed"}
 
     normalized_status = func.lower(
-        func.trim(func.coalesce(models.Booking.status, ""))
+        func.trim(func.coalesce(cast(models.Booking.status, String), ""))
     )
 
     query = db.query(models.Booking).filter(
@@ -937,7 +937,7 @@ def _billable_bookings_base_query(
 
 
     normalized_status = func.lower(
-        func.trim(func.coalesce(models.Booking.status, ""))
+        func.trim(func.coalesce(cast(models.Booking.status, String), ""))
     )
 
 
@@ -1279,6 +1279,16 @@ def list_billable_bookings_for_provider(
         as_of=as_of,
     )
 
+
+def _refresh_bill_for_booking(db: Session, booking: models.Booking) -> None:
+    """Regenerate bills for the month containing this booking."""
+
+    if not booking.start_time:
+        return
+
+    generate_monthly_bills(db, month=booking.start_time.date())
+
+
 def list_bookings_for_customer(db: Session, customer_id: int):
     """
     Return all bookings for this customer, newest first.
@@ -1386,6 +1396,8 @@ def cancel_booking_for_customer(
     db.commit()
     db.refresh(booking)
 
+    _refresh_bill_for_booking(db, booking)
+
     service = (
         db.query(models.Service)
         .filter(models.Service.id == booking.service_id)
@@ -1466,6 +1478,8 @@ def cancel_booking_for_provider(
     booking.status = "cancelled"
     db.commit()
     db.refresh(booking)
+
+    _refresh_bill_for_booking(db, booking)
 
     if customer and service:
         send_whatsapp(

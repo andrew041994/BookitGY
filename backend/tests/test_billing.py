@@ -122,6 +122,43 @@ def test_cancelled_booking_not_auto_completed(db_session):
     assert booking.status == "cancelled"
 
 
+def test_cancelling_booking_updates_monthly_bill(db_session):
+    session, models, crud = db_session
+    provider, customer, service = _create_provider_graph(session, models)
+
+    now = datetime.utcnow()
+    start_time = _current_month_past_time(now)
+    end_time = start_time + timedelta(hours=1)
+
+    booking = _add_booking(
+        session,
+        models,
+        customer=customer,
+        service=service,
+        start_time=start_time,
+        end_time=end_time,
+        status="completed",
+    )
+
+    crud.generate_monthly_bills(session, month=now.date())
+
+    bill = (
+        session.query(models.Bill)
+        .filter(models.Bill.provider_id == provider.id)
+        .first()
+    )
+
+    assert bill is not None
+    assert float(bill.total_gyd) > 0
+
+    crud.cancel_booking_for_customer(session, booking.id, customer.id)
+
+    session.refresh(bill)
+
+    assert float(bill.total_gyd) == 0
+    assert float(bill.fee_gyd) == 0
+
+
 def test_completed_booking_counts_toward_fees(db_session):
     session, models, crud = db_session
     provider, customer, service = _create_provider_graph(session, models)
