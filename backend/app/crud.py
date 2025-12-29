@@ -1839,8 +1839,7 @@ def get_provider_availability(
 
 def list_todays_bookings_for_provider(db: Session, provider_id: int):
     """
-    All *confirmed* bookings for this provider whose start_time is today
-    and that have not finished yet.
+    All *confirmed* bookings for this provider whose start_time is today.
     """
     now = now_local_naive()   # ⬅ Guyana local date for “today”
     start_of_day = datetime(now.year, now.month, now.day)
@@ -1854,7 +1853,6 @@ def list_todays_bookings_for_provider(db: Session, provider_id: int):
             models.Service.provider_id == provider_id,
             models.Booking.start_time >= start_of_day,
             models.Booking.start_time < end_of_day,
-            models.Booking.end_time > now,
         )
         .order_by(models.Booking.start_time)
     )

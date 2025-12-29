@@ -159,6 +159,54 @@ def test_provider_lists_handle_mixed_confirmed_status_casing(db_session):
 
 
 @pytest.mark.usefixtures("db_session")
+def test_provider_today_bookings_include_past_end_times(db_session, monkeypatch):
+    session, models, crud = db_session
+    provider, provider_user, customer, service = _create_provider_graph(session, models)
+
+    fake_now = datetime(2024, 1, 2, 15, 0)
+    monkeypatch.setattr(crud, "now_local_naive", lambda: fake_now)
+
+    start_time = datetime(fake_now.year, fake_now.month, fake_now.day, 9, 0)
+    end_time = start_time + timedelta(hours=1)
+
+    booking = _add_booking(
+        session,
+        models,
+        customer=customer,
+        service=service,
+        start_time=start_time,
+        end_time=end_time,
+        status="confirmed",
+    )
+
+    from app import database
+    from app.main import app
+    from app.database import get_db
+    from app.routes import bookings as bookings_routes
+
+    database.Base.metadata.create_all(bind=database.engine)
+
+    def override_get_db():
+        try:
+            yield session
+        finally:
+            pass
+
+    app.dependency_overrides[get_db] = override_get_db
+    app.dependency_overrides[bookings_routes._require_current_provider] = lambda: provider
+
+    client = TestClient(app)
+
+    try:
+        resp = client.get("/providers/me/bookings/today")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert [item["id"] for item in data] == [booking.id]
+    finally:
+        app.dependency_overrides = {}
+
+
+@pytest.mark.usefixtures("db_session")
 def test_provider_bookings_include_all_statuses(db_session):
     session, models, crud = db_session
     provider, provider_user, customer, service = _create_provider_graph(session, models)
