@@ -1,4 +1,4 @@
-from typing import Optional, List
+from typing import List
 from urllib.parse import urlparse
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -219,44 +219,6 @@ def update_my_working_hours(
 # =====================================================================
 #  GENERIC USER PROFILE
 # =====================================================================
-
-@router.get(
-    "/providers/me/profile",
-    response_model=schemas.ProviderProfileOut,
-    status_code=status.HTTP_200_OK,
-)
-def read_my_provider_profile(
-    user: models.User = Depends(get_current_user_from_header),
-    db: Session = Depends(get_db),
-):
-    if not user.is_provider:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only providers can view provider profile",
-        )
-
-    # Use `user`, not undefined `current_user`
-    provider = crud.get_provider_for_user(db, user.id)
-    if not provider:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="You do not have a provider profile. Contact support or an admin.",
-        )
-
-    professions = crud.get_professions_for_provider(db, provider.id)
-
-    return schemas.ProviderProfileOut(
-        full_name=crud.get_display_name(user),
-        phone=user.phone or "",
-        whatsapp=user.whatsapp,
-        location=user.location or "",
-        bio=provider.bio or "",
-        professions=professions,
-        avatar_url=provider.avatar_url,
-    )
-
-
-
 
 @router.put(
     "/me/profile",

@@ -1,198 +1,125 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
-diff --git a/backend/tests/test_booking_lists.py b/backend/tests/test_booking_lists.py
-new file mode 100644
-index 0000000000000000000000000000000000000000..e20018e2c5ee792e742153f136a56935c9778700
---- /dev/null
-+++ b/backend/tests/test_booking_lists.py
-@@ -0,0 +1,188 @@
-+from datetime import datetime, timedelta
-+
-+import pytest
-+from fastapi.testclient import TestClient
-+
-+
-+def _create_provider_graph(session, models):
-+    provider_user = models.User(username="provider@example.com", is_provider=True)
-+    customer_user = models.User(username="customer@example.com")
-+    session.add_all([provider_user, customer_user])
-+    session.commit()
-+
-+    provider = models.Provider(user_id=provider_user.id, account_number="ACC-1")
-+    session.add(provider)
-+    session.commit()
-+    session.refresh(provider)
-+
-+    service = models.Service(
-+        provider_id=provider.id,
-+        name="Test Service",
-+        price_gyd=1000,
-+        duration_minutes=60,
-+    )
-+    session.add(service)
-+    session.commit()
-+    session.refresh(service)
-+
-+    return provider, provider_user, customer_user, service
-+
-+
-+def _add_booking(session, models, *, customer, service, start_time, end_time, status):
-+    booking = models.Booking(
-+        customer_id=customer.id,
-+        service_id=service.id,
-+        start_time=start_time,
-+        end_time=end_time,
-+        status=status,
-+    )
-+    session.add(booking)
-+    session.commit()
-+    session.refresh(booking)
-+    return booking
-+
-+
-+@pytest.mark.usefixtures("db_session")
-+def test_provider_bookings_include_all_statuses(db_session):
-+    session, models, crud = db_session
-+    provider, provider_user, customer, service = _create_provider_graph(session, models)
-+
-+    now = datetime.utcnow()
-+    future_start = now + timedelta(hours=2)
-+    past_start = now - timedelta(days=1)
-+    cancelled_start = now - timedelta(hours=3)
-+
-+    _add_booking(
-+        session,
-+        models,
-+        customer=customer,
-+        service=service,
-+        start_time=future_start,
-+        end_time=future_start + timedelta(hours=1),
-+        status="confirmed",
-+    )
-+
-+    _add_booking(
-+        session,
-+        models,
-+        customer=customer,
-+        service=service,
-+        start_time=past_start,
-+        end_time=past_start + timedelta(hours=1),
-+        status="completed",
-+    )
-+
-+    cancelled = _add_booking(
-+        session,
-+        models,
-+        customer=customer,
-+        service=service,
-+        start_time=cancelled_start,
-+        end_time=cancelled_start + timedelta(hours=1),
-+        status="cancelled",
-+    )
-+    cancelled.canceled_at = now - timedelta(hours=2)
-+    session.commit()
-+
-+    from app import database
-+    from app.main import app
-+    from app.database import get_db
-+    from app.routes import bookings as bookings_routes
-+
-+    database.Base.metadata.create_all(bind=database.engine)
-+
-+    def override_get_db():
-+        try:
-+            yield session
-+        finally:
-+            pass
-+
-+    app.dependency_overrides[get_db] = override_get_db
-+    app.dependency_overrides[bookings_routes._require_current_provider] = lambda: provider
-+
-+    client = TestClient(app)
-+
-+    try:
-+        resp = client.get("/providers/me/bookings")
-+        assert resp.status_code == 200
-+        data = resp.json()
-+        statuses = {item["status"] for item in data}
-+        assert statuses == {"confirmed", "completed", "cancelled"}
-+
-+        cancelled_rows = [item for item in data if item["status"] == "cancelled"]
-+        assert cancelled_rows and cancelled_rows[0]["canceled_at"] is not None
-+    finally:
-+        app.dependency_overrides = {}
-+
-+
-+@pytest.mark.usefixtures("db_session")
-+def test_customer_bookings_include_cancelled_and_upcoming(db_session):
-+    session, models, crud = db_session
-+    provider, provider_user, customer, service = _create_provider_graph(session, models)
-+
-+    now = datetime.utcnow()
-+    future_start = now + timedelta(hours=3)
-+    cancelled_start = now - timedelta(hours=1)
-+    completed_start = now - timedelta(days=1)
-+
-+    _add_booking(
-+        session,
-+        models,
-+        customer=customer,
-+        service=service,
-+        start_time=future_start,
-+        end_time=future_start + timedelta(hours=1),
-+        status="confirmed",
-+    )
-+
-+    _add_booking(
-+        session,
-+        models,
-+        customer=customer,
-+        service=service,
-+        start_time=completed_start,
-+        end_time=completed_start + timedelta(hours=1),
-+        status="completed",
-+    )
-+
-+    cancelled = _add_booking(
-+        session,
-+        models,
-+        customer=customer,
-+        service=service,
-+        start_time=cancelled_start,
-+        end_time=cancelled_start + timedelta(hours=1),
-+        status="cancelled",
-+    )
-+    cancelled.canceled_at = now
-+    session.commit()
-+
-+    from app import database
-+    from app.main import app
-+    from app.database import get_db
-+    from app.security import get_current_user_from_header
-+
-+    database.Base.metadata.create_all(bind=database.engine)
-+
-+    def override_get_db():
-+        try:
-+            yield session
-+        finally:
-+            pass
-+
-+    app.dependency_overrides[get_db] = override_get_db
-+    app.dependency_overrides[get_current_user_from_header] = lambda: customer
-+
-+    client = TestClient(app)
-+
-+    try:
-+        resp = client.get("/bookings/me")
-+        assert resp.status_code == 200
-+        data = resp.json()
-+        statuses = {item["status"] for item in data}
-+        assert statuses == {"confirmed", "cancelled", "completed"}
-+
-+        cancelled_rows = [item for item in data if item["status"] == "cancelled"]
-+        assert cancelled_rows and cancelled_rows[0]["canceled_at"] is not None
-+    finally:
-+        app.dependency_overrides = {}
+diff --git a/backend/app/routes/profile.py b/backend/app/routes/profile.py
+index 69562bf7553cddfea5765b55454e5a677f8d9a76..6824b0371247831f56de4d3ec3e996a3f646eeaf 100644
+--- a/backend/app/routes/profile.py
++++ b/backend/app/routes/profile.py
+@@ -1,26 +1,26 @@
+-from typing import Optional, List
++from typing import List
+ from urllib.parse import urlparse
+ 
+ from fastapi import APIRouter, Depends, HTTPException, status
+ from sqlalchemy.orm import Session
+ from sqlalchemy.exc import IntegrityError
+ 
+ from app.database import get_db
+ from app import models, schemas, crud
+ from app.config import get_settings
+ from app.security import get_current_user_from_header
+ 
+ settings = get_settings()
+ 
+ router = APIRouter(tags=["profile"])
+ 
+ MAX_AVATAR_URL_LENGTH = 500
+ 
+ 
+ def _sanitize_avatar_url(raw_url: str) -> str:
+     """
+     Validate and normalize an avatar URL before saving it.
+ 
+     - Rejects empty/whitespace-only values.
+     - Requires http:// or https:// scheme.
+     - Enforces a max length to avoid abuse payloads.
+@@ -198,88 +198,50 @@ def update_my_working_hours(
+     if not user.is_provider:
+         raise HTTPException(
+             status_code=status.HTTP_403_FORBIDDEN,
+             detail="Only providers can manage working hours",
+         )
+ 
+     provider = crud.get_provider_by_user_id(db, user.id)
+     if not provider:
+         raise HTTPException(
+             status_code=status.HTTP_404_NOT_FOUND,
+             detail="Provider not found",
+         )
+ 
+     hours_list = [h.dict() for h in hours]
+ 
+     rows = crud.set_working_hours_for_provider(
+         db, provider_id=provider.id, hours_list=hours_list
+     )
+     return rows
+ 
+ 
+ # =====================================================================
+ #  GENERIC USER PROFILE
+ # =====================================================================
+ 
+-@router.get(
+-    "/providers/me/profile",
+-    response_model=schemas.ProviderProfileOut,
+-    status_code=status.HTTP_200_OK,
+-)
+-def read_my_provider_profile(
+-    user: models.User = Depends(get_current_user_from_header),
+-    db: Session = Depends(get_db),
+-):
+-    if not user.is_provider:
+-        raise HTTPException(
+-            status_code=status.HTTP_403_FORBIDDEN,
+-            detail="Only providers can view provider profile",
+-        )
+-
+-    # Use `user`, not undefined `current_user`
+-    provider = crud.get_provider_for_user(db, user.id)
+-    if not provider:
+-        raise HTTPException(
+-            status_code=status.HTTP_403_FORBIDDEN,
+-            detail="You do not have a provider profile. Contact support or an admin.",
+-        )
+-
+-    professions = crud.get_professions_for_provider(db, provider.id)
+-
+-    return schemas.ProviderProfileOut(
+-        full_name=crud.get_display_name(user),
+-        phone=user.phone or "",
+-        whatsapp=user.whatsapp,
+-        location=user.location or "",
+-        bio=provider.bio or "",
+-        professions=professions,
+-        avatar_url=provider.avatar_url,
+-    )
+-
+-
+-
+-
+ @router.put(
+     "/me/profile",
+     response_model=schemas.UserProfileOut,
+     status_code=status.HTTP_200_OK,
+ )
+ def update_my_profile(
+     payload: schemas.UserProfileUpdate,
+     user: models.User = Depends(get_current_user_from_header),
+     db: Session = Depends(get_db),
+ ):
+     if payload.full_name is not None:
+         try:
+             crud.set_username_from_full_name(db, user, payload.full_name)
+         except ValueError as exc:
+             raise HTTPException(
+                 status_code=status.HTTP_400_BAD_REQUEST,
+                 detail=str(exc),
+             )
+ 
+     if payload.phone is not None:
+         user.phone = payload.phone
+ 
+     if payload.whatsapp is not None:
+         user.whatsapp = payload.whatsapp
+ 
  
 EOF
 )
