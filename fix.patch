@@ -1,61 +1,70 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
-diff --git a/backend/app/crud.py b/backend/app/crud.py
-index 24bd0d08db25bdf92d708c7cb633be52b58250a0..2b473a79e9129d3ab5f3ae72ac2c9a95c7eec337 100644
---- a/backend/app/crud.py
-+++ b/backend/app/crud.py
-@@ -914,51 +914,51 @@ from decimal import Decimal
- from app.config import get_settings
- from app import models
- # get_provider_credit_balance should already be defined in this file
+diff --git a/backend/tests/test_booking_lists.py b/backend/tests/test_booking_lists.py
+index 7055d3f341aed13fc664168760c6c132a963b86d..ed5f147efad1f7cdd36d01f56b3f7484c8e8ca66 100644
+--- a/backend/tests/test_booking_lists.py
++++ b/backend/tests/test_booking_lists.py
+@@ -156,50 +156,61 @@ def test_provider_billing_excludes_upcoming_and_cancelled(db_session):
+     from app.database import get_db
+     from app.routes import bookings as bookings_routes
+ 
+     database.Base.metadata.create_all(bind=database.engine)
+ 
+     def override_get_db():
+         try:
+             yield session
+         finally:
+             pass
+ 
+     app.dependency_overrides[get_db] = override_get_db
+     app.dependency_overrides[bookings_routes._require_current_provider] = lambda: provider
+ 
+     client = TestClient(app)
+ 
+     try:
+         resp = client.get("/providers/me/billing/bookings")
+         assert resp.status_code == 200
+         data = resp.json()
+         returned_ids = {item["id"] for item in data}
+         assert in_month_billable.id in returned_ids
+         assert cancelled_past.id not in returned_ids
+         assert all(item["status"] != "cancelled" for item in data)
+         assert all(datetime.fromisoformat(item["end_time"]) <= now for item in data)
++
++        # If a previously billable appointment later gets cancelled, it should
++        # drop out of the billing list on subsequent fetches.
++        in_month_billable.status = "cancelled"
++        session.commit()
++
++        resp = client.get("/providers/me/billing/bookings")
++        assert resp.status_code == 200
++        data = resp.json()
++        returned_ids = {item["id"] for item in data}
++        assert in_month_billable.id not in returned_ids
+     finally:
+         app.dependency_overrides = {}
  
  
- def _billable_bookings_base_query(
-     db: Session, provider_id: int, as_of: datetime | None = None
- ):
-     """Return a base query for bookings that are eligible for billing.
+ @pytest.mark.usefixtures("db_session")
+ def test_customer_bookings_include_cancelled_and_upcoming(db_session):
+     session, models, crud = db_session
+     provider, provider_user, customer, service = _create_provider_graph(session, models)
  
-     Eligibility rules (applied consistently across billing calculations):
-     - Booking is NOT cancelled.
-     - Booking has ended.
-     - Appointment end time is on or before the cutoff.
-     """
+     now = datetime.utcnow()
+     future_start = now + timedelta(hours=3)
+     cancelled_start = now - timedelta(hours=1)
+     completed_start = now - timedelta(days=1)
  
-     cutoff = as_of or datetime.utcnow()
- 
-     return (
-         db.query(models.Booking, models.Service, models.User)
-         .join(models.Service, models.Booking.service_id == models.Service.id)
-         .join(models.Provider, models.Service.provider_id == models.Provider.id)
-         .join(models.User, models.Booking.customer_id == models.User.id)
-         .filter(
-             models.Provider.id == provider_id,
--            models.Booking.status != "cancelled",
-+            models.Booking.status.notin_({"cancelled", "canceled"}),
-             models.Booking.end_time.isnot(None),
-             models.Booking.end_time <= cutoff,
-         )
+     _add_booking(
+         session,
+         models,
+         customer=customer,
+         service=service,
+         start_time=future_start,
+         end_time=future_start + timedelta(hours=1),
+         status="confirmed",
      )
  
- 
- def _billing_period_bounds(reference: datetime) -> tuple[datetime, datetime]:
-     """Return start/end datetimes covering the month containing ``reference``."""
- 
-     start = datetime(reference.year, reference.month, 1)
-     if reference.month == 12:
-         end = datetime(reference.year + 1, 1, 1)
-     else:
-         end = datetime(reference.year, reference.month + 1, 1)
- 
-     return start, end
- 
- 
- def get_provider_fees_due(db: Session, provider_id: int) -> float:
-     """
-     Compute the *current month's* amount due for this provider in GYD,
-     using only completed (ended) and non-cancelled bookings.
- 
-     Logic:
-     - Look at bookings that have ended (end_time <= now) and are not cancelled,
+     _add_booking(
  
 EOF
 )

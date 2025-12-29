@@ -929,6 +929,12 @@ def _billable_bookings_base_query(
 
     cutoff = as_of or datetime.utcnow()
 
+
+    normalized_status = func.lower(
+        func.trim(func.coalesce(models.Booking.status, ""))
+    )
+
+
     return (
         db.query(models.Booking, models.Service, models.User)
         .join(models.Service, models.Booking.service_id == models.Service.id)
@@ -936,7 +942,7 @@ def _billable_bookings_base_query(
         .join(models.User, models.Booking.customer_id == models.User.id)
         .filter(
             models.Provider.id == provider_id,
-            models.Booking.status.notin_({"cancelled", "canceled"}),
+            normalized_status.notin_({"cancelled", "canceled"}),
             models.Booking.end_time.isnot(None),
             models.Booking.end_time <= cutoff,
         )

@@ -178,6 +178,17 @@ def test_provider_billing_excludes_upcoming_and_cancelled(db_session):
         assert cancelled_past.id not in returned_ids
         assert all(item["status"] != "cancelled" for item in data)
         assert all(datetime.fromisoformat(item["end_time"]) <= now for item in data)
+
+        # If a previously billable appointment later gets cancelled, it should
+        # drop out of the billing list on subsequent fetches.
+        in_month_billable.status = "cancelled"
+        session.commit()
+
+        resp = client.get("/providers/me/billing/bookings")
+        assert resp.status_code == 200
+        data = resp.json()
+        returned_ids = {item["id"] for item in data}
+        assert in_month_billable.id not in returned_ids
     finally:
         app.dependency_overrides = {}
 
