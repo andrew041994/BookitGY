@@ -1,107 +1,211 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
-diff --git a/backend/tests/test_booking_lists.py b/backend/tests/test_booking_lists.py
-index e78f4b88a244e2f46110c41307a00153acec08cd..2f7ae20531fa27802549c0902ee99c13162e2d5e 100644
---- a/backend/tests/test_booking_lists.py
-+++ b/backend/tests/test_booking_lists.py
-@@ -136,50 +136,98 @@ def test_provider_lists_handle_mixed_confirmed_status_casing(db_session):
-             yield session
-         finally:
-             pass
+diff --git a/backend/tests/test_booking_status_rules.py b/backend/tests/test_booking_status_rules.py
+index c5c8cd308f05c74a7960731eafe6b309f573a9ba..3277ab52f4ba897fd76472e3535545fbc1c8afa1 100644
+--- a/backend/tests/test_booking_status_rules.py
++++ b/backend/tests/test_booking_status_rules.py
+@@ -1,143 +1,145 @@
+ from datetime import datetime, timedelta
  
-     app.dependency_overrides[get_db] = override_get_db
-     app.dependency_overrides[bookings_routes._require_current_provider] = lambda: provider
++from app.utils.time import now_guyana
++
  
-     client = TestClient(app)
+ def _create_provider_graph(session, models):
+     provider_user = models.User(username="provider@example.com", is_provider=True)
+     customer_user = models.User(username="customer@example.com")
+     session.add_all([provider_user, customer_user])
+     session.commit()
  
-     try:
-         today_resp = client.get("/providers/me/bookings/today")
-         assert today_resp.status_code == 200
-         today_data = today_resp.json()
-         assert [item["id"] for item in today_data] == [today_booking.id]
-         assert today_data[0]["status"] == "confirmed"
+     provider = models.Provider(user_id=provider_user.id, account_number="ACC-1")
+     session.add(provider)
+     session.commit()
+     session.refresh(provider)
  
-         upcoming_resp = client.get("/providers/me/bookings/upcoming")
-         assert upcoming_resp.status_code == 200
-         upcoming_data = upcoming_resp.json()
-         assert [item["id"] for item in upcoming_data] == [upcoming_booking.id]
-         assert upcoming_data[0]["status"] == "confirmed"
-     finally:
-         app.dependency_overrides = {}
+     service = models.Service(
+         provider_id=provider.id,
+         name="Test Service",
+         price_gyd=1000,
+         duration_minutes=60,
+     )
+     session.add(service)
+     session.commit()
+     session.refresh(service)
+ 
+     return provider, customer_user, service
  
  
-+@pytest.mark.usefixtures("db_session")
-+def test_provider_today_bookings_include_past_end_times(db_session, monkeypatch):
-+    session, models, crud = db_session
-+    provider, provider_user, customer, service = _create_provider_graph(session, models)
-+
-+    fake_now = datetime(2024, 1, 2, 15, 0)
-+    monkeypatch.setattr(crud, "now_local_naive", lambda: fake_now)
-+
-+    start_time = datetime(fake_now.year, fake_now.month, fake_now.day, 9, 0)
-+    end_time = start_time + timedelta(hours=1)
-+
-+    booking = _add_booking(
-+        session,
-+        models,
-+        customer=customer,
-+        service=service,
-+        start_time=start_time,
-+        end_time=end_time,
-+        status="confirmed",
-+    )
-+
-+    from app import database
-+    from app.main import app
-+    from app.database import get_db
-+    from app.routes import bookings as bookings_routes
-+
-+    database.Base.metadata.create_all(bind=database.engine)
-+
-+    def override_get_db():
-+        try:
-+            yield session
-+        finally:
-+            pass
-+
-+    app.dependency_overrides[get_db] = override_get_db
-+    app.dependency_overrides[bookings_routes._require_current_provider] = lambda: provider
-+
-+    client = TestClient(app)
-+
-+    try:
-+        resp = client.get("/providers/me/bookings/today")
-+        assert resp.status_code == 200
-+        data = resp.json()
-+        assert [item["id"] for item in data] == [booking.id]
-+    finally:
-+        app.dependency_overrides = {}
-+
-+
- @pytest.mark.usefixtures("db_session")
- def test_provider_bookings_include_all_statuses(db_session):
+ def _add_booking(session, models, *, customer, service, start_time, end_time, status):
+     booking = models.Booking(
+         customer_id=customer.id,
+         service_id=service.id,
+         start_time=start_time,
+         end_time=end_time,
+         status=status,
+     )
+     session.add(booking)
+     session.commit()
+     session.refresh(booking)
+     return booking
+ 
+ 
+ def test_confirmed_booking_auto_completes_after_end_time(db_session):
      session, models, crud = db_session
-     provider, provider_user, customer, service = _create_provider_graph(session, models)
+     provider, customer, service = _create_provider_graph(session, models)
  
-     now = datetime.utcnow()
-     future_start = now + timedelta(hours=2)
-     past_start = now - timedelta(days=1)
-     cancelled_start = now - timedelta(hours=3)
+-    now = datetime.utcnow()
++    now = now_guyana()
+     start_time = now - timedelta(hours=2)
+     end_time = start_time + timedelta(hours=1)
  
-     _add_booking(
+     booking = _add_booking(
          session,
          models,
          customer=customer,
          service=service,
-         start_time=future_start,
-         end_time=future_start + timedelta(hours=1),
+         start_time=start_time,
+         end_time=end_time,
          status="confirmed",
      )
  
-     _add_booking(
+     crud._auto_complete_finished_bookings(session, as_of=now)
+     session.refresh(booking)
+ 
+     assert booking.status == "completed"
+ 
+ 
+ def test_cancelled_booking_never_auto_completes(db_session):
+     session, models, crud = db_session
+     provider, customer, service = _create_provider_graph(session, models)
+ 
+-    now = datetime.utcnow()
++    now = now_guyana()
+     start_time = now - timedelta(hours=2)
+     end_time = start_time + timedelta(hours=1)
+ 
+     booking = _add_booking(
          session,
          models,
          customer=customer,
          service=service,
+         start_time=start_time,
+         end_time=end_time,
+         status="cancelled",
+     )
+ 
+     crud._auto_complete_finished_bookings(session, as_of=now)
+     session.refresh(booking)
+ 
+     assert booking.status == "cancelled"
+ 
+ 
+ def test_future_booking_remains_confirmed(db_session):
+     session, models, crud = db_session
+     provider, customer, service = _create_provider_graph(session, models)
+ 
+-    now = datetime.utcnow()
++    now = now_guyana()
+     start_time = now + timedelta(hours=2)
+     end_time = start_time + timedelta(hours=1)
+ 
+     booking = _add_booking(
+         session,
+         models,
+         customer=customer,
+         service=service,
+         start_time=start_time,
+         end_time=end_time,
+         status="confirmed",
+     )
+ 
+     crud._auto_complete_finished_bookings(session, as_of=now)
+     session.refresh(booking)
+ 
+     assert booking.status == "confirmed"
+ 
+ 
+ def test_billing_only_counts_completed(db_session):
+     session, models, crud = db_session
+     provider, customer, service = _create_provider_graph(session, models)
+ 
+-    now = datetime.utcnow()
++    now = now_guyana()
+     past_start = now - timedelta(hours=3)
+     past_end = past_start + timedelta(hours=1)
+     future_start = now + timedelta(hours=2)
+     future_end = future_start + timedelta(hours=1)
+ 
+     completed_booking = _add_booking(
+         session,
+         models,
+         customer=customer,
+         service=service,
+         start_time=past_start,
+         end_time=past_end,
+         status="completed",
+     )
+ 
+     past_confirmed_booking = _add_booking(
+         session,
+         models,
+         customer=customer,
+         service=service,
+         start_time=past_start - timedelta(hours=2),
+         end_time=past_end - timedelta(hours=2),
+         status="confirmed",
+     )
+ 
+@@ -159,51 +161,51 @@ def test_billing_only_counts_completed(db_session):
+         start_time=future_start,
+         end_time=future_end,
+         status="confirmed",
+     )
+ 
+     billable = crud.get_billable_bookings_for_provider(
+         session, provider.id, as_of=now
+     )
+ 
+     session.refresh(completed_booking)
+     session.refresh(past_confirmed_booking)
+ 
+     # The confirmed past booking should auto-complete; only completed entries count.
+     assert {b["id"] for b in billable} == {
+         completed_booking.id,
+         past_confirmed_booking.id,
+     }
+     assert completed_booking.status == "completed"
+     assert past_confirmed_booking.status == "completed"
+ 
+ 
+ def test_cannot_cancel_completed_bookings(db_session):
+     session, models, crud = db_session
+     provider, customer, service = _create_provider_graph(session, models)
+ 
+-    now = datetime.utcnow()
++    now = now_guyana()
+     start_time = now + timedelta(hours=1)
+     end_time = start_time + timedelta(hours=1)
+ 
+     active_booking = _add_booking(
+         session,
+         models,
+         customer=customer,
+         service=service,
+         start_time=start_time,
+         end_time=end_time,
+         status="confirmed",
+     )
+ 
+     cancelled_booking = crud.cancel_booking_for_customer(
+         session, active_booking.id, customer.id
+     )
+     assert cancelled_booking.status == "cancelled"
+ 
+     completed_booking = _add_booking(
+         session,
+         models,
+         customer=customer,
+         service=service,
+         start_time=start_time + timedelta(hours=2),
+         end_time=end_time + timedelta(hours=2),
  
 EOF
 )

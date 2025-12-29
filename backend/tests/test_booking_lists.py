@@ -2,6 +2,8 @@ import pytest
 from datetime import datetime, timedelta
 from fastapi.testclient import TestClient
 
+from app.utils.time import now_guyana, today_end_guyana, today_start_guyana
+
 
 def _create_provider_graph(session, models):
     provider_user = models.User(username="provider@example.com", is_provider=True)
@@ -95,7 +97,7 @@ def test_provider_lists_handle_mixed_confirmed_status_casing(db_session):
 
     _allow_custom_statuses(models, "CONFIRMED", "confirmed ")
 
-    now = crud.now_local_naive()
+    now = now_guyana()
     today_start = now + timedelta(minutes=30)
     if today_start.date() != now.date():
         today_start = now.replace(second=0, microsecond=0) + timedelta(minutes=5)
@@ -164,7 +166,8 @@ def test_provider_today_bookings_include_past_end_times(db_session, monkeypatch)
     provider, provider_user, customer, service = _create_provider_graph(session, models)
 
     fake_now = datetime(2024, 1, 2, 15, 0)
-    monkeypatch.setattr(crud, "now_local_naive", lambda: fake_now)
+    monkeypatch.setattr(crud, "now_guyana", lambda: fake_now)
+    monkeypatch.setattr("app.utils.time.now_guyana", lambda: fake_now)
 
     start_time = datetime(fake_now.year, fake_now.month, fake_now.day, 9, 0)
     end_time = start_time + timedelta(hours=1)
@@ -211,7 +214,7 @@ def test_provider_bookings_include_all_statuses(db_session):
     session, models, crud = db_session
     provider, provider_user, customer, service = _create_provider_graph(session, models)
 
-    now = datetime.utcnow()
+    now = now_guyana()
     future_start = now + timedelta(hours=2)
     past_start = now - timedelta(days=1)
     cancelled_start = now - timedelta(hours=3)
@@ -282,7 +285,7 @@ def test_provider_billing_excludes_upcoming_and_cancelled(db_session):
     session, models, crud = db_session
     provider, provider_user, customer, service = _create_provider_graph(session, models)
 
-    now = datetime.utcnow()
+    now = now_guyana()
     future_start = now + timedelta(hours=3)
     past_start = now - timedelta(hours=4)
 
@@ -363,7 +366,7 @@ def test_provider_billing_endpoint_only_returns_completed(db_session):
     session, models, crud = db_session
     provider, provider_user, customer, service = _create_provider_graph(session, models)
 
-    now = datetime.utcnow()
+    now = now_guyana()
 
     completed_start = now - timedelta(hours=2)
     _add_booking(
@@ -434,7 +437,7 @@ def test_customer_bookings_include_cancelled_and_upcoming(db_session):
     session, models, crud = db_session
     provider, provider_user, customer, service = _create_provider_graph(session, models)
 
-    now = datetime.utcnow()
+    now = now_guyana()
     future_start = now + timedelta(hours=3)
     cancelled_start = now - timedelta(hours=1)
     completed_start = now - timedelta(days=1)

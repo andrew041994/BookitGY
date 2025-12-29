@@ -15,6 +15,7 @@ from sqlalchemy import (
 
 from .database import Base
 from datetime import datetime
+from app.utils.time import now_guyana
 from sqlalchemy.orm import column_property, relationship
 
 
@@ -36,7 +37,7 @@ class User(Base):
     is_email_verified = Column(Boolean, default=False)
     email_verified_at = Column(DateTime, nullable=True)
     password_reset_at = Column(DateTime, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=now_guyana)
     avatar_url = Column(String, nullable=True)   # 👈 NEW
 
 
@@ -48,7 +49,7 @@ class PasswordResetToken(Base):
     token_hash = Column(String, index=True, nullable=False)
     expires_at = Column(DateTime, nullable=False)
     used_at = Column(DateTime, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=now_guyana)
 
 
 class Provider(Base):
@@ -116,7 +117,7 @@ class BillCredit(Base):
     id = Column(Integer, primary_key=True, index=True)
     provider_id = Column(Integer, ForeignKey("providers.id"), nullable=False)
     amount_gyd = Column(Numeric(10, 2), default=0)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=now_guyana)
 
 class Promotion(Base):
     __tablename__ = "promotions"
@@ -147,7 +148,7 @@ class ProviderCatalogImage(Base):
     provider_id = Column(Integer, ForeignKey("providers.id"), index=True, nullable=False)
     image_url = Column(String, nullable=False)
     caption = Column(String, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=now_guyana)
 
 
 class PlatformSetting(Base):

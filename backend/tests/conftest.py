@@ -1,23 +1,18 @@
 import sys
-import tempfile
 from pathlib import Path
 
 import pytest
 
+repo_root = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(repo_root))
+
 
 @pytest.fixture()
 def db_session(monkeypatch):
-    # Minimal settings for an in-memory SQLite test database
-    db_path = Path(tempfile.gettempdir()) / "bookitgy-test.db"
-    if db_path.exists():
-        db_path.unlink()
-
-    monkeypatch.setenv("DATABASE_URL", f"sqlite:///{db_path}")
+    # Minimal settings for an isolated SQLite test database
+    monkeypatch.setenv("DATABASE_URL", "sqlite+pysqlite:///:memory:")
     monkeypatch.setenv("CORS_ALLOW_ORIGINS", "http://localhost")
     monkeypatch.setenv("JWT_SECRET_KEY", "x" * 32)
-
-    repo_root = Path(__file__).resolve().parents[1]
-    sys.path.insert(0, str(repo_root))
 
     for module_name in [
         "app.config",
@@ -46,5 +41,3 @@ def db_session(monkeypatch):
     finally:
         session.close()
         database.engine.dispose()
-        if db_path.exists():
-            db_path.unlink()

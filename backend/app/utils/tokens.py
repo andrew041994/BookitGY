@@ -1,23 +1,19 @@
 import hashlib
 import hmac
 import secrets
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 
 from fastapi import HTTPException, status
 
 from app.config import get_settings
+from app.utils.time import GUYANA_TIMEZONE, now_guyana
 
 settings = get_settings()
 
-
-def utc_now() -> datetime:
-    return datetime.now(timezone.utc)
-
-
 def normalize_utc(value: datetime) -> datetime:
     if value.tzinfo is None:
-        return value.replace(tzinfo=timezone.utc)
-    return value.astimezone(timezone.utc)
+        return value.replace(tzinfo=GUYANA_TIMEZONE)
+    return value.astimezone(GUYANA_TIMEZONE)
 
 
 def create_password_reset_token() -> str:
@@ -33,7 +29,7 @@ def constant_time_compare(val1: str, val2: str) -> bool:
 
 
 def is_reset_token_expired(expires_at: datetime) -> bool:
-    return utc_now() > normalize_utc(expires_at)
+    return now_guyana() > normalize_utc(expires_at).replace(tzinfo=None)
 
 
 def validate_reset_token_expiration(expires_at: datetime) -> None:
@@ -45,6 +41,6 @@ def validate_reset_token_expiration(expires_at: datetime) -> None:
 
 
 def build_reset_token_expiration() -> datetime:
-    return utc_now() + timedelta(
+    return now_guyana() + timedelta(
         minutes=settings.PASSWORD_RESET_EXPIRES_MINUTES
     )

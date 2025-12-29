@@ -1,6 +1,5 @@
 import os
-from datetime import datetime, timedelta, date, timezone
-from dateutil import tz
+from datetime import datetime, timedelta, date
 from decimal import Decimal, ROUND_HALF_UP
 from typing import Optional, List
 from sqlalchemy import func, cast, String, case
@@ -13,6 +12,7 @@ import hashlib
 from . import models, schemas
 from typing import Optional
 from dotenv import load_dotenv, find_dotenv
+from app.utils.time import now_guyana, today_start_guyana, today_end_guyana
 
 load_dotenv(find_dotenv(), override=False)
 
@@ -21,8 +21,6 @@ load_dotenv(find_dotenv(), override=False)
 # ---------------------------------------------------------------------------
 # Password hashing
 # ---------------------------------------------------------------------------
-
-LOCAL_TZ = tz.gettz("America/Guyana")
 
 pwd_context = CryptContext(schemes=["pbkdf2_sha256"], deprecated="auto")
 
@@ -78,15 +76,6 @@ def hash_password(password: str) -> str:
 def verify_password(plain: str, hashed: str) -> bool:
     """Verify that a plaintext password matches a stored hash."""
     return pwd_context.verify(plain, hashed)
-
-
-def now_local_naive():
-    """
-    Current Guyana local time, returned as a *naive* datetime so it
-    matches the DB columns and other code that uses naive datetimes.
-    """
-    return datetime.now(LOCAL_TZ).replace(tzinfo=None)
-
 
 
 # ---------------------------------------------------------------------------
@@ -460,7 +449,7 @@ def authenticate_user(db: Session, email: str, password: str):
 def verify_user_email(db: Session, user: models.User) -> models.User:
     """Mark a user's email as verified."""
     user.is_email_verified = True
-    user.email_verified_at = datetime.utcnow()
+    user.email_verified_at = now_guyana()
     db.commit()
     db.refresh(user)
     return user
@@ -516,7 +505,7 @@ def set_user_password_reset(
     """Update a user's password and mark the reset timestamp."""
 
     user.hashed_password = hash_password(new_password)
-    user.password_reset_at = datetime.now(timezone.utc)
+    user.password_reset_at = now_guyana()
     db.commit()
     db.refresh(user)
     return user
@@ -527,7 +516,7 @@ def invalidate_password_reset_tokens(
     user_id: int,
 ) -> int:
     """Mark all unused password reset tokens as used for a given user."""
-    now = datetime.now(timezone.utc)
+    now = now_guyana()
     tokens = (
         db.query(models.PasswordResetToken)
         .filter(
@@ -575,7 +564,7 @@ def mark_password_reset_token_used(
     db: Session,
     token: models.PasswordResetToken,
 ) -> models.PasswordResetToken:
-    token.used_at = datetime.now(timezone.utc)
+    token.used_at = now_guyana()
     db.commit()
     db.refresh(token)
     return token
@@ -679,7 +668,7 @@ def create_booking(
         raise ValueError("Provider user not found")
 
     # Current local time (Guyana, naive to match DB usage)
-    now = now_local_naive()
+    now = now_guyana()
 
     # Defensive: do not allow bookings in the past
     if booking.start_time <= now:
@@ -788,11 +777,13 @@ def _auto_complete_finished_bookings(
     already ended. Cancelled and already-completed bookings are left untouched.
     """
 
-    cutoff = as_of or datetime.utcnow()
+    cutoff = as_of or now_guyana()
+    normalized_status = normalized_booking_status_expr()
 
     query = db.query(models.Booking).filter(
         models.Booking.end_time.isnot(None),
-        models.Booking.end_time <= cutoff,
+        models.Booking.end_time < cutoff,
+        normalized_status == "confirmed",
     )
 
     if provider_id is not None:
@@ -803,15 +794,6 @@ def _auto_complete_finished_bookings(
     stale_bookings = query.all()
 
     for booking in stale_bookings:
-        if normalized_booking_status_value(booking.status) != "confirmed":
-            continue
-
-        if not booking.end_time:
-            continue
-
-        if booking.end_time > cutoff:
-            continue
-
         booking.status = "completed"
 
     if stale_bookings:
@@ -842,7 +824,7 @@ def generate_monthly_bills(db: Session, month: date):
     start_dt = datetime(start.year, start.month, start.day)
     end_dt = datetime(next_month.year, next_month.month, next_month.day)
 
-    now = datetime.utcnow()
+    now = now_guyana()
 
     # Don't count future appointments that haven't ended yet
     period_end = min(end_dt, now)
@@ -952,7 +934,7 @@ def _billable_bookings_base_query(
     - Appointment end time is on or before the cutoff.
     """
 
-    cutoff = as_of or datetime.utcnow()
+    cutoff = as_of or now_guyana()
 
     normalized_status = normalized_booking_status_expr()
 
@@ -963,9 +945,9 @@ def _billable_bookings_base_query(
         .join(models.User, models.Booking.customer_id == models.User.id)
         .filter(
             models.Provider.id == provider_id,
-            normalized_status.in_(["completed", "confirmed"]),
+            normalized_status == "completed",
             models.Booking.end_time.isnot(None),
-            models.Booking.end_time <= cutoff,
+            models.Booking.end_time < cutoff,
         )
     )
 
@@ -998,13 +980,13 @@ def get_provider_fees_due(db: Session, provider_id: int) -> float:
     the amount due from live booking data so the admin dashboard matches
     what the provider sees.
     """
-    now_utc = datetime.utcnow()
-    period_start, period_end = _billing_period_bounds(now_utc)
+    now_local = now_guyana()
+    period_start, period_end = _billing_period_bounds(now_local)
 
-    _auto_complete_finished_bookings(db, provider_id=provider_id, as_of=now_utc)
+    _auto_complete_finished_bookings(db, provider_id=provider_id, as_of=now_local)
 
     rows = (
-        _billable_bookings_base_query(db, provider_id, as_of=now_utc)
+        _billable_bookings_base_query(db, provider_id, as_of=now_local)
         .filter(
             models.Booking.end_time >= period_start,
             models.Booking.end_time < period_end,
@@ -1066,7 +1048,7 @@ def get_provider_current_month_due_from_completed_bookings(
     - Applies the platform service charge percentage,
     - Applies available bill credits, but never returns a negative value.
     """
-    now = datetime.utcnow()
+    now = now_guyana()
     period_start, period_end = _billing_period_bounds(now)
 
     _auto_complete_finished_bookings(db, provider_id=provider_id, as_of=now)
@@ -1089,6 +1071,8 @@ def get_provider_current_month_due_from_completed_bookings(
     services_total = Decimal("0")
     for r in rows:
         if _is_cancelled_status(r.status):
+            continue
+        if normalized_booking_status_value(r.status) != "completed":
             continue
 
         price = r.service_price_gyd or 0
@@ -1244,7 +1228,7 @@ def get_billable_bookings_for_provider(
     details needed for invoice line-items.
     """
 
-    cutoff = as_of or datetime.utcnow()
+    cutoff = as_of or now_guyana()
     default_start, default_end = _billing_period_bounds(cutoff)
 
     period_start = period_start or default_start
@@ -1273,6 +1257,11 @@ def get_billable_bookings_for_provider(
     billable_rows = []
 
     for r in rows:
+        normalized_status = normalized_booking_status_value(r.status)
+        if normalized_status != "completed":
+            continue
+        if not r.end_time or r.end_time >= cutoff:
+            continue
         if _is_cancelled_status(r.status):
             continue
 
@@ -1841,9 +1830,9 @@ def list_todays_bookings_for_provider(db: Session, provider_id: int):
     """
     All *confirmed* bookings for this provider whose start_time is today.
     """
-    now = now_local_naive()   # ⬅ Guyana local date for “today”
-    start_of_day = datetime(now.year, now.month, now.day)
-    end_of_day = start_of_day + timedelta(days=1)
+    start_of_day = today_start_guyana()
+    end_of_day = today_end_guyana()
+    normalized_status = normalized_booking_status_expr()
 
     q = (
         db.query(models.Booking, models.Service, models.User)
@@ -1851,18 +1840,15 @@ def list_todays_bookings_for_provider(db: Session, provider_id: int):
         .join(models.User, models.Booking.customer_id == models.User.id)
         .filter(
             models.Service.provider_id == provider_id,
+            normalized_status == "confirmed",
             models.Booking.start_time >= start_of_day,
-            models.Booking.start_time < end_of_day,
+            models.Booking.start_time <= end_of_day,
         )
         .order_by(models.Booking.start_time)
     )
 
     results = []
     for booking, service, customer in q.all():
-        normalized_status = normalized_booking_status_value(booking.status)
-        if normalized_status != "confirmed":
-            continue
-
         results.append(
             schemas.BookingWithDetails(
                 id=booking.id,
@@ -1889,10 +1875,10 @@ def list_upcoming_bookings_for_provider(
     """
     All confirmed bookings for this provider from *tomorrow* up to N days in the future.
     """
-    now = now_local_naive()   # ⬅ Guyana local date for “today”
-    start = now + timedelta(days=1)
-    start_of_tomorrow = datetime(start.year, start.month, start.day)
-    end = start_of_tomorrow + timedelta(days=days_ahead)
+    end_of_today = today_end_guyana()
+    start = end_of_today + timedelta(seconds=1)
+    end = start + timedelta(days=days_ahead)
+    normalized_status = normalized_booking_status_expr()
 
     q = (
       db.query(models.Booking, models.Service, models.User)
@@ -1900,7 +1886,8 @@ def list_upcoming_bookings_for_provider(
       .join(models.User, models.Booking.customer_id == models.User.id)
       .filter(
           models.Service.provider_id == provider_id,
-          models.Booking.start_time >= start_of_tomorrow,
+          normalized_status == "confirmed",
+          models.Booking.start_time > end_of_today,
           models.Booking.start_time < end,
       )
       .order_by(models.Booking.start_time)
@@ -1908,10 +1895,6 @@ def list_upcoming_bookings_for_provider(
 
     results = []
     for booking, service, customer in q.all():
-        normalized_status = normalized_booking_status_value(booking.status)
-        if normalized_status != "confirmed":
-            continue
-
         results.append(
             schemas.BookingWithDetails(
                 id=booking.id,

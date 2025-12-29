@@ -3,7 +3,8 @@ from sqlalchemy.orm import Session
 
 from app.database import SessionLocal
 from app import models
-from app.crud import send_push, now_local_naive, generate_monthly_bills
+from app.crud import send_push, generate_monthly_bills
+from app.utils.time import now_guyana
 
 
 def send_upcoming_reminders():
@@ -13,7 +14,7 @@ def send_upcoming_reminders():
     """
     db: Session = SessionLocal()
 
-    now = now_local_naive()
+    now = now_guyana()
     reminder_window_start = now + timedelta(hours=1) - timedelta(minutes=1)
     reminder_window_end = now + timedelta(hours=1) + timedelta(minutes=1)
 
@@ -50,7 +51,7 @@ def run_billing_job():
     """
     db: Session = SessionLocal()
     try:
-        today = now_local_naive().date()
+        today = now_guyana().date()
         generate_monthly_bills(db, today)
     finally:
         db.close()

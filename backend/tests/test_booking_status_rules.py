@@ -1,5 +1,7 @@
 from datetime import datetime, timedelta
 
+from app.utils.time import now_guyana
+
 
 def _create_provider_graph(session, models):
     provider_user = models.User(username="provider@example.com", is_provider=True)
@@ -43,7 +45,7 @@ def test_confirmed_booking_auto_completes_after_end_time(db_session):
     session, models, crud = db_session
     provider, customer, service = _create_provider_graph(session, models)
 
-    now = datetime.utcnow()
+    now = now_guyana()
     start_time = now - timedelta(hours=2)
     end_time = start_time + timedelta(hours=1)
 
@@ -67,7 +69,7 @@ def test_cancelled_booking_never_auto_completes(db_session):
     session, models, crud = db_session
     provider, customer, service = _create_provider_graph(session, models)
 
-    now = datetime.utcnow()
+    now = now_guyana()
     start_time = now - timedelta(hours=2)
     end_time = start_time + timedelta(hours=1)
 
@@ -91,7 +93,7 @@ def test_future_booking_remains_confirmed(db_session):
     session, models, crud = db_session
     provider, customer, service = _create_provider_graph(session, models)
 
-    now = datetime.utcnow()
+    now = now_guyana()
     start_time = now + timedelta(hours=2)
     end_time = start_time + timedelta(hours=1)
 
@@ -115,7 +117,7 @@ def test_billing_only_counts_completed(db_session):
     session, models, crud = db_session
     provider, customer, service = _create_provider_graph(session, models)
 
-    now = datetime.utcnow()
+    now = now_guyana()
     past_start = now - timedelta(hours=3)
     past_end = past_start + timedelta(hours=1)
     future_start = now + timedelta(hours=2)
@@ -181,7 +183,7 @@ def test_cannot_cancel_completed_bookings(db_session):
     session, models, crud = db_session
     provider, customer, service = _create_provider_graph(session, models)
 
-    now = datetime.utcnow()
+    now = now_guyana()
     start_time = now + timedelta(hours=1)
     end_time = start_time + timedelta(hours=1)
 

@@ -24,6 +24,7 @@ from app.utils.tokens import (
     is_reset_token_expired,
     normalize_utc,
 )
+from app.utils.time import GUYANA_TIMEZONE
 
 router = APIRouter(tags=["auth"])
 settings = get_settings()
@@ -104,15 +105,14 @@ def _create_access_token(subject: str) -> str:
     - exp: expiration time
     - iat: issued-at timestamp (seconds since epoch)
     """
-    now = datetime.utcnow()
-    expire = now + timedelta(
-        minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES
-    )
+    aware_now = datetime.now(GUYANA_TIMEZONE)
+    now = aware_now.replace(tzinfo=None)
+    expire = now + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
 
     payload = {
         "sub": subject,
         "exp": expire,               # jose can handle datetime
-        "iat": int(now.timestamp()), # numeric timestamp for freshness checks
+        "iat": int(aware_now.timestamp()), # numeric timestamp for freshness checks
     }
 
     return jwt.encode(
@@ -122,14 +122,15 @@ def _create_access_token(subject: str) -> str:
     )
 
 def _create_email_verification_token(email: str) -> str:
-    now = datetime.utcnow()
+    aware_now = datetime.now(GUYANA_TIMEZONE)
+    now = aware_now.replace(tzinfo=None)
     expire = now + timedelta(minutes=settings.EMAIL_TOKEN_EXPIRES_MINUTES)
 
     payload = {
         "sub": email,
         "type": "email_verification",
         "exp": expire,
-        "iat": int(now.timestamp()),
+        "iat": int(aware_now.timestamp()),
         "nonce": secrets.token_urlsafe(8),
     }
 

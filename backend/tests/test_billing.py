@@ -3,6 +3,8 @@ from datetime import datetime, timedelta
 import pytest
 from fastapi.testclient import TestClient
 
+from app.utils.time import now_guyana
+
 
 def _current_month_past_time(now: datetime) -> datetime:
     """Return a timestamp in the current month that is guaranteed to be in the past."""
@@ -105,7 +107,7 @@ def test_upcoming_booking_not_billable(db_session):
     session, models, crud = db_session
     provider, customer, service = _create_provider_graph(session, models)
 
-    now = datetime.utcnow()
+    now = now_guyana()
     start_time = now + timedelta(hours=2)
     end_time = start_time + timedelta(hours=1)
 
@@ -127,7 +129,7 @@ def test_cancelled_booking_not_billable(db_session):
     session, models, crud = db_session
     provider, customer, service = _create_provider_graph(session, models)
 
-    now = datetime.utcnow()
+    now = now_guyana()
     start_time = _current_month_past_time(now)
     end_time = start_time + timedelta(hours=1)
 
@@ -149,7 +151,7 @@ def test_cancelled_booking_not_auto_completed(db_session):
     session, models, crud = db_session
     provider, customer, service = _create_provider_graph(session, models)
 
-    now = datetime.utcnow()
+    now = now_guyana()
     start_time = _current_month_past_time(now) - timedelta(hours=1)
     end_time = start_time + timedelta(hours=1)
 
@@ -173,7 +175,7 @@ def test_cancelling_booking_updates_monthly_bill(db_session):
     session, models, crud = db_session
     provider, customer, service = _create_provider_graph(session, models)
 
-    now = datetime.utcnow()
+    now = now_guyana()
     start_time = _current_month_past_time(now)
     end_time = start_time + timedelta(hours=1)
 
@@ -211,7 +213,7 @@ def test_completed_booking_counts_toward_fees(db_session):
     session, models, crud = db_session
     provider, customer, service = _create_provider_graph(session, models)
 
-    now = datetime.utcnow()
+    now = now_guyana()
     start_time = _current_month_past_time(now)
     end_time = start_time + timedelta(hours=1)
 
@@ -262,7 +264,7 @@ def test_completion_time_controls_billing_window(db_session):
     session, models, crud = db_session
     provider, customer, service = _create_provider_graph(session, models)
 
-    now = datetime.utcnow()
+    now = now_guyana()
     past_start = now - timedelta(days=31)
     end_time = _current_month_past_time(now)
 
@@ -287,7 +289,7 @@ def test_cancelled_booking_removed_from_billing_after_status_change(db_session):
     session, models, crud = db_session
     provider, customer, service = _create_provider_graph(session, models)
 
-    now = datetime.utcnow()
+    now = now_guyana()
     start_time = _current_month_past_time(now) - timedelta(hours=3)
     end_time = start_time + timedelta(hours=1)
 
@@ -319,7 +321,7 @@ def test_billing_endpoint_only_returns_completed(db_session):
     session, models, crud = db_session
     provider, customer, service = _create_provider_graph(session, models)
 
-    now = datetime.utcnow()
+    now = now_guyana()
     past_start = _current_month_past_time(now)
     past_end = past_start + timedelta(hours=1)
 
@@ -390,7 +392,7 @@ def test_billing_endpoint_excludes_cancelled_variants(db_session):
     session, models, crud = db_session
     provider, customer, service = _create_provider_graph(session, models)
 
-    now = datetime.utcnow()
+    now = now_guyana()
 
     _allow_custom_statuses(models, "CANCELLED")
 
@@ -470,7 +472,7 @@ def test_billing_filters_to_completed_items_in_period(db_session):
     session, models, crud = db_session
     provider, customer, service = _create_provider_graph(session, models)
 
-    now = datetime.utcnow()
+    now = now_guyana()
     period_start, period_end = _month_bounds(now)
 
     # A) Upcoming appointment should not appear
