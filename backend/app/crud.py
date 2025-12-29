@@ -1361,6 +1361,8 @@ def cancel_booking_for_customer(
     Cancel a booking for a given customer.
 
     Returns the updated booking or None if not found / not owned by customer.
+    If the booking has already been auto-completed, this still forces the status
+    back to "cancelled" so it won't be billed.
     """
     booking = (
         db.query(models.Booking)
@@ -1374,9 +1376,11 @@ def cancel_booking_for_customer(
     if not booking:
         return None
 
-    # Only allow cancellation from certain states
-    if booking.status not in ("confirmed", "pending"):
-        return booking  # already cancelled/completed, no-op
+    normalized_status = (booking.status or "").strip().lower()
+
+    # If it's already cancelled, nothing to do
+    if normalized_status in {"cancelled", "canceled"}:
+        return booking
 
     booking.status = "cancelled"
     db.commit()

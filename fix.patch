@@ -1,68 +1,82 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
-diff --git a/mobile/App.js b/mobile/App.js
-index 2b0907db63cf71754f450697bd89736cff7b425d..76210861a6b67e67481dfc78f5a4463f1b44cfc2 100644
---- a/mobile/App.js
-+++ b/mobile/App.js
-@@ -5175,50 +5175,59 @@ function ProviderBillingScreen({ token, showFlash }) {
-   };
+diff --git a/backend/app/crud.py b/backend/app/crud.py
+index f34715b7f4fef05859f26bdde2ec7fe24c1ab080..b1ecfcaaf1b69d3958c9c0db5efc4b4dd633fc42 100644
+--- a/backend/app/crud.py
++++ b/backend/app/crud.py
+@@ -1339,66 +1339,70 @@ def list_bookings_for_customer(db: Session, customer_id: int):
+                 service_price_gyd=(
+                     float(service.price_gyd or 0.0)
+                     if service and service.price_gyd is not None
+                     else 0.0
+                 ),
+                 customer_name=get_display_name(user),
+                 customer_phone=user.phone or "",
+                 provider_name=provider_name,
+                 provider_location=provider_location,
+                 provider_lat=provider_lat,
+                 provider_long=provider_long,
+             )
+         )
  
-   const buildBills = useCallback(
-     (
-       bookingList,
-       chargePct = 10,
-       creditBalance = 0
-     ) => {
-     const now = new Date();
-     const statements = [];
-     const monthsToShow = 6;
+     return results
  
-     const feeRate = Math.max(chargePct, 0) / 100;
-     let remainingCredits = Math.max(Number(creditBalance) || 0, 0);
  
-     for (let i = 0; i < monthsToShow; i += 1) {
-       const coverageStart = new Date(now.getFullYear(), now.getMonth() - i, 1);
-       const coverageEnd = new Date(now.getFullYear(), now.getMonth() - i + 1, 0);
-       const invoiceDate = new Date(
-         coverageStart.getFullYear(),
-         coverageStart.getMonth() + 1,
-         1
-       );
  
-       const monthBookings = bookingList.filter((booking) => {
-+        const normalizedStatus = (booking?.status || "")
-+          .toString()
-+          .trim()
-+          .toLowerCase();
+ def cancel_booking_for_customer(
+     db: Session, booking_id: int, customer_id: int
+ ) -> Optional[models.Booking]:
+     """
+     Cancel a booking for a given customer.
+ 
+     Returns the updated booking or None if not found / not owned by customer.
++    If the booking has already been auto-completed, this still forces the status
++    back to "cancelled" so it won't be billed.
+     """
+     booking = (
+         db.query(models.Booking)
+         .filter(
+             models.Booking.id == booking_id,
+             models.Booking.customer_id == customer_id,
+         )
+         .first()
+     )
+ 
+     if not booking:
+         return None
+ 
+-    # Only allow cancellation from certain states
+-    if booking.status not in ("confirmed", "pending"):
+-        return booking  # already cancelled/completed, no-op
++    normalized_status = (booking.status or "").strip().lower()
 +
-+        if (["cancelled", "canceled"].includes(normalizedStatus)) {
-+          return false;
-+        }
-+
-         const start = normalizeStart(booking);
-         if (!start) return false;
-         return start >= coverageStart && start <= coverageEnd;
-       });
++    # If it's already cancelled, nothing to do
++    if normalized_status in {"cancelled", "canceled"}:
++        return booking
  
-       const lineItems = monthBookings.length
-         ? monthBookings.map((booking) => ({
-             bookingId: booking.id || booking.booking_id,
-             description: booking.service_name || "Service booking",
-             client:
-               booking.client_name ||
-               booking.customer_name ||
-               booking.user_name ||
-               booking.client ||
-               booking.user,
-             date: normalizeStart(booking),
-             amount:
-               Number(
-                 booking.service_price_gyd ??
-                   booking.price_gyd ??
-                   booking.total_price_gyd ??
-                   booking.price
-               ) || 0,
-           }))
-         : [
+     booking.status = "cancelled"
+     db.commit()
+     db.refresh(booking)
+ 
+     service = (
+         db.query(models.Service)
+         .filter(models.Service.id == booking.service_id)
+         .first()
+     )
+     provider_user = None
+     if service:
+         provider = (
+             db.query(models.Provider)
+             .filter(models.Provider.id == service.provider_id)
+             .first()
+         )
+         if provider:
+             provider_user = (
+                 db.query(models.User)
+                 .filter(models.User.id == provider.user_id)
+                 .first()
+             )
+ 
+     customer = (
  
 EOF
 )
