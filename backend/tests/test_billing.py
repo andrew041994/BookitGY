@@ -243,3 +243,73 @@ def test_billing_endpoint_only_returns_completed(db_session):
         assert data[0]["status"] == "completed"
     finally:
         app.dependency_overrides = {}
+
+
+def _month_bounds(now: datetime) -> tuple[datetime, datetime]:
+    start = datetime(now.year, now.month, 1)
+    if now.month == 12:
+        end = datetime(now.year + 1, 1, 1)
+    else:
+        end = datetime(now.year, now.month + 1, 1)
+    return start, end
+
+
+def test_billing_filters_to_completed_items_in_period(db_session):
+    session, models, crud = db_session
+    provider, customer, service = _create_provider_graph(session, models)
+
+    now = datetime.utcnow()
+    period_start, period_end = _month_bounds(now)
+
+    # A) Upcoming appointment should not appear
+    future_start = now + timedelta(hours=2)
+    future_end = future_start + timedelta(hours=1)
+    _add_booking(
+        session,
+        models,
+        customer=customer,
+        service=service,
+        start_time=future_start,
+        end_time=future_end,
+        status="confirmed",
+    )
+
+    # B) Cancelled appointment should never appear
+    cancelled_start = _current_month_past_time(now) - timedelta(hours=2)
+    cancelled_end = cancelled_start + timedelta(hours=1)
+    _add_booking(
+        session,
+        models,
+        customer=customer,
+        service=service,
+        start_time=cancelled_start,
+        end_time=cancelled_end,
+        status="cancelled",
+    )
+
+    # C) Completed appointment should appear
+    completed_start = _current_month_past_time(now) - timedelta(hours=4)
+    completed_end = completed_start + timedelta(hours=1)
+    completed_booking = _add_booking(
+        session,
+        models,
+        customer=customer,
+        service=service,
+        start_time=completed_start,
+        end_time=completed_end,
+        status="confirmed",
+    )
+
+    billable = crud.get_billable_bookings_for_provider(
+        session,
+        provider.id,
+        period_start=period_start,
+        period_end=period_end,
+        as_of=now,
+    )
+
+    assert [item["id"] for item in billable] == [completed_booking.id]
+
+    # Totals should also reflect only the completed item (10% of 1000 GYD)
+    amount_due = crud.get_provider_fees_due(session, provider.id)
+    assert amount_due == 100.0

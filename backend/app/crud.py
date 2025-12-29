@@ -912,7 +912,9 @@ from app import models
 # get_provider_credit_balance should already be defined in this file
 
 
-def _billable_bookings_base_query(db: Session, provider_id: int, as_of: datetime | None = None):
+def _billable_bookings_base_query(
+    db: Session, provider_id: int, as_of: datetime | None = None
+):
     """Return a base query for bookings that are eligible for billing.
 
     Eligibility rules (applied consistently across billing calculations):
@@ -931,9 +933,22 @@ def _billable_bookings_base_query(db: Session, provider_id: int, as_of: datetime
         .filter(
             models.Provider.id == provider_id,
             models.Booking.status != "cancelled",
+            models.Booking.end_time.isnot(None),
             models.Booking.end_time <= cutoff,
         )
     )
+
+
+def _billing_period_bounds(reference: datetime) -> tuple[datetime, datetime]:
+    """Return start/end datetimes covering the month containing ``reference``."""
+
+    start = datetime(reference.year, reference.month, 1)
+    if reference.month == 12:
+        end = datetime(reference.year + 1, 1, 1)
+    else:
+        end = datetime(reference.year, reference.month + 1, 1)
+
+    return start, end
 
 
 def get_provider_fees_due(db: Session, provider_id: int) -> float:
@@ -953,12 +968,16 @@ def get_provider_fees_due(db: Session, provider_id: int) -> float:
     what the provider sees.
     """
     now_utc = datetime.utcnow()
-    today = now_utc.date()
+    period_start, period_end = _billing_period_bounds(now_utc)
 
     _auto_complete_finished_bookings(db, provider_id=provider_id, as_of=now_utc)
 
     rows = (
         _billable_bookings_base_query(db, provider_id, as_of=now_utc)
+        .filter(
+            models.Booking.end_time >= period_start,
+            models.Booking.end_time < period_end,
+        )
         .with_entities(
             models.Booking.end_time,
             models.Service.price_gyd.label("service_price_gyd"),
@@ -970,8 +989,6 @@ def get_provider_fees_due(db: Session, provider_id: int) -> float:
     for r in rows:
         end_time = r.end_time
         if not end_time:
-            continue
-        if end_time.year != today.year or end_time.month != today.month:
             continue
 
         price = r.service_price_gyd or 0
@@ -1015,12 +1032,16 @@ def get_provider_current_month_due_from_completed_bookings(
     - Applies available bill credits, but never returns a negative value.
     """
     now = datetime.utcnow()
-    today = now.date()
+    period_start, period_end = _billing_period_bounds(now)
 
     _auto_complete_finished_bookings(db, provider_id=provider_id, as_of=now)
 
     rows = (
         _billable_bookings_base_query(db, provider_id, as_of=now)
+        .filter(
+            models.Booking.end_time >= period_start,
+            models.Booking.end_time < period_end,
+        )
         .with_entities(
             models.Booking.end_time,
             models.Service.price_gyd.label("service_price_gyd"),
@@ -1031,12 +1052,6 @@ def get_provider_current_month_due_from_completed_bookings(
 
     services_total = Decimal("0")
     for r in rows:
-        end_time = r.end_time
-        if not end_time:
-            continue
-        # Only include bookings in the current calendar month
-        if end_time.year != today.year or end_time.month != today.month:
-            continue
         price = r.service_price_gyd or 0
         services_total += Decimal(str(price))
 
@@ -1177,7 +1192,11 @@ def list_bookings_for_provider(db: Session, provider_id: int):
 
 
 def get_billable_bookings_for_provider(
-    db: Session, provider_id: int, as_of: datetime | None = None
+    db: Session,
+    provider_id: int,
+    period_start: datetime | None = None,
+    period_end: datetime | None = None,
+    as_of: datetime | None = None,
 ):
     """
     Return bookings eligible for billing (completed + not cancelled).
@@ -1187,10 +1206,18 @@ def get_billable_bookings_for_provider(
     """
 
     cutoff = as_of or datetime.utcnow()
+    default_start, default_end = _billing_period_bounds(cutoff)
+
+    period_start = period_start or default_start
+    period_end = period_end or default_end
     _auto_complete_finished_bookings(db, provider_id=provider_id, as_of=cutoff)
 
     rows = (
         _billable_bookings_base_query(db, provider_id, as_of=cutoff)
+        .filter(
+            models.Booking.end_time >= period_start,
+            models.Booking.end_time < period_end,
+        )
         .with_entities(
             models.Booking.id,
             models.Booking.start_time,
@@ -1220,11 +1247,21 @@ def get_billable_bookings_for_provider(
 
 
 def list_billable_bookings_for_provider(
-    db: Session, provider_id: int, as_of: datetime | None = None
+    db: Session,
+    provider_id: int,
+    period_start: datetime | None = None,
+    period_end: datetime | None = None,
+    as_of: datetime | None = None,
 ):
     """Deprecated alias for backwards compatibility."""
 
-    return get_billable_bookings_for_provider(db, provider_id, as_of)
+    return get_billable_bookings_for_provider(
+        db,
+        provider_id,
+        period_start=period_start,
+        period_end=period_end,
+        as_of=as_of,
+    )
 
 def list_bookings_for_customer(db: Session, customer_id: int):
     """
