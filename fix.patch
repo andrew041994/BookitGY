@@ -1,70 +1,81 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
-diff --git a/backend/tests/test_booking_lists.py b/backend/tests/test_booking_lists.py
-index 7055d3f341aed13fc664168760c6c132a963b86d..ed5f147efad1f7cdd36d01f56b3f7484c8e8ca66 100644
---- a/backend/tests/test_booking_lists.py
-+++ b/backend/tests/test_booking_lists.py
-@@ -156,50 +156,61 @@ def test_provider_billing_excludes_upcoming_and_cancelled(db_session):
-     from app.database import get_db
-     from app.routes import bookings as bookings_routes
+diff --git a/backend/app/crud.py b/backend/app/crud.py
+index d45303df15342dab4f672d1d4618a9755f409aa1..f34715b7f4fef05859f26bdde2ec7fe24c1ab080 100644
+--- a/backend/app/crud.py
++++ b/backend/app/crud.py
+@@ -755,64 +755,70 @@ def get_platform_service_charge_percentage(db: Session) -> Decimal:
  
-     database.Base.metadata.create_all(bind=database.engine)
+ def update_platform_service_charge(db: Session, percentage: float) -> Decimal:
+     settings = get_or_create_platform_settings(db)
+     pct = _clamp_service_charge(percentage)
+     settings.service_charge_percentage = float(pct)
+     db.commit()
+     db.refresh(settings)
+     return pct
  
-     def override_get_db():
-         try:
-             yield session
-         finally:
-             pass
  
-     app.dependency_overrides[get_db] = override_get_db
-     app.dependency_overrides[bookings_routes._require_current_provider] = lambda: provider
+ def _auto_complete_finished_bookings(
+     db: Session, provider_id: int | None = None, as_of: datetime | None = None
+ ) -> None:
+     """
+     Mark in-past bookings as completed so billing can rely on explicit completion.
  
-     client = TestClient(app)
+     - Only touches bookings that have ended and are not cancelled.
+     - Sets status="completed" when applicable.
+     - Can be scoped to a provider to reduce unnecessary work.
+     """
  
-     try:
-         resp = client.get("/providers/me/billing/bookings")
-         assert resp.status_code == 200
-         data = resp.json()
-         returned_ids = {item["id"] for item in data}
-         assert in_month_billable.id in returned_ids
-         assert cancelled_past.id not in returned_ids
-         assert all(item["status"] != "cancelled" for item in data)
-         assert all(datetime.fromisoformat(item["end_time"]) <= now for item in data)
+     cutoff = as_of or datetime.utcnow()
+ 
+     blocked_statuses = {"cancelled", "canceled", "completed"}
+ 
++    normalized_status = func.lower(
++        func.trim(func.coalesce(models.Booking.status, ""))
++    )
 +
-+        # If a previously billable appointment later gets cancelled, it should
-+        # drop out of the billing list on subsequent fetches.
-+        in_month_billable.status = "cancelled"
-+        session.commit()
-+
-+        resp = client.get("/providers/me/billing/bookings")
-+        assert resp.status_code == 200
-+        data = resp.json()
-+        returned_ids = {item["id"] for item in data}
-+        assert in_month_billable.id not in returned_ids
-     finally:
-         app.dependency_overrides = {}
- 
- 
- @pytest.mark.usefixtures("db_session")
- def test_customer_bookings_include_cancelled_and_upcoming(db_session):
-     session, models, crud = db_session
-     provider, provider_user, customer, service = _create_provider_graph(session, models)
- 
-     now = datetime.utcnow()
-     future_start = now + timedelta(hours=3)
-     cancelled_start = now - timedelta(hours=1)
-     completed_start = now - timedelta(days=1)
- 
-     _add_booking(
-         session,
-         models,
-         customer=customer,
-         service=service,
-         start_time=future_start,
-         end_time=future_start + timedelta(hours=1),
-         status="confirmed",
+     query = db.query(models.Booking).filter(
+         models.Booking.end_time <= cutoff,
+-        models.Booking.status.notin_(blocked_statuses),
++        normalized_status.notin_(blocked_statuses),
      )
  
-     _add_booking(
+     if provider_id is not None:
+         query = query.join(models.Service, models.Booking.service_id == models.Service.id).filter(
+             models.Service.provider_id == provider_id
+         )
+ 
+     stale_bookings = query.all()
+ 
+     for booking in stale_bookings:
+-        if booking.status in {"cancelled", "canceled"}:
++        normalized_status = (booking.status or "").strip().lower()
++
++        if normalized_status in {"cancelled", "canceled"}:
+             continue
+ 
+         booking.status = "completed"
+ 
+     if stale_bookings:
+         db.commit()
+ 
+ 
+ def generate_monthly_bills(db: Session, month: date):
+     """
+     Generate or update bills for all providers for the given month.
+ 
+     - Only counts bookings that are:
+         * completed (booking has ended) and not cancelled
+         * belong to this provider
+         * have end_time inside [first_of_month, first_of_next_month)
+     - Safe to run multiple times (updates existing unpaid bill instead of duplicating).
+     """
+     providers = db.query(models.Provider).all()
+ 
+     # First day of this month
+     start = date(month.year, month.month, 1)
+ 
+     # First day of the next month
+     if month.month == 12:
  
 EOF
 )

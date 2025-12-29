@@ -777,9 +777,13 @@ def _auto_complete_finished_bookings(
 
     blocked_statuses = {"cancelled", "canceled", "completed"}
 
+    normalized_status = func.lower(
+        func.trim(func.coalesce(models.Booking.status, ""))
+    )
+
     query = db.query(models.Booking).filter(
         models.Booking.end_time <= cutoff,
-        models.Booking.status.notin_(blocked_statuses),
+        normalized_status.notin_(blocked_statuses),
     )
 
     if provider_id is not None:
@@ -790,7 +794,9 @@ def _auto_complete_finished_bookings(
     stale_bookings = query.all()
 
     for booking in stale_bookings:
-        if booking.status in {"cancelled", "canceled"}:
+        normalized_status = (booking.status or "").strip().lower()
+
+        if normalized_status in {"cancelled", "canceled"}:
             continue
 
         booking.status = "completed"
