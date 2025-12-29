@@ -213,6 +213,8 @@ class BookingWithDetails(BaseModel):
     start_time: datetime
     end_time: datetime
     status: str
+    canceled_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
 
     service_name: str
     service_duration_minutes: int

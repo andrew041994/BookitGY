@@ -1145,8 +1145,7 @@ def set_provider_lock_state(db: Session, provider_id: int, is_locked: bool) -> i
 
 
 def list_bookings_for_provider(db: Session, provider_id: int):
-    """Return upcoming bookings for this provider (from now onwards)."""
-    now = datetime.utcnow()
+    """Return all bookings for this provider, newest first."""
 
     rows = (
         db.query(
@@ -1154,19 +1153,17 @@ def list_bookings_for_provider(db: Session, provider_id: int):
             models.Booking.start_time,
             models.Booking.end_time,
             models.Booking.status,
+            models.Booking.canceled_at,
+            models.Booking.completed_at,
             models.Service.name.label("service_name"),
             models.Service.price_gyd.label("service_price_gyd"),
             models.User.username.label("customer_name"),
-            
         )
         .join(models.Service, models.Booking.service_id == models.Service.id)
         .join(models.Provider, models.Service.provider_id == models.Provider.id)
         .join(models.User, models.Booking.customer_id == models.User.id)
-        .filter(
-            models.Provider.id == provider_id,
-            models.Booking.start_time >= now,
-        )
-        .order_by(models.Booking.start_time.asc())
+        .filter(models.Provider.id == provider_id)
+        .order_by(models.Booking.start_time.desc())
         .all()
     )
 
@@ -1179,12 +1176,14 @@ def list_bookings_for_provider(db: Session, provider_id: int):
             "start_time": r.start_time,
             "end_time": r.end_time,
             "status": r.status,
+            "canceled_at": r.canceled_at,
+            "completed_at": r.completed_at,
         }
         for r in rows
     ]
 
 
-def list_billable_bookings_for_provider(
+def get_billable_bookings_for_provider(
     db: Session, provider_id: int, as_of: datetime | None = None
 ):
     """
@@ -1204,6 +1203,7 @@ def list_billable_bookings_for_provider(
             models.Booking.start_time,
             models.Booking.end_time,
             models.Booking.status,
+            models.Booking.completed_at,
             models.Service.name.label("service_name"),
             models.Service.price_gyd.label("service_price_gyd"),
             models.User.username.label("customer_name"),
@@ -1221,9 +1221,18 @@ def list_billable_bookings_for_provider(
             "start_time": r.start_time,
             "end_time": r.end_time,
             "status": r.status,
+            "completed_at": r.completed_at,
         }
         for r in rows
     ]
+
+
+def list_billable_bookings_for_provider(
+    db: Session, provider_id: int, as_of: datetime | None = None
+):
+    """Deprecated alias for backwards compatibility."""
+
+    return get_billable_bookings_for_provider(db, provider_id, as_of)
 
 def list_bookings_for_customer(db: Session, customer_id: int):
     """
@@ -1278,6 +1287,8 @@ def list_bookings_for_customer(db: Session, customer_id: int):
                 start_time=booking.start_time,
                 end_time=booking.end_time,
                 status=booking.status,
+                canceled_at=booking.canceled_at,
+                completed_at=booking.completed_at,
                 service_name=service.name if service else "",
                 service_duration_minutes=service.duration_minutes if service else 0,
                 service_price_gyd=(
@@ -1758,6 +1769,8 @@ def list_todays_bookings_for_provider(db: Session, provider_id: int):
                 start_time=booking.start_time,
                 end_time=booking.end_time,
                 status=booking.status,
+                canceled_at=booking.canceled_at,
+                completed_at=booking.completed_at,
                 service_name=service.name,
                 service_duration_minutes=service.duration_minutes,
                 service_price_gyd=service.price_gyd or 0.0,
@@ -1802,6 +1815,8 @@ def list_upcoming_bookings_for_provider(
                 start_time=booking.start_time,
                 end_time=booking.end_time,
                 status=booking.status,
+                canceled_at=booking.canceled_at,
+                completed_at=booking.completed_at,
                 service_name=service.name,
                 service_duration_minutes=service.duration_minutes,
                 service_price_gyd=service.price_gyd or 0.0,

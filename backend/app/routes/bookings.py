@@ -75,7 +75,7 @@ def list_provider_billable_bookings(
     db: Session = Depends(get_db),
     provider: models.Provider = Depends(_require_current_provider),
 ):
-    return crud.list_billable_bookings_for_provider(db, provider.id)
+    return crud.get_billable_bookings_for_provider(db, provider.id)
 
 
 @router.post("/providers/me/bookings/{booking_id}/confirm")

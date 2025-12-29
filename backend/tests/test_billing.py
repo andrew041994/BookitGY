@@ -1,56 +1,7 @@
-import importlib
-import sys
-import tempfile
 from datetime import datetime, timedelta
-from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
-
-
-@pytest.fixture()
-def db_session(monkeypatch):
-    # Minimal settings for an in-memory SQLite test database
-    db_path = Path(tempfile.gettempdir()) / "bookitgy-test.db"
-    if db_path.exists():
-        db_path.unlink()
-
-    monkeypatch.setenv("DATABASE_URL", f"sqlite:///{db_path}")
-    monkeypatch.setenv("CORS_ALLOW_ORIGINS", "http://localhost")
-    monkeypatch.setenv("JWT_SECRET_KEY", "x" * 32)
-
-    repo_root = Path(__file__).resolve().parents[1]
-    sys.path.insert(0, str(repo_root))
-
-    for module_name in [
-        "app.config",
-        "app.database",
-        "app.models",
-        "app.crud",
-        "app.main",
-        "app.routes.bookings",
-    ]:
-        sys.modules.pop(module_name, None)
-
-    import app.config as config
-
-    config.get_settings.cache_clear()
-
-    import app.database as database
-    import app.models as models
-    import app.crud as crud
-
-    database.Base.metadata.drop_all(bind=database.engine)
-    database.Base.metadata.create_all(bind=database.engine)
-
-    session = database.SessionLocal()
-    try:
-        yield session, models, crud
-    finally:
-        session.close()
-        database.engine.dispose()
-        if db_path.exists():
-            db_path.unlink()
 
 
 def _current_month_past_time(now: datetime) -> datetime:
@@ -121,7 +72,7 @@ def test_upcoming_booking_not_billable(db_session):
         status="confirmed",
     )
 
-    billable = crud.list_billable_bookings_for_provider(session, provider.id, as_of=now)
+    billable = crud.get_billable_bookings_for_provider(session, provider.id, as_of=now)
     assert billable == []
 
 
@@ -143,7 +94,7 @@ def test_cancelled_booking_not_billable(db_session):
         status="cancelled",
     )
 
-    billable = crud.list_billable_bookings_for_provider(session, provider.id, as_of=now)
+    billable = crud.get_billable_bookings_for_provider(session, provider.id, as_of=now)
     assert billable == []
 
 
@@ -190,7 +141,7 @@ def test_completed_booking_counts_toward_fees(db_session):
         status="cancelled",
     )
 
-    billable = crud.list_billable_bookings_for_provider(session, provider.id, as_of=now)
+    billable = crud.get_billable_bookings_for_provider(session, provider.id, as_of=now)
     assert len(billable) == 1
     assert billable[0]["status"] == "completed"
 
@@ -216,7 +167,7 @@ def test_completion_time_controls_billing_window(db_session):
         status="confirmed",
     )
 
-    billable = crud.list_billable_bookings_for_provider(session, provider.id, as_of=now)
+    billable = crud.get_billable_bookings_for_provider(session, provider.id, as_of=now)
     assert [item["id"] for item in billable] == [booking.id]
 
     amount_due = crud.get_provider_fees_due(session, provider.id)
