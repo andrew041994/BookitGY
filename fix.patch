@@ -1,83 +1,61 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
-diff --git a/backend/tests/test_billing.py b/backend/tests/test_billing.py
-index 0e99fa99b51ca9648ccf257f4f6691719b74df6e..0c5d5265a15209f7a538f393d152cbb5064bbecd 100644
---- a/backend/tests/test_billing.py
-+++ b/backend/tests/test_billing.py
-@@ -76,50 +76,74 @@ def test_upcoming_booking_not_billable(db_session):
-     assert billable == []
+diff --git a/backend/app/crud.py b/backend/app/crud.py
+index 24bd0d08db25bdf92d708c7cb633be52b58250a0..2b473a79e9129d3ab5f3ae72ac2c9a95c7eec337 100644
+--- a/backend/app/crud.py
++++ b/backend/app/crud.py
+@@ -914,51 +914,51 @@ from decimal import Decimal
+ from app.config import get_settings
+ from app import models
+ # get_provider_credit_balance should already be defined in this file
  
  
- def test_cancelled_booking_not_billable(db_session):
-     session, models, crud = db_session
-     provider, customer, service = _create_provider_graph(session, models)
+ def _billable_bookings_base_query(
+     db: Session, provider_id: int, as_of: datetime | None = None
+ ):
+     """Return a base query for bookings that are eligible for billing.
  
-     now = datetime.utcnow()
-     start_time = _current_month_past_time(now)
-     end_time = start_time + timedelta(hours=1)
+     Eligibility rules (applied consistently across billing calculations):
+     - Booking is NOT cancelled.
+     - Booking has ended.
+     - Appointment end time is on or before the cutoff.
+     """
  
-     _add_booking(
-         session,
-         models,
-         customer=customer,
-         service=service,
-         start_time=start_time,
-         end_time=end_time,
-         status="cancelled",
+     cutoff = as_of or datetime.utcnow()
+ 
+     return (
+         db.query(models.Booking, models.Service, models.User)
+         .join(models.Service, models.Booking.service_id == models.Service.id)
+         .join(models.Provider, models.Service.provider_id == models.Provider.id)
+         .join(models.User, models.Booking.customer_id == models.User.id)
+         .filter(
+             models.Provider.id == provider_id,
+-            models.Booking.status != "cancelled",
++            models.Booking.status.notin_({"cancelled", "canceled"}),
+             models.Booking.end_time.isnot(None),
+             models.Booking.end_time <= cutoff,
+         )
      )
  
-     billable = crud.get_billable_bookings_for_provider(session, provider.id, as_of=now)
-     assert billable == []
+ 
+ def _billing_period_bounds(reference: datetime) -> tuple[datetime, datetime]:
+     """Return start/end datetimes covering the month containing ``reference``."""
+ 
+     start = datetime(reference.year, reference.month, 1)
+     if reference.month == 12:
+         end = datetime(reference.year + 1, 1, 1)
+     else:
+         end = datetime(reference.year, reference.month + 1, 1)
+ 
+     return start, end
  
  
-+def test_cancelled_booking_not_auto_completed(db_session):
-+    session, models, crud = db_session
-+    provider, customer, service = _create_provider_graph(session, models)
-+
-+    now = datetime.utcnow()
-+    start_time = _current_month_past_time(now) - timedelta(hours=1)
-+    end_time = start_time + timedelta(hours=1)
-+
-+    booking = _add_booking(
-+        session,
-+        models,
-+        customer=customer,
-+        service=service,
-+        start_time=start_time,
-+        end_time=end_time,
-+        status="cancelled",
-+    )
-+
-+    crud._auto_complete_finished_bookings(session, as_of=now)
-+    session.refresh(booking)
-+
-+    assert booking.status == "cancelled"
-+
-+
- def test_completed_booking_counts_toward_fees(db_session):
-     session, models, crud = db_session
-     provider, customer, service = _create_provider_graph(session, models)
+ def get_provider_fees_due(db: Session, provider_id: int) -> float:
+     """
+     Compute the *current month's* amount due for this provider in GYD,
+     using only completed (ended) and non-cancelled bookings.
  
-     now = datetime.utcnow()
-     start_time = _current_month_past_time(now)
-     end_time = start_time + timedelta(hours=1)
- 
-     _add_booking(
-         session,
-         models,
-         customer=customer,
-         service=service,
-         start_time=start_time,
-         end_time=end_time,
-         status="completed",
-     )
- 
-     # Add noise bookings that shouldn't count
-     future_start = now + timedelta(days=1)
-     future_end = future_start + timedelta(hours=1)
-     _add_booking(
-         session,
-         models,
-         customer=customer,
+     Logic:
+     - Look at bookings that have ended (end_time <= now) and are not cancelled,
  
 EOF
 )

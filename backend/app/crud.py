@@ -936,7 +936,7 @@ def _billable_bookings_base_query(
         .join(models.User, models.Booking.customer_id == models.User.id)
         .filter(
             models.Provider.id == provider_id,
-            models.Booking.status != "cancelled",
+            models.Booking.status.notin_({"cancelled", "canceled"}),
             models.Booking.end_time.isnot(None),
             models.Booking.end_time <= cutoff,
         )
