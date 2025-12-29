@@ -5275,8 +5275,10 @@ function ProviderBillingScreen({ token, showFlash }) {
         return;
       }
 
+      const billingEndpoint = `${API}/providers/me/billing/bookings`;
+
       const [bookingsRes, summaryRes] = await Promise.all([
-        axios.get(`${API}/providers/me/billing/bookings`, {
+        axios.get(billingEndpoint, {
           headers: { Authorization: `Bearer ${authToken}` },
         }),
         axios

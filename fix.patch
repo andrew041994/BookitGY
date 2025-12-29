@@ -1,81 +1,64 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
-diff --git a/backend/app/crud.py b/backend/app/crud.py
-index d45303df15342dab4f672d1d4618a9755f409aa1..f34715b7f4fef05859f26bdde2ec7fe24c1ab080 100644
---- a/backend/app/crud.py
-+++ b/backend/app/crud.py
-@@ -755,64 +755,70 @@ def get_platform_service_charge_percentage(db: Session) -> Decimal:
+diff --git a/mobile/App.js b/mobile/App.js
+index e34eeac4f8c808c1b2779ed717a94a1c66d1ff38..2b0907db63cf71754f450697bd89736cff7b425d 100644
+--- a/mobile/App.js
++++ b/mobile/App.js
+@@ -5253,52 +5253,54 @@ function ProviderBillingScreen({ token, showFlash }) {
+         servicesTotal,
+         platformFee,
+         billCreditsApplied,
+         totalDue,
+         lineItems,
+       });
+     }
  
- def update_platform_service_charge(db: Session, percentage: float) -> Decimal:
-     settings = get_or_create_platform_settings(db)
-     pct = _clamp_service_charge(percentage)
-     settings.service_charge_percentage = float(pct)
-     db.commit()
-     db.refresh(settings)
-     return pct
+     statements.sort((a, b) => b.invoiceDate - a.invoiceDate);
+     setBills(statements);
+   }, []);
  
+   const fetchBilling = useCallback(async () => {
+     try {
+       setBillingLoading(true);
+       setBillingError("");
  
- def _auto_complete_finished_bookings(
-     db: Session, provider_id: int | None = None, as_of: datetime | None = None
- ) -> None:
-     """
-     Mark in-past bookings as completed so billing can rely on explicit completion.
+       const storedToken = await AsyncStorage.getItem("accessToken");
+       const authToken = token?.token || storedToken;
  
-     - Only touches bookings that have ended and are not cancelled.
-     - Sets status="completed" when applicable.
-     - Can be scoped to a provider to reduce unnecessary work.
-     """
+       if (!authToken) {
+         setBillingError("No access token found. Please log in again.");
+         return;
+       }
  
-     cutoff = as_of or datetime.utcnow()
- 
-     blocked_statuses = {"cancelled", "canceled", "completed"}
- 
-+    normalized_status = func.lower(
-+        func.trim(func.coalesce(models.Booking.status, ""))
-+    )
++      const billingEndpoint = `${API}/providers/me/billing/bookings`;
 +
-     query = db.query(models.Booking).filter(
-         models.Booking.end_time <= cutoff,
--        models.Booking.status.notin_(blocked_statuses),
-+        normalized_status.notin_(blocked_statuses),
-     )
+       const [bookingsRes, summaryRes] = await Promise.all([
+-        axios.get(`${API}/providers/me/billing/bookings`, {
++        axios.get(billingEndpoint, {
+           headers: { Authorization: `Bearer ${authToken}` },
+         }),
+         axios
+           .get(`${API}/providers/me/summary`, {
+             headers: { Authorization: `Bearer ${authToken}` },
+           })
+           .catch(() => null),
+       ]);
  
-     if provider_id is not None:
-         query = query.join(models.Service, models.Booking.service_id == models.Service.id).filter(
-             models.Service.provider_id == provider_id
-         )
+       const bookingList = Array.isArray(bookingsRes.data)
+         ? bookingsRes.data
+         : bookingsRes.data?.bookings || bookingsRes.data?.results || [];
  
-     stale_bookings = query.all()
+       const summaryData = summaryRes?.data || null;
+       setBillingSummary(summaryData);
  
-     for booking in stale_bookings:
--        if booking.status in {"cancelled", "canceled"}:
-+        normalized_status = (booking.status or "").strip().lower()
-+
-+        if normalized_status in {"cancelled", "canceled"}:
-             continue
+       const creditBalance = Math.max(
+         Number(summaryData?.total_credit_balance_gyd) || 0,
+         0
+       );
  
-         booking.status = "completed"
+       const resolvedChargePct = resolveServiceChargePct(summaryData);
+       setServiceChargePct(resolvedChargePct);
  
-     if stale_bookings:
-         db.commit()
- 
- 
- def generate_monthly_bills(db: Session, month: date):
-     """
-     Generate or update bills for all providers for the given month.
- 
-     - Only counts bookings that are:
-         * completed (booking has ended) and not cancelled
-         * belong to this provider
-         * have end_time inside [first_of_month, first_of_next_month)
-     - Safe to run multiple times (updates existing unpaid bill instead of duplicating).
-     """
-     providers = db.query(models.Provider).all()
- 
-     # First day of this month
-     start = date(month.year, month.month, 1)
- 
-     # First day of the next month
-     if month.month == 12:
+       buildBills(bookingList, resolvedChargePct, creditBalance);
  
 EOF
 )

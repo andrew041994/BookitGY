@@ -194,6 +194,77 @@ def test_provider_billing_excludes_upcoming_and_cancelled(db_session):
 
 
 @pytest.mark.usefixtures("db_session")
+def test_provider_billing_endpoint_only_returns_completed(db_session):
+    session, models, crud = db_session
+    provider, provider_user, customer, service = _create_provider_graph(session, models)
+
+    now = datetime.utcnow()
+
+    completed_start = now - timedelta(hours=2)
+    _add_booking(
+        session,
+        models,
+        customer=customer,
+        service=service,
+        start_time=completed_start,
+        end_time=completed_start + timedelta(hours=1),
+        status="completed",
+    )
+
+    cancelled_start = now - timedelta(hours=1)
+    _add_booking(
+        session,
+        models,
+        customer=customer,
+        service=service,
+        start_time=cancelled_start,
+        end_time=cancelled_start + timedelta(minutes=30),
+        status="cancelled",
+    )
+
+    upcoming_start = now + timedelta(hours=1)
+    _add_booking(
+        session,
+        models,
+        customer=customer,
+        service=service,
+        start_time=upcoming_start,
+        end_time=upcoming_start + timedelta(hours=1),
+        status="confirmed",
+    )
+
+    from app import database
+    from app.main import app
+    from app.database import get_db
+    from app.routes import bookings as bookings_routes
+
+    database.Base.metadata.create_all(bind=database.engine)
+
+    def override_get_db():
+        try:
+            yield session
+        finally:
+            pass
+
+    app.dependency_overrides[get_db] = override_get_db
+    app.dependency_overrides[bookings_routes._require_current_provider] = lambda: provider
+
+    client = TestClient(app)
+
+    try:
+        resp = client.get("/providers/me/billing/bookings")
+        assert resp.status_code == 200
+        data = resp.json()
+
+        assert len(data) == 1
+        assert data[0]["status"] in {"completed", "confirmed"}
+        returned_end = datetime.fromisoformat(data[0]["end_time"])
+        assert returned_end <= now
+    finally:
+        app.dependency_overrides = {}
+
+
+@pytest.mark.usefixtures("db_session")
 def test_customer_bookings_include_cancelled_and_upcoming(db_session):
     session, models, crud = db_session
     provider, provider_user, customer, service = _create_provider_graph(session, models)
