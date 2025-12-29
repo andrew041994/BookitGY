@@ -98,6 +98,30 @@ def test_cancelled_booking_not_billable(db_session):
     assert billable == []
 
 
+def test_cancelled_booking_not_auto_completed(db_session):
+    session, models, crud = db_session
+    provider, customer, service = _create_provider_graph(session, models)
+
+    now = datetime.utcnow()
+    start_time = _current_month_past_time(now) - timedelta(hours=1)
+    end_time = start_time + timedelta(hours=1)
+
+    booking = _add_booking(
+        session,
+        models,
+        customer=customer,
+        service=service,
+        start_time=start_time,
+        end_time=end_time,
+        status="cancelled",
+    )
+
+    crud._auto_complete_finished_bookings(session, as_of=now)
+    session.refresh(booking)
+
+    assert booking.status == "cancelled"
+
+
 def test_completed_booking_counts_toward_fees(db_session):
     session, models, crud = db_session
     provider, customer, service = _create_provider_graph(session, models)

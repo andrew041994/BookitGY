@@ -775,10 +775,11 @@ def _auto_complete_finished_bookings(
 
     cutoff = as_of or datetime.utcnow()
 
+    blocked_statuses = {"cancelled", "canceled", "completed"}
+
     query = db.query(models.Booking).filter(
         models.Booking.end_time <= cutoff,
-        models.Booking.status != "cancelled",
-        models.Booking.status != "completed",
+        models.Booking.status.notin_(blocked_statuses),
     )
 
     if provider_id is not None:
@@ -789,6 +790,9 @@ def _auto_complete_finished_bookings(
     stale_bookings = query.all()
 
     for booking in stale_bookings:
+        if booking.status in {"cancelled", "canceled"}:
+            continue
+
         booking.status = "completed"
 
     if stale_bookings:

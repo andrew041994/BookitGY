@@ -1,104 +1,83 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
 diff --git a/backend/tests/test_billing.py b/backend/tests/test_billing.py
-index 20f2600d414632339e58c52125736fb7a0a3132f..0e99fa99b51ca9648ccf257f4f6691719b74df6e 100644
+index 0e99fa99b51ca9648ccf257f4f6691719b74df6e..0c5d5265a15209f7a538f393d152cbb5064bbecd 100644
 --- a/backend/tests/test_billing.py
 +++ b/backend/tests/test_billing.py
-@@ -221,25 +221,95 @@ def test_billing_endpoint_only_returns_completed(db_session):
-     from app.main import app
-     from app.database import get_db
-     from app.routes import bookings as bookings_routes
+@@ -76,50 +76,74 @@ def test_upcoming_booking_not_billable(db_session):
+     assert billable == []
  
-     database.Base.metadata.create_all(bind=database.engine)
  
-     def override_get_db():
-         try:
-             yield session
-         finally:
-             pass
+ def test_cancelled_booking_not_billable(db_session):
+     session, models, crud = db_session
+     provider, customer, service = _create_provider_graph(session, models)
  
-     app.dependency_overrides[get_db] = override_get_db
-     app.dependency_overrides[bookings_routes._require_current_provider] = lambda: provider
+     now = datetime.utcnow()
+     start_time = _current_month_past_time(now)
+     end_time = start_time + timedelta(hours=1)
  
-     client = TestClient(app)
+     _add_booking(
+         session,
+         models,
+         customer=customer,
+         service=service,
+         start_time=start_time,
+         end_time=end_time,
+         status="cancelled",
+     )
  
-     try:
-         resp = client.get("/providers/me/billing/bookings")
-         assert resp.status_code == 200
-         data = resp.json()
-         assert [item["id"] for item in data] == [completed_booking.id]
-         assert data[0]["status"] == "completed"
-     finally:
-         app.dependency_overrides = {}
-+
-+
-+def _month_bounds(now: datetime) -> tuple[datetime, datetime]:
-+    start = datetime(now.year, now.month, 1)
-+    if now.month == 12:
-+        end = datetime(now.year + 1, 1, 1)
-+    else:
-+        end = datetime(now.year, now.month + 1, 1)
-+    return start, end
-+
-+
-+def test_billing_filters_to_completed_items_in_period(db_session):
+     billable = crud.get_billable_bookings_for_provider(session, provider.id, as_of=now)
+     assert billable == []
+ 
+ 
++def test_cancelled_booking_not_auto_completed(db_session):
 +    session, models, crud = db_session
 +    provider, customer, service = _create_provider_graph(session, models)
 +
 +    now = datetime.utcnow()
-+    period_start, period_end = _month_bounds(now)
++    start_time = _current_month_past_time(now) - timedelta(hours=1)
++    end_time = start_time + timedelta(hours=1)
 +
-+    # A) Upcoming appointment should not appear
-+    future_start = now + timedelta(hours=2)
-+    future_end = future_start + timedelta(hours=1)
-+    _add_booking(
++    booking = _add_booking(
 +        session,
 +        models,
 +        customer=customer,
 +        service=service,
-+        start_time=future_start,
-+        end_time=future_end,
-+        status="confirmed",
-+    )
-+
-+    # B) Cancelled appointment should never appear
-+    cancelled_start = _current_month_past_time(now) - timedelta(hours=2)
-+    cancelled_end = cancelled_start + timedelta(hours=1)
-+    _add_booking(
-+        session,
-+        models,
-+        customer=customer,
-+        service=service,
-+        start_time=cancelled_start,
-+        end_time=cancelled_end,
++        start_time=start_time,
++        end_time=end_time,
 +        status="cancelled",
 +    )
 +
-+    # C) Completed appointment should appear
-+    completed_start = _current_month_past_time(now) - timedelta(hours=4)
-+    completed_end = completed_start + timedelta(hours=1)
-+    completed_booking = _add_booking(
-+        session,
-+        models,
-+        customer=customer,
-+        service=service,
-+        start_time=completed_start,
-+        end_time=completed_end,
-+        status="confirmed",
-+    )
++    crud._auto_complete_finished_bookings(session, as_of=now)
++    session.refresh(booking)
 +
-+    billable = crud.get_billable_bookings_for_provider(
-+        session,
-+        provider.id,
-+        period_start=period_start,
-+        period_end=period_end,
-+        as_of=now,
-+    )
++    assert booking.status == "cancelled"
 +
-+    assert [item["id"] for item in billable] == [completed_booking.id]
 +
-+    # Totals should also reflect only the completed item (10% of 1000 GYD)
-+    amount_due = crud.get_provider_fees_due(session, provider.id)
-+    assert amount_due == 100.0
+ def test_completed_booking_counts_toward_fees(db_session):
+     session, models, crud = db_session
+     provider, customer, service = _create_provider_graph(session, models)
+ 
+     now = datetime.utcnow()
+     start_time = _current_month_past_time(now)
+     end_time = start_time + timedelta(hours=1)
+ 
+     _add_booking(
+         session,
+         models,
+         customer=customer,
+         service=service,
+         start_time=start_time,
+         end_time=end_time,
+         status="completed",
+     )
+ 
+     # Add noise bookings that shouldn't count
+     future_start = now + timedelta(days=1)
+     future_end = future_start + timedelta(hours=1)
+     _add_booking(
+         session,
+         models,
+         customer=customer,
  
 EOF
 )
