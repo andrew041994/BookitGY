@@ -147,13 +147,13 @@ def test_provider_lists_handle_mixed_confirmed_status_casing(db_session):
         assert today_resp.status_code == 200
         today_data = today_resp.json()
         assert [item["id"] for item in today_data] == [today_booking.id]
-        assert today_data[0]["status"] == "CONFIRMED"
+        assert today_data[0]["status"] == "confirmed"
 
         upcoming_resp = client.get("/providers/me/bookings/upcoming")
         assert upcoming_resp.status_code == 200
         upcoming_data = upcoming_resp.json()
         assert [item["id"] for item in upcoming_data] == [upcoming_booking.id]
-        assert upcoming_data[0]["status"] == "confirmed "
+        assert upcoming_data[0]["status"] == "confirmed"
     finally:
         app.dependency_overrides = {}
 
@@ -374,7 +374,7 @@ def test_provider_billing_endpoint_only_returns_completed(db_session):
         data = resp.json()
 
         assert len(data) == 1
-        assert data[0]["status"] in {"completed", "confirmed"}
+        assert data[0]["status"] == "completed"
         returned_end = datetime.fromisoformat(data[0]["end_time"])
         assert returned_end <= now
     finally:

@@ -98,9 +98,13 @@ def cancel_booking_as_provider(
     db: Session = Depends(get_db),
     provider: models.Provider = Depends(_require_current_provider),
 ):
-    ok = crud.cancel_booking_for_provider(
-        db, booking_id=booking_id, provider_id=provider.id
-    )
+    try:
+        ok = crud.cancel_booking_for_provider(
+            db, booking_id=booking_id, provider_id=provider.id
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+
     if not ok:
         raise HTTPException(status_code=404, detail="Booking not found")
     return {"status": "cancelled"}
@@ -134,7 +138,11 @@ def cancel_my_booking(
     - Only the customer who owns the booking can cancel it.
     - Sets status='cancelled' if currently 'confirmed' or 'pending'.
     """
-    booking = crud.cancel_booking_for_customer(db, booking_id, current_user.id)
+    try:
+        booking = crud.cancel_booking_for_customer(db, booking_id, current_user.id)
+    except ValueError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+
     if not booking:
         raise HTTPException(status_code=404, detail="Booking not found")
 

@@ -3,7 +3,7 @@ from datetime import datetime, timedelta, date, timezone
 from dateutil import tz
 from decimal import Decimal, ROUND_HALF_UP
 from typing import Optional, List
-from sqlalchemy import func, cast, String
+from sqlalchemy import func, cast, String, case
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
 from passlib.context import CryptContext
@@ -31,10 +31,18 @@ EXPO_PUSH_URL = "https://exp.host/--/api/v2/push/send"
 DEFAULT_SERVICE_CHARGE_PERCENTAGE = Decimal("10.0")
 
 
+def normalized_booking_status_value(status: str | None) -> str:
+    normalized = (status or "").strip().lower()
+    if normalized == "canceled":
+        return "cancelled"
+    return normalized
+
+
 def normalized_booking_status_expr():
-    return func.lower(
+    raw_status = func.lower(
         func.trim(func.coalesce(cast(models.Booking.status, String), ""))
     )
+    return case((raw_status == "canceled", "cancelled"), else_=raw_status)
 
 def validate_coordinates(lat: Optional[float], long: Optional[float]) -> None:
     if lat is not None:
@@ -776,20 +784,15 @@ def _auto_complete_finished_bookings(
     """
     Mark in-past bookings as completed so billing can rely on explicit completion.
 
-    - Only touches bookings that have ended and are not cancelled.
-    - Sets status="completed" when applicable.
-    - Can be scoped to a provider to reduce unnecessary work.
+    Only transitions ``confirmed`` → ``completed`` when the appointment has
+    already ended. Cancelled and already-completed bookings are left untouched.
     """
 
     cutoff = as_of or datetime.utcnow()
 
-    blocked_statuses = {"cancelled", "canceled", "completed"}
-
-    normalized_status = normalized_booking_status_expr()
-
     query = db.query(models.Booking).filter(
+        models.Booking.end_time.isnot(None),
         models.Booking.end_time <= cutoff,
-        normalized_status.notin_(blocked_statuses),
     )
 
     if provider_id is not None:
@@ -800,9 +803,13 @@ def _auto_complete_finished_bookings(
     stale_bookings = query.all()
 
     for booking in stale_bookings:
-        normalized_status = (booking.status or "").strip().lower()
+        if normalized_booking_status_value(booking.status) != "confirmed":
+            continue
 
-        if normalized_status in {"cancelled", "canceled"}:
+        if not booking.end_time:
+            continue
+
+        if booking.end_time > cutoff:
             continue
 
         booking.status = "completed"
@@ -927,14 +934,11 @@ from app.config import get_settings
 from app import models
 # get_provider_credit_balance should already be defined in this file
 
-CANCELLED_STATUSES = {"cancelled", "canceled"}
+CANCELLED_STATUSES = {"cancelled"}
 
 
 def _is_cancelled_status(status: str | None) -> bool:
-    if not status:
-        return False
-
-    return status.strip().lower() in CANCELLED_STATUSES
+    return normalized_booking_status_value(status) == "cancelled"
 
 
 def _billable_bookings_base_query(
@@ -959,7 +963,7 @@ def _billable_bookings_base_query(
         .join(models.User, models.Booking.customer_id == models.User.id)
         .filter(
             models.Provider.id == provider_id,
-            normalized_status.notin_(CANCELLED_STATUSES),
+            normalized_status.in_(["completed", "confirmed"]),
             models.Booking.end_time.isnot(None),
             models.Booking.end_time <= cutoff,
         )
@@ -1218,7 +1222,7 @@ def list_bookings_for_provider(db: Session, provider_id: int):
             "customer_name": r.customer_name,
             "start_time": r.start_time,
             "end_time": r.end_time,
-            "status": r.status,
+            "status": normalized_booking_status_value(r.status),
             "canceled_at": None,
             "completed_at": None,
         }
@@ -1280,7 +1284,7 @@ def get_billable_bookings_for_provider(
                 "customer_name": r.customer_name,
                 "start_time": r.start_time,
                 "end_time": r.end_time,
-                "status": r.status,
+                "status": normalized_booking_status_value(r.status),
                 "completed_at": None,
             }
         )
@@ -1367,7 +1371,7 @@ def list_bookings_for_customer(db: Session, customer_id: int):
                 id=booking.id,
                 start_time=booking.start_time,
                 end_time=booking.end_time,
-                status=booking.status,
+                status=normalized_booking_status_value(booking.status),
                 canceled_at=None,
                 completed_at=None,
                 service_name=service.name if service else "",
@@ -1412,10 +1416,13 @@ def cancel_booking_for_customer(
     if not booking:
         return None
 
-    normalized_status = (booking.status or "").strip().lower()
+    normalized_status = normalized_booking_status_value(booking.status)
+
+    if normalized_status == "completed":
+        raise ValueError("Cannot cancel a completed booking")
 
     # If it's already cancelled, nothing to do
-    if normalized_status in {"cancelled", "canceled"}:
+    if normalized_status == "cancelled":
         return booking
 
     booking.status = "cancelled"
@@ -1488,6 +1495,11 @@ def cancel_booking_for_provider(
 
     if not booking:
         return False
+
+    normalized_status = normalized_booking_status_value(booking.status)
+
+    if normalized_status == "completed":
+        raise ValueError("Cannot cancel a completed booking")
 
     service = (
         db.query(models.Service)
@@ -1834,8 +1846,6 @@ def list_todays_bookings_for_provider(db: Session, provider_id: int):
     start_of_day = datetime(now.year, now.month, now.day)
     end_of_day = start_of_day + timedelta(days=1)
 
-    normalized_status = normalized_booking_status_expr()
-
     q = (
         db.query(models.Booking, models.Service, models.User)
         .join(models.Service, models.Booking.service_id == models.Service.id)
@@ -1845,19 +1855,22 @@ def list_todays_bookings_for_provider(db: Session, provider_id: int):
             models.Booking.start_time >= start_of_day,
             models.Booking.start_time < end_of_day,
             models.Booking.end_time > now,
-            normalized_status == "confirmed",
         )
         .order_by(models.Booking.start_time)
     )
 
     results = []
     for booking, service, customer in q.all():
+        normalized_status = normalized_booking_status_value(booking.status)
+        if normalized_status != "confirmed":
+            continue
+
         results.append(
             schemas.BookingWithDetails(
                 id=booking.id,
                 start_time=booking.start_time,
                 end_time=booking.end_time,
-                status=booking.status,
+                status=normalized_booking_status_value(booking.status),
                 canceled_at=None,
                 completed_at=None,
                 service_name=service.name,
@@ -1883,8 +1896,6 @@ def list_upcoming_bookings_for_provider(
     start_of_tomorrow = datetime(start.year, start.month, start.day)
     end = start_of_tomorrow + timedelta(days=days_ahead)
 
-    normalized_status = normalized_booking_status_expr()
-
     q = (
       db.query(models.Booking, models.Service, models.User)
       .join(models.Service, models.Booking.service_id == models.Service.id)
@@ -1893,19 +1904,22 @@ def list_upcoming_bookings_for_provider(
           models.Service.provider_id == provider_id,
           models.Booking.start_time >= start_of_tomorrow,
           models.Booking.start_time < end,
-          normalized_status == "confirmed",
       )
       .order_by(models.Booking.start_time)
     )
 
     results = []
     for booking, service, customer in q.all():
+        normalized_status = normalized_booking_status_value(booking.status)
+        if normalized_status != "confirmed":
+            continue
+
         results.append(
             schemas.BookingWithDetails(
                 id=booking.id,
                 start_time=booking.start_time,
                 end_time=booking.end_time,
-                status=booking.status,
+                status=normalized_booking_status_value(booking.status),
                 canceled_at=None,
                 completed_at=None,
                 service_name=service.name,

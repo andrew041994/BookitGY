@@ -198,12 +198,13 @@ def test_cancelling_booking_updates_monthly_bill(db_session):
     assert bill is not None
     assert float(bill.total_gyd) > 0
 
-    crud.cancel_booking_for_customer(session, booking.id, customer.id)
+    with pytest.raises(ValueError):
+        crud.cancel_booking_for_customer(session, booking.id, customer.id)
 
     session.refresh(bill)
 
-    assert float(bill.total_gyd) == 0
-    assert float(bill.fee_gyd) == 0
+    assert float(bill.total_gyd) > 0
+    assert float(bill.fee_gyd) > 0
 
 
 def test_completed_booking_counts_toward_fees(db_session):
