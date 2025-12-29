@@ -921,6 +921,15 @@ from app.config import get_settings
 from app import models
 # get_provider_credit_balance should already be defined in this file
 
+CANCELLED_STATUSES = {"cancelled", "canceled"}
+
+
+def _is_cancelled_status(status: str | None) -> bool:
+    if not status:
+        return False
+
+    return status.strip().lower() in CANCELLED_STATUSES
+
 
 def _billable_bookings_base_query(
     db: Session, provider_id: int, as_of: datetime | None = None
@@ -948,7 +957,7 @@ def _billable_bookings_base_query(
         .join(models.User, models.Booking.customer_id == models.User.id)
         .filter(
             models.Provider.id == provider_id,
-            normalized_status.notin_({"cancelled", "canceled"}),
+            normalized_status.notin_(CANCELLED_STATUSES),
             models.Booking.end_time.isnot(None),
             models.Booking.end_time <= cutoff,
         )
@@ -996,6 +1005,7 @@ def get_provider_fees_due(db: Session, provider_id: int) -> float:
         )
         .with_entities(
             models.Booking.end_time,
+            models.Booking.status,
             models.Service.price_gyd.label("service_price_gyd"),
         )
         .all()
@@ -1005,6 +1015,9 @@ def get_provider_fees_due(db: Session, provider_id: int) -> float:
     for r in rows:
         end_time = r.end_time
         if not end_time:
+            continue
+
+        if _is_cancelled_status(r.status):
             continue
 
         price = r.service_price_gyd or 0
@@ -1060,6 +1073,7 @@ def get_provider_current_month_due_from_completed_bookings(
         )
         .with_entities(
             models.Booking.end_time,
+            models.Booking.status,
             models.Service.price_gyd.label("service_price_gyd"),
         )
         .order_by(models.Booking.end_time.asc())
@@ -1068,6 +1082,9 @@ def get_provider_current_month_due_from_completed_bookings(
 
     services_total = Decimal("0")
     for r in rows:
+        if _is_cancelled_status(r.status):
+            continue
+
         price = r.service_price_gyd or 0
         services_total += Decimal(str(price))
 
@@ -1247,19 +1264,26 @@ def get_billable_bookings_for_provider(
         .all()
     )
 
-    return [
-        {
-            "id": r.id,
-            "service_name": r.service_name,
-            "service_price_gyd": float(r.service_price_gyd or 0.0),
-            "customer_name": r.customer_name,
-            "start_time": r.start_time,
-            "end_time": r.end_time,
-            "status": r.status,
-            "completed_at": None,
-        }
-        for r in rows
-    ]
+    billable_rows = []
+
+    for r in rows:
+        if _is_cancelled_status(r.status):
+            continue
+
+        billable_rows.append(
+            {
+                "id": r.id,
+                "service_name": r.service_name,
+                "service_price_gyd": float(r.service_price_gyd or 0.0),
+                "customer_name": r.customer_name,
+                "start_time": r.start_time,
+                "end_time": r.end_time,
+                "status": r.status,
+                "completed_at": None,
+            }
+        )
+
+    return billable_rows
 
 
 def list_billable_bookings_for_provider(
