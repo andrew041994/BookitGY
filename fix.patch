@@ -1,306 +1,176 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
-diff --git a/backend/app/crud.py b/backend/app/crud.py
-index c81b87c4abe85497010fd3ec14e2d7a6d53081af..e02bacd0295ac6d92a3da1fb447e500c48d2105b 100644
---- a/backend/app/crud.py
-+++ b/backend/app/crud.py
-@@ -899,136 +899,149 @@ def _calculate_bill_total_due(db: Session, bill: models.Bill, provider_id: int)
-     """Mirror the provider-facing bill "Total due" for a given bill."""
- 
-     total_due = Decimal(str(bill.fee_gyd or 0)).quantize(
-         Decimal("1"), rounding=ROUND_HALF_UP
+diff --git a/backend/tests/test_booking_lists.py b/backend/tests/test_booking_lists.py
+index 614f21e2fbae9cd37363af3f6e06f06c39c0449d..24fe17224c92db869f2f816b72ed2c6ba3ebc170 100644
+--- a/backend/tests/test_booking_lists.py
++++ b/backend/tests/test_booking_lists.py
+@@ -19,50 +19,167 @@ def _create_provider_graph(session, models):
+         name="Test Service",
+         price_gyd=1000,
+         duration_minutes=60,
      )
-     credits = Decimal(str(get_provider_credit_balance(db, provider_id) or 0))
-     # Bill credits should only ever reduce what a provider owes. If the balance is
-     # negative (e.g., from a bad manual entry), clamp it to zero so we don't
-     # accidentally inflate the amount due.
-     credits = max(credits, Decimal("0"))
+     session.add(service)
+     session.commit()
+     session.refresh(service)
  
-     net_due = (total_due - credits).quantize(Decimal("1"), rounding=ROUND_HALF_UP)
-     if net_due < 0:
-         net_due = Decimal("0")
- 
-     return float(net_due)
+     return provider, provider_user, customer_user, service
  
  
- from datetime import date
- from decimal import Decimal
- 
- from app.config import get_settings
- from app import models
- # get_provider_credit_balance should already be defined in this file
- 
-+CANCELLED_STATUSES = {"cancelled", "canceled"}
-+
-+
-+def _is_cancelled_status(status: str | None) -> bool:
-+    if not status:
-+        return False
-+
-+    return status.strip().lower() in CANCELLED_STATUSES
-+
- 
- def _billable_bookings_base_query(
-     db: Session, provider_id: int, as_of: datetime | None = None
- ):
-     """Return a base query for bookings that are eligible for billing.
- 
-     Eligibility rules (applied consistently across billing calculations):
-     - Booking is NOT cancelled.
-     - Booking has ended.
-     - Appointment end time is on or before the cutoff.
-     """
- 
-     cutoff = as_of or datetime.utcnow()
- 
- 
-     normalized_status = func.lower(
-         func.trim(func.coalesce(cast(models.Booking.status, String), ""))
+ def _add_booking(session, models, *, customer, service, start_time, end_time, status):
+     booking = models.Booking(
+         customer_id=customer.id,
+         service_id=service.id,
+         start_time=start_time,
+         end_time=end_time,
+         status=status,
      )
+     session.add(booking)
+     session.commit()
+     session.refresh(booking)
+     return booking
  
  
-     return (
-         db.query(models.Booking, models.Service, models.User)
-         .join(models.Service, models.Booking.service_id == models.Service.id)
-         .join(models.Provider, models.Service.provider_id == models.Provider.id)
-         .join(models.User, models.Booking.customer_id == models.User.id)
-         .filter(
-             models.Provider.id == provider_id,
--            normalized_status.notin_({"cancelled", "canceled"}),
-+            normalized_status.notin_(CANCELLED_STATUSES),
-             models.Booking.end_time.isnot(None),
-             models.Booking.end_time <= cutoff,
-         )
-     )
- 
- 
- def _billing_period_bounds(reference: datetime) -> tuple[datetime, datetime]:
-     """Return start/end datetimes covering the month containing ``reference``."""
- 
-     start = datetime(reference.year, reference.month, 1)
-     if reference.month == 12:
-         end = datetime(reference.year + 1, 1, 1)
-     else:
-         end = datetime(reference.year, reference.month + 1, 1)
- 
-     return start, end
- 
- 
- def get_provider_fees_due(db: Session, provider_id: int) -> float:
-     """
-     Compute the *current month's* amount due for this provider in GYD,
-     using only completed (ended) and non-cancelled bookings.
- 
-     Logic:
-     - Look at bookings that have ended (end_time <= now) and are not cancelled,
-     - Take only those whose service date falls in the current calendar month,
-     - Sum the service prices for those bookings,
-     - Apply the platform service charge percentage,
-     - Subtract bill credits (but never go below 0).
- 
-     This intentionally ignores the stored Bill rows and instead computes
-     the amount due from live booking data so the admin dashboard matches
-     what the provider sees.
-     """
-     now_utc = datetime.utcnow()
-     period_start, period_end = _billing_period_bounds(now_utc)
- 
-     _auto_complete_finished_bookings(db, provider_id=provider_id, as_of=now_utc)
- 
-     rows = (
-         _billable_bookings_base_query(db, provider_id, as_of=now_utc)
-         .filter(
-             models.Booking.end_time >= period_start,
-             models.Booking.end_time < period_end,
-         )
-         .with_entities(
-             models.Booking.end_time,
-+            models.Booking.status,
-             models.Service.price_gyd.label("service_price_gyd"),
-         )
-         .all()
-     )
- 
-     services_total = Decimal("0")
-     for r in rows:
-         end_time = r.end_time
-         if not end_time:
-             continue
- 
-+        if _is_cancelled_status(r.status):
-+            continue
++def _allow_custom_statuses(models, *values):
++    class _SafeLookup(dict):
++        def __missing__(self, key):
++            return key
 +
-         price = r.service_price_gyd or 0
-         services_total += Decimal(str(price))
- 
-     if services_total <= 0:
-         return 0.0
- 
-     service_charge_pct = get_platform_service_charge_percentage(db)
-     fee_rate = Decimal(str(max(service_charge_pct, 0))) / Decimal("100")
- 
-     platform_fee = services_total * fee_rate
-     platform_fee = platform_fee.quantize(Decimal("1"))
- 
-     if platform_fee <= 0:
-         return 0.0
- 
-     credits = Decimal(str(get_provider_credit_balance(db, provider_id) or 0))
-     applied_credits = min(credits, platform_fee)
-     total_due = platform_fee - applied_credits
- 
-     if total_due < 0:
-         total_due = Decimal("0")
- 
-     return float(total_due)
- 
- 
-@@ -1038,58 +1051,62 @@ def get_provider_current_month_due_from_completed_bookings(
-     db: Session, provider_id: int
- ) -> float:
-     """
-     Compute the provider's current-month amount due using only completed (ended)
-     and non-cancelled bookings.
- 
-     This is intentionally aligned with the provider-facing billing screen logic:
-     - Uses the same billable-bookings semantics as provider invoices,
-     - Filters those bookings to the current calendar month,
-     - Applies the platform service charge percentage,
-     - Applies available bill credits, but never returns a negative value.
-     """
-     now = datetime.utcnow()
-     period_start, period_end = _billing_period_bounds(now)
- 
-     _auto_complete_finished_bookings(db, provider_id=provider_id, as_of=now)
- 
-     rows = (
-         _billable_bookings_base_query(db, provider_id, as_of=now)
-         .filter(
-             models.Booking.end_time >= period_start,
-             models.Booking.end_time < period_end,
-         )
-         .with_entities(
-             models.Booking.end_time,
-+            models.Booking.status,
-             models.Service.price_gyd.label("service_price_gyd"),
-         )
-         .order_by(models.Booking.end_time.asc())
-         .all()
-     )
- 
-     services_total = Decimal("0")
-     for r in rows:
-+        if _is_cancelled_status(r.status):
-+            continue
++    status_type = models.Booking.status.type
++    column_type = models.Booking.__table__.c.status.type
++    object_lookup = _SafeLookup(getattr(status_type, "_object_lookup", {}))
++    valid_lookup = _SafeLookup(getattr(status_type, "_valid_lookup", {}))
 +
-         price = r.service_price_gyd or 0
-         services_total += Decimal(str(price))
- 
-     if services_total <= 0:
-         return 0.0
- 
-     service_charge_pct = get_platform_service_charge_percentage(db)
-     fee_rate = Decimal(str(max(service_charge_pct, 0))) / Decimal("100")
-     platform_fee = services_total * fee_rate
- 
-     platform_fee = platform_fee.quantize(Decimal("1"))
-     if platform_fee <= 0:
-         return 0.0
- 
-     credits = Decimal(str(get_provider_credit_balance(db, provider_id) or 0))
-     applied_credits = min(credits, platform_fee)
-     total_due = platform_fee - applied_credits
- 
-     if total_due < 0:
-         total_due = Decimal("0")
- 
-     return float(total_due)
- 
- 
- 
-@@ -1225,63 +1242,70 @@ def get_billable_bookings_for_provider(
-     default_start, default_end = _billing_period_bounds(cutoff)
- 
-     period_start = period_start or default_start
-     period_end = period_end or default_end
-     _auto_complete_finished_bookings(db, provider_id=provider_id, as_of=cutoff)
- 
-     rows = (
-         _billable_bookings_base_query(db, provider_id, as_of=cutoff)
-         .filter(
-             models.Booking.end_time >= period_start,
-             models.Booking.end_time < period_end,
-         )
-         .with_entities(
-             models.Booking.id,
-             models.Booking.start_time,
-             models.Booking.end_time,
-             models.Booking.status,
-             models.Service.name.label("service_name"),
-             models.Service.price_gyd.label("service_price_gyd"),
-             models.User.username.label("customer_name"),
-         )
-         .order_by(models.Booking.end_time.desc())
-         .all()
-     )
- 
--    return [
--        {
--            "id": r.id,
--            "service_name": r.service_name,
--            "service_price_gyd": float(r.service_price_gyd or 0.0),
--            "customer_name": r.customer_name,
--            "start_time": r.start_time,
--            "end_time": r.end_time,
--            "status": r.status,
--            "completed_at": None,
--        }
--        for r in rows
--    ]
-+    billable_rows = []
++    for value in values:
++        if value not in status_type.enums:
++            status_type.enums.append(value)
++        object_lookup[value] = value
++        valid_lookup[value] = value
 +
-+    for r in rows:
-+        if _is_cancelled_status(r.status):
-+            continue
++    status_type._object_lookup = object_lookup
++    status_type._valid_lookup = valid_lookup
++    column_type._object_lookup = object_lookup
++    column_type._valid_lookup = valid_lookup
++    enum_impl = getattr(status_type, "_enum_impl", None)
++    if enum_impl is not None:
++        enum_impl._object_lookup = object_lookup
++        enum_impl._valid_lookup = valid_lookup
++    column_enum_impl = getattr(column_type, "_enum_impl", None)
++    if column_enum_impl is not None:
++        column_enum_impl._object_lookup = object_lookup
++        column_enum_impl._valid_lookup = valid_lookup
 +
-+        billable_rows.append(
-+            {
-+                "id": r.id,
-+                "service_name": r.service_name,
-+                "service_price_gyd": float(r.service_price_gyd or 0.0),
-+                "customer_name": r.customer_name,
-+                "start_time": r.start_time,
-+                "end_time": r.end_time,
-+                "status": r.status,
-+                "completed_at": None,
-+            }
++    status_type.__class__._object_value_for_elem = (
++        lambda self, elem: object_lookup.get(elem, elem)
++    )
++
++    try:
++        import types
++
++        if not hasattr(status_type, "_original_object_value_for_elem"):
++            status_type._original_object_value_for_elem = (
++                status_type._object_value_for_elem
++            )
++        status_type._object_value_for_elem = types.MethodType(
++            lambda self, elem: elem, status_type
 +        )
++    except Exception:
++        pass
 +
-+    return billable_rows
++
++@pytest.mark.usefixtures("db_session")
++def test_provider_lists_handle_mixed_confirmed_status_casing(db_session):
++    session, models, crud = db_session
++    provider, provider_user, customer, service = _create_provider_graph(session, models)
++
++    _allow_custom_statuses(models, "CONFIRMED", "confirmed ")
++
++    now = crud.now_local_naive()
++    today_start = now + timedelta(minutes=30)
++    if today_start.date() != now.date():
++        today_start = now.replace(second=0, microsecond=0) + timedelta(minutes=5)
++
++    today_end = today_start + timedelta(hours=1)
++    upcoming_start = today_start + timedelta(days=1)
++    upcoming_end = upcoming_start + timedelta(hours=1)
++
++    today_booking = _add_booking(
++        session,
++        models,
++        customer=customer,
++        service=service,
++        start_time=today_start,
++        end_time=today_end,
++        status="CONFIRMED",
++    )
++
++    upcoming_booking = _add_booking(
++        session,
++        models,
++        customer=customer,
++        service=service,
++        start_time=upcoming_start,
++        end_time=upcoming_end,
++        status="confirmed ",
++    )
++
++    from app import database
++    from app.main import app
++    from app.database import get_db
++    from app.routes import bookings as bookings_routes
++
++    database.Base.metadata.create_all(bind=database.engine)
++
++    def override_get_db():
++        try:
++            yield session
++        finally:
++            pass
++
++    app.dependency_overrides[get_db] = override_get_db
++    app.dependency_overrides[bookings_routes._require_current_provider] = lambda: provider
++
++    client = TestClient(app)
++
++    try:
++        today_resp = client.get("/providers/me/bookings/today")
++        assert today_resp.status_code == 200
++        today_data = today_resp.json()
++        assert [item["id"] for item in today_data] == [today_booking.id]
++        assert today_data[0]["status"] == "CONFIRMED"
++
++        upcoming_resp = client.get("/providers/me/bookings/upcoming")
++        assert upcoming_resp.status_code == 200
++        upcoming_data = upcoming_resp.json()
++        assert [item["id"] for item in upcoming_data] == [upcoming_booking.id]
++        assert upcoming_data[0]["status"] == "confirmed "
++    finally:
++        app.dependency_overrides = {}
++
++
+ @pytest.mark.usefixtures("db_session")
+ def test_provider_bookings_include_all_statuses(db_session):
+     session, models, crud = db_session
+     provider, provider_user, customer, service = _create_provider_graph(session, models)
  
+     now = datetime.utcnow()
+     future_start = now + timedelta(hours=2)
+     past_start = now - timedelta(days=1)
+     cancelled_start = now - timedelta(hours=3)
  
- def list_billable_bookings_for_provider(
-     db: Session,
-     provider_id: int,
-     period_start: datetime | None = None,
-     period_end: datetime | None = None,
-     as_of: datetime | None = None,
- ):
-     """Deprecated alias for backwards compatibility."""
- 
-     return get_billable_bookings_for_provider(
-         db,
-         provider_id,
-         period_start=period_start,
-         period_end=period_end,
-         as_of=as_of,
+     _add_booking(
+         session,
+         models,
+         customer=customer,
+         service=service,
+         start_time=future_start,
+         end_time=future_start + timedelta(hours=1),
+         status="confirmed",
      )
  
- 
- def _refresh_bill_for_booking(db: Session, booking: models.Booking) -> None:
-     """Regenerate bills for the month containing this booking."""
- 
-     if not booking.start_time:
-         return
+     _add_booking(
+         session,
+         models,
+         customer=customer,
+         service=service,
  
 EOF
 )

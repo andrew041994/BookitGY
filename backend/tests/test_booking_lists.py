@@ -41,6 +41,123 @@ def _add_booking(session, models, *, customer, service, start_time, end_time, st
     return booking
 
 
+def _allow_custom_statuses(models, *values):
+    class _SafeLookup(dict):
+        def __missing__(self, key):
+            return key
+
+    status_type = models.Booking.status.type
+    column_type = models.Booking.__table__.c.status.type
+    object_lookup = _SafeLookup(getattr(status_type, "_object_lookup", {}))
+    valid_lookup = _SafeLookup(getattr(status_type, "_valid_lookup", {}))
+
+    for value in values:
+        if value not in status_type.enums:
+            status_type.enums.append(value)
+        object_lookup[value] = value
+        valid_lookup[value] = value
+
+    status_type._object_lookup = object_lookup
+    status_type._valid_lookup = valid_lookup
+    column_type._object_lookup = object_lookup
+    column_type._valid_lookup = valid_lookup
+    enum_impl = getattr(status_type, "_enum_impl", None)
+    if enum_impl is not None:
+        enum_impl._object_lookup = object_lookup
+        enum_impl._valid_lookup = valid_lookup
+    column_enum_impl = getattr(column_type, "_enum_impl", None)
+    if column_enum_impl is not None:
+        column_enum_impl._object_lookup = object_lookup
+        column_enum_impl._valid_lookup = valid_lookup
+
+    status_type.__class__._object_value_for_elem = (
+        lambda self, elem: object_lookup.get(elem, elem)
+    )
+
+    try:
+        import types
+
+        if not hasattr(status_type, "_original_object_value_for_elem"):
+            status_type._original_object_value_for_elem = (
+                status_type._object_value_for_elem
+            )
+        status_type._object_value_for_elem = types.MethodType(
+            lambda self, elem: elem, status_type
+        )
+    except Exception:
+        pass
+
+
+@pytest.mark.usefixtures("db_session")
+def test_provider_lists_handle_mixed_confirmed_status_casing(db_session):
+    session, models, crud = db_session
+    provider, provider_user, customer, service = _create_provider_graph(session, models)
+
+    _allow_custom_statuses(models, "CONFIRMED", "confirmed ")
+
+    now = crud.now_local_naive()
+    today_start = now + timedelta(minutes=30)
+    if today_start.date() != now.date():
+        today_start = now.replace(second=0, microsecond=0) + timedelta(minutes=5)
+
+    today_end = today_start + timedelta(hours=1)
+    upcoming_start = today_start + timedelta(days=1)
+    upcoming_end = upcoming_start + timedelta(hours=1)
+
+    today_booking = _add_booking(
+        session,
+        models,
+        customer=customer,
+        service=service,
+        start_time=today_start,
+        end_time=today_end,
+        status="CONFIRMED",
+    )
+
+    upcoming_booking = _add_booking(
+        session,
+        models,
+        customer=customer,
+        service=service,
+        start_time=upcoming_start,
+        end_time=upcoming_end,
+        status="confirmed ",
+    )
+
+    from app import database
+    from app.main import app
+    from app.database import get_db
+    from app.routes import bookings as bookings_routes
+
+    database.Base.metadata.create_all(bind=database.engine)
+
+    def override_get_db():
+        try:
+            yield session
+        finally:
+            pass
+
+    app.dependency_overrides[get_db] = override_get_db
+    app.dependency_overrides[bookings_routes._require_current_provider] = lambda: provider
+
+    client = TestClient(app)
+
+    try:
+        today_resp = client.get("/providers/me/bookings/today")
+        assert today_resp.status_code == 200
+        today_data = today_resp.json()
+        assert [item["id"] for item in today_data] == [today_booking.id]
+        assert today_data[0]["status"] == "CONFIRMED"
+
+        upcoming_resp = client.get("/providers/me/bookings/upcoming")
+        assert upcoming_resp.status_code == 200
+        upcoming_data = upcoming_resp.json()
+        assert [item["id"] for item in upcoming_data] == [upcoming_booking.id]
+        assert upcoming_data[0]["status"] == "confirmed "
+    finally:
+        app.dependency_overrides = {}
+
+
 @pytest.mark.usefixtures("db_session")
 def test_provider_bookings_include_all_statuses(db_session):
     session, models, crud = db_session

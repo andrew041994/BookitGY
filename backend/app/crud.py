@@ -30,6 +30,12 @@ pwd_context = CryptContext(schemes=["pbkdf2_sha256"], deprecated="auto")
 EXPO_PUSH_URL = "https://exp.host/--/api/v2/push/send"
 DEFAULT_SERVICE_CHARGE_PERCENTAGE = Decimal("10.0")
 
+
+def normalized_booking_status_expr():
+    return func.lower(
+        func.trim(func.coalesce(cast(models.Booking.status, String), ""))
+    )
+
 def validate_coordinates(lat: Optional[float], long: Optional[float]) -> None:
     if lat is not None:
         if not (-90.0 <= lat <= 90.0):
@@ -677,10 +683,12 @@ def create_booking(
     )
 
     # Check overlapping *future/ongoing* confirmed bookings for this same service
+    normalized_status = normalized_booking_status_expr()
+
     overlap = (
         db.query(models.Booking)
         .filter(models.Booking.service_id == booking.service_id)
-        .filter(models.Booking.status == "confirmed")
+        .filter(normalized_status == "confirmed")
         .filter(models.Booking.end_time > now)  # ignore bookings that already ended
         .filter(
             models.Booking.start_time < end_time,
@@ -777,9 +785,7 @@ def _auto_complete_finished_bookings(
 
     blocked_statuses = {"cancelled", "canceled", "completed"}
 
-    normalized_status = func.lower(
-        func.trim(func.coalesce(cast(models.Booking.status, String), ""))
-    )
+    normalized_status = normalized_booking_status_expr()
 
     query = db.query(models.Booking).filter(
         models.Booking.end_time <= cutoff,
@@ -921,7 +927,7 @@ from app.config import get_settings
 from app import models
 # get_provider_credit_balance should already be defined in this file
 
-CANCELLED_STATUSES = {"cancelled", "canceled", "Cancelled"}
+CANCELLED_STATUSES = {"cancelled", "canceled"}
 
 
 def _is_cancelled_status(status: str | None) -> bool:
@@ -944,11 +950,7 @@ def _billable_bookings_base_query(
 
     cutoff = as_of or datetime.utcnow()
 
-
-    normalized_status = func.lower(
-        func.trim(func.coalesce(cast(models.Booking.status, String), ""))
-    )
-
+    normalized_status = normalized_booking_status_expr()
 
     return (
         db.query(models.Booking, models.Service, models.User)
@@ -1766,6 +1768,8 @@ def get_provider_availability(
         is_today = (day_date == now.date())
 
         # Get existing confirmed bookings for this provider on that day
+        normalized_status = normalized_booking_status_expr()
+
         bookings = (
             db.query(models.Booking)
             .join(models.Service, models.Booking.service_id == models.Service.id)
@@ -1773,7 +1777,7 @@ def get_provider_availability(
                 models.Service.provider_id == provider_id,
                 models.Booking.start_time >= day_start,
                 models.Booking.start_time < day_end,
-                models.Booking.status == "confirmed",
+                normalized_status == "confirmed",
             )
             .all()
         )
@@ -1830,6 +1834,8 @@ def list_todays_bookings_for_provider(db: Session, provider_id: int):
     start_of_day = datetime(now.year, now.month, now.day)
     end_of_day = start_of_day + timedelta(days=1)
 
+    normalized_status = normalized_booking_status_expr()
+
     q = (
         db.query(models.Booking, models.Service, models.User)
         .join(models.Service, models.Booking.service_id == models.Service.id)
@@ -1839,7 +1845,7 @@ def list_todays_bookings_for_provider(db: Session, provider_id: int):
             models.Booking.start_time >= start_of_day,
             models.Booking.start_time < end_of_day,
             models.Booking.end_time > now,
-            models.Booking.status == "confirmed",
+            normalized_status == "confirmed",
         )
         .order_by(models.Booking.start_time)
     )
@@ -1877,6 +1883,8 @@ def list_upcoming_bookings_for_provider(
     start_of_tomorrow = datetime(start.year, start.month, start.day)
     end = start_of_tomorrow + timedelta(days=days_ahead)
 
+    normalized_status = normalized_booking_status_expr()
+
     q = (
       db.query(models.Booking, models.Service, models.User)
       .join(models.Service, models.Booking.service_id == models.Service.id)
@@ -1885,7 +1893,7 @@ def list_upcoming_bookings_for_provider(
           models.Service.provider_id == provider_id,
           models.Booking.start_time >= start_of_tomorrow,
           models.Booking.start_time < end,
-          models.Booking.status == "confirmed",
+          normalized_status == "confirmed",
       )
       .order_by(models.Booking.start_time)
     )

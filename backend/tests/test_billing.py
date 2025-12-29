@@ -54,6 +54,53 @@ def _add_booking(session, models, *, customer, service, start_time, end_time, st
     return booking
 
 
+def _allow_custom_statuses(models, *values):
+    class _SafeLookup(dict):
+        def __missing__(self, key):
+            return key
+
+    status_type = models.Booking.status.type
+    column_type = models.Booking.__table__.c.status.type
+    object_lookup = _SafeLookup(getattr(status_type, "_object_lookup", {}))
+    valid_lookup = _SafeLookup(getattr(status_type, "_valid_lookup", {}))
+
+    for value in values:
+        if value not in status_type.enums:
+            status_type.enums.append(value)
+        object_lookup[value] = value
+        valid_lookup[value] = value
+
+    status_type._object_lookup = object_lookup
+    status_type._valid_lookup = valid_lookup
+    column_type._object_lookup = object_lookup
+    column_type._valid_lookup = valid_lookup
+    enum_impl = getattr(status_type, "_enum_impl", None)
+    if enum_impl is not None:
+        enum_impl._object_lookup = object_lookup
+        enum_impl._valid_lookup = valid_lookup
+    column_enum_impl = getattr(column_type, "_enum_impl", None)
+    if column_enum_impl is not None:
+        column_enum_impl._object_lookup = object_lookup
+        column_enum_impl._valid_lookup = valid_lookup
+
+    status_type.__class__._object_value_for_elem = (
+        lambda self, elem: object_lookup.get(elem, elem)
+    )
+
+    try:
+        import types
+
+        if not hasattr(status_type, "_original_object_value_for_elem"):
+            status_type._original_object_value_for_elem = (
+                status_type._object_value_for_elem
+            )
+        status_type._object_value_for_elem = types.MethodType(
+            lambda self, elem: elem, status_type
+        )
+    except Exception:
+        pass
+
+
 def test_upcoming_booking_not_billable(db_session):
     session, models, crud = db_session
     provider, customer, service = _create_provider_graph(session, models)
@@ -334,6 +381,77 @@ def test_billing_endpoint_only_returns_completed(db_session):
         data = resp.json()
         assert [item["id"] for item in data] == [completed_booking.id]
         assert data[0]["status"] == "completed"
+    finally:
+        app.dependency_overrides = {}
+
+
+def test_billing_endpoint_excludes_cancelled_variants(db_session):
+    session, models, crud = db_session
+    provider, customer, service = _create_provider_graph(session, models)
+
+    now = datetime.utcnow()
+
+    _allow_custom_statuses(models, "CANCELLED")
+
+    first_start = _current_month_past_time(now) - timedelta(hours=4)
+    first_end = first_start + timedelta(hours=1)
+    _add_booking(
+        session,
+        models,
+        customer=customer,
+        service=service,
+        start_time=first_start,
+        end_time=first_end,
+        status="cancelled",
+    )
+
+    second_start = _current_month_past_time(now) - timedelta(hours=2)
+    second_end = second_start + timedelta(hours=1)
+    _add_booking(
+        session,
+        models,
+        customer=customer,
+        service=service,
+        start_time=second_start,
+        end_time=second_end,
+        status="CANCELLED",
+    )
+
+    third_start = _current_month_past_time(now) - timedelta(hours=1)
+    third_end = third_start + timedelta(hours=1)
+    kept_booking = _add_booking(
+        session,
+        models,
+        customer=customer,
+        service=service,
+        start_time=third_start,
+        end_time=third_end,
+        status="confirmed",
+    )
+
+    from app import database
+    from app.main import app
+    from app.database import get_db
+    from app.routes import bookings as bookings_routes
+
+    database.Base.metadata.create_all(bind=database.engine)
+
+    def override_get_db():
+        try:
+            yield session
+        finally:
+            pass
+
+    app.dependency_overrides[get_db] = override_get_db
+    app.dependency_overrides[bookings_routes._require_current_provider] = lambda: provider
+
+    client = TestClient(app)
+
+    try:
+        resp = client.get("/providers/me/billing/bookings")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert {item["id"] for item in data} == {kept_booking.id}
     finally:
         app.dependency_overrides = {}
 
