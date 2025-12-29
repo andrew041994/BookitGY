@@ -921,7 +921,7 @@ from app.config import get_settings
 from app import models
 # get_provider_credit_balance should already be defined in this file
 
-CANCELLED_STATUSES = {"cancelled", "canceled"}
+CANCELLED_STATUSES = {"cancelled", "canceled", "Cancelled"}
 
 
 def _is_cancelled_status(status: str | None) -> bool:
