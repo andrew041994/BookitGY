@@ -768,7 +768,7 @@ def generate_monthly_bills(db: Session, month: date):
     Generate or update bills for all providers for the given month.
 
     - Only counts bookings that are:
-        * confirmed
+        * not cancelled
         * belong to this provider
         * have ALREADY ENDED (end_time <= now)
         * have end_time inside [first_of_month, first_of_next_month)
@@ -794,14 +794,10 @@ def generate_monthly_bills(db: Session, month: date):
     period_end = min(end_dt, now)
 
     for prov in providers:
-        # Total value of all completed confirmed bookings in this period
         total = (
-            db.query(func.sum(models.Service.price_gyd))
-            .join(models.Booking)
+            _billable_bookings_base_query(db, prov.id, as_of=period_end)
+            .with_entities(func.sum(models.Service.price_gyd))
             .filter(
-                models.Booking.service_id == models.Service.id,
-                models.Service.provider_id == prov.id,
-                models.Booking.status == "confirmed",
                 models.Booking.end_time >= start_dt,
                 models.Booking.end_time < period_end,
             )
@@ -882,14 +878,37 @@ from app import models
 # get_provider_credit_balance should already be defined in this file
 
 
+def _billable_bookings_base_query(db: Session, provider_id: int, as_of: datetime | None = None):
+    """Return a base query for bookings that are eligible for billing.
+
+    Eligibility rules (applied consistently across billing calculations):
+    - Booking is NOT cancelled.
+    - Appointment has ended: booking.end_time <= as_of (default: now).
+    """
+
+    cutoff = as_of or datetime.utcnow()
+
+    return (
+        db.query(models.Booking, models.Service, models.User)
+        .join(models.Service, models.Booking.service_id == models.Service.id)
+        .join(models.Provider, models.Service.provider_id == models.Provider.id)
+        .join(models.User, models.Booking.customer_id == models.User.id)
+        .filter(
+            models.Provider.id == provider_id,
+            models.Booking.status != "cancelled",
+            models.Booking.end_time <= cutoff,
+        )
+    )
+
+
 def get_provider_fees_due(db: Session, provider_id: int) -> float:
     """
     Compute the *current month's* amount due for this provider in GYD,
-    using the same logic as the provider-facing billing screen.
+    using only completed (ended) and non-cancelled bookings.
 
     Logic:
-    - Look at the provider's *upcoming* bookings (same as /providers/me/bookings),
-    - Take only those in the *current calendar month*,
+    - Look at bookings that have ended (end_time <= now) and are not cancelled,
+    - Take only those whose service date falls in the current calendar month,
     - Sum the service prices for those bookings,
     - Apply the platform service charge percentage,
     - Subtract bill credits (but never go below 0).
@@ -898,26 +917,18 @@ def get_provider_fees_due(db: Session, provider_id: int) -> float:
     the amount due from live booking data so the admin dashboard matches
     what the provider sees.
     """
-    # "Upcoming bookings" definition must match list_bookings_for_provider
     now_utc = datetime.utcnow()
     today = now_utc.date()
 
-    # 1) Load upcoming bookings for this provider, joined with service prices
     rows = (
-        db.query(
+        _billable_bookings_base_query(db, provider_id, as_of=now_utc)
+        .with_entities(
             models.Booking.start_time,
             models.Service.price_gyd.label("service_price_gyd"),
-        )
-        .join(models.Service, models.Booking.service_id == models.Service.id)
-        .join(models.Provider, models.Service.provider_id == models.Provider.id)
-        .filter(
-            models.Provider.id == provider_id,
-            models.Booking.start_time >= now_utc,
         )
         .all()
     )
 
-    # 2) Sum service prices for bookings that fall in the current month
     services_total = Decimal("0")
     for r in rows:
         start = r.start_time
@@ -929,22 +940,18 @@ def get_provider_fees_due(db: Session, provider_id: int) -> float:
         price = r.service_price_gyd or 0
         services_total += Decimal(str(price))
 
-    # If there are no relevant bookings, nothing is due
     if services_total <= 0:
         return 0.0
 
-    # 3) Resolve the platform fee percentage (same as provider summary)
     service_charge_pct = get_platform_service_charge_percentage(db)
     fee_rate = Decimal(str(max(service_charge_pct, 0))) / Decimal("100")
 
     platform_fee = services_total * fee_rate
-    # mirror Math.round to whole-dollar (GYD) values
     platform_fee = platform_fee.quantize(Decimal("1"))
 
     if platform_fee <= 0:
         return 0.0
 
-    # 4) Apply credits, but don't go below 0
     credits = Decimal(str(get_provider_credit_balance(db, provider_id) or 0))
     applied_credits = min(credits, platform_fee)
     total_due = platform_fee - applied_credits
@@ -957,14 +964,15 @@ def get_provider_fees_due(db: Session, provider_id: int) -> float:
 
 
 
-def get_provider_current_month_due_from_upcoming_bookings(
+def get_provider_current_month_due_from_completed_bookings(
     db: Session, provider_id: int
 ) -> float:
     """
-    Compute the provider's current-month amount due based on upcoming bookings.
+    Compute the provider's current-month amount due using only completed (ended)
+    and non-cancelled bookings.
 
     This is intentionally aligned with the provider-facing billing screen logic:
-    - Uses /providers/me/bookings semantics (upcoming bookings from now onward),
+    - Uses the same billable-bookings semantics as provider invoices,
     - Filters those bookings to the current calendar month,
     - Applies the platform service charge percentage,
     - Applies available bill credits, but never returns a negative value.
@@ -972,17 +980,11 @@ def get_provider_current_month_due_from_upcoming_bookings(
     now = datetime.utcnow()
     today = now.date()
 
-    # Mirror list_bookings_for_provider: upcoming bookings from now onward
     rows = (
-        db.query(
+        _billable_bookings_base_query(db, provider_id, as_of=now)
+        .with_entities(
             models.Booking.start_time,
             models.Service.price_gyd.label("service_price_gyd"),
-        )
-        .join(models.Service, models.Booking.service_id == models.Service.id)
-        .join(models.Provider, models.Service.provider_id == models.Provider.id)
-        .filter(
-            models.Provider.id == provider_id,
-            models.Booking.start_time >= now,
         )
         .order_by(models.Booking.start_time.asc())
         .all()
@@ -1002,12 +1004,10 @@ def get_provider_current_month_due_from_upcoming_bookings(
     if services_total <= 0:
         return 0.0
 
-    # Same platform fee percentage used for billing
     service_charge_pct = get_platform_service_charge_percentage(db)
     fee_rate = Decimal(str(max(service_charge_pct, 0))) / Decimal("100")
     platform_fee = services_total * fee_rate
 
-    # Mirror Math.round in JS to whole GYD amounts
     platform_fee = platform_fee.quantize(Decimal("1"))
     if platform_fee <= 0:
         return 0.0
@@ -1033,7 +1033,9 @@ def _provider_billing_row(db: Session, provider: models.Provider, user: models.U
     )
 
     if latest_bill:
-        amount_due = get_provider_current_month_due_from_upcoming_bookings(db, provider.id)
+        amount_due = get_provider_current_month_due_from_completed_bookings(
+            db, provider.id
+        )
         is_paid = bool(latest_bill.is_paid)
     else:
         amount_due = 0.0
@@ -1121,6 +1123,45 @@ def list_bookings_for_provider(db: Session, provider_id: int):
             models.Booking.start_time >= now,
         )
         .order_by(models.Booking.start_time.asc())
+        .all()
+    )
+
+    return [
+        {
+            "id": r.id,
+            "service_name": r.service_name,
+            "service_price_gyd": float(r.service_price_gyd or 0.0),
+            "customer_name": r.customer_name,
+            "start_time": r.start_time,
+            "end_time": r.end_time,
+            "status": r.status,
+        }
+        for r in rows
+    ]
+
+
+def list_billable_bookings_for_provider(
+    db: Session, provider_id: int, as_of: datetime | None = None
+):
+    """
+    Return bookings eligible for billing (completed + not cancelled).
+
+    This uses the shared billing eligibility rules and includes client/service
+    details needed for invoice line-items.
+    """
+
+    rows = (
+        _billable_bookings_base_query(db, provider_id, as_of=as_of)
+        .with_entities(
+            models.Booking.id,
+            models.Booking.start_time,
+            models.Booking.end_time,
+            models.Booking.status,
+            models.Service.name.label("service_name"),
+            models.Service.price_gyd.label("service_price_gyd"),
+            models.User.username.label("customer_name"),
+        )
+        .order_by(models.Booking.start_time.desc())
         .all()
     )
 

@@ -1,92 +1,61 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
-diff --git a/backend/app/schemas.py b/backend/app/schemas.py
-index 063db1ca54c59ec8375f8999cab3f8eba23080c2..c84d7c5086c87ac130370f9a96fd1d4f1b734eb4 100644
---- a/backend/app/schemas.py
-+++ b/backend/app/schemas.py
-@@ -50,50 +50,56 @@ class ProviderUpdate(BaseModel):
-     professions: Optional[List[str]] = None
-     is_active: Optional[bool] = None
+diff --git a/mobile/App.js b/mobile/App.js
+index e38ea2b485c63aeed8629590af522120ad1a1d46..e34eeac4f8c808c1b2779ed717a94a1c66d1ff38 100644
+--- a/mobile/App.js
++++ b/mobile/App.js
+@@ -5254,51 +5254,51 @@ function ProviderBillingScreen({ token, showFlash }) {
+         platformFee,
+         billCreditsApplied,
+         totalDue,
+         lineItems,
+       });
+     }
  
+     statements.sort((a, b) => b.invoiceDate - a.invoiceDate);
+     setBills(statements);
+   }, []);
  
+   const fetchBilling = useCallback(async () => {
+     try {
+       setBillingLoading(true);
+       setBillingError("");
  
+       const storedToken = await AsyncStorage.getItem("accessToken");
+       const authToken = token?.token || storedToken;
  
+       if (!authToken) {
+         setBillingError("No access token found. Please log in again.");
+         return;
+       }
  
+       const [bookingsRes, summaryRes] = await Promise.all([
+-        axios.get(`${API}/providers/me/bookings`, {
++        axios.get(`${API}/providers/me/billing/bookings`, {
+           headers: { Authorization: `Bearer ${authToken}` },
+         }),
+         axios
+           .get(`${API}/providers/me/summary`, {
+             headers: { Authorization: `Bearer ${authToken}` },
+           })
+           .catch(() => null),
+       ]);
  
- class LoginByEmailPayload(BaseModel):
-     email: str
-     password: str
+       const bookingList = Array.isArray(bookingsRes.data)
+         ? bookingsRes.data
+         : bookingsRes.data?.bookings || bookingsRes.data?.results || [];
  
- class ForgotPasswordRequest(BaseModel):
-     email: str
+       const summaryData = summaryRes?.data || null;
+       setBillingSummary(summaryData);
  
+       const creditBalance = Math.max(
+         Number(summaryData?.total_credit_balance_gyd) || 0,
+         0
+       );
  
- class ResetPasswordPayload(BaseModel):
-     token: str
-     new_password: str
+       const resolvedChargePct = resolveServiceChargePct(summaryData);
+       setServiceChargePct(resolvedChargePct);
  
- 
- class VerifyEmailPayload(BaseModel):
-     token: str
- 
- 
-+class VerifyEmailStatus(BaseModel):
-+    email: EmailStr
-+    is_email_verified: bool
-+    email_verified_at: Optional[datetime] = None
-+
-+
- 
- class UserOut(UserBase):
-     id: int
-     is_provider: bool
-     is_email_verified: bool
-     is_admin: bool           # 👈 add this
- 
- 
-     class Config:
-         from_attributes = True
- 
- class ServiceCreate(BaseModel):
-     name: str
-     description: str
-     price_gyd: float
-     duration_minutes: int
- 
- class ServiceUpdate(BaseModel):
-     name: Optional[str] = None
-     description: Optional[str] = None
-     price_gyd: Optional[float] = None
-     duration_minutes: Optional[int] = None
- 
- 
- class ServiceOut(BaseModel):
-@@ -280,26 +286,25 @@ class TokenResponse(BaseModel):
-     email: str
-     is_provider: bool
-     is_admin: bool
- 
- class ProviderLocationUpdate(BaseModel):
-     lat: float
-     long: float
-     location: Optional[str] = None  # optional human-readable text
- 
- class ProviderCatalogImageOut(BaseModel):
-     id: int
-     image_url: str
-     caption: Optional[str] = None
- 
-     class Config:
-         from_attributes = True
- 
- 
- class ServiceChargeUpdate(BaseModel):
-     service_charge_percentage: float
- 
- 
- class ServiceChargeOut(BaseModel):
-     service_charge_percentage: float
- 
--
+       buildBills(bookingList, resolvedChargePct, creditBalance);
  
 EOF
 )
