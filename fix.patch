@@ -1,64 +1,91 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
-diff --git a/mobile/App.js b/mobile/App.js
-index e34eeac4f8c808c1b2779ed717a94a1c66d1ff38..2b0907db63cf71754f450697bd89736cff7b425d 100644
---- a/mobile/App.js
-+++ b/mobile/App.js
-@@ -5253,52 +5253,54 @@ function ProviderBillingScreen({ token, showFlash }) {
-         servicesTotal,
-         platformFee,
-         billCreditsApplied,
-         totalDue,
-         lineItems,
-       });
-     }
+diff --git a/backend/tests/test_billing.py b/backend/tests/test_billing.py
+index 0c5d5265a15209f7a538f393d152cbb5064bbecd..0231bf6115fc68489e64c2cad079ea5408d11c15 100644
+--- a/backend/tests/test_billing.py
++++ b/backend/tests/test_billing.py
+@@ -176,50 +176,82 @@ def test_completed_booking_counts_toward_fees(db_session):
+ def test_completion_time_controls_billing_window(db_session):
+     session, models, crud = db_session
+     provider, customer, service = _create_provider_graph(session, models)
  
-     statements.sort((a, b) => b.invoiceDate - a.invoiceDate);
-     setBills(statements);
-   }, []);
+     now = datetime.utcnow()
+     past_start = now - timedelta(days=31)
+     end_time = _current_month_past_time(now)
  
-   const fetchBilling = useCallback(async () => {
-     try {
-       setBillingLoading(true);
-       setBillingError("");
+     booking = _add_booking(
+         session,
+         models,
+         customer=customer,
+         service=service,
+         start_time=past_start,
+         end_time=end_time,
+         status="confirmed",
+     )
  
-       const storedToken = await AsyncStorage.getItem("accessToken");
-       const authToken = token?.token || storedToken;
+     billable = crud.get_billable_bookings_for_provider(session, provider.id, as_of=now)
+     assert [item["id"] for item in billable] == [booking.id]
  
-       if (!authToken) {
-         setBillingError("No access token found. Please log in again.");
-         return;
-       }
+     amount_due = crud.get_provider_fees_due(session, provider.id)
+     assert amount_due == 100.0
  
-+      const billingEndpoint = `${API}/providers/me/billing/bookings`;
+ 
++def test_cancelled_booking_removed_from_billing_after_status_change(db_session):
++    session, models, crud = db_session
++    provider, customer, service = _create_provider_graph(session, models)
 +
-       const [bookingsRes, summaryRes] = await Promise.all([
--        axios.get(`${API}/providers/me/billing/bookings`, {
-+        axios.get(billingEndpoint, {
-           headers: { Authorization: `Bearer ${authToken}` },
-         }),
-         axios
-           .get(`${API}/providers/me/summary`, {
-             headers: { Authorization: `Bearer ${authToken}` },
-           })
-           .catch(() => null),
-       ]);
++    now = datetime.utcnow()
++    start_time = _current_month_past_time(now) - timedelta(hours=3)
++    end_time = start_time + timedelta(hours=1)
++
++    booking = _add_booking(
++        session,
++        models,
++        customer=customer,
++        service=service,
++        start_time=start_time,
++        end_time=end_time,
++        status="confirmed",
++    )
++
++    billable_before = crud.get_billable_bookings_for_provider(
++        session, provider.id, as_of=now
++    )
++    assert [item["id"] for item in billable_before] == [booking.id]
++    assert crud.get_provider_fees_due(session, provider.id) == 100.0
++
++    booking.status = "cancelled"
++    session.commit()
++
++    billable_after = crud.get_billable_bookings_for_provider(session, provider.id, as_of=now)
++    assert billable_after == []
++    assert crud.get_provider_fees_due(session, provider.id) == 0.0
++
++
+ def test_billing_endpoint_only_returns_completed(db_session):
+     session, models, crud = db_session
+     provider, customer, service = _create_provider_graph(session, models)
  
-       const bookingList = Array.isArray(bookingsRes.data)
-         ? bookingsRes.data
-         : bookingsRes.data?.bookings || bookingsRes.data?.results || [];
+     now = datetime.utcnow()
+     past_start = _current_month_past_time(now)
+     past_end = past_start + timedelta(hours=1)
  
-       const summaryData = summaryRes?.data || null;
-       setBillingSummary(summaryData);
+     completed_booking = _add_booking(
+         session,
+         models,
+         customer=customer,
+         service=service,
+         start_time=past_start,
+         end_time=past_end,
+         status="confirmed",
+     )
  
-       const creditBalance = Math.max(
-         Number(summaryData?.total_credit_balance_gyd) || 0,
-         0
-       );
- 
-       const resolvedChargePct = resolveServiceChargePct(summaryData);
-       setServiceChargePct(resolvedChargePct);
- 
-       buildBills(bookingList, resolvedChargePct, creditBalance);
+     future_start = now + timedelta(days=1)
+     future_end = future_start + timedelta(hours=1)
+     _add_booking(
+         session,
+         models,
+         customer=customer,
+         service=service,
  
 EOF
 )

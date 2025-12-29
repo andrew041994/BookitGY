@@ -198,6 +198,38 @@ def test_completion_time_controls_billing_window(db_session):
     assert amount_due == 100.0
 
 
+def test_cancelled_booking_removed_from_billing_after_status_change(db_session):
+    session, models, crud = db_session
+    provider, customer, service = _create_provider_graph(session, models)
+
+    now = datetime.utcnow()
+    start_time = _current_month_past_time(now) - timedelta(hours=3)
+    end_time = start_time + timedelta(hours=1)
+
+    booking = _add_booking(
+        session,
+        models,
+        customer=customer,
+        service=service,
+        start_time=start_time,
+        end_time=end_time,
+        status="confirmed",
+    )
+
+    billable_before = crud.get_billable_bookings_for_provider(
+        session, provider.id, as_of=now
+    )
+    assert [item["id"] for item in billable_before] == [booking.id]
+    assert crud.get_provider_fees_due(session, provider.id) == 100.0
+
+    booking.status = "cancelled"
+    session.commit()
+
+    billable_after = crud.get_billable_bookings_for_provider(session, provider.id, as_of=now)
+    assert billable_after == []
+    assert crud.get_provider_fees_due(session, provider.id) == 0.0
+
+
 def test_billing_endpoint_only_returns_completed(db_session):
     session, models, crud = db_session
     provider, customer, service = _create_provider_graph(session, models)
