@@ -3,7 +3,7 @@ from datetime import datetime, timedelta, date, timezone
 from dateutil import tz
 from decimal import Decimal, ROUND_HALF_UP
 from typing import Optional, List
-from sqlalchemy import func, or_
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
 from passlib.context import CryptContext
@@ -769,7 +769,7 @@ def _auto_complete_finished_bookings(
     Mark in-past bookings as completed so billing can rely on explicit completion.
 
     - Only touches bookings that have ended and are not cancelled.
-    - Sets status="completed" and stamps completed_at if missing.
+    - Sets status="completed" when applicable.
     - Can be scoped to a provider to reduce unnecessary work.
     """
 
@@ -778,7 +778,7 @@ def _auto_complete_finished_bookings(
     query = db.query(models.Booking).filter(
         models.Booking.end_time <= cutoff,
         models.Booking.status != "cancelled",
-        or_(models.Booking.completed_at.is_(None), models.Booking.status != "completed"),
+        models.Booking.status != "completed",
     )
 
     if provider_id is not None:
@@ -790,9 +790,6 @@ def _auto_complete_finished_bookings(
 
     for booking in stale_bookings:
         booking.status = "completed"
-        if not booking.completed_at:
-            booking.completed_at = booking.end_time
-        booking.canceled_at = None
 
     if stale_bookings:
         db.commit()
@@ -803,9 +800,9 @@ def generate_monthly_bills(db: Session, month: date):
     Generate or update bills for all providers for the given month.
 
     - Only counts bookings that are:
-        * completed (completed_at is set) and not cancelled
+        * completed (booking has ended) and not cancelled
         * belong to this provider
-        * have completion inside [first_of_month, first_of_next_month)
+        * have end_time inside [first_of_month, first_of_next_month)
     - Safe to run multiple times (updates existing unpaid bill instead of duplicating).
     """
     providers = db.query(models.Provider).all()
@@ -827,7 +824,7 @@ def generate_monthly_bills(db: Session, month: date):
     # Don't count future appointments that haven't ended yet
     period_end = min(end_dt, now)
 
-    # Ensure completed_at is stamped before calculating billing windows
+    # Ensure past bookings are marked completed before calculating billing windows
     _auto_complete_finished_bookings(db, as_of=period_end)
 
     for prov in providers:
@@ -835,8 +832,8 @@ def generate_monthly_bills(db: Session, month: date):
             _billable_bookings_base_query(db, prov.id, as_of=period_end)
             .with_entities(func.sum(models.Service.price_gyd))
             .filter(
-                models.Booking.completed_at >= start_dt,
-                models.Booking.completed_at < period_end,
+                models.Booking.end_time >= start_dt,
+                models.Booking.end_time < period_end,
             )
             .scalar()
             or 0
@@ -920,8 +917,8 @@ def _billable_bookings_base_query(db: Session, provider_id: int, as_of: datetime
 
     Eligibility rules (applied consistently across billing calculations):
     - Booking is NOT cancelled.
-    - Booking is explicitly completed.
-    - Appointment completion time is on or before the cutoff.
+    - Booking has ended.
+    - Appointment end time is on or before the cutoff.
     """
 
     cutoff = as_of or datetime.utcnow()
@@ -933,10 +930,8 @@ def _billable_bookings_base_query(db: Session, provider_id: int, as_of: datetime
         .join(models.User, models.Booking.customer_id == models.User.id)
         .filter(
             models.Provider.id == provider_id,
-            models.Booking.status == "completed",
-            models.Booking.canceled_at.is_(None),
-            models.Booking.completed_at.isnot(None),
-            models.Booking.completed_at <= cutoff,
+            models.Booking.status != "cancelled",
+            models.Booking.end_time <= cutoff,
         )
     )
 
@@ -965,7 +960,7 @@ def get_provider_fees_due(db: Session, provider_id: int) -> float:
     rows = (
         _billable_bookings_base_query(db, provider_id, as_of=now_utc)
         .with_entities(
-            models.Booking.completed_at,
+            models.Booking.end_time,
             models.Service.price_gyd.label("service_price_gyd"),
         )
         .all()
@@ -973,10 +968,10 @@ def get_provider_fees_due(db: Session, provider_id: int) -> float:
 
     services_total = Decimal("0")
     for r in rows:
-        completed_at = r.completed_at
-        if not completed_at:
+        end_time = r.end_time
+        if not end_time:
             continue
-        if completed_at.year != today.year or completed_at.month != today.month:
+        if end_time.year != today.year or end_time.month != today.month:
             continue
 
         price = r.service_price_gyd or 0
@@ -1027,20 +1022,20 @@ def get_provider_current_month_due_from_completed_bookings(
     rows = (
         _billable_bookings_base_query(db, provider_id, as_of=now)
         .with_entities(
-            models.Booking.completed_at,
+            models.Booking.end_time,
             models.Service.price_gyd.label("service_price_gyd"),
         )
-        .order_by(models.Booking.completed_at.asc())
+        .order_by(models.Booking.end_time.asc())
         .all()
     )
 
     services_total = Decimal("0")
     for r in rows:
-        completed_at = r.completed_at
-        if not completed_at:
+        end_time = r.end_time
+        if not end_time:
             continue
         # Only include bookings in the current calendar month
-        if completed_at.year != today.year or completed_at.month != today.month:
+        if end_time.year != today.year or end_time.month != today.month:
             continue
         price = r.service_price_gyd or 0
         services_total += Decimal(str(price))
@@ -1153,8 +1148,6 @@ def list_bookings_for_provider(db: Session, provider_id: int):
             models.Booking.start_time,
             models.Booking.end_time,
             models.Booking.status,
-            models.Booking.canceled_at,
-            models.Booking.completed_at,
             models.Service.name.label("service_name"),
             models.Service.price_gyd.label("service_price_gyd"),
             models.User.username.label("customer_name"),
@@ -1176,8 +1169,8 @@ def list_bookings_for_provider(db: Session, provider_id: int):
             "start_time": r.start_time,
             "end_time": r.end_time,
             "status": r.status,
-            "canceled_at": r.canceled_at,
-            "completed_at": r.completed_at,
+            "canceled_at": None,
+            "completed_at": None,
         }
         for r in rows
     ]
@@ -1203,12 +1196,11 @@ def get_billable_bookings_for_provider(
             models.Booking.start_time,
             models.Booking.end_time,
             models.Booking.status,
-            models.Booking.completed_at,
             models.Service.name.label("service_name"),
             models.Service.price_gyd.label("service_price_gyd"),
             models.User.username.label("customer_name"),
         )
-        .order_by(models.Booking.completed_at.desc())
+        .order_by(models.Booking.end_time.desc())
         .all()
     )
 
@@ -1221,7 +1213,7 @@ def get_billable_bookings_for_provider(
             "start_time": r.start_time,
             "end_time": r.end_time,
             "status": r.status,
-            "completed_at": r.completed_at,
+            "completed_at": None,
         }
         for r in rows
     ]
@@ -1287,8 +1279,8 @@ def list_bookings_for_customer(db: Session, customer_id: int):
                 start_time=booking.start_time,
                 end_time=booking.end_time,
                 status=booking.status,
-                canceled_at=booking.canceled_at,
-                completed_at=booking.completed_at,
+                canceled_at=None,
+                completed_at=None,
                 service_name=service.name if service else "",
                 service_duration_minutes=service.duration_minutes if service else 0,
                 service_price_gyd=(
@@ -1334,8 +1326,6 @@ def cancel_booking_for_customer(
         return booking  # already cancelled/completed, no-op
 
     booking.status = "cancelled"
-    booking.canceled_at = datetime.utcnow()
-    booking.completed_at = None
     db.commit()
     db.refresh(booking)
 
@@ -1417,8 +1407,6 @@ def cancel_booking_for_provider(
     )
 
     booking.status = "cancelled"
-    booking.canceled_at = datetime.utcnow()
-    booking.completed_at = None
     db.commit()
     db.refresh(booking)
 
@@ -1769,8 +1757,8 @@ def list_todays_bookings_for_provider(db: Session, provider_id: int):
                 start_time=booking.start_time,
                 end_time=booking.end_time,
                 status=booking.status,
-                canceled_at=booking.canceled_at,
-                completed_at=booking.completed_at,
+                canceled_at=None,
+                completed_at=None,
                 service_name=service.name,
                 service_duration_minutes=service.duration_minutes,
                 service_price_gyd=service.price_gyd or 0.0,
@@ -1815,8 +1803,8 @@ def list_upcoming_bookings_for_provider(
                 start_time=booking.start_time,
                 end_time=booking.end_time,
                 status=booking.status,
-                canceled_at=booking.canceled_at,
-                completed_at=booking.completed_at,
+                canceled_at=None,
+                completed_at=None,
                 service_name=service.name,
                 service_duration_minutes=service.duration_minutes,
                 service_price_gyd=service.price_gyd or 0.0,

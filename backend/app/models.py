@@ -10,11 +10,12 @@ from sqlalchemy import (
     Date,
     Numeric,
     Enum,
+    literal,
 )
 
 from .database import Base
 from datetime import datetime
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import column_property, relationship
 
 
 
@@ -90,8 +91,8 @@ class Booking(Base):
         nullable=False,
         default="confirmed",
     )
-    completed_at = Column(DateTime, nullable=True)
-    canceled_at = Column(DateTime, nullable=True)
+    completed_at = column_property(literal(None))
+    canceled_at = column_property(literal(None))
 
 
 

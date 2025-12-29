@@ -1,6 +1,5 @@
-from datetime import datetime, timedelta
-
 import pytest
+from datetime import datetime, timedelta
 from fastapi.testclient import TestClient
 
 
@@ -72,7 +71,7 @@ def test_provider_bookings_include_all_statuses(db_session):
         status="completed",
     )
 
-    cancelled = _add_booking(
+    _add_booking(
         session,
         models,
         customer=customer,
@@ -81,8 +80,6 @@ def test_provider_bookings_include_all_statuses(db_session):
         end_time=cancelled_start + timedelta(hours=1),
         status="cancelled",
     )
-    cancelled.canceled_at = now - timedelta(hours=2)
-    session.commit()
 
     from app import database
     from app.main import app
@@ -110,7 +107,77 @@ def test_provider_bookings_include_all_statuses(db_session):
         assert statuses == {"confirmed", "completed", "cancelled"}
 
         cancelled_rows = [item for item in data if item["status"] == "cancelled"]
-        assert cancelled_rows and cancelled_rows[0]["canceled_at"] is not None
+        assert cancelled_rows
+    finally:
+        app.dependency_overrides = {}
+
+
+@pytest.mark.usefixtures("db_session")
+def test_provider_billing_excludes_upcoming_and_cancelled(db_session):
+    session, models, crud = db_session
+    provider, provider_user, customer, service = _create_provider_graph(session, models)
+
+    now = datetime.utcnow()
+    future_start = now + timedelta(hours=3)
+    past_start = now - timedelta(hours=4)
+
+    in_month_billable = _add_booking(
+        session,
+        models,
+        customer=customer,
+        service=service,
+        start_time=past_start,
+        end_time=past_start + timedelta(hours=1),
+        status="confirmed",
+    )
+
+    _add_booking(
+        session,
+        models,
+        customer=customer,
+        service=service,
+        start_time=future_start,
+        end_time=future_start + timedelta(hours=1),
+        status="confirmed",
+    )
+
+    cancelled_past = _add_booking(
+        session,
+        models,
+        customer=customer,
+        service=service,
+        start_time=past_start - timedelta(hours=2),
+        end_time=past_start - timedelta(hours=1),
+        status="cancelled",
+    )
+
+    from app import database
+    from app.main import app
+    from app.database import get_db
+    from app.routes import bookings as bookings_routes
+
+    database.Base.metadata.create_all(bind=database.engine)
+
+    def override_get_db():
+        try:
+            yield session
+        finally:
+            pass
+
+    app.dependency_overrides[get_db] = override_get_db
+    app.dependency_overrides[bookings_routes._require_current_provider] = lambda: provider
+
+    client = TestClient(app)
+
+    try:
+        resp = client.get("/providers/me/billing/bookings")
+        assert resp.status_code == 200
+        data = resp.json()
+        returned_ids = {item["id"] for item in data}
+        assert in_month_billable.id in returned_ids
+        assert cancelled_past.id not in returned_ids
+        assert all(item["status"] != "cancelled" for item in data)
+        assert all(datetime.fromisoformat(item["end_time"]) <= now for item in data)
     finally:
         app.dependency_overrides = {}
 
@@ -145,7 +212,7 @@ def test_customer_bookings_include_cancelled_and_upcoming(db_session):
         status="completed",
     )
 
-    cancelled = _add_booking(
+    _add_booking(
         session,
         models,
         customer=customer,
@@ -154,8 +221,6 @@ def test_customer_bookings_include_cancelled_and_upcoming(db_session):
         end_time=cancelled_start + timedelta(hours=1),
         status="cancelled",
     )
-    cancelled.canceled_at = now
-    session.commit()
 
     from app import database
     from app.main import app
@@ -183,6 +248,6 @@ def test_customer_bookings_include_cancelled_and_upcoming(db_session):
         assert statuses == {"confirmed", "cancelled", "completed"}
 
         cancelled_rows = [item for item in data if item["status"] == "cancelled"]
-        assert cancelled_rows and cancelled_rows[0]["canceled_at"] is not None
+        assert cancelled_rows
     finally:
         app.dependency_overrides = {}
