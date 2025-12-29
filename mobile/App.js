@@ -5197,6 +5197,15 @@ function ProviderBillingScreen({ token, showFlash }) {
       );
 
       const monthBookings = bookingList.filter((booking) => {
+        const normalizedStatus = (booking?.status || "")
+          .toString()
+          .trim()
+          .toLowerCase();
+
+        if (["cancelled", "canceled"].includes(normalizedStatus)) {
+          return false;
+        }
+
         const start = normalizeStart(booking);
         if (!start) return false;
         return start >= coverageStart && start <= coverageEnd;

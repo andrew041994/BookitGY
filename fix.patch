@@ -1,91 +1,68 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
-diff --git a/backend/tests/test_billing.py b/backend/tests/test_billing.py
-index 0c5d5265a15209f7a538f393d152cbb5064bbecd..0231bf6115fc68489e64c2cad079ea5408d11c15 100644
---- a/backend/tests/test_billing.py
-+++ b/backend/tests/test_billing.py
-@@ -176,50 +176,82 @@ def test_completed_booking_counts_toward_fees(db_session):
- def test_completion_time_controls_billing_window(db_session):
-     session, models, crud = db_session
-     provider, customer, service = _create_provider_graph(session, models)
+diff --git a/mobile/App.js b/mobile/App.js
+index 2b0907db63cf71754f450697bd89736cff7b425d..76210861a6b67e67481dfc78f5a4463f1b44cfc2 100644
+--- a/mobile/App.js
++++ b/mobile/App.js
+@@ -5175,50 +5175,59 @@ function ProviderBillingScreen({ token, showFlash }) {
+   };
  
-     now = datetime.utcnow()
-     past_start = now - timedelta(days=31)
-     end_time = _current_month_past_time(now)
+   const buildBills = useCallback(
+     (
+       bookingList,
+       chargePct = 10,
+       creditBalance = 0
+     ) => {
+     const now = new Date();
+     const statements = [];
+     const monthsToShow = 6;
  
-     booking = _add_booking(
-         session,
-         models,
-         customer=customer,
-         service=service,
-         start_time=past_start,
-         end_time=end_time,
-         status="confirmed",
-     )
+     const feeRate = Math.max(chargePct, 0) / 100;
+     let remainingCredits = Math.max(Number(creditBalance) || 0, 0);
  
-     billable = crud.get_billable_bookings_for_provider(session, provider.id, as_of=now)
-     assert [item["id"] for item in billable] == [booking.id]
+     for (let i = 0; i < monthsToShow; i += 1) {
+       const coverageStart = new Date(now.getFullYear(), now.getMonth() - i, 1);
+       const coverageEnd = new Date(now.getFullYear(), now.getMonth() - i + 1, 0);
+       const invoiceDate = new Date(
+         coverageStart.getFullYear(),
+         coverageStart.getMonth() + 1,
+         1
+       );
  
-     amount_due = crud.get_provider_fees_due(session, provider.id)
-     assert amount_due == 100.0
- 
- 
-+def test_cancelled_booking_removed_from_billing_after_status_change(db_session):
-+    session, models, crud = db_session
-+    provider, customer, service = _create_provider_graph(session, models)
+       const monthBookings = bookingList.filter((booking) => {
++        const normalizedStatus = (booking?.status || "")
++          .toString()
++          .trim()
++          .toLowerCase();
 +
-+    now = datetime.utcnow()
-+    start_time = _current_month_past_time(now) - timedelta(hours=3)
-+    end_time = start_time + timedelta(hours=1)
++        if (["cancelled", "canceled"].includes(normalizedStatus)) {
++          return false;
++        }
 +
-+    booking = _add_booking(
-+        session,
-+        models,
-+        customer=customer,
-+        service=service,
-+        start_time=start_time,
-+        end_time=end_time,
-+        status="confirmed",
-+    )
-+
-+    billable_before = crud.get_billable_bookings_for_provider(
-+        session, provider.id, as_of=now
-+    )
-+    assert [item["id"] for item in billable_before] == [booking.id]
-+    assert crud.get_provider_fees_due(session, provider.id) == 100.0
-+
-+    booking.status = "cancelled"
-+    session.commit()
-+
-+    billable_after = crud.get_billable_bookings_for_provider(session, provider.id, as_of=now)
-+    assert billable_after == []
-+    assert crud.get_provider_fees_due(session, provider.id) == 0.0
-+
-+
- def test_billing_endpoint_only_returns_completed(db_session):
-     session, models, crud = db_session
-     provider, customer, service = _create_provider_graph(session, models)
+         const start = normalizeStart(booking);
+         if (!start) return false;
+         return start >= coverageStart && start <= coverageEnd;
+       });
  
-     now = datetime.utcnow()
-     past_start = _current_month_past_time(now)
-     past_end = past_start + timedelta(hours=1)
- 
-     completed_booking = _add_booking(
-         session,
-         models,
-         customer=customer,
-         service=service,
-         start_time=past_start,
-         end_time=past_end,
-         status="confirmed",
-     )
- 
-     future_start = now + timedelta(days=1)
-     future_end = future_start + timedelta(hours=1)
-     _add_booking(
-         session,
-         models,
-         customer=customer,
-         service=service,
+       const lineItems = monthBookings.length
+         ? monthBookings.map((booking) => ({
+             bookingId: booking.id || booking.booking_id,
+             description: booking.service_name || "Service booking",
+             client:
+               booking.client_name ||
+               booking.customer_name ||
+               booking.user_name ||
+               booking.client ||
+               booking.user,
+             date: normalizeStart(booking),
+             amount:
+               Number(
+                 booking.service_price_gyd ??
+                   booking.price_gyd ??
+                   booking.total_price_gyd ??
+                   booking.price
+               ) || 0,
+           }))
+         : [
  
 EOF
 )
