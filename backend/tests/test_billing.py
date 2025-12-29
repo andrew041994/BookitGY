@@ -278,6 +278,8 @@ def test_completion_time_controls_billing_window(db_session):
         status="confirmed",
     )
 
+    crud._auto_complete_finished_bookings(session, as_of=now)
+
     billable = crud.get_billable_bookings_for_provider(session, provider.id, as_of=now)
     assert [item["id"] for item in billable] == [booking.id]
 
@@ -302,6 +304,8 @@ def test_cancelled_booking_removed_from_billing_after_status_change(db_session):
         end_time=end_time,
         status="confirmed",
     )
+
+    crud._auto_complete_finished_bookings(session, as_of=now)
 
     billable_before = crud.get_billable_bookings_for_provider(
         session, provider.id, as_of=now
@@ -359,6 +363,8 @@ def test_billing_endpoint_only_returns_completed(db_session):
         status="confirmed",
     )
     crud.cancel_booking_for_provider(session, cancelled.id, provider.id)
+
+    crud._auto_complete_finished_bookings(session, as_of=now)
 
     from app import database
     from app.main import app
@@ -432,10 +438,35 @@ def test_billing_endpoint_excludes_cancelled_variants(db_session):
         status="confirmed",
     )
 
+    crud._auto_complete_finished_bookings(session, as_of=now)
+
+    billable = crud.get_billable_bookings_for_provider(session, provider.id, as_of=now)
+    assert {item["id"] for item in billable} == {kept_booking.id}
+
+
+def test_read_only_endpoints_do_not_auto_complete_future_bookings(db_session):
+    session, models, crud = db_session
+    provider, customer, service = _create_provider_graph(session, models)
+
+    now = now_guyana()
+    start_time = now + timedelta(minutes=10)
+    end_time = start_time + timedelta(minutes=30)
+
+    booking = _add_booking(
+        session,
+        models,
+        customer=customer,
+        service=service,
+        start_time=start_time,
+        end_time=end_time,
+        status="confirmed",
+    )
+
     from app import database
     from app.main import app
     from app.database import get_db
     from app.routes import bookings as bookings_routes
+    from app.routes import providers as providers_routes
 
     database.Base.metadata.create_all(bind=database.engine)
 
@@ -447,16 +478,60 @@ def test_billing_endpoint_excludes_cancelled_variants(db_session):
 
     app.dependency_overrides[get_db] = override_get_db
     app.dependency_overrides[bookings_routes._require_current_provider] = lambda: provider
+    app.dependency_overrides[
+        providers_routes._require_current_provider
+    ] = lambda: provider
 
     client = TestClient(app)
 
     try:
-        resp = client.get("/providers/me/billing/bookings")
-        assert resp.status_code == 200
-        data = resp.json()
-        assert {item["id"] for item in data} == {kept_booking.id}
+        summary_resp = client.get("/providers/me/summary")
+        assert summary_resp.status_code == 200
+
+        billing_resp = client.get("/providers/me/billing/bookings")
+        assert billing_resp.status_code == 200
     finally:
         app.dependency_overrides = {}
+
+    session.refresh(booking)
+    assert booking.status == "confirmed"
+
+
+def test_cron_job_completes_past_confirmed_only(db_session):
+    session, models, crud = db_session
+    provider, customer, service = _create_provider_graph(session, models)
+
+    now = now_guyana()
+
+    past_start = now - timedelta(hours=1)
+    past_end = now - timedelta(minutes=30)
+    confirmed_booking = _add_booking(
+        session,
+        models,
+        customer=customer,
+        service=service,
+        start_time=past_start,
+        end_time=past_end,
+        status="confirmed",
+    )
+
+    cancelled_booking = _add_booking(
+        session,
+        models,
+        customer=customer,
+        service=service,
+        start_time=past_start - timedelta(hours=1),
+        end_time=past_end - timedelta(hours=1),
+        status="cancelled",
+    )
+
+    crud._auto_complete_finished_bookings(session, as_of=now)
+
+    session.refresh(confirmed_booking)
+    session.refresh(cancelled_booking)
+
+    assert confirmed_booking.status == "completed"
+    assert cancelled_booking.status == "cancelled"
 
 
 def _month_bounds(now: datetime) -> tuple[datetime, datetime]:
@@ -513,6 +588,8 @@ def test_billing_filters_to_completed_items_in_period(db_session):
         end_time=completed_end,
         status="confirmed",
     )
+
+    crud._auto_complete_finished_bookings(session, as_of=now)
 
     billable = crud.get_billable_bookings_for_provider(
         session,

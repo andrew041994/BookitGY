@@ -1,8 +1,9 @@
 from datetime import timedelta
 from sqlalchemy.orm import Session
 
-from app.database import SessionLocal
+from app.database import SessionLocal, _ensure_tables_initialized
 from app import models
+from app import crud
 from app.crud import send_push, generate_monthly_bills
 from app.utils.time import now_guyana
 
@@ -49,10 +50,22 @@ def run_billing_job():
     - Only count bookings that have already ended.
     - Update or create a Bill row for this month per provider.
     """
+    _ensure_tables_initialized()
     db: Session = SessionLocal()
     try:
         today = now_guyana().date()
         generate_monthly_bills(db, today)
+    finally:
+        db.close()
+
+
+def auto_complete_finished_bookings_job():
+    """Mark finished confirmed bookings as completed."""
+
+    _ensure_tables_initialized()
+    db: Session = SessionLocal()
+    try:
+        crud._auto_complete_finished_bookings(db)
     finally:
         db.close()
 
@@ -64,5 +77,8 @@ def registerCronJobs(scheduler):
     # 1-hour reminders: run every minute
     scheduler.add_job(send_upcoming_reminders, "interval", minutes=1)
 
-    # Billing snapshot: update fees every 10 minutes
+    # Billing snapshot: update fees every 5 minutes
     scheduler.add_job(run_billing_job, "interval", minutes=5)
+
+    # Auto-complete finished bookings: run frequently to keep statuses current
+    scheduler.add_job(auto_complete_finished_bookings_job, "interval", minutes=5)

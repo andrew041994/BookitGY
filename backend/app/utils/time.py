@@ -1,7 +1,8 @@
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 
 # Guyana is UTC-4 with no daylight saving time.
-GUYANA_TIMEZONE = timezone(timedelta(hours=-4))
+GUYANA_TIMEZONE = ZoneInfo("America/Guyana")
 
 
 def now_guyana() -> datetime:

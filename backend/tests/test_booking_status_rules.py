@@ -163,6 +163,8 @@ def test_billing_only_counts_completed(db_session):
         status="confirmed",
     )
 
+    crud._auto_complete_finished_bookings(session, as_of=now)
+
     billable = crud.get_billable_bookings_for_provider(
         session, provider.id, as_of=now
     )

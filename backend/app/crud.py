@@ -782,7 +782,7 @@ def _auto_complete_finished_bookings(
 
     query = db.query(models.Booking).filter(
         models.Booking.end_time.isnot(None),
-        models.Booking.end_time < cutoff,
+        models.Booking.end_time <= cutoff,
         normalized_status == "confirmed",
     )
 
@@ -828,9 +828,6 @@ def generate_monthly_bills(db: Session, month: date):
 
     # Don't count future appointments that haven't ended yet
     period_end = min(end_dt, now)
-
-    # Ensure past bookings are marked completed before calculating billing windows
-    _auto_complete_finished_bookings(db, as_of=period_end)
 
     for prov in providers:
         total = (
@@ -947,7 +944,7 @@ def _billable_bookings_base_query(
             models.Provider.id == provider_id,
             normalized_status == "completed",
             models.Booking.end_time.isnot(None),
-            models.Booking.end_time < cutoff,
+            models.Booking.end_time <= cutoff,
         )
     )
 
@@ -982,8 +979,6 @@ def get_provider_fees_due(db: Session, provider_id: int) -> float:
     """
     now_local = now_guyana()
     period_start, period_end = _billing_period_bounds(now_local)
-
-    _auto_complete_finished_bookings(db, provider_id=provider_id, as_of=now_local)
 
     rows = (
         _billable_bookings_base_query(db, provider_id, as_of=now_local)
@@ -1050,8 +1045,6 @@ def get_provider_current_month_due_from_completed_bookings(
     """
     now = now_guyana()
     period_start, period_end = _billing_period_bounds(now)
-
-    _auto_complete_finished_bookings(db, provider_id=provider_id, as_of=now)
 
     rows = (
         _billable_bookings_base_query(db, provider_id, as_of=now)
@@ -1233,8 +1226,6 @@ def get_billable_bookings_for_provider(
 
     period_start = period_start or default_start
     period_end = period_end or default_end
-    _auto_complete_finished_bookings(db, provider_id=provider_id, as_of=cutoff)
-
     rows = (
         _billable_bookings_base_query(db, provider_id, as_of=cutoff)
         .filter(
@@ -1260,7 +1251,7 @@ def get_billable_bookings_for_provider(
         normalized_status = normalized_booking_status_value(r.status)
         if normalized_status != "completed":
             continue
-        if not r.end_time or r.end_time >= cutoff:
+        if not r.end_time or r.end_time > cutoff:
             continue
         if _is_cancelled_status(r.status):
             continue

@@ -1,4 +1,5 @@
 import sys
+import tempfile
 from pathlib import Path
 
 import pytest
@@ -9,8 +10,12 @@ sys.path.insert(0, str(repo_root))
 
 @pytest.fixture()
 def db_session(monkeypatch):
+    tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
+    tmp.close()
+    test_db_path = Path(tmp.name)
+
     # Minimal settings for an isolated SQLite test database
-    monkeypatch.setenv("DATABASE_URL", "sqlite+pysqlite:///:memory:")
+    monkeypatch.setenv("DATABASE_URL", f"sqlite:///{test_db_path}")
     monkeypatch.setenv("CORS_ALLOW_ORIGINS", "http://localhost")
     monkeypatch.setenv("JWT_SECRET_KEY", "x" * 32)
 
@@ -21,6 +26,7 @@ def db_session(monkeypatch):
         "app.crud",
         "app.main",
         "app.routes.bookings",
+        "app.workers.cron",
     ]:
         sys.modules.pop(module_name, None)
 
@@ -41,3 +47,5 @@ def db_session(monkeypatch):
     finally:
         session.close()
         database.engine.dispose()
+        if test_db_path.exists():
+            test_db_path.unlink()

@@ -126,38 +126,15 @@ def test_provider_lists_handle_mixed_confirmed_status_casing(db_session):
         status="confirmed ",
     )
 
-    from app import database
-    from app.main import app
-    from app.database import get_db
-    from app.routes import bookings as bookings_routes
+    crud._auto_complete_finished_bookings(session, as_of=now)
 
-    database.Base.metadata.create_all(bind=database.engine)
+    today_data = crud.list_todays_bookings_for_provider(session, provider.id)
+    assert [item.id for item in today_data] == [today_booking.id]
+    assert today_data[0].status == "confirmed"
 
-    def override_get_db():
-        try:
-            yield session
-        finally:
-            pass
-
-    app.dependency_overrides[get_db] = override_get_db
-    app.dependency_overrides[bookings_routes._require_current_provider] = lambda: provider
-
-    client = TestClient(app)
-
-    try:
-        today_resp = client.get("/providers/me/bookings/today")
-        assert today_resp.status_code == 200
-        today_data = today_resp.json()
-        assert [item["id"] for item in today_data] == [today_booking.id]
-        assert today_data[0]["status"] == "confirmed"
-
-        upcoming_resp = client.get("/providers/me/bookings/upcoming")
-        assert upcoming_resp.status_code == 200
-        upcoming_data = upcoming_resp.json()
-        assert [item["id"] for item in upcoming_data] == [upcoming_booking.id]
-        assert upcoming_data[0]["status"] == "confirmed"
-    finally:
-        app.dependency_overrides = {}
+    upcoming_data = crud.list_upcoming_bookings_for_provider(session, provider.id)
+    assert [item.id for item in upcoming_data] == [upcoming_booking.id]
+    assert upcoming_data[0].status == "confirmed"
 
 
 @pytest.mark.usefixtures("db_session")
@@ -182,31 +159,8 @@ def test_provider_today_bookings_include_past_end_times(db_session, monkeypatch)
         status="confirmed",
     )
 
-    from app import database
-    from app.main import app
-    from app.database import get_db
-    from app.routes import bookings as bookings_routes
-
-    database.Base.metadata.create_all(bind=database.engine)
-
-    def override_get_db():
-        try:
-            yield session
-        finally:
-            pass
-
-    app.dependency_overrides[get_db] = override_get_db
-    app.dependency_overrides[bookings_routes._require_current_provider] = lambda: provider
-
-    client = TestClient(app)
-
-    try:
-        resp = client.get("/providers/me/bookings/today")
-        assert resp.status_code == 200
-        data = resp.json()
-        assert [item["id"] for item in data] == [booking.id]
-    finally:
-        app.dependency_overrides = {}
+    data = crud.list_todays_bookings_for_provider(session, provider.id)
+    assert [item.id for item in data] == [booking.id]
 
 
 @pytest.mark.usefixtures("db_session")
@@ -249,35 +203,12 @@ def test_provider_bookings_include_all_statuses(db_session):
         status="cancelled",
     )
 
-    from app import database
-    from app.main import app
-    from app.database import get_db
-    from app.routes import bookings as bookings_routes
+    data = crud.list_bookings_for_provider(session, provider.id)
+    statuses = {item["status"] for item in data}
+    assert statuses == {"confirmed", "completed", "cancelled"}
 
-    database.Base.metadata.create_all(bind=database.engine)
-
-    def override_get_db():
-        try:
-            yield session
-        finally:
-            pass
-
-    app.dependency_overrides[get_db] = override_get_db
-    app.dependency_overrides[bookings_routes._require_current_provider] = lambda: provider
-
-    client = TestClient(app)
-
-    try:
-        resp = client.get("/providers/me/bookings")
-        assert resp.status_code == 200
-        data = resp.json()
-        statuses = {item["status"] for item in data}
-        assert statuses == {"confirmed", "completed", "cancelled"}
-
-        cancelled_rows = [item for item in data if item["status"] == "cancelled"]
-        assert cancelled_rows
-    finally:
-        app.dependency_overrides = {}
+    cancelled_rows = [item for item in data if item["status"] == "cancelled"]
+    assert cancelled_rows
 
 
 @pytest.mark.usefixtures("db_session")
@@ -319,46 +250,21 @@ def test_provider_billing_excludes_upcoming_and_cancelled(db_session):
         status="cancelled",
     )
 
-    from app import database
-    from app.main import app
-    from app.database import get_db
-    from app.routes import bookings as bookings_routes
+    crud._auto_complete_finished_bookings(session, as_of=now)
 
-    database.Base.metadata.create_all(bind=database.engine)
+    data = crud.get_billable_bookings_for_provider(session, provider.id, as_of=now)
+    returned_ids = {item["id"] for item in data}
+    assert in_month_billable.id in returned_ids
+    assert cancelled_past.id not in returned_ids
+    assert all(item["status"] != "cancelled" for item in data)
+    assert all(item["end_time"] <= now for item in data)
 
-    def override_get_db():
-        try:
-            yield session
-        finally:
-            pass
+    in_month_billable.status = "cancelled"
+    session.commit()
 
-    app.dependency_overrides[get_db] = override_get_db
-    app.dependency_overrides[bookings_routes._require_current_provider] = lambda: provider
-
-    client = TestClient(app)
-
-    try:
-        resp = client.get("/providers/me/billing/bookings")
-        assert resp.status_code == 200
-        data = resp.json()
-        returned_ids = {item["id"] for item in data}
-        assert in_month_billable.id in returned_ids
-        assert cancelled_past.id not in returned_ids
-        assert all(item["status"] != "cancelled" for item in data)
-        assert all(datetime.fromisoformat(item["end_time"]) <= now for item in data)
-
-        # If a previously billable appointment later gets cancelled, it should
-        # drop out of the billing list on subsequent fetches.
-        in_month_billable.status = "cancelled"
-        session.commit()
-
-        resp = client.get("/providers/me/billing/bookings")
-        assert resp.status_code == 200
-        data = resp.json()
-        returned_ids = {item["id"] for item in data}
-        assert in_month_billable.id not in returned_ids
-    finally:
-        app.dependency_overrides = {}
+    data = crud.get_billable_bookings_for_provider(session, provider.id, as_of=now)
+    returned_ids = {item["id"] for item in data}
+    assert in_month_billable.id not in returned_ids
 
 
 @pytest.mark.usefixtures("db_session")
@@ -401,35 +307,14 @@ def test_provider_billing_endpoint_only_returns_completed(db_session):
         status="confirmed",
     )
 
-    from app import database
-    from app.main import app
-    from app.database import get_db
-    from app.routes import bookings as bookings_routes
+    crud._auto_complete_finished_bookings(session, as_of=now)
 
-    database.Base.metadata.create_all(bind=database.engine)
+    data = crud.get_billable_bookings_for_provider(session, provider.id, as_of=now)
 
-    def override_get_db():
-        try:
-            yield session
-        finally:
-            pass
-
-    app.dependency_overrides[get_db] = override_get_db
-    app.dependency_overrides[bookings_routes._require_current_provider] = lambda: provider
-
-    client = TestClient(app)
-
-    try:
-        resp = client.get("/providers/me/billing/bookings")
-        assert resp.status_code == 200
-        data = resp.json()
-
-        assert len(data) == 1
-        assert data[0]["status"] == "completed"
-        returned_end = datetime.fromisoformat(data[0]["end_time"])
-        assert returned_end <= now
-    finally:
-        app.dependency_overrides = {}
+    assert len(data) == 1
+    assert data[0]["status"] == "completed"
+    returned_end = data[0]["end_time"]
+    assert returned_end <= now
 
 
 @pytest.mark.usefixtures("db_session")
@@ -472,32 +357,9 @@ def test_customer_bookings_include_cancelled_and_upcoming(db_session):
         status="cancelled",
     )
 
-    from app import database
-    from app.main import app
-    from app.database import get_db
-    from app.security import get_current_user_from_header
+    data = crud.list_bookings_for_customer(session, customer.id)
+    statuses = {item.status for item in data}
+    assert statuses == {"confirmed", "cancelled", "completed"}
 
-    database.Base.metadata.create_all(bind=database.engine)
-
-    def override_get_db():
-        try:
-            yield session
-        finally:
-            pass
-
-    app.dependency_overrides[get_db] = override_get_db
-    app.dependency_overrides[get_current_user_from_header] = lambda: customer
-
-    client = TestClient(app)
-
-    try:
-        resp = client.get("/bookings/me")
-        assert resp.status_code == 200
-        data = resp.json()
-        statuses = {item["status"] for item in data}
-        assert statuses == {"confirmed", "cancelled", "completed"}
-
-        cancelled_rows = [item for item in data if item["status"] == "cancelled"]
-        assert cancelled_rows
-    finally:
-        app.dependency_overrides = {}
+    cancelled_rows = [item for item in data if item.status == "cancelled"]
+    assert cancelled_rows
