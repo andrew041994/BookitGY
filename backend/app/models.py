@@ -90,6 +90,8 @@ class Booking(Base):
         nullable=False,
         default="confirmed",
     )
+    completed_at = Column(DateTime, nullable=True)
+    canceled_at = Column(DateTime, nullable=True)
 
 
 

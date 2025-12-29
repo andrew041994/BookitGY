@@ -3,14 +3,13 @@ from datetime import datetime, timedelta, date, timezone
 from dateutil import tz
 from decimal import Decimal, ROUND_HALF_UP
 from typing import Optional, List
-from sqlalchemy import func
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
 from passlib.context import CryptContext
 from twilio.rest import Client
 import requests
 import hashlib
-from sqlalchemy import func
 from . import models, schemas
 from typing import Optional
 from dotenv import load_dotenv, find_dotenv
@@ -763,15 +762,50 @@ def update_platform_service_charge(db: Session, percentage: float) -> Decimal:
     return pct
 
 
+def _auto_complete_finished_bookings(
+    db: Session, provider_id: int | None = None, as_of: datetime | None = None
+) -> None:
+    """
+    Mark in-past bookings as completed so billing can rely on explicit completion.
+
+    - Only touches bookings that have ended and are not cancelled.
+    - Sets status="completed" and stamps completed_at if missing.
+    - Can be scoped to a provider to reduce unnecessary work.
+    """
+
+    cutoff = as_of or datetime.utcnow()
+
+    query = db.query(models.Booking).filter(
+        models.Booking.end_time <= cutoff,
+        models.Booking.status != "cancelled",
+        or_(models.Booking.completed_at.is_(None), models.Booking.status != "completed"),
+    )
+
+    if provider_id is not None:
+        query = query.join(models.Service, models.Booking.service_id == models.Service.id).filter(
+            models.Service.provider_id == provider_id
+        )
+
+    stale_bookings = query.all()
+
+    for booking in stale_bookings:
+        booking.status = "completed"
+        if not booking.completed_at:
+            booking.completed_at = booking.end_time
+        booking.canceled_at = None
+
+    if stale_bookings:
+        db.commit()
+
+
 def generate_monthly_bills(db: Session, month: date):
     """
     Generate or update bills for all providers for the given month.
 
     - Only counts bookings that are:
-        * not cancelled
+        * completed (completed_at is set) and not cancelled
         * belong to this provider
-        * have ALREADY ENDED (end_time <= now)
-        * have end_time inside [first_of_month, first_of_next_month)
+        * have completion inside [first_of_month, first_of_next_month)
     - Safe to run multiple times (updates existing unpaid bill instead of duplicating).
     """
     providers = db.query(models.Provider).all()
@@ -793,13 +827,16 @@ def generate_monthly_bills(db: Session, month: date):
     # Don't count future appointments that haven't ended yet
     period_end = min(end_dt, now)
 
+    # Ensure completed_at is stamped before calculating billing windows
+    _auto_complete_finished_bookings(db, as_of=period_end)
+
     for prov in providers:
         total = (
             _billable_bookings_base_query(db, prov.id, as_of=period_end)
             .with_entities(func.sum(models.Service.price_gyd))
             .filter(
-                models.Booking.end_time >= start_dt,
-                models.Booking.end_time < period_end,
+                models.Booking.completed_at >= start_dt,
+                models.Booking.completed_at < period_end,
             )
             .scalar()
             or 0
@@ -883,7 +920,8 @@ def _billable_bookings_base_query(db: Session, provider_id: int, as_of: datetime
 
     Eligibility rules (applied consistently across billing calculations):
     - Booking is NOT cancelled.
-    - Appointment has ended: booking.end_time <= as_of (default: now).
+    - Booking is explicitly completed.
+    - Appointment completion time is on or before the cutoff.
     """
 
     cutoff = as_of or datetime.utcnow()
@@ -895,8 +933,10 @@ def _billable_bookings_base_query(db: Session, provider_id: int, as_of: datetime
         .join(models.User, models.Booking.customer_id == models.User.id)
         .filter(
             models.Provider.id == provider_id,
-            models.Booking.status != "cancelled",
-            models.Booking.end_time <= cutoff,
+            models.Booking.status == "completed",
+            models.Booking.canceled_at.is_(None),
+            models.Booking.completed_at.isnot(None),
+            models.Booking.completed_at <= cutoff,
         )
     )
 
@@ -920,10 +960,12 @@ def get_provider_fees_due(db: Session, provider_id: int) -> float:
     now_utc = datetime.utcnow()
     today = now_utc.date()
 
+    _auto_complete_finished_bookings(db, provider_id=provider_id, as_of=now_utc)
+
     rows = (
         _billable_bookings_base_query(db, provider_id, as_of=now_utc)
         .with_entities(
-            models.Booking.start_time,
+            models.Booking.completed_at,
             models.Service.price_gyd.label("service_price_gyd"),
         )
         .all()
@@ -931,10 +973,10 @@ def get_provider_fees_due(db: Session, provider_id: int) -> float:
 
     services_total = Decimal("0")
     for r in rows:
-        start = r.start_time
-        if not start:
+        completed_at = r.completed_at
+        if not completed_at:
             continue
-        if start.year != today.year or start.month != today.month:
+        if completed_at.year != today.year or completed_at.month != today.month:
             continue
 
         price = r.service_price_gyd or 0
@@ -980,23 +1022,25 @@ def get_provider_current_month_due_from_completed_bookings(
     now = datetime.utcnow()
     today = now.date()
 
+    _auto_complete_finished_bookings(db, provider_id=provider_id, as_of=now)
+
     rows = (
         _billable_bookings_base_query(db, provider_id, as_of=now)
         .with_entities(
-            models.Booking.start_time,
+            models.Booking.completed_at,
             models.Service.price_gyd.label("service_price_gyd"),
         )
-        .order_by(models.Booking.start_time.asc())
+        .order_by(models.Booking.completed_at.asc())
         .all()
     )
 
     services_total = Decimal("0")
     for r in rows:
-        start = r.start_time
-        if not start:
+        completed_at = r.completed_at
+        if not completed_at:
             continue
         # Only include bookings in the current calendar month
-        if start.year != today.year or start.month != today.month:
+        if completed_at.year != today.year or completed_at.month != today.month:
             continue
         price = r.service_price_gyd or 0
         services_total += Decimal(str(price))
@@ -1150,8 +1194,11 @@ def list_billable_bookings_for_provider(
     details needed for invoice line-items.
     """
 
+    cutoff = as_of or datetime.utcnow()
+    _auto_complete_finished_bookings(db, provider_id=provider_id, as_of=cutoff)
+
     rows = (
-        _billable_bookings_base_query(db, provider_id, as_of=as_of)
+        _billable_bookings_base_query(db, provider_id, as_of=cutoff)
         .with_entities(
             models.Booking.id,
             models.Booking.start_time,
@@ -1161,7 +1208,7 @@ def list_billable_bookings_for_provider(
             models.Service.price_gyd.label("service_price_gyd"),
             models.User.username.label("customer_name"),
         )
-        .order_by(models.Booking.start_time.desc())
+        .order_by(models.Booking.completed_at.desc())
         .all()
     )
 
@@ -1276,6 +1323,8 @@ def cancel_booking_for_customer(
         return booking  # already cancelled/completed, no-op
 
     booking.status = "cancelled"
+    booking.canceled_at = datetime.utcnow()
+    booking.completed_at = None
     db.commit()
     db.refresh(booking)
 
@@ -1357,6 +1406,8 @@ def cancel_booking_for_provider(
     )
 
     booking.status = "cancelled"
+    booking.canceled_at = datetime.utcnow()
+    booking.completed_at = None
     db.commit()
     db.refresh(booking)
 

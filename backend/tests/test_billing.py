@@ -1,22 +1,35 @@
 import importlib
 import sys
+import tempfile
 from datetime import datetime, timedelta
 from pathlib import Path
 
 import pytest
+from fastapi.testclient import TestClient
 
 
 @pytest.fixture()
 def db_session(monkeypatch):
     # Minimal settings for an in-memory SQLite test database
-    monkeypatch.setenv("DATABASE_URL", "sqlite:///:memory:")
+    db_path = Path(tempfile.gettempdir()) / "bookitgy-test.db"
+    if db_path.exists():
+        db_path.unlink()
+
+    monkeypatch.setenv("DATABASE_URL", f"sqlite:///{db_path}")
     monkeypatch.setenv("CORS_ALLOW_ORIGINS", "http://localhost")
     monkeypatch.setenv("JWT_SECRET_KEY", "x" * 32)
 
     repo_root = Path(__file__).resolve().parents[1]
     sys.path.insert(0, str(repo_root))
 
-    for module_name in ["app.config", "app.database", "app.models", "app.crud"]:
+    for module_name in [
+        "app.config",
+        "app.database",
+        "app.models",
+        "app.crud",
+        "app.main",
+        "app.routes.bookings",
+    ]:
         sys.modules.pop(module_name, None)
 
     import app.config as config
@@ -35,6 +48,9 @@ def db_session(monkeypatch):
         yield session, models, crud
     finally:
         session.close()
+        database.engine.dispose()
+        if db_path.exists():
+            db_path.unlink()
 
 
 def _current_month_past_time(now: datetime) -> datetime:
@@ -180,3 +196,99 @@ def test_completed_booking_counts_toward_fees(db_session):
 
     amount_due = crud.get_provider_fees_due(session, provider.id)
     assert amount_due == 100.0  # 10% of the 1000 GYD service price
+
+
+def test_completion_time_controls_billing_window(db_session):
+    session, models, crud = db_session
+    provider, customer, service = _create_provider_graph(session, models)
+
+    now = datetime.utcnow()
+    past_start = now - timedelta(days=31)
+    end_time = _current_month_past_time(now)
+
+    booking = _add_booking(
+        session,
+        models,
+        customer=customer,
+        service=service,
+        start_time=past_start,
+        end_time=end_time,
+        status="confirmed",
+    )
+
+    billable = crud.list_billable_bookings_for_provider(session, provider.id, as_of=now)
+    assert [item["id"] for item in billable] == [booking.id]
+
+    amount_due = crud.get_provider_fees_due(session, provider.id)
+    assert amount_due == 100.0
+
+
+def test_billing_endpoint_only_returns_completed(db_session):
+    session, models, crud = db_session
+    provider, customer, service = _create_provider_graph(session, models)
+
+    now = datetime.utcnow()
+    past_start = _current_month_past_time(now)
+    past_end = past_start + timedelta(hours=1)
+
+    completed_booking = _add_booking(
+        session,
+        models,
+        customer=customer,
+        service=service,
+        start_time=past_start,
+        end_time=past_end,
+        status="confirmed",
+    )
+
+    future_start = now + timedelta(days=1)
+    future_end = future_start + timedelta(hours=1)
+    _add_booking(
+        session,
+        models,
+        customer=customer,
+        service=service,
+        start_time=future_start,
+        end_time=future_end,
+        status="confirmed",
+    )
+
+    cancel_start = _current_month_past_time(now) - timedelta(hours=2)
+    cancel_end = cancel_start + timedelta(hours=1)
+    cancelled = _add_booking(
+        session,
+        models,
+        customer=customer,
+        service=service,
+        start_time=cancel_start,
+        end_time=cancel_end,
+        status="confirmed",
+    )
+    crud.cancel_booking_for_provider(session, cancelled.id, provider.id)
+
+    from app import database
+    from app.main import app
+    from app.database import get_db
+    from app.routes import bookings as bookings_routes
+
+    database.Base.metadata.create_all(bind=database.engine)
+
+    def override_get_db():
+        try:
+            yield session
+        finally:
+            pass
+
+    app.dependency_overrides[get_db] = override_get_db
+    app.dependency_overrides[bookings_routes._require_current_provider] = lambda: provider
+
+    client = TestClient(app)
+
+    try:
+        resp = client.get("/providers/me/billing/bookings")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert [item["id"] for item in data] == [completed_booking.id]
+        assert data[0]["status"] == "completed"
+    finally:
+        app.dependency_overrides = {}
