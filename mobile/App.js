@@ -3486,6 +3486,14 @@ const loadTodayBookings = async () => {
   }
 };
 
+useEffect(() => {
+  const intervalId = setInterval(() => {
+    loadTodayBookings();
+  }, 60 * 1000);
+
+  return () => clearInterval(intervalId);
+}, []);
+
 
 const handleCancelBooking = (bookingId) => {
   Alert.alert(

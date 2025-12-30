@@ -160,7 +160,10 @@ def test_provider_today_bookings_include_past_end_times(db_session, monkeypatch)
     )
 
     data = crud.list_todays_bookings_for_provider(session, provider.id)
-    assert [item.id for item in data] == [booking.id]
+    assert data == []
+
+    session.refresh(booking)
+    assert booking.status == "completed"
 
 
 @pytest.mark.usefixtures("db_session")

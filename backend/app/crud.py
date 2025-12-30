@@ -1182,15 +1182,7 @@ def list_bookings_for_provider(db: Session, provider_id: int):
     """Return all bookings for this provider, newest first."""
 
     rows = (
-        db.query(
-            models.Booking.id,
-            models.Booking.start_time,
-            models.Booking.end_time,
-            models.Booking.status,
-            models.Service.name.label("service_name"),
-            models.Service.price_gyd.label("service_price_gyd"),
-            models.User.username.label("customer_name"),
-        )
+        db.query(models.Booking, models.Service, models.User)
         .join(models.Service, models.Booking.service_id == models.Service.id)
         .join(models.Provider, models.Service.provider_id == models.Provider.id)
         .join(models.User, models.Booking.customer_id == models.User.id)
@@ -1201,17 +1193,17 @@ def list_bookings_for_provider(db: Session, provider_id: int):
 
     return [
         {
-            "id": r.id,
-            "service_name": r.service_name,
-            "service_price_gyd": float(r.service_price_gyd or 0.0),
-            "customer_name": r.customer_name,
-            "start_time": r.start_time,
-            "end_time": r.end_time,
-            "status": normalized_booking_status_value(r.status),
-            "canceled_at": None,
-            "completed_at": None,
+            "id": booking.id,
+            "service_name": service.name,
+            "service_price_gyd": float(service.price_gyd or 0.0),
+            "customer_name": customer.username,
+            "start_time": booking.start_time,
+            "end_time": booking.end_time,
+            "status": normalized_booking_status_value(booking.status),
+            "canceled_at": getattr(booking, "canceled_at", None),
+            "completed_at": getattr(booking, "completed_at", None),
         }
-        for r in rows
+        for booking, service, customer in rows
     ]
 
 
@@ -1831,7 +1823,38 @@ def list_todays_bookings_for_provider(db: Session, provider_id: int):
     """
     start_of_day = today_start_guyana()
     end_of_day = today_end_guyana()
+    now = now_guyana()
     normalized_status = normalized_booking_status_expr()
+
+    ended_ids = (
+        db.query(models.Booking.id)
+        .join(models.Service, models.Booking.service_id == models.Service.id)
+        .filter(
+            models.Service.provider_id == provider_id,
+            normalized_status == "confirmed",
+            models.Booking.end_time <= now,
+        )
+    )
+
+    ended_q = db.query(models.Booking).filter(models.Booking.id.in_(ended_ids))
+
+    if "completed_at" in models.Booking.__table__.columns:
+        ended_q.update(
+            {
+                models.Booking.status: "completed",
+                models.Booking.completed_at: now,
+            },
+            synchronize_session=False,
+        )
+    else:
+        ended_q.update(
+            {
+                models.Booking.status: "completed",
+            },
+            synchronize_session=False,
+        )
+
+    db.commit()
 
     q = (
         db.query(models.Booking, models.Service, models.User)
@@ -1842,6 +1865,7 @@ def list_todays_bookings_for_provider(db: Session, provider_id: int):
             normalized_status == "confirmed",
             models.Booking.start_time >= start_of_day,
             models.Booking.start_time <= end_of_day,
+            models.Booking.end_time > now,
         )
         .order_by(models.Booking.start_time)
     )
@@ -1854,8 +1878,8 @@ def list_todays_bookings_for_provider(db: Session, provider_id: int):
                 start_time=booking.start_time,
                 end_time=booking.end_time,
                 status=normalized_booking_status_value(booking.status),
-                canceled_at=None,
-                completed_at=None,
+                canceled_at=getattr(booking, "canceled_at", None),
+                completed_at=getattr(booking, "completed_at", None),
                 service_name=service.name,
                 service_duration_minutes=service.duration_minutes,
                 service_price_gyd=service.price_gyd or 0.0,
