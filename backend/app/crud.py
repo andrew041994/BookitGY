@@ -780,23 +780,31 @@ def _auto_complete_finished_bookings(
     cutoff = as_of or now_guyana()
     normalized_status = normalized_booking_status_expr()
 
-    query = db.query(models.Booking).filter(
+    candidate_query = db.query(models.Booking).filter(
         models.Booking.end_time.isnot(None),
         models.Booking.end_time <= cutoff,
         normalized_status == "confirmed",
     )
 
     if provider_id is not None:
-        query = query.join(models.Service, models.Booking.service_id == models.Service.id).filter(
-            models.Service.provider_id == provider_id
-        )
+        candidate_query = candidate_query.join(
+            models.Service, models.Booking.service_id == models.Service.id
+        ).filter(models.Service.provider_id == provider_id)
 
-    stale_bookings = query.all()
+    candidate_ids = [booking.id for booking in candidate_query.all()]
 
-    for booking in stale_bookings:
-        booking.status = "completed"
+    if not candidate_ids:
+        return
 
-    if stale_bookings:
+    updated = (
+        db.query(models.Booking)
+        .filter(models.Booking.id.in_(candidate_ids))
+        .filter(models.Booking.end_time <= cutoff)
+        .filter(normalized_status == "confirmed")
+        .update({models.Booking.status: "completed"}, synchronize_session=False)
+    )
+
+    if updated:
         db.commit()
 
 

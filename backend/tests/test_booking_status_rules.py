@@ -113,6 +113,42 @@ def test_future_booking_remains_confirmed(db_session):
     assert booking.status == "confirmed"
 
 
+def test_read_paths_do_not_auto_complete(db_session, monkeypatch):
+    session, models, crud = db_session
+    provider, customer, service = _create_provider_graph(session, models)
+
+    fake_now = datetime(2024, 1, 1, 12, 0)
+    monkeypatch.setattr(crud, "now_guyana", lambda: fake_now)
+    monkeypatch.setattr("app.utils.time.now_guyana", lambda: fake_now)
+
+    start_time = fake_now - timedelta(hours=2)
+    end_time = start_time + timedelta(hours=1)
+
+    booking = _add_booking(
+        session,
+        models,
+        customer=customer,
+        service=service,
+        start_time=start_time,
+        end_time=end_time,
+        status="confirmed",
+    )
+
+    # Billing/read helpers should never mutate booking status.
+    assert (
+        crud.get_billable_bookings_for_provider(session, provider.id, as_of=fake_now)
+        == []
+    )
+    amount_due = crud.get_provider_current_month_due_from_completed_bookings(
+        session, provider.id
+    )
+
+    session.refresh(booking)
+
+    assert amount_due == 0
+    assert booking.status == "confirmed"
+
+
 def test_billing_only_counts_completed(db_session):
     session, models, crud = db_session
     provider, customer, service = _create_provider_graph(session, models)

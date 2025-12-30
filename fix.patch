@@ -1,61 +1,95 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
 diff --git a/backend/tests/test_booking_status_rules.py b/backend/tests/test_booking_status_rules.py
-index 3277ab52f4ba897fd76472e3535545fbc1c8afa1..71930d9793c3d2acd31f381ca2044a1bce72cefc 100644
+index 71930d9793c3d2acd31f381ca2044a1bce72cefc..941bacdad79181fce58ae14c549f402e965e799c 100644
 --- a/backend/tests/test_booking_status_rules.py
 +++ b/backend/tests/test_booking_status_rules.py
-@@ -141,50 +141,52 @@ def test_billing_only_counts_completed(db_session):
-         start_time=past_start - timedelta(hours=2),
-         end_time=past_end - timedelta(hours=2),
-         status="confirmed",
-     )
+@@ -91,50 +91,86 @@ def test_cancelled_booking_never_auto_completes(db_session):
  
-     _add_booking(
-         session,
-         models,
-         customer=customer,
-         service=service,
-         start_time=past_start - timedelta(hours=4),
-         end_time=past_end - timedelta(hours=4),
-         status="cancelled",
-     )
- 
-     _add_booking(
-         session,
-         models,
-         customer=customer,
-         service=service,
-         start_time=future_start,
-         end_time=future_end,
-         status="confirmed",
-     )
- 
-+    crud._auto_complete_finished_bookings(session, as_of=now)
-+
-     billable = crud.get_billable_bookings_for_provider(
-         session, provider.id, as_of=now
-     )
- 
-     session.refresh(completed_booking)
-     session.refresh(past_confirmed_booking)
- 
-     # The confirmed past booking should auto-complete; only completed entries count.
-     assert {b["id"] for b in billable} == {
-         completed_booking.id,
-         past_confirmed_booking.id,
-     }
-     assert completed_booking.status == "completed"
-     assert past_confirmed_booking.status == "completed"
- 
- 
- def test_cannot_cancel_completed_bookings(db_session):
+ def test_future_booking_remains_confirmed(db_session):
      session, models, crud = db_session
      provider, customer, service = _create_provider_graph(session, models)
  
      now = now_guyana()
-     start_time = now + timedelta(hours=1)
+     start_time = now + timedelta(hours=2)
      end_time = start_time + timedelta(hours=1)
  
-     active_booking = _add_booking(
+     booking = _add_booking(
+         session,
+         models,
+         customer=customer,
+         service=service,
+         start_time=start_time,
+         end_time=end_time,
+         status="confirmed",
+     )
+ 
+     crud._auto_complete_finished_bookings(session, as_of=now)
+     session.refresh(booking)
+ 
+     assert booking.status == "confirmed"
+ 
+ 
++def test_read_paths_do_not_auto_complete(db_session, monkeypatch):
++    session, models, crud = db_session
++    provider, customer, service = _create_provider_graph(session, models)
++
++    fake_now = datetime(2024, 1, 1, 12, 0)
++    monkeypatch.setattr(crud, "now_guyana", lambda: fake_now)
++    monkeypatch.setattr("app.utils.time.now_guyana", lambda: fake_now)
++
++    start_time = fake_now - timedelta(hours=2)
++    end_time = start_time + timedelta(hours=1)
++
++    booking = _add_booking(
++        session,
++        models,
++        customer=customer,
++        service=service,
++        start_time=start_time,
++        end_time=end_time,
++        status="confirmed",
++    )
++
++    # Billing/read helpers should never mutate booking status.
++    assert (
++        crud.get_billable_bookings_for_provider(session, provider.id, as_of=fake_now)
++        == []
++    )
++    amount_due = crud.get_provider_current_month_due_from_completed_bookings(
++        session, provider.id
++    )
++
++    session.refresh(booking)
++
++    assert amount_due == 0
++    assert booking.status == "confirmed"
++
++
+ def test_billing_only_counts_completed(db_session):
+     session, models, crud = db_session
+     provider, customer, service = _create_provider_graph(session, models)
+ 
+     now = now_guyana()
+     past_start = now - timedelta(hours=3)
+     past_end = past_start + timedelta(hours=1)
+     future_start = now + timedelta(hours=2)
+     future_end = future_start + timedelta(hours=1)
+ 
+     completed_booking = _add_booking(
+         session,
+         models,
+         customer=customer,
+         service=service,
+         start_time=past_start,
+         end_time=past_end,
+         status="completed",
+     )
+ 
+     past_confirmed_booking = _add_booking(
+         session,
+         models,
+         customer=customer,
+         service=service,
  
 EOF
 )
