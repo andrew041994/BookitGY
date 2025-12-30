@@ -1,151 +1,61 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
 diff --git a/backend/app/crud.py b/backend/app/crud.py
-index cb3f86b7b7ea386c4b95603064010d9548da3f65..e4d9e14e59a607455e20ce664046628cc34ecc3d 100644
+index e4d9e14e59a607455e20ce664046628cc34ecc3d..4aacf0fa29ccef7fb666044aea6cb221f5407e72 100644
 --- a/backend/app/crud.py
 +++ b/backend/app/crud.py
-@@ -774,56 +774,60 @@ def _auto_complete_finished_bookings(
-     Mark in-past bookings as completed so billing can rely on explicit completion.
- 
-     Only transitions ``confirmed`` → ``completed`` when the appointment has
-     already ended. Cancelled and already-completed bookings are left untouched.
-     """
- 
-     cutoff = as_of or now_guyana()
-     normalized_status = normalized_booking_status_expr()
- 
-     candidate_query = db.query(models.Booking).filter(
-         models.Booking.end_time.isnot(None),
-         models.Booking.end_time <= cutoff,
-         normalized_status == "confirmed",
-     )
- 
-     if provider_id is not None:
-         candidate_query = candidate_query.join(
-             models.Service, models.Booking.service_id == models.Service.id
-         ).filter(models.Service.provider_id == provider_id)
- 
-     candidate_ids = [booking.id for booking in candidate_query.all()]
- 
-     if not candidate_ids:
-         return
- 
-+    update_data = {models.Booking.status: "completed"}
-+    if "completed_at" in models.Booking.__table__.columns:
-+        update_data[models.Booking.completed_at] = cutoff
-+
-     updated = (
-         db.query(models.Booking)
-         .filter(models.Booking.id.in_(candidate_ids))
-         .filter(models.Booking.end_time <= cutoff)
-         .filter(normalized_status == "confirmed")
--        .update({models.Booking.status: "completed"}, synchronize_session=False)
-+        .update(update_data, synchronize_session=False)
-     )
- 
-     if updated:
-         db.commit()
- 
- 
- def generate_monthly_bills(db: Session, month: date):
-     """
-     Generate or update bills for all providers for the given month.
- 
-     - Only counts bookings that are:
-         * completed (booking has ended) and not cancelled
-         * belong to this provider
-         * have end_time inside [first_of_month, first_of_next_month)
-     - Safe to run multiple times (updates existing unpaid bill instead of duplicating).
-     """
-     providers = db.query(models.Provider).all()
- 
-     # First day of this month
-     start = date(month.year, month.month, 1)
- 
-     # First day of the next month
-     if month.month == 12:
-         next_month = date(month.year + 1, 1, 1)
-     else:
-@@ -1804,80 +1808,50 @@ def get_provider_availability(
- 
-             # Step forward by the service duration (so slots line up)
-             slot_start += slot_duration
- 
-         if slots_for_day:
-             availability.append(
-                 {
-                     "date": day_date,
-                     "slots": slots_for_day,
-                 }
-             )
- 
-     return availability
- 
- 
- 
- def list_todays_bookings_for_provider(db: Session, provider_id: int):
-     """
-     All *confirmed* bookings for this provider whose start_time is today.
-     """
-     start_of_day = today_start_guyana()
-     end_of_day = today_end_guyana()
-     now = now_guyana()
-     normalized_status = normalized_booking_status_expr()
- 
--    ended_ids = (
--        db.query(models.Booking.id)
--        .join(models.Service, models.Booking.service_id == models.Service.id)
--        .filter(
--            models.Service.provider_id == provider_id,
--            normalized_status == "confirmed",
--            models.Booking.end_time <= now,
--        )
--    )
--
--    ended_q = db.query(models.Booking).filter(models.Booking.id.in_(ended_ids))
--
--    if "completed_at" in models.Booking.__table__.columns:
--        ended_q.update(
--            {
--                models.Booking.status: "completed",
--                models.Booking.completed_at: now,
--            },
--            synchronize_session=False,
--        )
--    else:
--        ended_q.update(
--            {
--                models.Booking.status: "completed",
--            },
--            synchronize_session=False,
--        )
--
--    db.commit()
--
-     q = (
-         db.query(models.Booking, models.Service, models.User)
-         .join(models.Service, models.Booking.service_id == models.Service.id)
-         .join(models.User, models.Booking.customer_id == models.User.id)
+@@ -1711,51 +1711,51 @@ def get_provider_availability(
+         db.query(models.Service)
          .filter(
+             models.Service.id == service_id,
              models.Service.provider_id == provider_id,
-             normalized_status == "confirmed",
-             models.Booking.start_time >= start_of_day,
-             models.Booking.start_time <= end_of_day,
-             models.Booking.end_time > now,
          )
-         .order_by(models.Booking.start_time)
+         .first()
      )
+     if not service:
+         raise ValueError("Service not found for this provider")
  
-     results = []
-     for booking, service, customer in q.all():
-         results.append(
-             schemas.BookingWithDetails(
-                 id=booking.id,
-                 start_time=booking.start_time,
-                 end_time=booking.end_time,
-                 status=normalized_booking_status_value(booking.status),
-                 canceled_at=getattr(booking, "canceled_at", None),
-                 completed_at=getattr(booking, "completed_at", None),
-                 service_name=service.name,
+     # Load working hours (creates defaults if missing)
+     working_hours = get_or_create_working_hours_for_provider(db, provider_id)
+ 
+     # Map weekday -> working hours row (only open days with valid times)
+     wh_by_weekday = {}
+     for wh in working_hours:
+         if wh.is_closed:
+             continue
+         if not wh.start_time or not wh.end_time:
+             continue
+         wh_by_weekday[wh.weekday] = wh
+ 
+     availability = []
+ 
+     # Use Guyana local "now"
+-    now = now_local_naive()
++    now = now_guyana()
+ 
+     slot_duration = timedelta(minutes=service.duration_minutes)
+ 
+     for offset in range(days):
+         day_date = (now + timedelta(days=offset)).date()
+         weekday = day_date.weekday()
+ 
+         wh = wh_by_weekday.get(weekday)
+         if not wh:
+             # Closed or no hours for this weekday
+             continue
+ 
+         # Parse "HH:MM"
+         try:
+             start_hour, start_minute = map(int, (wh.start_time or "09:00").split(":"))
+             end_hour, end_minute = map(int, (wh.end_time or "17:00").split(":"))
+         except ValueError:
+             # Bad time format – skip this day
+             continue
+ 
+         day_start = datetime(
+             day_date.year, day_date.month, day_date.day, start_hour, start_minute
+         )
+         day_end = datetime(
+             day_date.year, day_date.month, day_date.day, end_hour, end_minute
  
 EOF
 )

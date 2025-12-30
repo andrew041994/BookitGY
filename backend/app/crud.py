@@ -1733,7 +1733,7 @@ def get_provider_availability(
     availability = []
 
     # Use Guyana local "now"
-    now = now_local_naive()
+    now = now_guyana()
 
     slot_duration = timedelta(minutes=service.duration_minutes)
 
