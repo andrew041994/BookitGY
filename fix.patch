@@ -1,61 +1,138 @@
- (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
-diff --git a/backend/app/crud.py b/backend/app/crud.py
-index e4d9e14e59a607455e20ce664046628cc34ecc3d..4aacf0fa29ccef7fb666044aea6cb221f5407e72 100644
---- a/backend/app/crud.py
-+++ b/backend/app/crud.py
-@@ -1711,51 +1711,51 @@ def get_provider_availability(
-         db.query(models.Service)
-         .filter(
-             models.Service.id == service_id,
-             models.Service.provider_id == provider_id,
-         )
-         .first()
-     )
-     if not service:
-         raise ValueError("Service not found for this provider")
- 
-     # Load working hours (creates defaults if missing)
-     working_hours = get_or_create_working_hours_for_provider(db, provider_id)
- 
-     # Map weekday -> working hours row (only open days with valid times)
-     wh_by_weekday = {}
-     for wh in working_hours:
-         if wh.is_closed:
-             continue
-         if not wh.start_time or not wh.end_time:
-             continue
-         wh_by_weekday[wh.weekday] = wh
- 
-     availability = []
- 
-     # Use Guyana local "now"
--    now = now_local_naive()
-+    now = now_guyana()
- 
-     slot_duration = timedelta(minutes=service.duration_minutes)
- 
-     for offset in range(days):
-         day_date = (now + timedelta(days=offset)).date()
-         weekday = day_date.weekday()
- 
-         wh = wh_by_weekday.get(weekday)
-         if not wh:
-             # Closed or no hours for this weekday
-             continue
- 
-         # Parse "HH:MM"
-         try:
-             start_hour, start_minute = map(int, (wh.start_time or "09:00").split(":"))
-             end_hour, end_minute = map(int, (wh.end_time or "17:00").split(":"))
-         except ValueError:
-             # Bad time format – skip this day
-             continue
- 
-         day_start = datetime(
-             day_date.year, day_date.month, day_date.day, start_hour, start_minute
-         )
-         day_end = datetime(
-             day_date.year, day_date.month, day_date.day, end_hour, end_minute
- 
-EOF
-)
+diff --git a/App.js b/App.js
+index 0000000..0000000 100644
+--- a/App.js
++++ b/App.js
+@@ -1,5 +1,6 @@
+ import React, { useState, useEffect, useCallback } from "react";
+ import { useFocusEffect } from "@react-navigation/native";
++// ... keep other imports as-is
+
+@@
+ function ProfileScreen({ setToken, showFlash, token }) {
+   const [user, setUser] = useState(null);
+@@
+   const [avatarUrl, setAvatarUrl] = useState(null);
+   const [refreshing, setRefreshing] = useState(false);
+
+-  const uploadAvatar = async (uri) => {
+-    try{
+-      const token = await AsyncStorage.getItem("accessToken");
+-      if (!token) {
+-        alert("No access token found. Please log in again.");
+-        return;
+-      }
+-
+-      const filename = uri.split("/").pop() || "avatar.jpg";
+-      const match = /\.(\w+)$/.exec(filename);
+-      const ext = match ? match[1] : "jpg";
+-      const mimeType = ext === "png" ? "image/png" : "image/jpeg";
+-
+-      const formData = new FormData();
+-      formData.append("file", {
+-        uri,
+-        name: filename,
+-        type: mimeType,
+-      });
+-
+-      const res = await axios.post(`${API}/users/me/avatar`, formData, {
+-        headers: {
+-          "Content-Type": "multipart/form-data",
+-          Authorization: `Bearer ${token}`,
+-        },
+-        });
+-
+-      const newUrl = res.data.avatar_url;
+-
+-        // update avatar in this screen
+-        setAvatarUrl(newUrl);
+-        setUser((prev) =>
+-          prev ? { ...prev, avatar_url: newUrl } : prev
+-        );
+-      } catch (err) {
+-        console.log(
+-          "Avatar upload error:",
+-          err.response?.data || err.message
+-        );
+-        alert("Failed to upload avatar. Please try again.");
+-      }
+-    };
++  const uploadAvatar = async (uri) => {
++    try {
++      const tokenStr = await AsyncStorage.getItem("accessToken");
++      if (!tokenStr) {
++        alert("No access token found. Please log in again.");
++        return;
++      }
++
++      const filename = uri.split("/").pop() || "avatar.jpg";
++      const match = /\.(\w+)$/.exec(filename);
++      const ext = match ? match[1].toLowerCase() : "jpg";
++      const mimeType = ext === "png" ? "image/png" : "image/jpeg";
++
++      const formData = new FormData();
++      formData.append("file", { uri, name: filename, type: mimeType });
++
++      // Default to client endpoint
++      let endpoint = `${API}/users/me/avatar`;
++
++      // If logged-in user is a provider, upload to provider avatar endpoint
++      try {
++        const meRes = await axios.get(`${API}/users/me`, {
++          headers: { Authorization: `Bearer ${tokenStr}` },
++        });
++        if (meRes.data?.is_provider) {
++          endpoint = `${API}/providers/me/avatar`;
++        }
++      } catch (e) {
++        console.log(
++          "Could not determine user type for avatar upload; using /users/me/avatar",
++          e.response?.data || e.message
++        );
++      }
++
++      const res = await axios.post(endpoint, formData, {
++        headers: {
++          "Content-Type": "multipart/form-data",
++          Authorization: `Bearer ${tokenStr}`,
++        },
++      });
++
++      const newUrl = res.data?.avatar_url || null;
++
++      // Update local UI immediately
++      setAvatarUrl(newUrl);
++      setUser((prev) => (prev ? { ...prev, avatar_url: newUrl } : prev));
++    } catch (err) {
++      console.log("Avatar upload error:", err.response?.data || err.message);
++      alert("Failed to upload avatar. Please try again.");
++    }
++  };
+
+@@
+   return (
+     <ScrollView
+       contentContainerStyle={styles.profileScroll}
+       refreshControl={
+         <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+       }
+     >
+       <View style={styles.profileHeader}>
+         {/* Avatar */}
+         <View style={{ alignItems: "center", marginBottom: 16 }}>
+           <View style={styles.profileAvatarWrapper}>
+-            {user?.avatar_url ? (
++            {avatarUrl ? (
+               <Image
+-                source={{ uri: user.avatar_url }}
++                source={{ uri: avatarUrl }}
+                 style={{ width: "100%", height: "100%" }}
+                 resizeMode="cover"
+               />
+             ) : (
+               <View style={styles.profileAvatarFallback}>
+                 <Text style={styles.profileAvatarInitial}>
+                   {(user.full_name || user.email || "C").charAt(0).toUpperCase()}
+                 </Text>
+               </View>
+             )}
+           </View>
