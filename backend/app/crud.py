@@ -796,12 +796,16 @@ def _auto_complete_finished_bookings(
     if not candidate_ids:
         return
 
+    update_data = {models.Booking.status: "completed"}
+    if "completed_at" in models.Booking.__table__.columns:
+        update_data[models.Booking.completed_at] = cutoff
+
     updated = (
         db.query(models.Booking)
         .filter(models.Booking.id.in_(candidate_ids))
         .filter(models.Booking.end_time <= cutoff)
         .filter(normalized_status == "confirmed")
-        .update({models.Booking.status: "completed"}, synchronize_session=False)
+        .update(update_data, synchronize_session=False)
     )
 
     if updated:
@@ -1825,36 +1829,6 @@ def list_todays_bookings_for_provider(db: Session, provider_id: int):
     end_of_day = today_end_guyana()
     now = now_guyana()
     normalized_status = normalized_booking_status_expr()
-
-    ended_ids = (
-        db.query(models.Booking.id)
-        .join(models.Service, models.Booking.service_id == models.Service.id)
-        .filter(
-            models.Service.provider_id == provider_id,
-            normalized_status == "confirmed",
-            models.Booking.end_time <= now,
-        )
-    )
-
-    ended_q = db.query(models.Booking).filter(models.Booking.id.in_(ended_ids))
-
-    if "completed_at" in models.Booking.__table__.columns:
-        ended_q.update(
-            {
-                models.Booking.status: "completed",
-                models.Booking.completed_at: now,
-            },
-            synchronize_session=False,
-        )
-    else:
-        ended_q.update(
-            {
-                models.Booking.status: "completed",
-            },
-            synchronize_session=False,
-        )
-
-    db.commit()
 
     q = (
         db.query(models.Booking, models.Service, models.User)
