@@ -700,7 +700,6 @@ function SignupScreen({ goToLogin, goBack, showFlash }) {
     }
   };
 
-
   return (
     <KeyboardAvoidingView
       style={styles.avoider}
@@ -810,10 +809,11 @@ function ProfileScreen({ setToken, showFlash, token }) {
   const [bookingsError, setBookingsError] = useState("");
   const [avatarUrl, setAvatarUrl] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [isProviderUser, setIsProviderUser] = useState(null);
 
 
   const uploadAvatar = async (uri) => {
-    try{
+    try {
       const token = await AsyncStorage.getItem("accessToken");
       if (!token) {
         alert("No access token found. Please log in again.");
@@ -832,28 +832,57 @@ function ProfileScreen({ setToken, showFlash, token }) {
         type: mimeType,
       });
 
-      const res = await axios.post(`${API}/users/me/avatar`, formData, {
+      let isProvider = isProviderUser;
+
+      if (typeof isProvider !== "boolean") {
+        try {
+          const meRes = await axios.get(`${API}/users/me`, {
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          });
+
+          if (typeof meRes.data?.is_provider === "boolean") {
+            isProvider = meRes.data.is_provider;
+            setIsProviderUser(isProvider);
+          }
+
+          setUser((prev) => ({ ...(prev || {}), ...meRes.data }));
+        } catch (fetchErr) {
+          console.log(
+            "Could not refresh user before avatar upload",
+            fetchErr.response?.data || fetchErr.message
+          );
+        }
+      }
+
+      const endpoint =
+        isProvider === true
+          ? `${API}/providers/me/avatar`
+          : `${API}/users/me/avatar`;
+
+      const res = await axios.post(endpoint, formData, {
         headers: {
           "Content-Type": "multipart/form-data",
           Authorization: `Bearer ${token}`,
         },
-        });
+      });
 
       const newUrl = res.data.avatar_url;
 
-        // update avatar in this screen
-        setAvatarUrl(newUrl);
-        setUser((prev) =>
-          prev ? { ...prev, avatar_url: newUrl } : prev
-        );
-      } catch (err) {
-        console.log(
-          "Avatar upload error:",
-          err.response?.data || err.message
-        );
-        alert("Failed to upload avatar. Please try again.");
-      }
-    };
+      // update avatar in this screen and shared user state
+      setAvatarUrl(newUrl);
+      setUser((prev) =>
+        prev ? { ...prev, avatar_url: newUrl } : { avatar_url: newUrl }
+      );
+    } catch (err) {
+      console.log(
+        "Avatar upload error:",
+        err.response?.data || err.message
+      );
+      alert("Failed to upload avatar. Please try again.");
+    }
+  };
 
   const pickClientAvatar = async () => {
     try {
@@ -922,6 +951,9 @@ function ProfileScreen({ setToken, showFlash, token }) {
         const res = await axios.get(`${API}/users/me`, { headers });
 
         setUser(res.data);
+        if (typeof res.data.is_provider === "boolean") {
+          setIsProviderUser(res.data.is_provider);
+        }
         setEditProfile({
           full_name: res.data.full_name || "",
           phone: res.data.phone || "",
@@ -1216,11 +1248,7 @@ function ProfileScreen({ setToken, showFlash, token }) {
     }
   };
 
-  
-
-
-
-
+  const displayAvatarUrl = resolveImageUrl(avatarUrl || user?.avatar_url);
 
   return (
     <ScrollView
@@ -1233,9 +1261,9 @@ function ProfileScreen({ setToken, showFlash, token }) {
         {/* Avatar */}
         <View style={{ alignItems: "center", marginBottom: 16 }}>
           <View style={styles.profileAvatarWrapper}>
-            {user?.avatar_url ? (
+            {displayAvatarUrl ? (
               <Image
-                source={{ uri: user.avatar_url }}
+                source={{ uri: displayAvatarUrl }}
                 style={{ width: "100%", height: "100%" }}
                 resizeMode="cover"
               />
@@ -4337,12 +4365,8 @@ const loadProviderSummary = async () => {
   }
 };
 
-
-
-
-
-  return (    
-    <View style={{ flex: 1 }}> 
+  return (
+    <View style={{ flex: 1 }}>
       <View style={{ alignItems: "center", marginBottom: 16 }}>
         {avatarUrl ? (
           <Image
