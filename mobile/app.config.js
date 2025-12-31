@@ -16,6 +16,7 @@ export default {
     backgroundColor: "#16a34a",
   },
   assetBundlePatterns: ["**/*"],
+  newArchEnabled: false,
 
   ios: {
     supportsTablet: true,
