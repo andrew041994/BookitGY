@@ -20,6 +20,8 @@ import BookitGYLogoTransparent from "./assets/bookitgy-logo-transparent.png"
 import { Ionicons } from "@expo/vector-icons";
 import { SafeAreaProvider,SafeAreaView } from "react-native-safe-area-context";
 import ProviderPublicProfile from "./src/components/ProviderPublicProfile";
+import * as Sentry from "sentry-expo";
+import { handleIncomingURL } from "./src/utils/deepLinking";
 
 
 
@@ -47,12 +49,12 @@ const RESERVED_USERNAME_PATHS = new Set([
 ]);
 
 const linking = {
-  prefixes: ["https://bookitgy.com", "bookitgy://"],
+  prefixes: ["https://bookitgy.com", "https://www.bookitgy.com", "bookitgy://"],
   config: {
     screens: {
       Home: "",
       Search: {
-        path: ["search", ":sharedUsername"],
+        path: ["search", "bookitgy/:username", ":username", ":sharedUsername"],
       },
       Appointments: "appointments",
       Profile: "profile",
@@ -69,6 +71,19 @@ const linking = {
     }
 
     return defaultGetStateFromPath(path, options);
+  },
+  async getInitialURL() {
+    const url = await Linking.getInitialURL();
+    return handleIncomingURL(url);
+  },
+  subscribe(listener) {
+    const onReceiveURL = ({ url }) => {
+      const safeUrl = handleIncomingURL(url);
+      if (safeUrl) listener(safeUrl);
+    };
+
+    const subscription = Linking.addEventListener("url", onReceiveURL);
+    return () => subscription.remove();
   },
 };
 
@@ -284,6 +299,9 @@ async function registerForPushNotificationsAsync() {
     return tokenData.data;
   } catch (err) {
     console.error("[LOGIN_NATIVE_CRASH_GUARD] Error getting push token", err);
+    Sentry.Native.captureException(err, {
+      extra: { scope: "push-registration" },
+    });
     return null;
   }
 }
@@ -391,6 +409,9 @@ function LoginScreen({
         "[LOGIN_NATIVE_CRASH_GUARD] Failed to persist access token",
         err
       );
+      Sentry.Native.captureException(err, {
+        extra: { scope: "token-persistence" },
+      });
       Alert.alert(
         "Save issue",
         "We couldn't save your login securely. You'll stay logged in for now."
@@ -413,6 +434,9 @@ function LoginScreen({
         }
       } catch (err) {
         console.error("[LOGIN_NATIVE_CRASH_GUARD] Failed to register push token", err);
+        Sentry.Native.captureException(err, {
+          extra: { scope: "push-registration" },
+        });
       }
    
 
@@ -2468,6 +2492,8 @@ function SearchScreen({
   const [hasSearched, setHasSearched] = useState(false); // 👈 NEW
   const [refreshing, setRefreshing] = useState(false);
   const hasAppliedSharedUsername = useRef(false);
+  const deepLinkUsernameRef = useRef(null);
+  const hasAttemptedDeepLinkOpen = useRef(false);
 
   //Radius 
   const radiusOptions = [0, 5, 10, 15, 20, 25, 30, 40, 50, 75, 100];
@@ -2550,17 +2576,27 @@ function SearchScreen({
     handleSelectProvider(providerFromNav);
   }, [route?.params?.provider, selectedProvider, handleSelectProvider]);
 
-  useEffect(() => {
-    const sharedUsername = route?.params?.sharedUsername;
-    if (!sharedUsername || hasAppliedSharedUsername.current) return;
+  const incomingUsername = route?.params?.username ?? route?.params?.sharedUsername;
 
-    const trimmedUsername = `${sharedUsername}`.trim();
+  useEffect(() => {
+    if (!incomingUsername) return;
+
+    const trimmedUsername = `${incomingUsername}`.trim();
     if (!trimmedUsername) return;
 
+    if (
+      hasAppliedSharedUsername.current &&
+      deepLinkUsernameRef.current === trimmedUsername.toLowerCase()
+    ) {
+      return;
+    }
+
     hasAppliedSharedUsername.current = true;
+    deepLinkUsernameRef.current = trimmedUsername.toLowerCase();
+    hasAttemptedDeepLinkOpen.current = false;
     setSearchQuery(trimmedUsername);
     setHasSearched(true);
-  }, [route?.params?.sharedUsername]);
+  }, [incomingUsername]);
 
   // Add a useEffect that recomputes filteredProviders
   // whenever providers/search/radius/location changes:
@@ -2650,6 +2686,36 @@ function SearchScreen({
     setFilteredProviders(list);
   }, [providers, searchQuery, radiusKm, clientLocation, hasSearched, route?.params?.provider]);
 
+  useEffect(() => {
+    const targetUsername = deepLinkUsernameRef.current;
+    if (!targetUsername || hasAttemptedDeepLinkOpen.current) return;
+    if (providersLoading) return;
+
+    const providerList = Array.isArray(filteredProviders)
+      ? filteredProviders
+      : [];
+
+    const exactMatch = providerList.find(
+      (p) => (p.username || "").toLowerCase() === targetUsername
+    );
+
+    if (exactMatch) {
+      hasAttemptedDeepLinkOpen.current = true;
+      handleSelectProvider(exactMatch);
+      return;
+    }
+
+    if (hasSearched && providerList.length === 0) {
+      hasAttemptedDeepLinkOpen.current = true;
+      if (showFlash) {
+        showFlash(
+          "error",
+          "We couldn't find that provider. Please check the username."
+        );
+      }
+    }
+  }, [filteredProviders, providersLoading, hasSearched, handleSelectProvider, showFlash]);
+
 
 
   const ensureClientLocation = async () => {
@@ -2682,6 +2748,9 @@ function SearchScreen({
       if (showFlash) {
         showFlash("error", "Could not get your current location.");
       }
+      Sentry.Native.captureException(err, {
+        extra: { scope: "client-location" },
+      });
       return null;
     }
   };
@@ -3031,8 +3100,8 @@ function SearchScreen({
                           hasSearched &&
                           filteredProviders.length === 0 && (
                             <Text style={styles.errorText}>
-                              {route?.params?.sharedUsername
-                                ? "Provider not found."
+                              {incomingUsername
+                                ? "We couldn't find that provider. Please check the username."
                                 : "No providers found."}
                             </Text>
                           )}

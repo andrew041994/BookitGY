@@ -1,67 +1,16 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
-diff --git a/mobile/App.js b/mobile/App.js
-index 8fc6ecf40545dd9ff4fb398ca14d867a594a333a..94aeea09718a7b0f5087a9841c4aaa35ff35cbf6 100644
---- a/mobile/App.js
-+++ b/mobile/App.js
-@@ -4429,53 +4429,57 @@ const handlePinLocation = async () => {
- 
- const loadProviderLocation = async () => {
-   try {
-     const storedToken = await AsyncStorage.getItem("accessToken");
-     if (!storedToken) return;
- 
-      const res = await axios.get(`${API}/users/me`, {
-       headers: {
-         Authorization: `Bearer ${storedToken}`,
-       },
-     });
- 
-     if (res.data.lat != null && res.data.long != null) {
-       setProviderLocation({
-         lat: res.data.lat,
-         long: res.data.long,
-       });
-     }
-   } catch (err) {
-     console.log("Error loading provider location", err.response?.data || err.message);
-   }
- };
- 
- const loadProviderSummary = async () => {
-   try {
-+    const storedToken = await AsyncStorage.getItem("accessToken");
-+    const authToken = token?.token || storedToken;
-+    if (!authToken) return;
-+
-     const res = await axios.get(`${API}/providers/me/summary`, {
-       headers: {
--        Authorization: `Bearer ${token.token}`,
-+        Authorization: `Bearer ${authToken}`,
-       },
-     });
-     setProviderSummary(res.data);
-   } catch (err) {
-     console.log(
-       "Error loading provider summary",
-       err.response?.data || err.message
-     );
-   }
- };
- 
-   return (
-     <View style={{ flex: 1 }}>
-       <View style={{ alignItems: "center", marginBottom: 16 }}>
-         {avatarUrl ? (
-           <Image
-             source={{ uri: avatarUrl }}
-             style={{
-               width: 96,
-               height: 96,
-               borderRadius: 48,
-               marginBottom: 8,
-             }}
-           />
-         ) : (
+diff --git a/mobile/vendor/sentry-expo/package.json b/mobile/vendor/sentry-expo/package.json
+new file mode 100644
+index 0000000000000000000000000000000000000000..d2a2c4888ef046b25ce67102d2eda950d0c99134
+--- /dev/null
++++ b/mobile/vendor/sentry-expo/package.json
+@@ -0,0 +1,6 @@
++{
++  "name": "sentry-expo",
++  "version": "0.0.0-bookitgy",
++  "main": "index.js",
++  "license": "MIT"
++}
  
 EOF
 )

@@ -1,17 +1,34 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as SecureStore from "expo-secure-store";
+import * as Sentry from "sentry-expo";
 
 const TOKEN_KEY = "accessToken";
+
+const reportStorageError = (stage, err) => {
+  const message = err?.message || err;
+  console.log(`[tokenStorage] ${stage}`, message);
+
+  try {
+    Sentry.Native.captureException(err, {
+      extra: {
+        scope: "tokenStorage",
+        stage,
+      },
+    });
+  } catch (captureErr) {
+    console.log(
+      "[tokenStorage] Unable to send error to Sentry",
+      captureErr?.message || captureErr
+    );
+  }
+};
 
 export async function saveToken(token) {
   try {
     await SecureStore.setItemAsync(TOKEN_KEY, token);
     return;
   } catch (err) {
-    console.log(
-      "[tokenStorage] SecureStore.setItemAsync failed, falling back",
-      err?.message || err
-    );
+    reportStorageError("SecureStore.setItemAsync failed, falling back", err);
   }
 
   try {
@@ -26,16 +43,13 @@ export async function loadToken() {
     const secureToken = await SecureStore.getItemAsync(TOKEN_KEY);
     if (secureToken) return secureToken;
   } catch (err) {
-    console.log(
-      "[tokenStorage] SecureStore.getItemAsync failed, trying AsyncStorage",
-      err?.message || err
-    );
+    reportStorageError("SecureStore.getItemAsync failed, trying AsyncStorage", err);
   }
 
   try {
     return await AsyncStorage.getItem(TOKEN_KEY);
   } catch (err) {
-    console.log("[tokenStorage] AsyncStorage.getItem failed", err?.message || err);
+    reportStorageError("AsyncStorage.getItem failed", err);
     return null;
   }
 }
@@ -45,18 +59,12 @@ export async function clearToken() {
     await SecureStore.deleteItemAsync(TOKEN_KEY);
     return;
   } catch (err) {
-    console.log(
-      "[tokenStorage] SecureStore.deleteItemAsync failed, falling back",
-      err?.message || err
-    );
+    reportStorageError("SecureStore.deleteItemAsync failed, falling back", err);
   }
 
   try {
     await AsyncStorage.removeItem(TOKEN_KEY);
   } catch (err) {
-    console.log(
-      "[tokenStorage] AsyncStorage.removeItem failed",
-      err?.message || err
-    );
+    reportStorageError("AsyncStorage.removeItem failed", err);
   }
 }

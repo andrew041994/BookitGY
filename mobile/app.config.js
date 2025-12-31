@@ -17,6 +17,7 @@ export default {
   },
   assetBundlePatterns: ["**/*"],
   newArchEnabled: false,
+  plugins: ["sentry-expo"],
 
   ios: {
     supportsTablet: true,
@@ -78,5 +79,6 @@ export default {
       projectId: "ba67429b-0180-4382-bb17-633982e5a5f8",
       API_URL: process.env.API_URL || "https://bookitgy.onrender.com",
     },
+    SENTRY_DSN: process.env.SENTRY_DSN || "",
   },
 };

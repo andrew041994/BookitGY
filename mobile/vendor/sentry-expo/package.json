@@ -1,0 +1,6 @@
+{
+  "name": "sentry-expo",
+  "version": "0.0.0-bookitgy",
+  "main": "index.js",
+  "license": "MIT"
+}

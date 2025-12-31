@@ -1,5 +1,5 @@
 # guyana-booker
-guyana booker app
+Guyana booker app
 # Guyana Booker – Booksy Clone for Guyana
 
 ## Features
@@ -15,3 +15,8 @@ guyana booker app
 docker-compose up -d
 # Web: http://localhost:5173
 # API docs: http://localhost:8000/docs
+```
+
+## Mobile crash reporting
+- The mobile app initializes Sentry via `sentry-expo`; set `SENTRY_DSN` (or `EXPO_PUBLIC_SENTRY_DSN`) in your build environment so release builds can report JavaScript errors.
+- EAS builds automatically upload source maps through the `sentry-expo` plugin configured in `app.config.js`, so TestFlight crashes include readable stack traces.
