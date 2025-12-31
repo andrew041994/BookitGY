@@ -77,8 +77,8 @@ def registerCronJobs(scheduler):
     # 1-hour reminders: run every minute
     scheduler.add_job(send_upcoming_reminders, "interval", minutes=1)
 
-    # Billing snapshot: update fees every 5 minutes
-    scheduler.add_job(run_billing_job, "interval", minutes=5)
+    # Billing snapshot: update fees every 1 minutes
+    scheduler.add_job(run_billing_job, "interval", minutes=1)
 
     # Auto-complete finished bookings: run frequently to keep statuses current
-    scheduler.add_job(auto_complete_finished_bookings_job, "interval", minutes=5)
+    scheduler.add_job(auto_complete_finished_bookings_job, "interval", minutes=1)
