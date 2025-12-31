@@ -52,13 +52,6 @@ export default {
             host: "bookitgy.com",
             pathPrefix: "/",
           },
-        ],
-        category: ["BROWSABLE", "DEFAULT"],
-        autoVerify: true,
-      },
-      {
-        action: "VIEW",
-        data: [
           {
             scheme: "https",
             host: "www.bookitgy.com",

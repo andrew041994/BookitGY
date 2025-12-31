@@ -1,38 +1,9 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
 diff --git a/mobile/app.config.js b/mobile/app.config.js
-index 482a0e91b1b3d616761a025e6a2f335f11fc93d9..52e52e4be9125b8e24f13799a35ddef1c272a492 100644
+index 52e52e4be9125b8e24f13799a35ddef1c272a492..4581f53a38089fbe25ec8e05a0334eb8834ff5b3 100644
 --- a/mobile/app.config.js
 +++ b/mobile/app.config.js
-@@ -1,60 +1,88 @@
- import "dotenv/config";
- 
- console.log(">>> USING app.config.js <<<");
- 
- export default {
-   name: "BookitGY",
-   slug: "bookitgy",
-+  scheme: "bookitgy",
-   version: "1.0.0",
-   orientation: "portrait",
-   icon: "./assets/icon.png",
-   userInterfaceStyle: "light",
-   splash: {
-     image: "./assets/splash.png",
-     resizeMode: "contain",
-     backgroundColor: "#16a34a",
-   },
-   assetBundlePatterns: ["**/*"],
- 
-   ios: {
-     supportsTablet: true,
-     bundleIdentifier: "com.bookitgy.app",
-     buildNumber: "1",
-+    associatedDomains: ["applinks:bookitgy.com", "applinks:www.bookitgy.com"],
-     infoPlist: {
-       NSLocationWhenInUseUsageDescription:
-         "BookitGY uses your location to show nearby service providers and enable navigation.",
-       NSLocationAlwaysAndWhenInUseUsageDescription:
-         "Location access allows providers to share their business location with customers.",
+@@ -30,57 +30,50 @@ export default {
        ITSAppUsesNonExemptEncryption: false,
      },
      config: {
@@ -49,32 +20,32 @@ index 482a0e91b1b3d616761a025e6a2f335f11fc93d9..52e52e4be9125b8e24f13799a35ddef1
        foregroundImage: "./assets/adaptive-icon.png",
        backgroundColor: "#16a34a",
      },
-+    intentFilters: [
-+      {
-+        action: "VIEW",
-+        data: [
-+          {
-+            scheme: "https",
-+            host: "bookitgy.com",
-+            pathPrefix: "/",
-+          },
-+        ],
-+        category: ["BROWSABLE", "DEFAULT"],
-+        autoVerify: true,
-+      },
-+      {
-+        action: "VIEW",
-+        data: [
-+          {
-+            scheme: "https",
-+            host: "www.bookitgy.com",
-+            pathPrefix: "/",
-+          },
-+        ],
-+        category: ["BROWSABLE", "DEFAULT"],
-+        autoVerify: true,
-+      },
-+    ],
+     intentFilters: [
+       {
+         action: "VIEW",
+         data: [
+           {
+             scheme: "https",
+             host: "bookitgy.com",
+             pathPrefix: "/",
+           },
+-        ],
+-        category: ["BROWSABLE", "DEFAULT"],
+-        autoVerify: true,
+-      },
+-      {
+-        action: "VIEW",
+-        data: [
+           {
+             scheme: "https",
+             host: "www.bookitgy.com",
+             pathPrefix: "/",
+           },
+         ],
+         category: ["BROWSABLE", "DEFAULT"],
+         autoVerify: true,
+       },
+     ],
      config: {
        googleMaps: {
          apiKey: (process.env.ANDROID_GOOGLE_MAPS_API_KEY || "").trim(),
@@ -90,8 +61,6 @@ index 482a0e91b1b3d616761a025e6a2f335f11fc93d9..52e52e4be9125b8e24f13799a35ddef1
        projectId: "ba67429b-0180-4382-bb17-633982e5a5f8",
        API_URL: process.env.API_URL || "https://bookitgy.onrender.com",
      },
-   },
- };
  
 EOF
 )
