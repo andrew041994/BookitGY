@@ -10,7 +10,7 @@ import {
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import axios from "axios";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { clearToken, loadToken, saveToken } from "./src/lib/tokenStorage";
+import { clearToken, loadToken, saveToken } from "./src/components/tokenStorage";
 import * as Location from "expo-location";
 import * as Notifications from "expo-notifications";
 import Constants from "expo-constants";
@@ -4451,9 +4451,13 @@ const loadProviderLocation = async () => {
 
 const loadProviderSummary = async () => {
   try {
+    const storedToken = await AsyncStorage.getItem("accessToken");
+    const authToken = token?.token || storedToken;
+    if (!authToken) return;
+
     const res = await axios.get(`${API}/providers/me/summary`, {
       headers: {
-        Authorization: `Bearer ${token.token}`,
+        Authorization: `Bearer ${authToken}`,
       },
     });
     setProviderSummary(res.data);

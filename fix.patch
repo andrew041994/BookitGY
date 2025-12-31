@@ -1,53 +1,67 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
-diff --git a/mobile/app.config.js b/mobile/app.config.js
-index 4581f53a38089fbe25ec8e05a0334eb8834ff5b3..b3ea54b7829950ac82431572cc5b683edf91d87c 100644
---- a/mobile/app.config.js
-+++ b/mobile/app.config.js
-@@ -1,43 +1,44 @@
- import "dotenv/config";
+diff --git a/mobile/App.js b/mobile/App.js
+index 8fc6ecf40545dd9ff4fb398ca14d867a594a333a..94aeea09718a7b0f5087a9841c4aaa35ff35cbf6 100644
+--- a/mobile/App.js
++++ b/mobile/App.js
+@@ -4429,53 +4429,57 @@ const handlePinLocation = async () => {
  
- console.log(">>> USING app.config.js <<<");
+ const loadProviderLocation = async () => {
+   try {
+     const storedToken = await AsyncStorage.getItem("accessToken");
+     if (!storedToken) return;
  
- export default {
-   name: "BookitGY",
-   slug: "bookitgy",
-   scheme: "bookitgy",
-   version: "1.0.0",
-   orientation: "portrait",
-   icon: "./assets/icon.png",
-   userInterfaceStyle: "light",
-   splash: {
-     image: "./assets/splash.png",
-     resizeMode: "contain",
-     backgroundColor: "#16a34a",
-   },
-   assetBundlePatterns: ["**/*"],
-+  newArchEnabled: false,
+      const res = await axios.get(`${API}/users/me`, {
+       headers: {
+         Authorization: `Bearer ${storedToken}`,
+       },
+     });
  
-   ios: {
-     supportsTablet: true,
-     bundleIdentifier: "com.bookitgy.app",
-     buildNumber: "1",
-     associatedDomains: ["applinks:bookitgy.com", "applinks:www.bookitgy.com"],
-     infoPlist: {
-       NSLocationWhenInUseUsageDescription:
-         "BookitGY uses your location to show nearby service providers and enable navigation.",
-       NSLocationAlwaysAndWhenInUseUsageDescription:
-         "Location access allows providers to share their business location with customers.",
-       ITSAppUsesNonExemptEncryption: false,
-     },
-     config: {
-       googleMapsApiKey: (process.env.IOS_GOOGLE_MAPS_API_KEY || "").trim(),
+     if (res.data.lat != null && res.data.long != null) {
+       setProviderLocation({
+         lat: res.data.lat,
+         long: res.data.long,
+       });
+     }
+   } catch (err) {
+     console.log("Error loading provider location", err.response?.data || err.message);
+   }
+ };
  
-     },
-   },
+ const loadProviderSummary = async () => {
+   try {
++    const storedToken = await AsyncStorage.getItem("accessToken");
++    const authToken = token?.token || storedToken;
++    if (!authToken) return;
++
+     const res = await axios.get(`${API}/providers/me/summary`, {
+       headers: {
+-        Authorization: `Bearer ${token.token}`,
++        Authorization: `Bearer ${authToken}`,
+       },
+     });
+     setProviderSummary(res.data);
+   } catch (err) {
+     console.log(
+       "Error loading provider summary",
+       err.response?.data || err.message
+     );
+   }
+ };
  
-   android: {
-     package: "com.bookitgy.app",
-     versionCode: 1,
-     permissions: ["ACCESS_FINE_LOCATION", "ACCESS_COARSE_LOCATION"],
-     adaptiveIcon: {
-       foregroundImage: "./assets/adaptive-icon.png",
+   return (
+     <View style={{ flex: 1 }}>
+       <View style={{ alignItems: "center", marginBottom: 16 }}>
+         {avatarUrl ? (
+           <Image
+             source={{ uri: avatarUrl }}
+             style={{
+               width: 96,
+               height: 96,
+               borderRadius: 48,
+               marginBottom: 8,
+             }}
+           />
+         ) : (
  
 EOF
 )
