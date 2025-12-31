@@ -1,143 +1,72 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
-diff --git a/mobile/App.js b/mobile/App.js
-index 47db761ec52357f77b8d74f0f1de3cdd686010c5..4b639205e3cf04d9708b7998814689c07e0972e3 100644
---- a/mobile/App.js
-+++ b/mobile/App.js
-@@ -261,51 +261,51 @@ async function registerForPushNotificationsAsync() {
-     if (existingStatus !== "granted") {
-       const { status } = await Notifications.requestPermissionsAsync();
-       finalStatus = status;
-     }
- 
-     if (finalStatus !== "granted") {
-       console.log("Notification permissions not granted");
-       return null;
-     }
- 
-     // Try to infer projectId from Constants (managed or dev client)
-     const projectId =
-       Constants?.expoConfig?.extra?.eas?.projectId ??
-       Constants?.easConfig?.projectId;
- 
-     if (!projectId) {
-       console.log(
-         'No "projectId" found in Constants – skipping push token registration in this dev build.'
-       );
-       return null;
-     }
- 
-     const tokenData = await Notifications.getExpoPushTokenAsync({ projectId });
-     return tokenData.data;
-   } catch (err) {
--    console.log("Error getting push token", err);
-+    console.error("[LOGIN_NATIVE_CRASH_GUARD] Error getting push token", err);
-     return null;
-   }
- }
- 
-   
- 
- 
- const Tab = createBottomTabNavigator();
- 
- // 🔹 New landing/home screen shown BEFORE login
- function LandingScreen({ goToLogin, goToSignup }) {
-   return (
-     <View style={styles.container}>
-      <View style={{ alignItems: "center", marginBottom: 40, marginTop: 60 }}>
-       <Image
-         source={BookitGYLogoTransparent}
-         style={{
-           width: 360,
-           height: 360,
-           resizeMode: "contain",
-           opacity: 0.96,
-         }}
-       />
-       </View>
-         <Text
-@@ -355,68 +355,79 @@ function LoginScreen({
- 
-     if (!trimmedEmail || !isValidEmail(trimmedEmail)) {
-       if (showFlash) {
-         showFlash("error", "Please enter a valid email address");
-       } else {
-         Alert.alert("Error", "Please enter a valid email address");
-       }
-       return;
-   }
- 
-   setLoading(true);
- 
-     try {
-       const body = new URLSearchParams({
-         username: normalizedEmail,
-         password: password,
-       }).toString();
- 
-     const res = await axios.post(`${API}/auth/login`, body, {
-         headers: {
-           "Content-Type": "application/x-www-form-urlencoded",
-         },
-       });
- 
-     // Try to register push token, but don't fail login if this breaks
--    await AsyncStorage.setItem("accessToken", res.data.access_token);
-+    try {
-+      await AsyncStorage.setItem("accessToken", res.data.access_token);
-+    } catch (err) {
-+      console.error(
-+        "[LOGIN_NATIVE_CRASH_GUARD] Failed to persist access token",
-+        err
-+      );
-+      Alert.alert(
-+        "Save issue",
-+        "We couldn't save your login securely. You'll stay logged in for now."
-+      );
-+    }
- 
-       // Try to register push token, but don't fail login if this breaks
-       try {
-         const expoPushToken = await registerForPushNotificationsAsync();
-         if (expoPushToken) {
-           await axios.put(
-             `${API}/users/me`,
-             { expo_push_token: expoPushToken },
-             {
-               headers: {
-                 Authorization: `Bearer ${res.data.access_token}`,
-               },
-             }
-           );
-         }
-       } catch (err) {
--        console.log("Failed to register push token", err);
-+        console.error("[LOGIN_NATIVE_CRASH_GUARD] Failed to register push token", err);
-       }
-    
- 
-     // Successful login
-       // Successful login
-       setToken({
-         token: res.data.access_token,
-         userId: res.data.user_id,
-         email: res.data.email,
-         isProvider: res.data.is_provider,
-         isAdmin: res.data.is_admin,
-       });
- 
-       setIsAdmin(!!res.data.is_admin);
- 
-     if (showFlash) {
-         showFlash("success", "Logged in successfully");
-       }
-     } catch (e) {
-       console.log("Login error:", e.response?.data || e.message);
-       if (showFlash) {
-         showFlash(
-           "error",
-           "Login failed: wrong email/password or server unreachable"
-         );
+diff --git a/mobile/src/lib/tokenStorage.js b/mobile/src/lib/tokenStorage.js
+new file mode 100644
+index 0000000000000000000000000000000000000000..3664e0c9e5729a9b8db33ccd5c5a5d527af57275
+--- /dev/null
++++ b/mobile/src/lib/tokenStorage.js
+@@ -0,0 +1,62 @@
++import AsyncStorage from "@react-native-async-storage/async-storage";
++import * as SecureStore from "expo-secure-store";
++
++const TOKEN_KEY = "accessToken";
++
++export async function saveToken(token) {
++  try {
++    await SecureStore.setItemAsync(TOKEN_KEY, token);
++    return;
++  } catch (err) {
++    console.log(
++      "[tokenStorage] SecureStore.setItemAsync failed, falling back",
++      err?.message || err
++    );
++  }
++
++  try {
++    await AsyncStorage.setItem(TOKEN_KEY, token);
++  } catch (err) {
++    console.log("[tokenStorage] AsyncStorage.setItem failed", err?.message || err);
++  }
++}
++
++export async function loadToken() {
++  try {
++    const secureToken = await SecureStore.getItemAsync(TOKEN_KEY);
++    if (secureToken) return secureToken;
++  } catch (err) {
++    console.log(
++      "[tokenStorage] SecureStore.getItemAsync failed, trying AsyncStorage",
++      err?.message || err
++    );
++  }
++
++  try {
++    return await AsyncStorage.getItem(TOKEN_KEY);
++  } catch (err) {
++    console.log("[tokenStorage] AsyncStorage.getItem failed", err?.message || err);
++    return null;
++  }
++}
++
++export async function clearToken() {
++  try {
++    await SecureStore.deleteItemAsync(TOKEN_KEY);
++    return;
++  } catch (err) {
++    console.log(
++      "[tokenStorage] SecureStore.deleteItemAsync failed, falling back",
++      err?.message || err
++    );
++  }
++
++  try {
++    await AsyncStorage.removeItem(TOKEN_KEY);
++  } catch (err) {
++    console.log(
++      "[tokenStorage] AsyncStorage.removeItem failed",
++      err?.message || err
++    );
++  }
++}
  
 EOF
 )

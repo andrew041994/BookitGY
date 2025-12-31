@@ -1,0 +1,62 @@
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import * as SecureStore from "expo-secure-store";
+
+const TOKEN_KEY = "accessToken";
+
+export async function saveToken(token) {
+  try {
+    await SecureStore.setItemAsync(TOKEN_KEY, token);
+    return;
+  } catch (err) {
+    console.log(
+      "[tokenStorage] SecureStore.setItemAsync failed, falling back",
+      err?.message || err
+    );
+  }
+
+  try {
+    await AsyncStorage.setItem(TOKEN_KEY, token);
+  } catch (err) {
+    console.log("[tokenStorage] AsyncStorage.setItem failed", err?.message || err);
+  }
+}
+
+export async function loadToken() {
+  try {
+    const secureToken = await SecureStore.getItemAsync(TOKEN_KEY);
+    if (secureToken) return secureToken;
+  } catch (err) {
+    console.log(
+      "[tokenStorage] SecureStore.getItemAsync failed, trying AsyncStorage",
+      err?.message || err
+    );
+  }
+
+  try {
+    return await AsyncStorage.getItem(TOKEN_KEY);
+  } catch (err) {
+    console.log("[tokenStorage] AsyncStorage.getItem failed", err?.message || err);
+    return null;
+  }
+}
+
+export async function clearToken() {
+  try {
+    await SecureStore.deleteItemAsync(TOKEN_KEY);
+    return;
+  } catch (err) {
+    console.log(
+      "[tokenStorage] SecureStore.deleteItemAsync failed, falling back",
+      err?.message || err
+    );
+  }
+
+  try {
+    await AsyncStorage.removeItem(TOKEN_KEY);
+  } catch (err) {
+    console.log(
+      "[tokenStorage] AsyncStorage.removeItem failed",
+      err?.message || err
+    );
+  }
+}

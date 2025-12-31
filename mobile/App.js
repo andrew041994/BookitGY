@@ -10,6 +10,7 @@ import {
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import axios from "axios";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { clearToken, loadToken, saveToken } from "./src/lib/tokenStorage";
 import * as Location from "expo-location";
 import * as Notifications from "expo-notifications";
 import Constants from "expo-constants";
@@ -378,7 +379,14 @@ function LoginScreen({
 
     // Try to register push token, but don't fail login if this breaks
     try {
-      await AsyncStorage.setItem("accessToken", res.data.access_token);
+      await saveToken(res.data.access_token);
+      const persistedToken = await loadToken();
+      if (!persistedToken) {
+        Alert.alert(
+          "Save issue",
+          "We couldn't save your login securely. You'll stay logged in for now."
+        );
+      }
     } catch (err) {
       console.error(
         "[LOGIN_NATIVE_CRASH_GUARD] Failed to persist access token",
@@ -952,7 +960,7 @@ function ProfileScreen({ setToken, showFlash, token }) {
 
   const logout = async () => {
     try {
-      await AsyncStorage.removeItem("accessToken");
+      await clearToken();
       if (setToken) {
         setToken(null);
       }
