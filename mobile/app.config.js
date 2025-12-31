@@ -5,6 +5,7 @@ console.log(">>> USING app.config.js <<<");
 export default {
   name: "BookitGY",
   slug: "bookitgy",
+  scheme: "bookitgy",
   version: "1.0.0",
   orientation: "portrait",
   icon: "./assets/icon.png",
@@ -20,6 +21,7 @@ export default {
     supportsTablet: true,
     bundleIdentifier: "com.bookitgy.app",
     buildNumber: "1",
+    associatedDomains: ["applinks:bookitgy.com", "applinks:www.bookitgy.com"],
     infoPlist: {
       NSLocationWhenInUseUsageDescription:
         "BookitGY uses your location to show nearby service providers and enable navigation.",
@@ -41,6 +43,32 @@ export default {
       foregroundImage: "./assets/adaptive-icon.png",
       backgroundColor: "#16a34a",
     },
+    intentFilters: [
+      {
+        action: "VIEW",
+        data: [
+          {
+            scheme: "https",
+            host: "bookitgy.com",
+            pathPrefix: "/",
+          },
+        ],
+        category: ["BROWSABLE", "DEFAULT"],
+        autoVerify: true,
+      },
+      {
+        action: "VIEW",
+        data: [
+          {
+            scheme: "https",
+            host: "www.bookitgy.com",
+            pathPrefix: "/",
+          },
+        ],
+        category: ["BROWSABLE", "DEFAULT"],
+        autoVerify: true,
+      },
+    ],
     config: {
       googleMaps: {
         apiKey: (process.env.ANDROID_GOOGLE_MAPS_API_KEY || "").trim(),

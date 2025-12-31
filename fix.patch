@@ -1,321 +1,97 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
-diff --git a/mobile/App.js b/mobile/App.js
-index e7ce511e816b0552d2e1e450ced2cd0da2c77636..fa774d899b3f4f675609cfcd011ed5c5433d3385 100644
---- a/mobile/App.js
-+++ b/mobile/App.js
-@@ -1161,50 +1161,53 @@ function ProfileScreen({ setToken, showFlash, token }) {
-   }
+diff --git a/mobile/app.config.js b/mobile/app.config.js
+index 482a0e91b1b3d616761a025e6a2f335f11fc93d9..52e52e4be9125b8e24f13799a35ddef1c272a492 100644
+--- a/mobile/app.config.js
++++ b/mobile/app.config.js
+@@ -1,60 +1,88 @@
+ import "dotenv/config";
  
-   if (error) {
-     return (
-       <View style={styles.center}>
-         <Text style={styles.errorText}>{error}</Text>
-       </View>
-     );
-   }
+ console.log(">>> USING app.config.js <<<");
  
-   if (!user) {
-     return (
-       <View style={styles.center}>
-         <Text style={styles.errorText}>No user data.</Text>
-       </View>
-     );
-   }
- 
-   const isAdmin = user.is_admin;
-   const isProvider = user.is_provider;
-   const role = isAdmin ? "Admin" : isProvider ? "Provider" : "Client";
-   const providerUsername = user?.username?.trim();
-   const providerProfileLink = providerUsername
-     ? `https://bookitgy.com/${providerUsername}`
-     : null;
-+  const providerProfileLinkSimple = providerUsername
-+    ? `bookitgy/${providerUsername}`
-+    : null;
-   const providerProfileLinkLabel =
-     providerProfileLink || "Set a username to generate your link";
- 
-   const toggleMyBookings = async () => {
-     const next = !showBookings;
-     setShowBookings(next);
-     if (next) {
-       await loadMyBookings();
-     }
-   };
- 
-   const handleClientCancelBooking = (bookingId) => {
-     Alert.alert(
-       "Cancel booking",
-       "Are you sure you want to cancel this booking?",
-       [
-         { text: "No", style: "cancel" },
-         {
-           text: "Yes, cancel",
-           style: "destructive",
-           onPress: async () => {
-             try {
-               const token = await AsyncStorage.getItem("accessToken");
-               if (!token) {
-                 if (showFlash)
-@@ -1319,55 +1322,66 @@ function ProfileScreen({ setToken, showFlash, token }) {
-         {/* Name + role */}
-         <View style={{ flex: 1, marginLeft: 12 }}>
-           <Text style={styles.profileTitle}>
-             {user.full_name || "My Profile"}
-           </Text>
-           <View
-             style={[
-               styles.roleBadge,
-               isAdmin
-                 ? styles.roleBadgeAdmin
-                 : isProvider
-                 ? styles.roleBadgeProvider
-                 : styles.roleBadgeClient,
-             ]}
-           >
-             <Text style={styles.roleBadgeText}>{role}</Text>
-           </View>
-         </View>
-       </View>
- 
-       <View style={styles.card}>
-         {isProvider && (
-           <View style={{ marginBottom: 16 }}>
-             <Text style={styles.label}>Profile link</Text>
-             <View style={styles.profileLinkRow}>
--              <Text style={[styles.profileLinkText, { flex: 1 }]} numberOfLines={1}>
--                {providerProfileLinkLabel}
--              </Text>
-+              <View style={{ flex: 1 }}>
-+                <Text style={styles.profileLinkText} numberOfLines={1}>
-+                  {providerProfileLinkLabel}
-+                </Text>
-+                {providerProfileLinkSimple && (
-+                  <Text style={styles.profileLinkSubtle} numberOfLines={1}>
-+                    {providerProfileLinkSimple}
-+                  </Text>
-+                )}
-+              </View>
-               <TouchableOpacity
--                style={styles.profileLinkCopy}
-+                style={[
-+                  styles.profileLinkCopy,
-+                  !providerProfileLink && styles.profileLinkCopyDisabled,
-+                ]}
-+                disabled={!providerProfileLink}
-                 onPress={async () => {
-                   try {
-                     if (!providerProfileLink) {
-                       showFlash?.(
-                         "error",
-                         "Set a username to generate your link"
-                       );
-                       return;
-                     }
- 
-                     await Clipboard.setStringAsync(providerProfileLink);
-                     showFlash?.(
-                       "success",
-                       "Profile link copied to clipboard"
-                     );
-                   } catch (err) {
-                     console.log("Error copying profile link", err?.message || err);
-                     showFlash?.("error", "Could not copy profile link");
-                   }
-                 }}
-               >
-                 <Text style={styles.profileLinkCopyText}>Copy</Text>
-               </TouchableOpacity>
-             </View>
-           </View>
-@@ -3354,50 +3368,51 @@ const providerLabel =
-   token?.email ||
-   "Provider";
- 
- 
- const [customProfession, setCustomProfession] = useState("");
- const [providerSummary, setProviderSummary] = useState(null);
- const [todayBookings, setTodayBookings] = useState([]);
- const [todayLoading, setTodayLoading] = useState(false);
- const [todayError, setTodayError] = useState("");
- const [upcomingBookings, setUpcomingBookings] = useState([]);
- const [upcomingLoading, setUpcomingLoading] = useState(false);
- const [upcomingError, setUpcomingError] = useState("");
- const [providerLocation, setProviderLocation] = useState(null);
- const [focusedHoursField, setFocusedHoursField] = useState(null);
- const [avatarUrl, setAvatarUrl] = useState(null);
- // Catalog (portfolio images)
- const [catalog, setCatalog] = useState([]);
- const [catalogLoading, setCatalogLoading] = useState(false);
- const [catalogError, setCatalogError] = useState("");
- const [catalogUploading, setCatalogUploading] = useState(false);
- 
- const profileUsername = profile.username?.trim() || token?.username?.trim() || "";
- const profileLink = profileUsername
-   ? `https://bookitgy.com/${profileUsername}`
-   : null;
-+const profileLinkSimple = profileUsername ? `bookitgy/${profileUsername}` : null;
- const profileLinkLabel = profileLink || "Set a username to generate your link";
- 
- const copyProfileLink = async (link) => {
-   try {
-     if (!link) {
-       if (showFlash) {
-         showFlash("error", "Set a username to generate your link");
-       } else {
-         Alert.alert("Unavailable", "Set a username to generate your link");
-       }
-       return;
-     }
- 
-     await Clipboard.setStringAsync(link);
-     if (showFlash) {
-       showFlash("success", "Profile link copied to clipboard");
-     } else {
-       Alert.alert("Copied", "Profile link copied to clipboard");
-     }
-   } catch (err) {
-     console.log("Error copying profile link", err?.message || err);
-     if (showFlash) {
-       showFlash("error", "Could not copy profile link");
-     }
-   }
-@@ -4881,55 +4896,66 @@ const loadProviderSummary = async () => {
-             <View style={{ width: "100%", marginTop: 8 }}>
-               <Button
-                 title="Save working hours"
-                 onPress={saveWorkingHours}
-                 color="#16a34a"
-               />
-             </View>
-           </View>
-         )}
- 
-         {/* Provider profile editor */}
-         {showProfileEditor && (
-           <View style={styles.card}>
-             <Text style={styles.sectionTitle}>Provider profile</Text>
-             <Text style={styles.hoursHelp}>
-               This is what clients will see on your public profile.
-             </Text>
- 
-             <View style={styles.profileLinkBox}>
-               <Text style={styles.sectionTitle}>Profile link</Text>
-               <Text style={styles.hoursHelp}>
-                 Share this with clients so they can book you directly.
-               </Text>
- 
-               <View style={styles.profileLinkRow}>
--                <Text style={styles.profileLinkText} numberOfLines={1}>
--                  {profileLinkLabel}
--                </Text>
-+                <View style={{ flex: 1 }}>
-+                  <Text style={styles.profileLinkText} numberOfLines={1}>
-+                    {profileLinkLabel}
-+                  </Text>
-+                  {profileLinkSimple && (
-+                    <Text style={styles.profileLinkSubtle} numberOfLines={1}>
-+                      {profileLinkSimple}
-+                    </Text>
-+                  )}
-+                </View>
-                 <TouchableOpacity
--                  style={styles.profileLinkCopy}
-+                  style={[
-+                    styles.profileLinkCopy,
-+                    !profileLink && styles.profileLinkCopyDisabled,
-+                  ]}
-+                  disabled={!profileLink}
-                   onPress={() => copyProfileLink(profileLink)}
-                 >
-                   <Text style={styles.profileLinkCopyText}>Copy</Text>
-                 </TouchableOpacity>
-               </View>
-             </View>
- 
-             {profileLoading && (
-               <View style={{ paddingVertical: 10 }}>
-                 <ActivityIndicator />
-                 <Text style={styles.serviceMeta}>Loading profile…</Text>
-               </View>
-             )}
- 
-             {profileError ? (
-               <Text style={styles.errorText}>{profileError}</Text>
-             ) : null}
- 
-             {!profileLoading && (
-               <>
-                 <TextInput
-                   style={styles.input}
-                   placeholder="Business / display name"
-                   value={profile.full_name}
-                   onChangeText={(text) =>
-@@ -6572,56 +6598,64 @@ mapContainer: {
-     backgroundColor: "#F0FDF4",
-     borderWidth: 1,
-     borderColor: "#BBF7D0",
-     borderRadius: 10,
-     marginBottom: 12,
+ export default {
+   name: "BookitGY",
+   slug: "bookitgy",
++  scheme: "bookitgy",
+   version: "1.0.0",
+   orientation: "portrait",
+   icon: "./assets/icon.png",
+   userInterfaceStyle: "light",
+   splash: {
+     image: "./assets/splash.png",
+     resizeMode: "contain",
+     backgroundColor: "#16a34a",
    },
-   profileLinkRow: {
-     flexDirection: "row",
-     alignItems: "center",
-     justifyContent: "space-between",
-     backgroundColor: "#fff",
-     borderRadius: 8,
-     borderWidth: 1,
-     borderColor: "#E5E7EB",
-     paddingHorizontal: 12,
-     paddingVertical: 10,
-     marginTop: 8,
-     gap: 12,
+   assetBundlePatterns: ["**/*"],
+ 
+   ios: {
+     supportsTablet: true,
+     bundleIdentifier: "com.bookitgy.app",
+     buildNumber: "1",
++    associatedDomains: ["applinks:bookitgy.com", "applinks:www.bookitgy.com"],
+     infoPlist: {
+       NSLocationWhenInUseUsageDescription:
+         "BookitGY uses your location to show nearby service providers and enable navigation.",
+       NSLocationAlwaysAndWhenInUseUsageDescription:
+         "Location access allows providers to share their business location with customers.",
+       ITSAppUsesNonExemptEncryption: false,
+     },
+     config: {
+       googleMapsApiKey: (process.env.IOS_GOOGLE_MAPS_API_KEY || "").trim(),
+ 
+     },
    },
-   profileLinkText: {
-     flex: 1,
-     fontSize: 14,
-     color: "#065F46",
-     fontWeight: "600",
+ 
+   android: {
+     package: "com.bookitgy.app",
+     versionCode: 1,
+     permissions: ["ACCESS_FINE_LOCATION", "ACCESS_COARSE_LOCATION"],
+     adaptiveIcon: {
+       foregroundImage: "./assets/adaptive-icon.png",
+       backgroundColor: "#16a34a",
+     },
++    intentFilters: [
++      {
++        action: "VIEW",
++        data: [
++          {
++            scheme: "https",
++            host: "bookitgy.com",
++            pathPrefix: "/",
++          },
++        ],
++        category: ["BROWSABLE", "DEFAULT"],
++        autoVerify: true,
++      },
++      {
++        action: "VIEW",
++        data: [
++          {
++            scheme: "https",
++            host: "www.bookitgy.com",
++            pathPrefix: "/",
++          },
++        ],
++        category: ["BROWSABLE", "DEFAULT"],
++        autoVerify: true,
++      },
++    ],
+     config: {
+       googleMaps: {
+         apiKey: (process.env.ANDROID_GOOGLE_MAPS_API_KEY || "").trim(),
+ 
+       },
+     },
    },
-+  profileLinkSubtle: {
-+    fontSize: 12,
-+    color: "#6B7280",
-+    marginTop: 2,
-+  },
-   profileLinkCopy: {
-     paddingHorizontal: 12,
-     paddingVertical: 6,
-     borderRadius: 8,
-     backgroundColor: "#16A34A",
+ 
+   web: { favicon: "./assets/favicon.png" },
+ 
+   extra: {
+     eas: {
+       projectId: "ba67429b-0180-4382-bb17-633982e5a5f8",
+       API_URL: process.env.API_URL || "https://bookitgy.onrender.com",
+     },
    },
-+  profileLinkCopyDisabled: {
-+    backgroundColor: "#9CA3AF",
-+  },
-   profileLinkCopyText: {
-     color: "#fff",
-     fontWeight: "700",
-     fontSize: 13,
-   },
-   serviceRow: {
-     paddingVertical: 10,
-     paddingHorizontal: 8,
-     borderRadius: 8,
-     marginBottom: 8,
-     backgroundColor: "#F9FAFB",
-     flexDirection: "row",
-   },
-   serviceName: {
-     fontSize: 15,
-     fontWeight: "600",
-     color: "#111827",
-   },
-   serviceMeta: {
-     fontSize: 12,
-     color: "#6B7280",
-     marginTop: 2,
-   },
-   servicePrice: {
-     fontSize: 14,
+ };
  
 EOF
 )
