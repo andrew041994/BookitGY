@@ -21,7 +21,6 @@
     "expo-location": "~19.0.7",
     "expo-notifications": "~0.32.13",
     "expo-secure-store": "~15.0.8",
-    "sentry-expo": "7.2.0",
     "react": "19.1.0",
     "react-dom": "19.1.0",
     "react-native": "0.81.5",
@@ -30,7 +29,9 @@
     "react-native-maps": "1.20.1",
     "react-native-safe-area-context": "~5.6.0",
     "react-native-screens": "~4.16.0",
-    "react-native-web": "^0.21.0"
+    "react-native-web": "^0.21.0",
+    "sentry-expo": "7.2.0",
+    "tslib": "^2.8.1"
   },
   "devDependencies": {
     "@babel/core": "^7.20.0",
