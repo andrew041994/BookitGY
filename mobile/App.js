@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useFocusEffect } from "@react-navigation/native";
 import { Text, View, StyleSheet, TextInput, Button, Alert, ActivityIndicator, ScrollView,
          TouchableOpacity, Switch, Linking, Platform, Image,  KeyboardAvoidingView,
@@ -2449,6 +2449,7 @@ function SearchScreen({
   const [bookingLoading, setBookingLoading] = useState(false);
   const [hasSearched, setHasSearched] = useState(false); // 👈 NEW
   const [refreshing, setRefreshing] = useState(false);
+  const hasAppliedSharedUsername = useRef(false);
 
   //Radius 
   const radiusOptions = [0, 5, 10, 15, 20, 25, 30, 40, 50, 75, 100];
@@ -2530,6 +2531,18 @@ function SearchScreen({
     setFilteredProviders([providerFromNav]);
     handleSelectProvider(providerFromNav);
   }, [route?.params?.provider, selectedProvider, handleSelectProvider]);
+
+  useEffect(() => {
+    const sharedUsername = route?.params?.sharedUsername;
+    if (!sharedUsername || hasAppliedSharedUsername.current) return;
+
+    const trimmedUsername = `${sharedUsername}`.trim();
+    if (!trimmedUsername) return;
+
+    hasAppliedSharedUsername.current = true;
+    setSearchQuery(trimmedUsername);
+    setHasSearched(true);
+  }, [route?.params?.sharedUsername]);
 
   // Add a useEffect that recomputes filteredProviders
   // whenever providers/search/radius/location changes:
@@ -2999,7 +3012,11 @@ function SearchScreen({
                           !providersError &&
                           hasSearched &&
                           filteredProviders.length === 0 && (
-                            <Text style={styles.serviceHint}>No providers found.</Text>
+                            <Text style={styles.errorText}>
+                              {route?.params?.sharedUsername
+                                ? "Provider not found."
+                                : "No providers found."}
+                            </Text>
                           )}
 
                         {/* Results */}
