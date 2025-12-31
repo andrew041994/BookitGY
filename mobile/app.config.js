@@ -23,6 +23,11 @@ export default {
     supportsTablet: true,
     bundleIdentifier: "com.bookitgy.app",
     buildNumber: "1",
+    privacyManifest: {
+      NSPrivacyAccessedAPITypes: [],
+      NSPrivacyCollectedDataTypes: [],
+      NSPrivacyTracking: false,
+    },
     associatedDomains: ["applinks:bookitgy.com", "applinks:www.bookitgy.com"],
     infoPlist: {
       NSLocationWhenInUseUsageDescription:
