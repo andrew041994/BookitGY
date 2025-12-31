@@ -3,7 +3,10 @@ import { useFocusEffect } from "@react-navigation/native";
 import { Text, View, StyleSheet, TextInput, Button, Alert, ActivityIndicator, ScrollView,
          TouchableOpacity, Switch, Linking, Platform, Image,  KeyboardAvoidingView,
          TouchableWithoutFeedback, Keyboard, RefreshControl,} from "react-native";
-import { NavigationContainer } from "@react-navigation/native";
+import {
+  NavigationContainer,
+  getStateFromPath as defaultGetStateFromPath,
+} from "@react-navigation/native";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import axios from "axios";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -16,6 +19,7 @@ import BookitGYLogo from "./assets/bookitgy-logo.png";
 import BookitGYLogoTransparent from "./assets/bookitgy-logo-transparent.png"
 import { Ionicons } from "@expo/vector-icons";
 import { SafeAreaProvider,SafeAreaView } from "react-native-safe-area-context";
+import ProviderPublicProfile from "./scr/components/ProviderPublicProfile";
 
 
 
@@ -30,9 +34,42 @@ import { SafeAreaProvider,SafeAreaView } from "react-native-safe-area-context";
 const API =
   Constants.expoConfig?.extra?.API_URL ||
   Constants.manifest?.extra?.API_URL ||
-  "https://bookitgy.onrender.com";  
-  
+  "https://bookitgy.onrender.com";
+
   console.log("### API base URL =", API);
+
+const RESERVED_USERNAME_PATHS = new Set([
+  "privacy",
+  "terms",
+  "confirmation",
+  "reset-password",
+  "admin",
+]);
+
+const linking = {
+  prefixes: ["https://bookitgy.com", "bookitgy://"],
+  config: {
+    screens: {
+      Home: "",
+      Search: "search",
+      Appointments: "appointments",
+      Profile: "profile",
+      Dashboard: "dashboard",
+      Billing: "billing",
+      ProviderPublicProfile: ":username",
+    },
+  },
+  getStateFromPath: (path, options) => {
+    const trimmed = path?.replace(/^\//, "") || "";
+    const firstSegment = trimmed.split("/")[0];
+
+    if (RESERVED_USERNAME_PATHS.has(firstSegment)) {
+      return defaultGetStateFromPath("/profile", options);
+    }
+
+    return defaultGetStateFromPath(path, options);
+  },
+};
 
   const isValidEmail = (value) => {
   const trimmed = value.trim();
@@ -5541,7 +5578,7 @@ function MainApp({ token, setToken, showFlash }) {
     refreshFavoriteProviders,
   } = useFavoriteProviders(token?.email || token?.userId);
   return (
-    <NavigationContainer>
+    <NavigationContainer linking={linking}>
       {token.isProvider ? (
         // 👇 Provider view: Dashboard + Billing + Profile
         <Tab.Navigator
@@ -5596,6 +5633,11 @@ function MainApp({ token, setToken, showFlash }) {
               />
             )}
           </Tab.Screen>
+          <Tab.Screen
+            name="ProviderPublicProfile"
+            component={ProviderPublicProfile}
+            options={{ tabBarButton: () => null, tabBarStyle: { display: "none" } }}
+          />
         </Tab.Navigator>
       ) : (
         // 👇 Client view: Profile + Search
@@ -5667,6 +5709,11 @@ function MainApp({ token, setToken, showFlash }) {
                 <ProfileScreen token={token} setToken={setToken} showFlash={showFlash} />
               )}
             </Tab.Screen>
+            <Tab.Screen
+              name="ProviderPublicProfile"
+              component={ProviderPublicProfile}
+              options={{ tabBarButton: () => null, tabBarStyle: { display: "none" } }}
+            />
           </Tab.Navigator>
 
 

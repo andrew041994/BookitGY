@@ -1,0 +1,153 @@
+import React, { useEffect, useMemo, useState } from "react";
+import { ActivityIndicator, Image, ScrollView, StyleSheet, Text, View } from "react-native";
+import axios from "axios";
+import Constants from "expo-constants";
+
+const API_BASE =
+  Constants.expoConfig?.extra?.API_URL ||
+  Constants.manifest?.extra?.API_URL ||
+  "https://bookitgy.onrender.com";
+
+const resolveImageUrl = (url) => {
+  if (!url || typeof url !== "string") return null;
+  if (url.startsWith("http")) return url;
+  if (url.startsWith("//")) return `https:${url}`;
+  const normalizedPath = url.startsWith("/") ? url : `/${url}`;
+  return `${API_BASE}${normalizedPath}`;
+};
+
+export default function ProviderPublicProfile({ route }) {
+  const username = route?.params?.username || "";
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [provider, setProvider] = useState(null);
+
+  const avatar = useMemo(() => resolveImageUrl(provider?.avatar || provider?.photo), [provider]);
+  const displayName = useMemo(
+    () => provider?.name || provider?.fullName || provider?.businessName || username,
+    [provider, username]
+  );
+
+  useEffect(() => {
+    let isActive = true;
+    const fetchProvider = async () => {
+      if (!username) {
+        setError("Missing provider username");
+        setLoading(false);
+        return;
+      }
+
+      try {
+        const res = await axios.get(
+          `${API_BASE}/public/providers/by-username/${encodeURIComponent(username)}`
+        );
+        if (!isActive) return;
+        setProvider(res.data?.provider || res.data);
+        setError(null);
+      } catch (err) {
+        if (!isActive) return;
+        const message =
+          err?.response?.data?.message ||
+          err?.response?.data?.detail ||
+          err?.message ||
+          "Unable to load provider profile.";
+        setError(message);
+      } finally {
+        if (isActive) setLoading(false);
+      }
+    };
+
+    fetchProvider();
+    return () => {
+      isActive = false;
+    };
+  }, [username]);
+
+  if (loading) {
+    return (
+      <View style={styles.center}>
+        <ActivityIndicator size="large" color="#0B6BF2" />
+        <Text style={styles.statusText}>Loading profile…</Text>
+      </View>
+    );
+  }
+
+  if (error) {
+    return (
+      <View style={styles.center}>
+        <Text style={styles.errorText}>{error}</Text>
+      </View>
+    );
+  }
+
+  return (
+    <ScrollView contentContainerStyle={styles.container}>
+      <View style={styles.avatarWrapper}>
+        {avatar ? (
+          <Image source={{ uri: avatar }} style={styles.avatar} />
+        ) : (
+          <View style={[styles.avatar, styles.avatarPlaceholder]}>
+            <Text style={styles.avatarInitial}>{displayName?.charAt(0)?.toUpperCase()}</Text>
+          </View>
+        )}
+      </View>
+      <Text style={styles.name}>{displayName}</Text>
+    </ScrollView>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: {
+    flexGrow: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 24,
+    backgroundColor: "#f8fafc",
+  },
+  center: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 24,
+    backgroundColor: "#f8fafc",
+  },
+  statusText: {
+    marginTop: 12,
+    color: "#334155",
+    fontSize: 16,
+  },
+  errorText: {
+    color: "#b91c1c",
+    fontSize: 16,
+    textAlign: "center",
+  },
+  avatarWrapper: {
+    width: 160,
+    height: 160,
+    borderRadius: 80,
+    backgroundColor: "#e2e8f0",
+    alignItems: "center",
+    justifyContent: "center",
+    overflow: "hidden",
+    marginBottom: 16,
+  },
+  avatar: {
+    width: "100%",
+    height: "100%",
+  },
+  avatarPlaceholder: {
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  avatarInitial: {
+    fontSize: 48,
+    color: "#0B6BF2",
+    fontWeight: "700",
+  },
+  name: {
+    fontSize: 24,
+    fontWeight: "700",
+    color: "#0f172a",
+    textAlign: "center",
+  },
+});
