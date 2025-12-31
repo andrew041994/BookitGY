@@ -1183,6 +1183,9 @@ function ProfileScreen({ setToken, showFlash, token }) {
   const providerProfileLink = providerUsername
     ? `https://bookitgy.com/${providerUsername}`
     : null;
+  const providerProfileLinkSimple = providerUsername
+    ? `bookitgy/${providerUsername}`
+    : null;
   const providerProfileLinkLabel =
     providerProfileLink || "Set a username to generate your link";
 
@@ -1341,11 +1344,22 @@ function ProfileScreen({ setToken, showFlash, token }) {
           <View style={{ marginBottom: 16 }}>
             <Text style={styles.label}>Profile link</Text>
             <View style={styles.profileLinkRow}>
-              <Text style={[styles.profileLinkText, { flex: 1 }]} numberOfLines={1}>
-                {providerProfileLinkLabel}
-              </Text>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.profileLinkText} numberOfLines={1}>
+                  {providerProfileLinkLabel}
+                </Text>
+                {providerProfileLinkSimple && (
+                  <Text style={styles.profileLinkSubtle} numberOfLines={1}>
+                    {providerProfileLinkSimple}
+                  </Text>
+                )}
+              </View>
               <TouchableOpacity
-                style={styles.profileLinkCopy}
+                style={[
+                  styles.profileLinkCopy,
+                  !providerProfileLink && styles.profileLinkCopyDisabled,
+                ]}
+                disabled={!providerProfileLink}
                 onPress={async () => {
                   try {
                     if (!providerProfileLink) {
@@ -3376,6 +3390,7 @@ const profileUsername = profile.username?.trim() || token?.username?.trim() || "
 const profileLink = profileUsername
   ? `https://bookitgy.com/${profileUsername}`
   : null;
+const profileLinkSimple = profileUsername ? `bookitgy/${profileUsername}` : null;
 const profileLinkLabel = profileLink || "Set a username to generate your link";
 
 const copyProfileLink = async (link) => {
@@ -4903,11 +4918,22 @@ const loadProviderSummary = async () => {
               </Text>
 
               <View style={styles.profileLinkRow}>
-                <Text style={styles.profileLinkText} numberOfLines={1}>
-                  {profileLinkLabel}
-                </Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.profileLinkText} numberOfLines={1}>
+                    {profileLinkLabel}
+                  </Text>
+                  {profileLinkSimple && (
+                    <Text style={styles.profileLinkSubtle} numberOfLines={1}>
+                      {profileLinkSimple}
+                    </Text>
+                  )}
+                </View>
                 <TouchableOpacity
-                  style={styles.profileLinkCopy}
+                  style={[
+                    styles.profileLinkCopy,
+                    !profileLink && styles.profileLinkCopyDisabled,
+                  ]}
+                  disabled={!profileLink}
                   onPress={() => copyProfileLink(profileLink)}
                 >
                   <Text style={styles.profileLinkCopyText}>Copy</Text>
@@ -6594,11 +6620,19 @@ mapContainer: {
     color: "#065F46",
     fontWeight: "600",
   },
+  profileLinkSubtle: {
+    fontSize: 12,
+    color: "#6B7280",
+    marginTop: 2,
+  },
   profileLinkCopy: {
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 8,
     backgroundColor: "#16A34A",
+  },
+  profileLinkCopyDisabled: {
+    backgroundColor: "#9CA3AF",
   },
   profileLinkCopyText: {
     color: "#fff",
