@@ -51,12 +51,13 @@ const linking = {
   config: {
     screens: {
       Home: "",
-      Search: "search",
+      Search: {
+        path: ["search", ":sharedUsername"],
+      },
       Appointments: "appointments",
       Profile: "profile",
       Dashboard: "dashboard",
       Billing: "billing",
-      ProviderPublicProfile: ":username",
     },
   },
   getStateFromPath: (path, options) => {
