@@ -16,11 +16,10 @@ import * as Notifications from "expo-notifications";
 import Constants from "expo-constants";
 import * as ImagePicker from "expo-image-picker";
 import * as Clipboard from "expo-clipboard";
-import BookitGYLogo from "./assets/bookitgy-logo.png";
 import BookitGYLogoTransparent from "./assets/bookitgy-logo-transparent.png"
 import { Ionicons } from "@expo/vector-icons";
 import { SafeAreaProvider,SafeAreaView } from "react-native-safe-area-context";
-import ProviderPublicProfile from "./scr/components/ProviderPublicProfile";
+import ProviderPublicProfile from "./src/components/ProviderPublicProfile";
 
 
 
