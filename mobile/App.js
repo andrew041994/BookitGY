@@ -283,7 +283,7 @@ async function registerForPushNotificationsAsync() {
     const tokenData = await Notifications.getExpoPushTokenAsync({ projectId });
     return tokenData.data;
   } catch (err) {
-    console.log("Error getting push token", err);
+    console.error("[LOGIN_NATIVE_CRASH_GUARD] Error getting push token", err);
     return null;
   }
 }
@@ -377,7 +377,18 @@ function LoginScreen({
       });
 
     // Try to register push token, but don't fail login if this breaks
-    await AsyncStorage.setItem("accessToken", res.data.access_token);
+    try {
+      await AsyncStorage.setItem("accessToken", res.data.access_token);
+    } catch (err) {
+      console.error(
+        "[LOGIN_NATIVE_CRASH_GUARD] Failed to persist access token",
+        err
+      );
+      Alert.alert(
+        "Save issue",
+        "We couldn't save your login securely. You'll stay logged in for now."
+      );
+    }
 
       // Try to register push token, but don't fail login if this breaks
       try {
@@ -394,7 +405,7 @@ function LoginScreen({
           );
         }
       } catch (err) {
-        console.log("Failed to register push token", err);
+        console.error("[LOGIN_NATIVE_CRASH_GUARD] Failed to register push token", err);
       }
    
 

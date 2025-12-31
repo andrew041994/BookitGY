@@ -1,208 +1,143 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
 diff --git a/mobile/App.js b/mobile/App.js
-index a1ded92da853104ec6fcf86696794268e8380246..47db761ec52357f77b8d74f0f1de3cdd686010c5 100644
+index 47db761ec52357f77b8d74f0f1de3cdd686010c5..4b639205e3cf04d9708b7998814689c07e0972e3 100644
 --- a/mobile/App.js
 +++ b/mobile/App.js
-@@ -1,26 +1,26 @@
--import React, { useState, useEffect, useCallback } from "react";
-+import React, { useState, useEffect, useCallback, useRef } from "react";
- import { useFocusEffect } from "@react-navigation/native";
- import { Text, View, StyleSheet, TextInput, Button, Alert, ActivityIndicator, ScrollView,
-          TouchableOpacity, Switch, Linking, Platform, Image,  KeyboardAvoidingView,
-          TouchableWithoutFeedback, Keyboard, RefreshControl,} from "react-native";
- import {
-   NavigationContainer,
-   getStateFromPath as defaultGetStateFromPath,
- } from "@react-navigation/native";
- import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
- import axios from "axios";
- import AsyncStorage from "@react-native-async-storage/async-storage";
- import * as Location from "expo-location";
- import * as Notifications from "expo-notifications";
- import Constants from "expo-constants";
- import * as ImagePicker from "expo-image-picker";
- import * as Clipboard from "expo-clipboard";
- import BookitGYLogo from "./assets/bookitgy-logo.png";
- import BookitGYLogoTransparent from "./assets/bookitgy-logo-transparent.png"
- import { Ionicons } from "@expo/vector-icons";
- import { SafeAreaProvider,SafeAreaView } from "react-native-safe-area-context";
- import ProviderPublicProfile from "./scr/components/ProviderPublicProfile";
+@@ -261,51 +261,51 @@ async function registerForPushNotificationsAsync() {
+     if (existingStatus !== "granted") {
+       const { status } = await Notifications.requestPermissionsAsync();
+       finalStatus = status;
+     }
  
- 
- 
- 
-@@ -2427,50 +2427,51 @@ function SearchScreen({
- 
-   const [filteredProviders, setFilteredProviders] = useState([]);
-   const [searchQuery, setSearchQuery] = useState("");
-   const [radiusKm, setRadiusKm] = useState(0); // 0 = any distance
-   const [clientLocation, setClientLocation] = useState(null);
-   const [locationError, setLocationError] = useState("");
-   const [providers, setProviders] = useState([]);
-   const [providersLoading, setProvidersLoading] = useState(true);
-   const [providersError, setProvidersError] = useState("");
-   const [selectedProvider, setSelectedProvider] = useState(null);
-   const [services, setServices] = useState([]);
-   const [servicesLoading, setServicesLoading] = useState(false);
-   const [servicesError, setServicesError] = useState("");
-   const [selectedService, setSelectedService] = useState(null);
-   const [catalogImages, setCatalogImages] = useState([]);
-   const [catalogLoading, setCatalogLoading] = useState(false);
-   const [catalogError, setCatalogError] = useState("");
-   const [availability, setAvailability] = useState([]);
-   const [availabilityLoading, setAvailabilityLoading] = useState(false);
-   const [availabilityError, setAvailabilityError] = useState("");
-   const [selectedDate, setSelectedDate] = useState(null);
-   const [selectedSlot, setSelectedSlot] = useState(null); // ISO string
-   const [bookingLoading, setBookingLoading] = useState(false);
-   const [hasSearched, setHasSearched] = useState(false); // 👈 NEW
-   const [refreshing, setRefreshing] = useState(false);
-+  const hasAppliedSharedUsername = useRef(false);
- 
-   //Radius 
-   const radiusOptions = [0, 5, 10, 15, 20, 25, 30, 40, 50, 75, 100];
- 
-   const haversineKm = (lat1, lon1, lat2, lon2) => {
-     if (
-       lat1 == null ||
-       lon1 == null ||
-       lat2 == null ||
-       lon2 == null
-     ) {
+     if (finalStatus !== "granted") {
+       console.log("Notification permissions not granted");
        return null;
      }
-     const toRad = (v) => (v * Math.PI) / 180;
-     const R = 6371; // km
-     const dLat = toRad(lat2 - lat1);
-     const dLon = toRad(lon2 - lon1);
-     const a =
-       Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-       Math.cos(toRad(lat1)) *
-         Math.cos(toRad(lat2)) *
-         Math.sin(dLon / 2) *
-         Math.sin(dLon / 2);
-     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-     return R * c;
-@@ -2509,50 +2510,62 @@ function SearchScreen({
-       return [];
-     } finally {
-       setProvidersLoading(false);
+ 
+     // Try to infer projectId from Constants (managed or dev client)
+     const projectId =
+       Constants?.expoConfig?.extra?.eas?.projectId ??
+       Constants?.easConfig?.projectId;
+ 
+     if (!projectId) {
+       console.log(
+         'No "projectId" found in Constants – skipping push token registration in this dev build.'
+       );
+       return null;
      }
-   }, [showFlash, syncFavoritesFromList]);
  
-   // Load providers on mount
-   useEffect(() => {
-     loadProviders();
-   }, [loadProviders]);
+     const tokenData = await Notifications.getExpoPushTokenAsync({ projectId });
+     return tokenData.data;
+   } catch (err) {
+-    console.log("Error getting push token", err);
++    console.error("[LOGIN_NATIVE_CRASH_GUARD] Error getting push token", err);
+     return null;
+   }
+ }
  
-   useEffect(() => {
-     const providerFromNav = route?.params?.provider;
-     if (!providerFromNav) return;
+   
  
-     const incomingId = getProviderId(providerFromNav);
-     const currentId = getProviderId(selectedProvider);
-     if (incomingId && incomingId === currentId) return;
  
-     setSearchQuery(providerFromNav.name || "");
-     setHasSearched(true);
-     setFilteredProviders([providerFromNav]);
-     handleSelectProvider(providerFromNav);
-   }, [route?.params?.provider, selectedProvider, handleSelectProvider]);
+ const Tab = createBottomTabNavigator();
  
-+  useEffect(() => {
-+    const sharedUsername = route?.params?.sharedUsername;
-+    if (!sharedUsername || hasAppliedSharedUsername.current) return;
-+
-+    const trimmedUsername = `${sharedUsername}`.trim();
-+    if (!trimmedUsername) return;
-+
-+    hasAppliedSharedUsername.current = true;
-+    setSearchQuery(trimmedUsername);
-+    setHasSearched(true);
-+  }, [route?.params?.sharedUsername]);
-+
-   // Add a useEffect that recomputes filteredProviders
-   // whenever providers/search/radius/location changes:
-   useEffect(() => {
-     // 👇 do nothing until the user actually searches or if the query is empty
-     const trimmedQuery = searchQuery.trim();
-     if (!hasSearched || !trimmedQuery) {
-       setFilteredProviders([]);
+ // 🔹 New landing/home screen shown BEFORE login
+ function LandingScreen({ goToLogin, goToSignup }) {
+   return (
+     <View style={styles.container}>
+      <View style={{ alignItems: "center", marginBottom: 40, marginTop: 60 }}>
+       <Image
+         source={BookitGYLogoTransparent}
+         style={{
+           width: 360,
+           height: 360,
+           resizeMode: "contain",
+           opacity: 0.96,
+         }}
+       />
+       </View>
+         <Text
+@@ -355,68 +355,79 @@ function LoginScreen({
+ 
+     if (!trimmedEmail || !isValidEmail(trimmedEmail)) {
+       if (showFlash) {
+         showFlash("error", "Please enter a valid email address");
+       } else {
+         Alert.alert("Error", "Please enter a valid email address");
+       }
        return;
-     }
+   }
  
-     const q = trimmedQuery.toLowerCase();
+   setLoading(true);
  
-     const providerList = Array.isArray(providers) ? providers : [];
-     const providerFromNav = route?.params?.provider;
-     const navProviderId = getProviderId(providerFromNav);
-     const navProviderName = (providerFromNav?.name || "").trim().toLowerCase();
+     try {
+       const body = new URLSearchParams({
+         username: normalizedEmail,
+         password: password,
+       }).toString();
  
-     // If we navigated in with a specific provider, keep the results scoped
-     // to that provider ID so namesakes don't appear.
-     if (
-       navProviderId &&
-       navProviderName &&
-       trimmedQuery.toLowerCase() === navProviderName
-     ) {
-       const exactMatch = providerList.find(
-@@ -2977,51 +2990,55 @@ function SearchScreen({
-                         {/* If user hasn't searched yet, show hint */}
-                         {!hasSearched && (
-                           <Text style={styles.serviceHint}>
-                             Type a profession and press enter to search.
-                           </Text>
-                         )}
+     const res = await axios.post(`${API}/auth/login`, body, {
+         headers: {
+           "Content-Type": "application/x-www-form-urlencoded",
+         },
+       });
  
-                         {/* Loading */}
-                         {providersLoading && hasSearched && (
-                           <View style={{ paddingVertical: 10 }}>
-                             <ActivityIndicator />
-                             <Text style={styles.serviceMeta}>Loading providers…</Text>
-                           </View>
-                         )}
+     // Try to register push token, but don't fail login if this breaks
+-    await AsyncStorage.setItem("accessToken", res.data.access_token);
++    try {
++      await AsyncStorage.setItem("accessToken", res.data.access_token);
++    } catch (err) {
++      console.error(
++        "[LOGIN_NATIVE_CRASH_GUARD] Failed to persist access token",
++        err
++      );
++      Alert.alert(
++        "Save issue",
++        "We couldn't save your login securely. You'll stay logged in for now."
++      );
++    }
  
-                         {/* Error */}
-                         {!providersLoading && providersError && hasSearched && (
-                           <Text style={styles.errorText}>{providersError}</Text>
-                         )}
+       // Try to register push token, but don't fail login if this breaks
+       try {
+         const expoPushToken = await registerForPushNotificationsAsync();
+         if (expoPushToken) {
+           await axios.put(
+             `${API}/users/me`,
+             { expo_push_token: expoPushToken },
+             {
+               headers: {
+                 Authorization: `Bearer ${res.data.access_token}`,
+               },
+             }
+           );
+         }
+       } catch (err) {
+-        console.log("Failed to register push token", err);
++        console.error("[LOGIN_NATIVE_CRASH_GUARD] Failed to register push token", err);
+       }
+    
  
-                         {/* No results */}
-                         {!providersLoading &&
-                           !providersError &&
-                           hasSearched &&
-                           filteredProviders.length === 0 && (
--                            <Text style={styles.serviceHint}>No providers found.</Text>
-+                            <Text style={styles.errorText}>
-+                              {route?.params?.sharedUsername
-+                                ? "Provider not found."
-+                                : "No providers found."}
-+                            </Text>
-                           )}
+     // Successful login
+       // Successful login
+       setToken({
+         token: res.data.access_token,
+         userId: res.data.user_id,
+         email: res.data.email,
+         isProvider: res.data.is_provider,
+         isAdmin: res.data.is_admin,
+       });
  
-                         {/* Results */}
-                         {!providersLoading &&
-                           !providersError &&
-                           hasSearched &&
-                           filteredProviders.length > 0 &&
-                           filteredProviders.map((p) => {
-                             const avatar = resolveImageUrl(
-                               p.avatar_url || p.profile_photo_url
-                             );
-                             const favorite = isFavorite(p);
-                     return (
-                               <TouchableOpacity
-                                 key={getProviderId(p) || p.name}
-                                 style={[
-                                   styles.serviceRow,
-                                   selectedProvider &&
-                                     getProviderId(selectedProvider) === getProviderId(p) && {
-                                       backgroundColor: "#ecfdf3",
-                                     },
-                                 ]}
-                                 onPress={() => handleSelectProvider(p)}
-                               >
-                                 <View
+       setIsAdmin(!!res.data.is_admin);
+ 
+     if (showFlash) {
+         showFlash("success", "Logged in successfully");
+       }
+     } catch (e) {
+       console.log("Login error:", e.response?.data || e.message);
+       if (showFlash) {
+         showFlash(
+           "error",
+           "Login failed: wrong email/password or server unreachable"
+         );
  
 EOF
 )
