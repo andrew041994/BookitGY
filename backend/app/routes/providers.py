@@ -26,6 +26,37 @@ cloudinary.config(
 
 router = APIRouter(tags=["providers"])
 
+
+@router.get(
+    "/public/providers/by-username/{username}",
+    response_model=schemas.PublicProviderOut,
+    status_code=status.HTTP_200_OK,
+)
+def get_public_provider_by_username(username: str, db: Session = Depends(get_db)):
+    """Return public provider information by username (case-insensitive)."""
+
+    user = crud.get_user_by_username(db, username)
+    if not user or not getattr(user, "is_provider", False):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Provider not found",
+        )
+
+    provider = crud.get_provider_by_user_id(db, user.id)
+    if not provider:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Provider not found",
+        )
+
+    return schemas.PublicProviderOut(
+        provider_id=provider.id,
+        username=user.username,
+        display_name=crud.get_display_name(user),
+        avatar_url=provider.avatar_url or user.avatar_url,
+        business_name=None,
+    )
+
 # -------------------------------------------------------------------
 # Avatar upload validation
 # -------------------------------------------------------------------

@@ -1,0 +1,62 @@
+from fastapi.testclient import TestClient
+
+
+def _build_client(session):
+    from app.main import app
+    from app.database import Base, engine, get_db
+
+    Base.metadata.create_all(bind=engine)
+
+    def _override_get_db():
+        try:
+            yield session
+        finally:
+            pass
+
+    app.dependency_overrides[get_db] = _override_get_db
+
+    return TestClient(app)
+
+
+def test_public_provider_lookup_by_username(db_session):
+    session, models, _ = db_session
+
+    user = models.User(username="DemoProvider", is_provider=True)
+    session.add(user)
+    session.commit()
+    session.refresh(user)
+
+    provider = models.Provider(
+        user_id=user.id,
+        account_number="ACC-LOOKUP-1",
+        avatar_url="https://example.com/avatar.png",
+    )
+    session.add(provider)
+    session.commit()
+    session.refresh(provider)
+
+    client = _build_client(session)
+    response = client.get("/public/providers/by-username/demoprovider")
+
+    assert response.status_code == 200
+    payload = response.json()
+
+    assert payload["provider_id"] == provider.id
+    assert payload["username"] == user.username
+    assert payload["display_name"] == user.username
+    assert payload["avatar_url"] == provider.avatar_url
+    assert payload["business_name"] is None
+
+
+def test_public_provider_lookup_rejects_non_provider(db_session):
+    session, models, _ = db_session
+
+    user = models.User(username="notaprovider", is_provider=False)
+    session.add(user)
+    session.commit()
+
+    client = _build_client(session)
+    response = client.get("/public/providers/by-username/notaprovider")
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Provider not found"

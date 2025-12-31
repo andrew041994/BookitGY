@@ -1,388 +1,72 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
-diff --git a/mobile/App.js b/mobile/App.js
-index 51cffc10a4129c300410076f837d79311bf96596..ce642b58f082bcf652b850e60d970b1777df5764 100644
---- a/mobile/App.js
-+++ b/mobile/App.js
-@@ -678,51 +678,50 @@ function SignupScreen({ goToLogin, goBack, showFlash }) {
-         username: trimmedUsername,
-         phone: trimmedPhone,          // plain phone as user entered
-         location: "Georgetown",
-         whatsapp: whatsappValue,      // normalized WhatsApp format
-         is_provider: isProvider,      // tell backend this is a provider
-       });
- 
-       if (showFlash) {
-         showFlash("success", "Account created! Please log in.");
-       } else {
-         Alert.alert("Success", "Account created! Now login");
-       }
- 
-       if (goToLogin) goToLogin();
-     } catch (e) {
-       console.log("Signup error:", e.response?.data || e.message);
-       const detail = e.response?.data?.detail || "Signup failed. Try again.";
-       if (showFlash) {
-         showFlash("error", detail);
-       } else {
-         Alert.alert("Error", detail);
-       }
-     }
-   };
- 
--
-   return (
-     <KeyboardAvoidingView
-       style={styles.avoider}
-       behavior={Platform.OS === "ios" ? "padding" : "height"}
-       keyboardVerticalOffset={Platform.OS === "ios" ? 40 : 0} // tweak if needed
- 
-     > 
-     <View style={styles.container}>
-       <Text style={styles.title}>Create Account</Text>
- 
-       {/* Username Field */}
-       <TextInput
-         style={styles.input}
-         placeholder="Username"
-         placeholderTextColor={styles.inputPlaceholder.color}
-         value={username}
-         onChangeText={setUsername}
-       />
- 
-       <TextInput
-         style={styles.input}
-         placeholder="Email"
-         placeholderTextColor={styles.inputPlaceholder.color}
-         value={email}
-         onChangeText={setEmail}
-@@ -788,94 +787,124 @@ function SignupScreen({ goToLogin, goBack, showFlash }) {
- }
- 
- 
- 
- // Placeholder screens so MainApp compiles — replace with your real ones
- function ProfileScreen({ setToken, showFlash, token }) {
-   const [user, setUser] = useState(null);
-   const [loading, setLoading] = useState(true);
-   const [error, setError] = useState("");
-    // NEW state for editing profile
-   const [showEdit, setShowEdit] = useState(false);
-   const [editSaving, setEditSaving] = useState(false);
-   const [editProfile, setEditProfile] = useState({
-     full_name: "",
-     phone: "",
-     whatsapp: "",
-     location: "",
-   });
-   // NEW state for "My bookings"
-   const [showBookings, setShowBookings] = useState(false);
-   const [bookings, setBookings] = useState([]);
-   const [bookingsLoading, setBookingsLoading] = useState(false);
-   const [bookingsError, setBookingsError] = useState("");
-   const [avatarUrl, setAvatarUrl] = useState(null);
-   const [refreshing, setRefreshing] = useState(false);
-+  const [isProviderUser, setIsProviderUser] = useState(null);
- 
- 
-   const uploadAvatar = async (uri) => {
--    try{
-+    try {
-       const token = await AsyncStorage.getItem("accessToken");
-       if (!token) {
-         alert("No access token found. Please log in again.");
-         return;
-       }
- 
-       const filename = uri.split("/").pop() || "avatar.jpg";
-       const match = /\.(\w+)$/.exec(filename);
-       const ext = match ? match[1] : "jpg";
-       const mimeType = ext === "png" ? "image/png" : "image/jpeg";
- 
-       const formData = new FormData();
-       formData.append("file", {
-         uri,
-         name: filename,
-         type: mimeType,
-       });
- 
--      const res = await axios.post(`${API}/users/me/avatar`, formData, {
-+      let isProvider = isProviderUser;
+diff --git a/backend/tests/test_public_provider_lookup.py b/backend/tests/test_public_provider_lookup.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..7031dd25621ec66c43fd770dda3320fafe0af6d9
+--- /dev/null
++++ b/backend/tests/test_public_provider_lookup.py
+@@ -0,0 +1,62 @@
++from fastapi.testclient import TestClient
 +
-+      if (typeof isProvider !== "boolean") {
-+        try {
-+          const meRes = await axios.get(`${API}/users/me`, {
-+            headers: {
-+              Authorization: `Bearer ${token}`,
-+            },
-+          });
 +
-+          if (typeof meRes.data?.is_provider === "boolean") {
-+            isProvider = meRes.data.is_provider;
-+            setIsProviderUser(isProvider);
-+          }
++def _build_client(session):
++    from app.main import app
++    from app.database import Base, engine, get_db
 +
-+          setUser((prev) => ({ ...(prev || {}), ...meRes.data }));
-+        } catch (fetchErr) {
-+          console.log(
-+            "Could not refresh user before avatar upload",
-+            fetchErr.response?.data || fetchErr.message
-+          );
-+        }
-+      }
++    Base.metadata.create_all(bind=engine)
 +
-+      const endpoint =
-+        isProvider === true
-+          ? `${API}/providers/me/avatar`
-+          : `${API}/users/me/avatar`;
++    def _override_get_db():
++        try:
++            yield session
++        finally:
++            pass
 +
-+      const res = await axios.post(endpoint, formData, {
-         headers: {
-           "Content-Type": "multipart/form-data",
-           Authorization: `Bearer ${token}`,
-         },
--        });
-+      });
- 
-       const newUrl = res.data.avatar_url;
- 
--        // update avatar in this screen
--        setAvatarUrl(newUrl);
--        setUser((prev) =>
--          prev ? { ...prev, avatar_url: newUrl } : prev
--        );
--      } catch (err) {
--        console.log(
--          "Avatar upload error:",
--          err.response?.data || err.message
--        );
--        alert("Failed to upload avatar. Please try again.");
--      }
--    };
-+      // update avatar in this screen and shared user state
-+      setAvatarUrl(newUrl);
-+      setUser((prev) =>
-+        prev ? { ...prev, avatar_url: newUrl } : { avatar_url: newUrl }
-+      );
-+    } catch (err) {
-+      console.log(
-+        "Avatar upload error:",
-+        err.response?.data || err.message
-+      );
-+      alert("Failed to upload avatar. Please try again.");
-+    }
-+  };
- 
-   const pickClientAvatar = async () => {
-     try {
-       const result = await ImagePicker.launchImageLibraryAsync({
-         // ✅ This is the safe, supported form in your setup
-         mediaTypes: ImagePicker.MediaTypeOptions.Images,
-         allowsEditing: true,
-         aspect: [1, 1],
-         quality: 1,
-       });
- 
-       if (result.canceled) {
-         return;
-       }
- 
-       const asset = result.assets && result.assets[0];
-       if (!asset || !asset.uri) {
-         return;
-       }
- 
-     await uploadAvatar(asset.uri);
-     } catch (err) {
-       console.log("Image picker error:", err);
-     }
-   };
-@@ -900,50 +929,53 @@ function ProfileScreen({ setToken, showFlash, token }) {
-   };
- 
-   const loadProfile = useCallback(
-     async (useRefresh = false) => {
-       try {
-         if (useRefresh) setRefreshing(true);
-         setLoading(true);
-         setError("");
- 
-         const tokenValue = await AsyncStorage.getItem("accessToken");
- 
-         if (!tokenValue) {
-           setError("No access token found. Please log in again.");
-           setLoading(false);
-           return;
-         }
- 
-         const headers = {
-           Authorization: `Bearer ${tokenValue}`,
-         };
- 
-         // 1) Load base user info
-         const res = await axios.get(`${API}/users/me`, { headers });
- 
-         setUser(res.data);
-+        if (typeof res.data.is_provider === "boolean") {
-+          setIsProviderUser(res.data.is_provider);
-+        }
-         setEditProfile({
-           full_name: res.data.full_name || "",
-           phone: res.data.phone || "",
-           whatsapp: res.data.whatsapp || "",
-           location: res.data.location || "",
-         });
- 
-         // 2) Try to get avatar
-         let avatar = res.data.avatar_url || null;
- 
-         // If this user is a provider, also check provider profile
-         if ((token && token.isProvider) || res.data.is_provider) {
-           try {
-             const provRes = await axios.get(
-               `${API}/providers/me/profile`,
-               { headers }
-             );
-             if (provRes.data.avatar_url) {
-               avatar = provRes.data.avatar_url;
-             }
-           } catch (err) {
-             console.log(
-               "Error loading provider avatar for profile",
-               err.response?.data || err.message
-             );
-@@ -1194,70 +1226,66 @@ function ProfileScreen({ setToken, showFlash, token }) {
-       ) {
-         const dest = `${booking.provider_lat},${booking.provider_long}`;
-         url = `https://www.google.com/maps/dir/?api=1&destination=${dest}`;
-       } else if (booking.provider_location) {
-         const q = encodeURIComponent(booking.provider_location);
-         url = `https://www.google.com/maps/search/?api=1&query=${q}`;
-       } else {
-         if (showFlash) {
-           showFlash(
-             "error",
-             "No location is available yet for this booking."
-           );
-         }
-         return;
-       }
- 
-       Linking.openURL(url);
-     } catch (err) {
-       console.log("Error opening maps", err);
-       if (showFlash) {
-         showFlash("error", "Could not open maps on this device.");
-       }
-     }
-   };
- 
--  
--
--
--
--
-+  const displayAvatarUrl = resolveImageUrl(avatarUrl || user?.avatar_url);
- 
-   return (
-     <ScrollView
-       contentContainerStyle={styles.profileScroll}
-       refreshControl={
-         <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-       }
-     >
-       <View style={styles.profileHeader}>
-         {/* Avatar */}
-         <View style={{ alignItems: "center", marginBottom: 16 }}>
-           <View style={styles.profileAvatarWrapper}>
--            {user?.avatar_url ? (
-+            {displayAvatarUrl ? (
-               <Image
--                source={{ uri: user.avatar_url }}
-+                source={{ uri: displayAvatarUrl }}
-                 style={{ width: "100%", height: "100%" }}
-                 resizeMode="cover"
-               />
-             ) : (
-               <View style={styles.profileAvatarFallback}>
-                 <Text style={styles.profileAvatarInitial}>
-                   {(user.full_name || user.email || "C").charAt(0).toUpperCase()}
-                 </Text>
-               </View>
-             )}
-           </View>
- 
-           <TouchableOpacity onPress={pickClientAvatar} style={{ marginTop: 8 }}>
-             <Text
-               style={{
-                 color: "#007AFF",
-                 fontWeight: "500",
-               }}
-             >
-               Change profile picture
-             </Text>
-           </TouchableOpacity>
-         </View>
- 
- 
-@@ -4315,56 +4343,52 @@ const loadProviderLocation = async () => {
-         lat: res.data.lat,
-         long: res.data.long,
-       });
-     }
-   } catch (err) {
-     console.log("Error loading provider location", err.response?.data || err.message);
-   }
- };
- 
- const loadProviderSummary = async () => {
-   try {
-     const res = await axios.get(`${API}/providers/me/summary`, {
-       headers: {
-         Authorization: `Bearer ${token.token}`,
-       },
-     });
-     setProviderSummary(res.data);
-   } catch (err) {
-     console.log(
-       "Error loading provider summary",
-       err.response?.data || err.message
-     );
-   }
- };
- 
--
--
--
--
--  return (    
--    <View style={{ flex: 1 }}> 
-+  return (
-+    <View style={{ flex: 1 }}>
-       <View style={{ alignItems: "center", marginBottom: 16 }}>
-         {avatarUrl ? (
-           <Image
-             source={{ uri: avatarUrl }}
-             style={{
-               width: 96,
-               height: 96,
-               borderRadius: 48,
-               marginBottom: 8,
-             }}
-           />
-         ) : (
-           <View
-             style={{
-               width: 96,
-               height: 96,
-               borderRadius: 48,
-               backgroundColor: "#ccc",
-               justifyContent: "center",
-               alignItems: "center",
-               marginBottom: 8,
-             }}
-           >
-             <Text style={{ fontSize: 32 }}>
-               {(profile.full_name || token?.email || "P")[0].toUpperCase()}
++    app.dependency_overrides[get_db] = _override_get_db
++
++    return TestClient(app)
++
++
++def test_public_provider_lookup_by_username(db_session):
++    session, models, _ = db_session
++
++    user = models.User(username="DemoProvider", is_provider=True)
++    session.add(user)
++    session.commit()
++    session.refresh(user)
++
++    provider = models.Provider(
++        user_id=user.id,
++        account_number="ACC-LOOKUP-1",
++        avatar_url="https://example.com/avatar.png",
++    )
++    session.add(provider)
++    session.commit()
++    session.refresh(provider)
++
++    client = _build_client(session)
++    response = client.get("/public/providers/by-username/demoprovider")
++
++    assert response.status_code == 200
++    payload = response.json()
++
++    assert payload["provider_id"] == provider.id
++    assert payload["username"] == user.username
++    assert payload["display_name"] == user.username
++    assert payload["avatar_url"] == provider.avatar_url
++    assert payload["business_name"] is None
++
++
++def test_public_provider_lookup_rejects_non_provider(db_session):
++    session, models, _ = db_session
++
++    user = models.User(username="notaprovider", is_provider=False)
++    session.add(user)
++    session.commit()
++
++    client = _build_client(session)
++    response = client.get("/public/providers/by-username/notaprovider")
++
++    assert response.status_code == 404
++    assert response.json()["detail"] == "Provider not found"
  
 EOF
 )

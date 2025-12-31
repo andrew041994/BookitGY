@@ -259,6 +259,14 @@ class ProviderAvailabilityDay(BaseModel):
     date: date            # YYYY-MM-DD
     slots: List[datetime]  # list of ISO datetimes (start times)
 
+
+class PublicProviderOut(BaseModel):
+    provider_id: int
+    username: str
+    display_name: str
+    avatar_url: Optional[str] = None
+    business_name: Optional[str] = None
+
 class UserProfileOut(BaseModel):
     full_name: str
     phone: str
