@@ -1,163 +1,475 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
-diff --git a/mobile/scr/components/ProviderPublicProfile.js b/mobile/scr/components/ProviderPublicProfile.js
-new file mode 100644
-index 0000000000000000000000000000000000000000..c8a11a5aafa8060e8c1b0bdf4ce03dd911cdc826
---- /dev/null
-+++ b/mobile/scr/components/ProviderPublicProfile.js
-@@ -0,0 +1,153 @@
-+import React, { useEffect, useMemo, useState } from "react";
-+import { ActivityIndicator, Image, ScrollView, StyleSheet, Text, View } from "react-native";
-+import axios from "axios";
-+import Constants from "expo-constants";
+diff --git a/mobile/App.js b/mobile/App.js
+index cdba1a7cc6854008896eac0e63f297543d2543e0..e7ce511e816b0552d2e1e450ced2cd0da2c77636 100644
+--- a/mobile/App.js
++++ b/mobile/App.js
+@@ -66,60 +66,50 @@ const linking = {
+     if (RESERVED_USERNAME_PATHS.has(firstSegment)) {
+       return defaultGetStateFromPath("/profile", options);
+     }
+ 
+     return defaultGetStateFromPath(path, options);
+   },
+ };
+ 
+   const isValidEmail = (value) => {
+   const trimmed = value.trim();
+   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+   return emailRegex.test(trimmed);
+ };
+ 
+   const resolveImageUrl = (url) => {
+     if (!url || typeof url !== "string") return null;
+     if (url.startsWith("http")) return url;
+     if (url.startsWith("//")) return `https:${url}`;
+     const normalizedPath = url.startsWith("/") ? url : `/${url}`;
+     return `${API}${normalizedPath}`;
+   };
+ 
+ const FAVORITES_STORAGE_KEY = (userKey) =>
+   userKey ? `favoriteProviders:${userKey}` : "favoriteProviders";
+ 
+-const slugifyHandle = (value) => {
+-  if (!value || typeof value !== "string") return "";
+-  const normalized = value
+-    .toLowerCase()
+-    .replace(/[^a-z0-9]+/g, "-")
+-    .replace(/^-+|-+$/g, "");
+-
+-  return normalized || "";
+-};
+-
+ const getProviderId = (provider) =>
+   provider?.provider_id ?? provider?.id ?? provider?._id ?? null;
+ 
+ function useFavoriteProviders(userKey) {
+   const storageKey = FAVORITES_STORAGE_KEY(userKey);
+   const [favoriteIds, setFavoriteIds] = useState([]);
+   const [favoriteProviders, setFavoriteProviders] = useState([]);
+   const [favoritesLoading, setFavoritesLoading] = useState(true);
+ 
+   const persistIds = useCallback(async (ids) => {
+     try {
+       await AsyncStorage.setItem(storageKey, JSON.stringify(ids));
+     } catch (err) {
+       console.log("Error saving favorites", err?.message || err);
+     }
+   }, [storageKey]);
+ 
+   const loadFavoritesFromStorage = useCallback(async () => {
+     try {
+       setFavoritesLoading(true);
+       const raw = await AsyncStorage.getItem(storageKey);
+       const parsed = raw ? JSON.parse(raw) : [];
+       setFavoriteIds(Array.isArray(parsed) ? parsed : []);
+     } catch (err) {
+       console.log("Error reading favorites", err?.message || err);
+@@ -1167,56 +1157,56 @@ function ProfileScreen({ setToken, showFlash, token }) {
+         <ActivityIndicator size="large" />
+         <Text style={styles.loadingText}>Loading profile…</Text>
+       </View>
+     );
+   }
+ 
+   if (error) {
+     return (
+       <View style={styles.center}>
+         <Text style={styles.errorText}>{error}</Text>
+       </View>
+     );
+   }
+ 
+   if (!user) {
+     return (
+       <View style={styles.center}>
+         <Text style={styles.errorText}>No user data.</Text>
+       </View>
+     );
+   }
+ 
+   const isAdmin = user.is_admin;
+   const isProvider = user.is_provider;
+   const role = isAdmin ? "Admin" : isProvider ? "Provider" : "Client";
+-  const profileHandleSource =
+-    user.full_name?.trim() ||
+-    (user.email ? user.email.split("@")[0] : "") ||
+-    "provider";
+-  const providerProfileLink =
+-    `https://bookitgy.com/${slugifyHandle(profileHandleSource) || "provider"}`;
++  const providerUsername = user?.username?.trim();
++  const providerProfileLink = providerUsername
++    ? `https://bookitgy.com/${providerUsername}`
++    : null;
++  const providerProfileLinkLabel =
++    providerProfileLink || "Set a username to generate your link";
+ 
+   const toggleMyBookings = async () => {
+     const next = !showBookings;
+     setShowBookings(next);
+     if (next) {
+       await loadMyBookings();
+     }
+   };
+ 
+   const handleClientCancelBooking = (bookingId) => {
+     Alert.alert(
+       "Cancel booking",
+       "Are you sure you want to cancel this booking?",
+       [
+         { text: "No", style: "cancel" },
+         {
+           text: "Yes, cancel",
+           style: "destructive",
+           onPress: async () => {
+             try {
+               const token = await AsyncStorage.getItem("accessToken");
+               if (!token) {
+                 if (showFlash)
+                   showFlash("error", "No access token found. Please log in.");
+                 return;
+@@ -1330,58 +1320,69 @@ function ProfileScreen({ setToken, showFlash, token }) {
+         <View style={{ flex: 1, marginLeft: 12 }}>
+           <Text style={styles.profileTitle}>
+             {user.full_name || "My Profile"}
+           </Text>
+           <View
+             style={[
+               styles.roleBadge,
+               isAdmin
+                 ? styles.roleBadgeAdmin
+                 : isProvider
+                 ? styles.roleBadgeProvider
+                 : styles.roleBadgeClient,
+             ]}
+           >
+             <Text style={styles.roleBadgeText}>{role}</Text>
+           </View>
+         </View>
+       </View>
+ 
+       <View style={styles.card}>
+         {isProvider && (
+           <View style={{ marginBottom: 16 }}>
+             <Text style={styles.label}>Profile link</Text>
+             <View style={styles.profileLinkRow}>
+               <Text style={[styles.profileLinkText, { flex: 1 }]} numberOfLines={1}>
+-                {providerProfileLink}
++                {providerProfileLinkLabel}
+               </Text>
+               <TouchableOpacity
+                 style={styles.profileLinkCopy}
+                 onPress={async () => {
+                   try {
++                    if (!providerProfileLink) {
++                      showFlash?.(
++                        "error",
++                        "Set a username to generate your link"
++                      );
++                      return;
++                    }
 +
-+const API_BASE =
-+  Constants.expoConfig?.extra?.API_URL ||
-+  Constants.manifest?.extra?.API_URL ||
-+  "https://bookitgy.onrender.com";
-+
-+const resolveImageUrl = (url) => {
-+  if (!url || typeof url !== "string") return null;
-+  if (url.startsWith("http")) return url;
-+  if (url.startsWith("//")) return `https:${url}`;
-+  const normalizedPath = url.startsWith("/") ? url : `/${url}`;
-+  return `${API_BASE}${normalizedPath}`;
-+};
-+
-+export default function ProviderPublicProfile({ route }) {
-+  const username = route?.params?.username || "";
-+  const [loading, setLoading] = useState(true);
-+  const [error, setError] = useState(null);
-+  const [provider, setProvider] = useState(null);
-+
-+  const avatar = useMemo(() => resolveImageUrl(provider?.avatar || provider?.photo), [provider]);
-+  const displayName = useMemo(
-+    () => provider?.name || provider?.fullName || provider?.businessName || username,
-+    [provider, username]
-+  );
-+
-+  useEffect(() => {
-+    let isActive = true;
-+    const fetchProvider = async () => {
-+      if (!username) {
-+        setError("Missing provider username");
-+        setLoading(false);
-+        return;
+                     await Clipboard.setStringAsync(providerProfileLink);
+-                    showFlash?.("success", "Profile link copied to clipboard");
++                    showFlash?.(
++                      "success",
++                      "Profile link copied to clipboard"
++                    );
+                   } catch (err) {
+                     console.log("Error copying profile link", err?.message || err);
+                     showFlash?.("error", "Could not copy profile link");
+                   }
+                 }}
+               >
+                 <Text style={styles.profileLinkCopyText}>Copy</Text>
+               </TouchableOpacity>
+             </View>
+           </View>
+         )}
+ 
+         <Text style={styles.label}>Email</Text>
+         <Text style={styles.value}>{user.email}</Text>
+ 
+         {user.phone && (
+           <>
+             <Text style={[styles.label, { marginTop: 16 }]}>Phone</Text>
+             <Text style={styles.value}>{user.phone}</Text>
+           </>
+         )}
+ 
+         {user.location && (
+           <>
+             <Text style={[styles.label, { marginTop: 16 }]}>Location</Text>
+@@ -3315,92 +3316,101 @@ function SearchScreen({
+ // }
+ 
+ function ProviderDashboardScreen({ token, showFlash }) {
+   // const providerLabel = profile?.full_name || "Provider";
+   const [services, setServices] = useState([]);
+   const [loading, setLoading] = useState(true);
+   const [servicesError, setServicesError] = useState("");
+   const [adding, setAdding] = useState(false);
+   const [newName, setNewName] = useState("");
+   const [newPrice, setNewPrice] = useState("");
+   const [newDuration, setNewDuration] = useState("30");
+   const [newDescription, setNewDescription] = useState("");
+   const [bookings, setBookings] = useState([]);
+   const [bookingsLoading, setBookingsLoading] = useState(true);
+   const [bookingsError, setBookingsError] = useState("");
+   const [workingHours, setWorkingHours] = useState([]);
+   const [hoursLoading, setHoursLoading] = useState(false);
+   const [hoursError, setHoursError] = useState("");
+   const [showHours, setShowHours] = useState(false);
+   const [hoursFlash, setHoursFlash] = useState(null);
+   const [refreshing, setRefreshing] = useState(false);
+   const [showProfileEditor, setShowProfileEditor] = useState(false);
+   const [profileLoading, setProfileLoading] = useState(false);
+   const [profileError, setProfileError] = useState("");
+   const [profile, setProfile] = useState({
+-  full_name: "",
+-  phone: "",
+-  whatsapp: "",
+-  location: "",
+-  bio: "",
+-  professions: [],
++    full_name: "",
++    phone: "",
++    whatsapp: "",
++    location: "",
++    bio: "",
++    professions: [],
++    username: "",
+   });
+   const [provider, setProvider] = useState(null);  // 👈 add this
+ 
+ 
+ const providerLabel =
+   (profile?.full_name && profile.full_name.trim()) ||
+   token?.email ||
+   "Provider";
+ 
+ 
+ const [customProfession, setCustomProfession] = useState("");
+ const [providerSummary, setProviderSummary] = useState(null);
+ const [todayBookings, setTodayBookings] = useState([]);
+ const [todayLoading, setTodayLoading] = useState(false);
+ const [todayError, setTodayError] = useState("");
+ const [upcomingBookings, setUpcomingBookings] = useState([]);
+ const [upcomingLoading, setUpcomingLoading] = useState(false);
+ const [upcomingError, setUpcomingError] = useState("");
+ const [providerLocation, setProviderLocation] = useState(null);
+ const [focusedHoursField, setFocusedHoursField] = useState(null);
+ const [avatarUrl, setAvatarUrl] = useState(null);
+ // Catalog (portfolio images)
+ const [catalog, setCatalog] = useState([]);
+ const [catalogLoading, setCatalogLoading] = useState(false);
+ const [catalogError, setCatalogError] = useState("");
+ const [catalogUploading, setCatalogUploading] = useState(false);
+ 
+-const profileHandleSource =
+-  profile.full_name ||
+-  (token?.email ? token.email.split("@")[0] : "") ||
+-  "";
+-const profileSlug = slugifyHandle(profileHandleSource) || "provider";
+-const profileLink = `https://bookitgy.com/${profileSlug}`;
++const profileUsername = profile.username?.trim() || token?.username?.trim() || "";
++const profileLink = profileUsername
++  ? `https://bookitgy.com/${profileUsername}`
++  : null;
++const profileLinkLabel = profileLink || "Set a username to generate your link";
+ 
+ const copyProfileLink = async (link) => {
+   try {
++    if (!link) {
++      if (showFlash) {
++        showFlash("error", "Set a username to generate your link");
++      } else {
++        Alert.alert("Unavailable", "Set a username to generate your link");
 +      }
++      return;
++    }
 +
-+      try {
-+        const res = await axios.get(
-+          `${API_BASE}/public/providers/by-username/${encodeURIComponent(username)}`
-+        );
-+        if (!isActive) return;
-+        setProvider(res.data?.provider || res.data);
-+        setError(null);
-+      } catch (err) {
-+        if (!isActive) return;
-+        const message =
-+          err?.response?.data?.message ||
-+          err?.response?.data?.detail ||
-+          err?.message ||
-+          "Unable to load provider profile.";
-+        setError(message);
-+      } finally {
-+        if (isActive) setLoading(false);
-+      }
-+    };
-+
-+    fetchProvider();
-+    return () => {
-+      isActive = false;
-+    };
-+  }, [username]);
-+
-+  if (loading) {
-+    return (
-+      <View style={styles.center}>
-+        <ActivityIndicator size="large" color="#0B6BF2" />
-+        <Text style={styles.statusText}>Loading profile…</Text>
-+      </View>
-+    );
-+  }
-+
-+  if (error) {
-+    return (
-+      <View style={styles.center}>
-+        <Text style={styles.errorText}>{error}</Text>
-+      </View>
-+    );
-+  }
-+
-+  return (
-+    <ScrollView contentContainerStyle={styles.container}>
-+      <View style={styles.avatarWrapper}>
-+        {avatar ? (
-+          <Image source={{ uri: avatar }} style={styles.avatar} />
-+        ) : (
-+          <View style={[styles.avatar, styles.avatarPlaceholder]}>
-+            <Text style={styles.avatarInitial}>{displayName?.charAt(0)?.toUpperCase()}</Text>
-+          </View>
-+        )}
-+      </View>
-+      <Text style={styles.name}>{displayName}</Text>
-+    </ScrollView>
-+  );
-+}
-+
-+const styles = StyleSheet.create({
-+  container: {
-+    flexGrow: 1,
-+    alignItems: "center",
-+    justifyContent: "center",
-+    padding: 24,
-+    backgroundColor: "#f8fafc",
-+  },
-+  center: {
-+    flex: 1,
-+    alignItems: "center",
-+    justifyContent: "center",
-+    padding: 24,
-+    backgroundColor: "#f8fafc",
-+  },
-+  statusText: {
-+    marginTop: 12,
-+    color: "#334155",
-+    fontSize: 16,
-+  },
-+  errorText: {
-+    color: "#b91c1c",
-+    fontSize: 16,
-+    textAlign: "center",
-+  },
-+  avatarWrapper: {
-+    width: 160,
-+    height: 160,
-+    borderRadius: 80,
-+    backgroundColor: "#e2e8f0",
-+    alignItems: "center",
-+    justifyContent: "center",
-+    overflow: "hidden",
-+    marginBottom: 16,
-+  },
-+  avatar: {
-+    width: "100%",
-+    height: "100%",
-+  },
-+  avatarPlaceholder: {
-+    alignItems: "center",
-+    justifyContent: "center",
-+  },
-+  avatarInitial: {
-+    fontSize: 48,
-+    color: "#0B6BF2",
-+    fontWeight: "700",
-+  },
-+  name: {
-+    fontSize: 24,
-+    fontWeight: "700",
-+    color: "#0f172a",
-+    textAlign: "center",
-+  },
-+});
+     await Clipboard.setStringAsync(link);
+     if (showFlash) {
+       showFlash("success", "Profile link copied to clipboard");
+     } else {
+       Alert.alert("Copied", "Profile link copied to clipboard");
+     }
+   } catch (err) {
+     console.log("Error copying profile link", err?.message || err);
+     if (showFlash) {
+       showFlash("error", "Could not copy profile link");
+     }
+   }
+ };
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+   useEffect(() => {
+     loadServices();
+     loadBookings();
+@@ -3951,50 +3961,51 @@ const to24Hour = (time12) => {
+ 
+ const loadProviderProfile = async () => {
+   try {
+     setProfileLoading(true);
+     setProfileError("");
+ 
+     const storedToken = await AsyncStorage.getItem("accessToken");
+     if (!storedToken) {
+       setProfileError("No access token found. Please log in again.");
+       return;
+     }
+ 
+     const res = await axios.get(`${API}/providers/me/profile`, {
+       headers: {
+         Authorization: `Bearer ${storedToken}`,
+       },
+     });
+ 
+       setProfile({
+         full_name: res.data.full_name || "",
+         phone: res.data.phone || "",
+         whatsapp: res.data.whatsapp || "",
+         location: res.data.location || "",
+         bio: res.data.bio || "",
+         professions: res.data.professions || [],
++        username: res.data.username || "",
+       });
+ 
+       setAvatarUrl(res.data.avatar_url || null);
+ 
+   } catch (err) {
+     console.log("Error loading provider profile", err.response?.data || err.message);
+     setProfileError("Could not load provider profile.");
+     if (showFlash) showFlash("error", "Could not load provider profile.");
+   } finally {
+     setProfileLoading(false);
+   }
+ };
+ 
+ const loadCatalog = async () => {
+   try {
+     setCatalogLoading(true);
+     setCatalogError("");
+ 
+     const storedToken = await AsyncStorage.getItem("accessToken");
+     if (!storedToken) {
+       setCatalogError("No access token found. Please log in again.");
+       return;
+     }
+ 
+     const res = await axios.get(`${API}/providers/me/catalog`, {
+@@ -4154,50 +4165,51 @@ const saveProviderProfile = async () => {
+       whatsapp: profile.whatsapp,
+       location: profile.location,
+       bio: profile.bio,
+       professions: profile.professions || [],
+     };
+ 
+     // ✅ Save provider profile to backend
+     const res = await axios.put(
+       `${API}/providers/me/profile`,
+       payload,
+       {
+         headers: {
+           Authorization: `Bearer ${storedToken}`,
+         },
+       }
+     );
+ 
+     // ✅ Update local state from server response so UI reflects what’s saved
+     setProfile({
+       full_name: res.data.full_name || "",
+       phone: res.data.phone || "",
+       whatsapp: res.data.whatsapp || "",
+       location: res.data.location || "",
+       bio: res.data.bio || "",
+       professions: res.data.professions || [],
++      username: res.data.username || "",
+     });
+ 
+     // ✅ Show success flash in the green bar
+     setHoursFlash({ type: "success", message: "Provider profile saved" });
+     setTimeout(() => setHoursFlash(null), 2000);
+ 
+     if (showFlash) showFlash("success", "Provider profile saved");
+   } catch (err) {
+     console.log("Error saving provider profile", err.response?.data || err.message);
+ 
+     setHoursFlash({ type: "error", message: "Provider profile not saved" });
+     setTimeout(() => setHoursFlash(null), 2000);
+ 
+     if (showFlash) {
+       const detail =
+         err.response?.data?.detail || "Could not save provider profile.";
+       showFlash("error", detail);
+     }
+   }
+ };
+ 
+ const pickAvatar = async () => {
+   try {
+     const result = await ImagePicker.launchImageLibraryAsync({
+       mediaTypes: ImagePicker.MediaTypeOptions.Images,
+@@ -4870,51 +4882,51 @@ const loadProviderSummary = async () => {
+               <Button
+                 title="Save working hours"
+                 onPress={saveWorkingHours}
+                 color="#16a34a"
+               />
+             </View>
+           </View>
+         )}
+ 
+         {/* Provider profile editor */}
+         {showProfileEditor && (
+           <View style={styles.card}>
+             <Text style={styles.sectionTitle}>Provider profile</Text>
+             <Text style={styles.hoursHelp}>
+               This is what clients will see on your public profile.
+             </Text>
+ 
+             <View style={styles.profileLinkBox}>
+               <Text style={styles.sectionTitle}>Profile link</Text>
+               <Text style={styles.hoursHelp}>
+                 Share this with clients so they can book you directly.
+               </Text>
+ 
+               <View style={styles.profileLinkRow}>
+                 <Text style={styles.profileLinkText} numberOfLines={1}>
+-                  {profileLink}
++                  {profileLinkLabel}
+                 </Text>
+                 <TouchableOpacity
+                   style={styles.profileLinkCopy}
+                   onPress={() => copyProfileLink(profileLink)}
+                 >
+                   <Text style={styles.profileLinkCopyText}>Copy</Text>
+                 </TouchableOpacity>
+               </View>
+             </View>
+ 
+             {profileLoading && (
+               <View style={{ paddingVertical: 10 }}>
+                 <ActivityIndicator />
+                 <Text style={styles.serviceMeta}>Loading profile…</Text>
+               </View>
+             )}
+ 
+             {profileError ? (
+               <Text style={styles.errorText}>{profileError}</Text>
+             ) : null}
+ 
+             {!profileLoading && (
+               <>
+                 <TextInput
+                   style={styles.input}
  
 EOF
 )

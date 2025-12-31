@@ -88,16 +88,6 @@ const linking = {
 const FAVORITES_STORAGE_KEY = (userKey) =>
   userKey ? `favoriteProviders:${userKey}` : "favoriteProviders";
 
-const slugifyHandle = (value) => {
-  if (!value || typeof value !== "string") return "";
-  const normalized = value
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
-
-  return normalized || "";
-};
-
 const getProviderId = (provider) =>
   provider?.provider_id ?? provider?.id ?? provider?._id ?? null;
 
@@ -1189,12 +1179,12 @@ function ProfileScreen({ setToken, showFlash, token }) {
   const isAdmin = user.is_admin;
   const isProvider = user.is_provider;
   const role = isAdmin ? "Admin" : isProvider ? "Provider" : "Client";
-  const profileHandleSource =
-    user.full_name?.trim() ||
-    (user.email ? user.email.split("@")[0] : "") ||
-    "provider";
-  const providerProfileLink =
-    `https://bookitgy.com/${slugifyHandle(profileHandleSource) || "provider"}`;
+  const providerUsername = user?.username?.trim();
+  const providerProfileLink = providerUsername
+    ? `https://bookitgy.com/${providerUsername}`
+    : null;
+  const providerProfileLinkLabel =
+    providerProfileLink || "Set a username to generate your link";
 
   const toggleMyBookings = async () => {
     const next = !showBookings;
@@ -1352,14 +1342,25 @@ function ProfileScreen({ setToken, showFlash, token }) {
             <Text style={styles.label}>Profile link</Text>
             <View style={styles.profileLinkRow}>
               <Text style={[styles.profileLinkText, { flex: 1 }]} numberOfLines={1}>
-                {providerProfileLink}
+                {providerProfileLinkLabel}
               </Text>
               <TouchableOpacity
                 style={styles.profileLinkCopy}
                 onPress={async () => {
                   try {
+                    if (!providerProfileLink) {
+                      showFlash?.(
+                        "error",
+                        "Set a username to generate your link"
+                      );
+                      return;
+                    }
+
                     await Clipboard.setStringAsync(providerProfileLink);
-                    showFlash?.("success", "Profile link copied to clipboard");
+                    showFlash?.(
+                      "success",
+                      "Profile link copied to clipboard"
+                    );
                   } catch (err) {
                     console.log("Error copying profile link", err?.message || err);
                     showFlash?.("error", "Could not copy profile link");
@@ -3337,12 +3338,13 @@ function ProviderDashboardScreen({ token, showFlash }) {
   const [profileLoading, setProfileLoading] = useState(false);
   const [profileError, setProfileError] = useState("");
   const [profile, setProfile] = useState({
-  full_name: "",
-  phone: "",
-  whatsapp: "",
-  location: "",
-  bio: "",
-  professions: [],
+    full_name: "",
+    phone: "",
+    whatsapp: "",
+    location: "",
+    bio: "",
+    professions: [],
+    username: "",
   });
   const [provider, setProvider] = useState(null);  // 👈 add this
 
@@ -3370,15 +3372,23 @@ const [catalogLoading, setCatalogLoading] = useState(false);
 const [catalogError, setCatalogError] = useState("");
 const [catalogUploading, setCatalogUploading] = useState(false);
 
-const profileHandleSource =
-  profile.full_name ||
-  (token?.email ? token.email.split("@")[0] : "") ||
-  "";
-const profileSlug = slugifyHandle(profileHandleSource) || "provider";
-const profileLink = `https://bookitgy.com/${profileSlug}`;
+const profileUsername = profile.username?.trim() || token?.username?.trim() || "";
+const profileLink = profileUsername
+  ? `https://bookitgy.com/${profileUsername}`
+  : null;
+const profileLinkLabel = profileLink || "Set a username to generate your link";
 
 const copyProfileLink = async (link) => {
   try {
+    if (!link) {
+      if (showFlash) {
+        showFlash("error", "Set a username to generate your link");
+      } else {
+        Alert.alert("Unavailable", "Set a username to generate your link");
+      }
+      return;
+    }
+
     await Clipboard.setStringAsync(link);
     if (showFlash) {
       showFlash("success", "Profile link copied to clipboard");
@@ -3973,6 +3983,7 @@ const loadProviderProfile = async () => {
         location: res.data.location || "",
         bio: res.data.bio || "",
         professions: res.data.professions || [],
+        username: res.data.username || "",
       });
 
       setAvatarUrl(res.data.avatar_url || null);
@@ -4176,6 +4187,7 @@ const saveProviderProfile = async () => {
       location: res.data.location || "",
       bio: res.data.bio || "",
       professions: res.data.professions || [],
+      username: res.data.username || "",
     });
 
     // ✅ Show success flash in the green bar
@@ -4892,7 +4904,7 @@ const loadProviderSummary = async () => {
 
               <View style={styles.profileLinkRow}>
                 <Text style={styles.profileLinkText} numberOfLines={1}>
-                  {profileLink}
+                  {profileLinkLabel}
                 </Text>
                 <TouchableOpacity
                   style={styles.profileLinkCopy}
