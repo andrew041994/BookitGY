@@ -6,35 +6,25 @@ require "json"
 podfile_properties_path = File.join(__dir__, "Podfile.properties.json")
 podfile_properties = JSON.parse(File.read(podfile_properties_path)) rescue {}
 
-def ccache_enabled?(podfile_properties)
-  # Environment variable takes precedence
-  return ENV["USE_CCACHE"] == "1" if ENV["USE_CCACHE"]
-  podfile_properties["apple.ccacheEnabled"] == "true"
-end
-
-# Keep behavior aligned with Podfile.properties.json
-ENV["RCT_NEW_ARCH_ENABLED"] ||= "0" if podfile_properties["newArchEnabled"] == "false"
-ENV["EX_DEV_CLIENT_NETWORK_INSPECTOR"] ||= podfile_properties["EX_DEV_CLIENT_NETWORK_INSPECTOR"]
-
+# Force a single minimum iOS version everywhere (Pods + app)
 platform :ios, "16.0"
 
-prepare_react_native_project!
+install! "cocoapods", :deterministic_uuids => false
 
-# Optional: allow frameworks linkage via Podfile.properties.json
-use_frameworks! :linkage => :static if podfile_properties["ios.useFrameworks"] == "static"
-use_frameworks! :linkage => :dynamic if podfile_properties["ios.useFrameworks"] == "dynamic"
+prepare_react_native_project!
 
 target "BookitGY" do
   use_expo_modules!
 
   config = use_native_modules!
 
-  # Hermes based on expo.jsEngine
-  hermes_enabled = (podfile_properties["expo.jsEngine"] == "hermes")
+  # Default to static linkage unless you explicitly need frameworks
+  use_frameworks! :linkage => :static if podfile_properties["ios.useFrameworks"] == "static"
+  use_frameworks! :linkage => :dynamic if podfile_properties["ios.useFrameworks"] == "dynamic"
 
   use_react_native!(
     :path => config[:reactNativePath],
-    :hermes_enabled => hermes_enabled,
+    :hermes_enabled => (podfile_properties["expo.jsEngine"] != "jsc"),
     :app_path => "#{Pod::Config.instance.installation_root}/.."
   )
 
@@ -42,21 +32,13 @@ target "BookitGY" do
     react_native_post_install(
       installer,
       config[:reactNativePath],
-      :mac_catalyst_enabled => false,
-      :ccache_enabled => ccache_enabled?(podfile_properties)
+      :mac_catalyst_enabled => false
     )
 
-    # ✅ Prevent duplicate PrivacyInfo.xcprivacy being copied from Pods into the app bundle
+    # Enforce iOS 16 deployment target for every pod target & config
     installer.pods_project.targets.each do |t|
-      next unless t.respond_to?(:resources_build_phase)
-
-      phase = t.resources_build_phase
-      next unless phase
-
-      phase.files.each do |f|
-        name = f.display_name
-        next unless name && name.end_with?("PrivacyInfo.xcprivacy")
-        f.remove_from_project
+      t.build_configurations.each do |bc|
+        bc.build_settings["IPHONEOS_DEPLOYMENT_TARGET"] = "16.0"
       end
     end
   end
