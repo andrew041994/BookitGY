@@ -1,9 +1,9 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
 diff --git a/mobile/App.js b/mobile/App.js
-index 8ce6eec424cdb940918c80daaeb270c2d2ec1669..af2fd2b26bbf0882cbdb4154a43c82a0c06a7805 100644
+index 8ce6eec424cdb940918c80daaeb270c2d2ec1669..b2e7da2e3a0e5a557617641ad037895c93d0169d 100644
 --- a/mobile/App.js
 +++ b/mobile/App.js
-@@ -559,50 +559,53 @@ function LoginScreen({
+@@ -559,50 +559,51 @@ function LoginScreen({
              }
            );
          }
@@ -29,9 +29,7 @@ index 8ce6eec424cdb940918c80daaeb270c2d2ec1669..af2fd2b26bbf0882cbdb4154a43c82a0
          isAdmin: parsedLogin.is_admin,
          username: parsedLogin.username,
        });
-+      console.log("[AUTH_BOOTSTRAP] token set from login", {
-+        isProvider: parsedLogin.is_provider,
-+      });
++      console.log("[AUTH] token present?", true);
  
        addBreadcrumb("navigation", "login:navigating_post_auth", {
          isProvider: parsedLogin.is_provider,
@@ -57,7 +55,106 @@ index 8ce6eec424cdb940918c80daaeb270c2d2ec1669..af2fd2b26bbf0882cbdb4154a43c82a0
        setLoading(false);
      }
    };
-@@ -6072,92 +6075,253 @@ function FlashMessage({ flash }) {
+@@ -5889,53 +5890,51 @@ function ProviderBillingScreen({ token, showFlash }) {
+                   -{formatMoney(bill.billCreditsApplied)}
+                 </Text>
+               </View>
+             <View style={styles.billingTotalsRow}>
+               <Text style={styles.billingTotalsLabel}>Total due</Text>
+               <Text style={styles.billingTotalsValue}>{formatMoney(bill.totalDue)}</Text>
+             </View>
+           </View>
+         ))}
+     </ScrollView>
+   );
+ }
+ 
+ 
+ // Tabs after login
+ function MainApp({ token, setToken, showFlash }) {
+    const {
+     favoriteIds,
+     favoriteProviders,
+     favoritesLoading,
+     toggleFavorite,
+     isFavorite,
+     syncFavoritesFromList,
+     refreshFavoriteProviders,
+   } = useFavoriteProviders(token?.email || token?.userId);
+-  return (
+-    <NavigationContainer linking={linking}>
+-      {token.isProvider ? (
++  return token.isProvider ? (
+         // 👇 Provider view: Dashboard + Billing + Profile
+         <Tab.Navigator
+           initialRouteName="Dashboard"
+           screenOptions={({ route }) => ({
+             headerShown: false,
+             tabBarShowLabel: true,
+             tabBarActiveTintColor: "#0B6BF2",
+             tabBarInactiveTintColor: "#A1A1A1",
+             tabBarStyle: {
+               backgroundColor: "#FFFFFF",
+               height: 70,
+               paddingBottom: 25,
+               paddingTop: 8,
+               borderTopWidth: 0,
+               shadowColor: "#000",
+               shadowOpacity: 0.05,
+               shadowRadius: 8,
+               elevation: 4,
+               marginBottom: Platform.OS === "android" ? 8 : 0,
+             },
+             tabBarIcon: ({ color }) => {
+               let iconName = "home-outline";
+ 
+               if (route.name === "Dashboard") iconName = "speedometer-outline";
+               else if (route.name === "Billing") iconName = "card-outline";
+@@ -6029,179 +6028,220 @@ function MainApp({ token, setToken, showFlash }) {
+                   showFlash={showFlash}
+                   navigation={navigation}
+                   route={route}
+                   toggleFavorite={toggleFavorite}
+                   isFavorite={isFavorite}
+                   syncFavoritesFromList={syncFavoritesFromList}
+                 />
+               )}
+             </Tab.Screen>
+             <Tab.Screen name="Appointments">
+               {() => <AppointmentsScreen token={token} showFlash={showFlash} />}
+             </Tab.Screen>
+             <Tab.Screen name="Profile">
+               {() => (
+                 <ProfileScreen token={token} setToken={setToken} showFlash={showFlash} />
+               )}
+             </Tab.Screen>
+             <Tab.Screen
+               name="ProviderPublicProfile"
+               component={ProviderPublicProfile}
+               options={{ tabBarButton: () => null, tabBarStyle: { display: "none" } }}
+             />
+           </Tab.Navigator>
+ 
+ 
+-      )}
+-    </NavigationContainer>
++      )
+   );
+ }
+ 
+ 
+ 
+ 
+ //Flash message component
+ 
+ function FlashMessage({ flash }) {
+   if (!flash || !flash.text) return null;
+ 
+   const isError = flash.type === "error";
+ 
+   const backgroundColor = isError ? "#fee2e2" : "#dcfce7"; // red / green
+   const borderColor = isError ? "#b91c1c" : "#16a34a";
+   const textColor = isError ? "#7f1d1d" : "#166534";
  
    return (
  
@@ -81,144 +178,46 @@ index 8ce6eec424cdb940918c80daaeb270c2d2ec1669..af2fd2b26bbf0882cbdb4154a43c82a0
    const [token, setToken] = useState(null);
    const [authMode, setAuthMode] = useState("landing"); // 'landing' | 'login' | 'signup' | 'forgot'
    const [isAdmin, setIsAdmin] = useState(false);
++  const [isBootstrapping, setIsBootstrapping] = useState(true);
  
    const [flash, setFlash] = useState(null);
-+  const [authLoading, setAuthLoading] = useState(true);
-+  const [authError, setAuthError] = useState(null);
-+  const lastBootstrappedTokenRef = useRef(null);
+ 
++  useEffect(() => {
++    const bootstrapAuth = async () => {
++      try {
++        const storedSecureToken = await loadToken();
++        let storedToken = storedSecureToken;
 +
-+  const logAuthState = (message, data = {}) => {
-+    console.log("[AUTH_BOOTSTRAP]", message, data);
-+  };
++        if (!storedToken) {
++          storedToken = await AsyncStorage.getItem("accessToken");
++        }
 +
-+  const runWithTimeout = useCallback((promise, timeoutMs = 10000) => {
-+    return new Promise((resolve, reject) => {
-+      const timer = setTimeout(() => {
-+        reject(new Error("bootstrap-timeout"));
-+      }, timeoutMs);
++        const resolvedToken =
++          typeof storedToken === "string"
++            ? storedToken
++            : storedToken?.token || storedToken?.access_token || storedToken?.accessToken;
 +
-+      promise
-+        .then((result) => {
-+          clearTimeout(timer);
-+          resolve(result);
-+        })
-+        .catch((err) => {
-+          clearTimeout(timer);
-+          reject(err);
-+        });
-+    });
++        const hasToken = !!resolvedToken;
++
++        if (hasToken) {
++          setToken((prev) => ({ ...prev, token: resolvedToken }));
++        }
++
++        console.log("[AUTH] token present?", hasToken);
++      } catch (err) {
++        console.log("[AUTH] bootstrap error", err?.message || err);
++      } finally {
++        setIsBootstrapping(false);
++      }
++    };
++
++    bootstrapAuth();
 +  }, []);
 +
-+  const bootstrapSession = useCallback(
-+    async (baseToken, source = "unknown") => {
-+      const authToken = baseToken?.token || baseToken;
-+      if (!authToken) {
-+        logAuthState("bootstrap:skipped", { reason: "no-token", source });
-+        setAuthLoading(false);
-+        return;
-+      }
-+
-+      if (lastBootstrappedTokenRef.current === authToken) {
-+        logAuthState("bootstrap:skipped", { reason: "duplicate", source });
-+        setAuthLoading(false);
-+        return;
-+      }
-+
-+      logAuthState("bootstrap:start", { source });
-+      setAuthLoading(true);
-+      setAuthError(null);
-+
-+      try {
-+        await runWithTimeout(
-+          (async () => {
-+            const res = await axios.get(`${API}/users/me`, {
-+              headers: { Authorization: `Bearer ${authToken}` },
-+            });
-+
-+            const profile = res?.data || {};
-+            const enrichedToken = {
-+              ...(typeof baseToken === "object" ? baseToken : {}),
-+              token: authToken,
-+              userId:
-+                baseToken?.userId ||
-+                profile.id ||
-+                profile._id ||
-+                profile.user_id ||
-+                profile.userId ||
-+                null,
-+              email: baseToken?.email || profile.email || null,
-+              isProvider:
-+                typeof baseToken?.isProvider === "boolean"
-+                  ? baseToken.isProvider
-+                  : !!profile.is_provider,
-+              isAdmin:
-+                typeof baseToken?.isAdmin === "boolean"
-+                  ? baseToken.isAdmin
-+                  : !!profile.is_admin,
-+              username: baseToken?.username || profile.username || null,
-+            };
-+
-+            setToken(enrichedToken);
-+            lastBootstrappedTokenRef.current = authToken;
-+            logAuthState("bootstrap:profile_loaded", {
-+              isProvider: enrichedToken.isProvider,
-+              hasUserId: !!enrichedToken.userId,
-+            });
-+          })(),
-+          10000
-+        );
-+      } catch (err) {
-+        logAuthState("bootstrap:error", { message: err?.message || err });
-+        setAuthError(err);
-+      } finally {
-+        setAuthLoading(false);
-+        logAuthState("bootstrap:complete", { source });
-+      }
-+    },
-+    [runWithTimeout]
-+  );
-+
 +  useEffect(() => {
-+    let cancelled = false;
-+    const hydrate = async () => {
-+      try {
-+        logAuthState("hydrate:start");
-+        const storedToken = await loadToken();
-+        logAuthState("hydrate:token", { hasStoredToken: !!storedToken });
++    console.log("[AUTH] token present?", !!token?.token);
++  }, [token]);
 +
-+        if (!cancelled && storedToken) {
-+          await bootstrapSession({ token: storedToken }, "storage");
-+        }
-+      } catch (err) {
-+        if (!cancelled) {
-+          setAuthError(err);
-+          logAuthState("hydrate:error", { message: err?.message || err });
-+        }
-+      } finally {
-+        if (!cancelled) {
-+          setAuthLoading(false);
-+          logAuthState("hydrate:complete");
-+        }
-+      }
-+    };
-+
-+    hydrate();
-+
-+    return () => {
-+      cancelled = true;
-+    };
-+  }, [bootstrapSession]);
-+
-+  useEffect(() => {
-+    if (!token?.token) return;
-+    bootstrapSession(token, "token-change");
-+  }, [bootstrapSession, token?.token]);
-+
-+  const retryBootstrap = useCallback(() => {
-+    logAuthState("bootstrap:retry");
-+    bootstrapSession(token || null, "manual-retry");
-+  }, [bootstrapSession, token]);
- 
    const formatFlashText = (text) => {
      if (typeof text === "string") return text;
      if (text == null) return "Something went wrong.";
@@ -260,57 +259,117 @@ index 8ce6eec424cdb940918c80daaeb270c2d2ec1669..af2fd2b26bbf0882cbdb4154a43c82a0
      }, 3000);
    };
  
-+  if (authLoading) {
-+    return (
-+      <SafeAreaProvider>
-+        <SafeAreaView style={styles.container}>
-+          <Text style={styles.title}>Loading…</Text>
-+          <Text style={styles.subtitleSmall}>Getting things ready.</Text>
-+        </SafeAreaView>
-+      </SafeAreaProvider>
-+    );
-+  }
-+
-+  if (authError) {
-+    const message = authError?.message || "We could not finish signing you in.";
-+    return (
-+      <SafeAreaProvider>
-+        <SafeAreaView style={styles.container}>
-+          <Text style={styles.title}>Something went wrong</Text>
-+          <Text style={styles.subtitleSmall}>{message}</Text>
-+          <View style={{ width: "100%", marginTop: 16 }}>
-+            <Button title="Retry" onPress={retryBootstrap} color="#16a34a" />
-+          </View>
-+        </SafeAreaView>
-+      </SafeAreaProvider>
-+    );
-+  }
-+
    return (
      <SafeAreaProvider>
        <AppErrorBoundary onReset={() => setToken(null)}>
          <SafeAreaView style={{ flex: 1 }} edges={["top", "bottom"]}>
            <FlashMessage flash={flash} />
++          <NavigationContainer linking={linking}>
++            {isBootstrapping ? (
++              <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
++                <ActivityIndicator size="large" color="#16a34a" />
++              </View>
++            ) : !token ? (
++              <>
++                {authMode === "landing" && (
++                  <LandingScreen
++                    goToLogin={() => setAuthMode("login")}
++                    goToSignup={() => setAuthMode("signup")}
++                  />
++                )}
  
-           {!token ? (
-             <>
-               {authMode === "landing" && (
-                 <LandingScreen
-                   goToLogin={() => setAuthMode("login")}
-                   goToSignup={() => setAuthMode("signup")}
-                 />
-               )}
+-          {!token ? (
+-            <>
+-              {authMode === "landing" && (
+-                <LandingScreen
+-                  goToLogin={() => setAuthMode("login")}
+-                  goToSignup={() => setAuthMode("signup")}
+-                />
+-              )}
+-
+-              {authMode === "login" && (
+-                <LoginScreen
+-                  setToken={setToken}
+-                  setIsAdmin={setIsAdmin}
+-                  goToSignup={() => setAuthMode("signup")}
+-                  goToForgot={() => setAuthMode("forgot")}
+-                  goBack={() => setAuthMode("landing")}
+-                  showFlash={showFlash}
+-                />
+-              )}
++                {authMode === "login" && (
++                  <LoginScreen
++                    setToken={setToken}
++                    setIsAdmin={setIsAdmin}
++                    goToSignup={() => setAuthMode("signup")}
++                    goToForgot={() => setAuthMode("forgot")}
++                    goBack={() => setAuthMode("landing")}
++                    showFlash={showFlash}
++                  />
++                )}
  
-               {authMode === "login" && (
-                 <LoginScreen
-                   setToken={setToken}
-                   setIsAdmin={setIsAdmin}
-                   goToSignup={() => setAuthMode("signup")}
-                   goToForgot={() => setAuthMode("forgot")}
-                   goBack={() => setAuthMode("landing")}
-                   showFlash={showFlash}
-                 />
-               )}
+-              {authMode === "signup" && (
+-                <SignupScreen
+-                  goToLogin={() => setAuthMode("login")}
+-                  goBack={() => setAuthMode("landing")}
+-                  showFlash={showFlash}
+-                />
+-              )}
+-              {authMode === "forgot" && (
+-                <ForgotPasswordScreen
+-                  goToLogin={() => setAuthMode("login")}
+-                  goBack={() => setAuthMode("landing")}
+-                  showFlash={showFlash}
+-                />
+-              )}
+-            </>
+-          ) : (
+-            <MainApp token={token} setToken={setToken} showFlash={showFlash} />
+-          )}
++                {authMode === "signup" && (
++                  <SignupScreen
++                    goToLogin={() => setAuthMode("login")}
++                    goBack={() => setAuthMode("landing")}
++                    showFlash={showFlash}
++                  />
++                )}
++                {authMode === "forgot" && (
++                  <ForgotPasswordScreen
++                    goToLogin={() => setAuthMode("login")}
++                    goBack={() => setAuthMode("landing")}
++                    showFlash={showFlash}
++                  />
++                )}
++              </>
++            ) : (
++              <MainApp token={token} setToken={setToken} showFlash={showFlash} />
++            )}
++          </NavigationContainer>
+         </SafeAreaView>
+       </AppErrorBoundary>
+     </SafeAreaProvider>
+   );
+ }
+ 
+ 
+ 
+ 
+ const styles = StyleSheet.create({
+   container: {
+     flex: 1,
+     backgroundColor: "#f0fdf4",
+     justifyContent: "center",
+     alignItems: "center",
+     padding: 20,
+   },
+   title: {
+     fontSize: 36,
+     fontWeight: "bold",
+     color: "#16a34a",
+     marginBottom: 20,
+   },
+   input: {
+     width: "100%",
  
 EOF
 )

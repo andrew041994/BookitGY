@@ -581,6 +581,7 @@ function LoginScreen({
         isAdmin: parsedLogin.is_admin,
         username: parsedLogin.username,
       });
+      console.log("[AUTH] token present?", true);
 
       addBreadcrumb("navigation", "login:navigating_post_auth", {
         isProvider: parsedLogin.is_provider,
@@ -5911,9 +5912,7 @@ function MainApp({ token, setToken, showFlash }) {
     syncFavoritesFromList,
     refreshFavoriteProviders,
   } = useFavoriteProviders(token?.email || token?.userId);
-  return (
-    <NavigationContainer linking={linking}>
-      {token.isProvider ? (
+  return token.isProvider ? (
         // 👇 Provider view: Dashboard + Billing + Profile
         <Tab.Navigator
           initialRouteName="Dashboard"
@@ -6051,8 +6050,7 @@ function MainApp({ token, setToken, showFlash }) {
           </Tab.Navigator>
 
 
-      )}
-    </NavigationContainer>
+      )
   );
 }
 
@@ -6092,8 +6090,45 @@ function App() {
   const [token, setToken] = useState(null);
   const [authMode, setAuthMode] = useState("landing"); // 'landing' | 'login' | 'signup' | 'forgot'
   const [isAdmin, setIsAdmin] = useState(false);
+  const [isBootstrapping, setIsBootstrapping] = useState(true);
 
   const [flash, setFlash] = useState(null);
+
+  useEffect(() => {
+    const bootstrapAuth = async () => {
+      try {
+        const storedSecureToken = await loadToken();
+        let storedToken = storedSecureToken;
+
+        if (!storedToken) {
+          storedToken = await AsyncStorage.getItem("accessToken");
+        }
+
+        const resolvedToken =
+          typeof storedToken === "string"
+            ? storedToken
+            : storedToken?.token || storedToken?.access_token || storedToken?.accessToken;
+
+        const hasToken = !!resolvedToken;
+
+        if (hasToken) {
+          setToken((prev) => ({ ...prev, token: resolvedToken }));
+        }
+
+        console.log("[AUTH] token present?", hasToken);
+      } catch (err) {
+        console.log("[AUTH] bootstrap error", err?.message || err);
+      } finally {
+        setIsBootstrapping(false);
+      }
+    };
+
+    bootstrapAuth();
+  }, []);
+
+  useEffect(() => {
+    console.log("[AUTH] token present?", !!token?.token);
+  }, [token]);
 
   const formatFlashText = (text) => {
     if (typeof text === "string") return text;
@@ -6141,45 +6176,50 @@ function App() {
       <AppErrorBoundary onReset={() => setToken(null)}>
         <SafeAreaView style={{ flex: 1 }} edges={["top", "bottom"]}>
           <FlashMessage flash={flash} />
+          <NavigationContainer linking={linking}>
+            {isBootstrapping ? (
+              <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
+                <ActivityIndicator size="large" color="#16a34a" />
+              </View>
+            ) : !token ? (
+              <>
+                {authMode === "landing" && (
+                  <LandingScreen
+                    goToLogin={() => setAuthMode("login")}
+                    goToSignup={() => setAuthMode("signup")}
+                  />
+                )}
 
-          {!token ? (
-            <>
-              {authMode === "landing" && (
-                <LandingScreen
-                  goToLogin={() => setAuthMode("login")}
-                  goToSignup={() => setAuthMode("signup")}
-                />
-              )}
+                {authMode === "login" && (
+                  <LoginScreen
+                    setToken={setToken}
+                    setIsAdmin={setIsAdmin}
+                    goToSignup={() => setAuthMode("signup")}
+                    goToForgot={() => setAuthMode("forgot")}
+                    goBack={() => setAuthMode("landing")}
+                    showFlash={showFlash}
+                  />
+                )}
 
-              {authMode === "login" && (
-                <LoginScreen
-                  setToken={setToken}
-                  setIsAdmin={setIsAdmin}
-                  goToSignup={() => setAuthMode("signup")}
-                  goToForgot={() => setAuthMode("forgot")}
-                  goBack={() => setAuthMode("landing")}
-                  showFlash={showFlash}
-                />
-              )}
-
-              {authMode === "signup" && (
-                <SignupScreen
-                  goToLogin={() => setAuthMode("login")}
-                  goBack={() => setAuthMode("landing")}
-                  showFlash={showFlash}
-                />
-              )}
-              {authMode === "forgot" && (
-                <ForgotPasswordScreen
-                  goToLogin={() => setAuthMode("login")}
-                  goBack={() => setAuthMode("landing")}
-                  showFlash={showFlash}
-                />
-              )}
-            </>
-          ) : (
-            <MainApp token={token} setToken={setToken} showFlash={showFlash} />
-          )}
+                {authMode === "signup" && (
+                  <SignupScreen
+                    goToLogin={() => setAuthMode("login")}
+                    goBack={() => setAuthMode("landing")}
+                    showFlash={showFlash}
+                  />
+                )}
+                {authMode === "forgot" && (
+                  <ForgotPasswordScreen
+                    goToLogin={() => setAuthMode("login")}
+                    goBack={() => setAuthMode("landing")}
+                    showFlash={showFlash}
+                  />
+                )}
+              </>
+            ) : (
+              <MainApp token={token} setToken={setToken} showFlash={showFlash} />
+            )}
+          </NavigationContainer>
         </SafeAreaView>
       </AppErrorBoundary>
     </SafeAreaProvider>
