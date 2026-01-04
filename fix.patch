@@ -1,314 +1,137 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
-diff --git a/mobile/App.js b/mobile/App.js
-index bd2bf52c05bfd49649438117d0890b63b4265aee..3ac7fec3dfd00a636c0076de0e7aec43971539ac 100644
---- a/mobile/App.js
-+++ b/mobile/App.js
-@@ -1,30 +1,47 @@
- import React, { useState, useEffect, useCallback, useRef } from "react";
- import { useFocusEffect } from "@react-navigation/native";
--import { Text, View, StyleSheet, TextInput, Button, Alert, ActivityIndicator, ScrollView,
--         TouchableOpacity, Switch, Linking, Platform, Image,  KeyboardAvoidingView,
--         TouchableWithoutFeedback, Keyboard, RefreshControl,} from "react-native";
-+import {
-+  Text,
-+  View,
-+  StyleSheet,
-+  TextInput,
-+  Button,
-+  Alert,
-+  ActivityIndicator,
-+  ScrollView,
-+  TouchableOpacity,
-+  Switch,
-+  Linking,
-+  Platform,
-+  Image,
-+  KeyboardAvoidingView,
-+  TouchableWithoutFeedback,
-+  Keyboard,
-+  RefreshControl,
-+  Share,
-+} from "react-native";
- import {
-   NavigationContainer,
-   getStateFromPath as defaultGetStateFromPath,
- } from "@react-navigation/native";
- import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
- import axios from "axios";
- import AsyncStorage from "@react-native-async-storage/async-storage";
- import { clearToken, loadToken, saveToken } from "./src/components/tokenStorage";
- import * as Location from "expo-location";
- import * as Notifications from "expo-notifications";
- import Constants from "expo-constants";
- import * as ImagePicker from "expo-image-picker";
- import * as Clipboard from "expo-clipboard";
- import BookitGYLogoTransparent from "./assets/bookitgy-logo-transparent.png"
- import { Ionicons } from "@expo/vector-icons";
- import { SafeAreaProvider,SafeAreaView } from "react-native-safe-area-context";
- import ProviderPublicProfile from "./src/components/ProviderPublicProfile";
- import * as Sentry from "sentry-expo";
- import { handleIncomingURL } from "./src/utils/deepLinking";
+diff --git a/mobile/plugins/strip-pods-privacyinfo.js b/mobile/plugins/strip-pods-privacyinfo.js
+index 5607cd20c070f6313fbdcb761b14dbf5ed7cf6e3..e3cff078adb3e1b0efcfd3eff1ec497b4829683f 100644
+--- a/mobile/plugins/strip-pods-privacyinfo.js
++++ b/mobile/plugins/strip-pods-privacyinfo.js
+@@ -1,37 +1,111 @@
+ const fs = require("fs");
+ const path = require("path");
+ const { withDangerousMod } = require("@expo/config-plugins");
  
- 
- 
- 
- 
- // import { API } from "./App"; // wherever you define your base URL
-@@ -32,51 +49,58 @@ import { handleIncomingURL } from "./src/utils/deepLinking";
- 
- 
- 
- 
- const API =
-   Constants.expoConfig?.extra?.API_URL ||
-   Constants.manifest?.extra?.API_URL ||
-   "https://bookitgy.onrender.com";
- 
-   console.log("### API base URL =", API);
- 
- const RESERVED_USERNAME_PATHS = new Set([
-   "privacy",
-   "terms",
-   "confirmation",
-   "reset-password",
-   "admin",
- ]);
- 
- const linking = {
-   prefixes: ["https://bookitgy.com", "https://www.bookitgy.com", "bookitgy://"],
-   config: {
-     screens: {
-       Home: "",
-       Search: {
--        path: ["search", "bookitgy/:username", ":username", ":sharedUsername"],
-+        path: [
-+          "search",
-+          "bookitgy/:username",
-+          ":username",
-+          ":sharedUsername",
-+          "p/:username",
-+          "p/:sharedUsername",
-+        ],
-       },
-       Appointments: "appointments",
-       Profile: "profile",
-       Dashboard: "dashboard",
-       Billing: "billing",
-     },
-   },
-   getStateFromPath: (path, options) => {
-     const trimmed = path?.replace(/^\//, "") || "";
-     const firstSegment = trimmed.split("/")[0];
- 
-     if (RESERVED_USERNAME_PATHS.has(firstSegment)) {
-       return defaultGetStateFromPath("/profile", options);
-     }
- 
-     return defaultGetStateFromPath(path, options);
-   },
-   async getInitialURL() {
-     const url = await Linking.getInitialURL();
-     return handleIncomingURL(url);
-   },
-   subscribe(listener) {
-     const onReceiveURL = ({ url }) => {
-       const safeUrl = handleIncomingURL(url);
-       if (safeUrl) listener(safeUrl);
-@@ -1202,54 +1226,54 @@ function ProfileScreen({ setToken, showFlash, token }) {
-       </View>
-     );
-   }
- 
-   if (error) {
-     return (
-       <View style={styles.center}>
-         <Text style={styles.errorText}>{error}</Text>
-       </View>
-     );
-   }
- 
-   if (!user) {
-     return (
-       <View style={styles.center}>
-         <Text style={styles.errorText}>No user data.</Text>
-       </View>
-     );
-   }
- 
-   const isAdmin = user.is_admin;
-   const isProvider = user.is_provider;
-   const role = isAdmin ? "Admin" : isProvider ? "Provider" : "Client";
-   const providerUsername = user?.username?.trim();
-   const providerProfileLink = providerUsername
--    ? `https://bookitgy.com/${providerUsername}`
-+    ? `https://bookitgy.com/p/${providerUsername}`
-     : null;
-   const providerProfileLinkSimple = providerUsername
--    ? `bookitgy/${providerUsername}`
-+    ? `bookitgy.com/p/${providerUsername}`
-     : null;
-   const providerProfileLinkLabel =
-     providerProfileLink || "Set a username to generate your link";
- 
-   const toggleMyBookings = async () => {
-     const next = !showBookings;
-     setShowBookings(next);
-     if (next) {
-       await loadMyBookings();
-     }
-   };
- 
-   const handleClientCancelBooking = (bookingId) => {
-     Alert.alert(
-       "Cancel booking",
-       "Are you sure you want to cancel this booking?",
-       [
-         { text: "No", style: "cancel" },
-         {
-           text: "Yes, cancel",
-           style: "destructive",
-           onPress: async () => {
-             try {
-               const token = await AsyncStorage.getItem("accessToken");
-               if (!token) {
-@@ -1404,50 +1428,83 @@ function ProfileScreen({ setToken, showFlash, token }) {
-                 ]}
-                 disabled={!providerProfileLink}
-                 onPress={async () => {
-                   try {
-                     if (!providerProfileLink) {
-                       showFlash?.(
-                         "error",
-                         "Set a username to generate your link"
-                       );
-                       return;
-                     }
- 
-                     await Clipboard.setStringAsync(providerProfileLink);
-                     showFlash?.(
-                       "success",
-                       "Profile link copied to clipboard"
-                     );
-                   } catch (err) {
-                     console.log("Error copying profile link", err?.message || err);
-                     showFlash?.("error", "Could not copy profile link");
-                   }
-                 }}
-               >
-                 <Text style={styles.profileLinkCopyText}>Copy</Text>
-               </TouchableOpacity>
-+              <TouchableOpacity
-+                style={[
-+                  styles.profileLinkCopy,
-+                  styles.profileLinkShare,
-+                  !providerProfileLink && styles.profileLinkCopyDisabled,
-+                ]}
-+                disabled={!providerProfileLink}
-+                onPress={async () => {
-+                  if (!providerProfileLink) {
-+                    showFlash?.(
-+                      "error",
-+                      "Set a username to generate your link"
-+                    );
-+                    return;
-+                  }
++function findProjectFile(iosDir) {
++  const entries = fs.readdirSync(iosDir, { withFileTypes: true });
++  for (const entry of entries) {
++    if (entry.isDirectory() && entry.name.endsWith(".xcodeproj")) {
++      const candidate = path.join(iosDir, entry.name, "project.pbxproj");
++      if (fs.existsSync(candidate)) return candidate;
++    }
++  }
++  return null;
++}
 +
-+                  try {
-+                    await Share.share({
-+                      message: providerProfileLink,
-+                      url: providerProfileLink,
-+                      title: "Book an appointment with me on BookitGY",
-+                    });
-+                  } catch (err) {
-+                    console.log(
-+                      "Error sharing profile link",
-+                      err?.message || err
-+                    );
-+                    showFlash?.("error", "Could not share profile link");
-+                  }
-+                }}
-+              >
-+                <Text style={styles.profileLinkCopyText}>Share</Text>
-+              </TouchableOpacity>
-             </View>
-           </View>
-         )}
++function collectPodPrivacyFileRefs(content) {
++  const fileRefs = new Set();
++  const fileRefRegex = /([A-F0-9]{24}) \/\* PrivacyInfo\.xcprivacy \*\/ = {[^}]*?};/g;
++  let match;
++
++  while ((match = fileRefRegex.exec(content))) {
++    const block = match[0];
++    const pathMatch = block.match(/path = ([^;]+);/);
++    const pathValue = pathMatch ? pathMatch[1].replace(/^"|"$/g, "") : "";
++    if (pathValue.toLowerCase().includes("pods")) {
++      fileRefs.add(match[1]);
++    }
++  }
++
++  return fileRefs;
++}
++
++function collectBuildFilesForRefs(content, fileRefs) {
++  const buildFiles = new Set();
++  for (const ref of fileRefs) {
++    const buildFilePattern = `([A-F0-9]{24}) /\\* PrivacyInfo\\.xcprivacy in Resources \\*/ = {[^}]*?fileRef = ${ref} /\\* PrivacyInfo\\.xcprivacy \\*/;[^}]*?};`;
++    const buildFileRegex = new RegExp(buildFilePattern, "g");
++    let match;
++    while ((match = buildFileRegex.exec(content))) {
++      buildFiles.add(match[1]);
++    }
++  }
++  return buildFiles;
++}
++
++function stripEntries(content, ids, label) {
++  for (const id of ids) {
++    const entryPattern = `\\n?\\s*${id} /\\*[^*]*${label}[^*]*\\*/ = {[^}]*?};\\n?`;
++    const entryRegex = new RegExp(entryPattern, "g");
++    content = content.replace(entryRegex, "\n");
++  }
++  return content;
++}
++
++function stripResourcesReferences(content, buildFiles) {
++  let removed = 0;
++  for (const id of buildFiles) {
++    const resourceRegex = new RegExp(
++      `\n?\s*${id} /\\* PrivacyInfo\\.xcprivacy in Resources \\*/,?\n`,
++      "g"
++    );
++    const matches = content.match(resourceRegex);
++    if (matches) {
++      removed += matches.length;
++      content = content.replace(resourceRegex, "\n");
++    }
++  }
++  return { content, removed };
++}
++
+ module.exports = function withStripPodsPrivacyInfo(config) {
+   return withDangerousMod(config, [
+     "ios",
+     async (config) => {
+       const iosDir = config.modRequest.platformProjectRoot;
+-      const podsDir = path.join(iosDir, "Pods", "Target Support Files");
++      const pbxprojPath = findProjectFile(iosDir);
  
-         <Text style={styles.label}>Email</Text>
-         <Text style={styles.value}>{user.email}</Text>
+-      if (!fs.existsSync(podsDir)) return config;
++      if (!pbxprojPath || !fs.existsSync(pbxprojPath)) return config;
  
-         {user.phone && (
-           <>
-             <Text style={[styles.label, { marginTop: 16 }]}>Phone</Text>
-             <Text style={styles.value}>{user.phone}</Text>
-           </>
-         )}
+-      for (const entry of fs.readdirSync(podsDir)) {
+-        const script = path.join(
+-          podsDir,
+-          entry,
+-          `${entry}-resources.sh`
+-        );
++      let original;
++      try {
++        original = fs.readFileSync(pbxprojPath, "utf8");
++      } catch (error) {
++        return config;
++      }
  
-         {user.location && (
-           <>
-             <Text style={[styles.label, { marginTop: 16 }]}>Location</Text>
-             <Text style={styles.value}>{user.location}</Text>
-           </>
-         )}
-       </View>
+-        if (!fs.existsSync(script)) continue;
++      const fileRefsToRemove = collectPodPrivacyFileRefs(original);
++      if (fileRefsToRemove.size === 0) return config;
  
-       {isAdmin && (
-         <View style={styles.adminBox}>
-           <Text style={styles.adminTitle}>Admin tools</Text>
-@@ -6718,50 +6775,53 @@ mapContainer: {
-     borderRadius: 8,
-     borderWidth: 1,
-     borderColor: "#E5E7EB",
-     paddingHorizontal: 12,
-     paddingVertical: 10,
-     marginTop: 8,
-     gap: 12,
-   },
-   profileLinkText: {
-     flex: 1,
-     fontSize: 14,
-     color: "#065F46",
-     fontWeight: "600",
-   },
-   profileLinkSubtle: {
-     fontSize: 12,
-     color: "#6B7280",
-     marginTop: 2,
-   },
-   profileLinkCopy: {
-     paddingHorizontal: 12,
-     paddingVertical: 6,
-     borderRadius: 8,
-     backgroundColor: "#16A34A",
-   },
-+  profileLinkShare: {
-+    backgroundColor: "#0B6BF2",
-+  },
-   profileLinkCopyDisabled: {
-     backgroundColor: "#9CA3AF",
-   },
-   profileLinkCopyText: {
-     color: "#fff",
-     fontWeight: "700",
-     fontSize: 13,
-   },
-   serviceRow: {
-     paddingVertical: 10,
-     paddingHorizontal: 8,
-     borderRadius: 8,
-     marginBottom: 8,
-     backgroundColor: "#F9FAFB",
-     flexDirection: "row",
-   },
-   serviceName: {
-     fontSize: 15,
-     fontWeight: "600",
-     color: "#111827",
-   },
-   serviceMeta: {
-     fontSize: 12,
-     color: "#6B7280",
-     marginTop: 2,
+-        const original = fs.readFileSync(script, "utf8");
+-        const filtered = original
+-          .split("\n")
+-          .filter(line => !line.includes("PrivacyInfo.xcprivacy"))
+-          .join("\n");
++      const buildFilesToRemove = collectBuildFilesForRefs(original, fileRefsToRemove);
+ 
+-        if (filtered !== original) {
+-          fs.writeFileSync(script, filtered);
+-        }
++      let updated = original;
++      updated = stripEntries(updated, buildFilesToRemove, "PrivacyInfo.xcprivacy in Resources");
++      updated = stripEntries(updated, fileRefsToRemove, "PrivacyInfo.xcprivacy");
++      const { content: cleanedContent, removed } = stripResourcesReferences(
++        updated,
++        buildFilesToRemove
++      );
++
++      if (cleanedContent !== original) {
++        fs.writeFileSync(pbxprojPath, cleanedContent);
+       }
+ 
++      console.log(
++        `Removed ${removed} PrivacyInfo.xcprivacy references from Copy Bundle Resources`
++      );
++
+       return config;
+     },
+   ]);
+ };
  
 EOF
 )
