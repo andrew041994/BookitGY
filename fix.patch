@@ -1,71 +1,85 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
-diff --git a/mobile/ios/Podfile b/mobile/ios/Podfile
-index bf337aed8c001c01500a208c83615c2d2db257d4..5c2d1d0a2894666fd15138c1a85cacc44e71c530 100644
---- a/mobile/ios/Podfile
-+++ b/mobile/ios/Podfile
-@@ -38,39 +38,54 @@ target 'BookitGY' do
+diff --git a/mobile/plugins/strip-pods-privacyinfo.js b/mobile/plugins/strip-pods-privacyinfo.js
+index 1fec004e58c72ddc51ae26f3276ee20785e50d09..98874ca947b33f831e6ff46a99ed73644f2e9d54 100644
+--- a/mobile/plugins/strip-pods-privacyinfo.js
++++ b/mobile/plugins/strip-pods-privacyinfo.js
+@@ -102,62 +102,70 @@ function processPbxproj(pbxprojPath) {
+   updated = buildFilesStrip.content;
  
- # @generated begin react-native-maps - expo prebuild (DO NOT MODIFY) sync-e9cc66c360abe50bc66d89fffb3c55b034d7d369
-   pod 'react-native-google-maps', path: File.dirname(`node --print "require.resolve('react-native-maps/package.json')"`)
- # @generated end react-native-maps
-   config = use_native_modules!(config_command)
+   const fileRefsStrip = stripEntries(updated, fileRefsToRemove, "PrivacyInfo.xcprivacy");
+   updated = fileRefsStrip.content;
  
-   use_frameworks! :linkage => podfile_properties['ios.useFrameworks'].to_sym if podfile_properties['ios.useFrameworks']
-   use_frameworks! :linkage => ENV['USE_FRAMEWORKS'].to_sym if ENV['USE_FRAMEWORKS']
+   const resourcesStrip = stripResourcesReferences(updated, buildFilesToRemove);
+   updated = resourcesStrip.content;
  
-   use_react_native!(
-     :path => config[:reactNativePath],
-     :hermes_enabled => podfile_properties['expo.jsEngine'] == nil || podfile_properties['expo.jsEngine'] == 'hermes',
-     # An absolute path to your application root.
-     :app_path => "#{Pod::Config.instance.installation_root}/..",
-     :privacy_file_aggregation_enabled => podfile_properties['apple.privacyManifestAggregationEnabled'] != 'false',
-   )
+   if (updated !== original) {
+     fs.writeFileSync(pbxprojPath, updated);
+   }
  
-   post_install do |installer|
-     react_native_post_install(
-       installer,
-       config[:reactNativePath],
-       :mac_catalyst_enabled => false,
-       :ccache_enabled => ccache_enabled?(podfile_properties),
-     )
-     # BOOKITGY_PRIVACYINFO_STRIP
--    scripts = Dir.glob(File.join(__dir__, "Pods", "Target Support Files", "Pods-*", "Pods-*-resources.sh"))
-+    pods_project = installer.pods_project
-+    removed = 0
+   const totalRemoved = buildFilesStrip.removed + fileRefsStrip.removed + resourcesStrip.removed;
+   console.log(
+     `[strip-pods-privacyinfo] Removed ${totalRemoved} PrivacyInfo.xcprivacy references from ${path.relative(
+       process.cwd(),
+       pbxprojPath
+     )}`
+   );
+ }
  
--    scripts.each do |script|
--      next unless File.exist?(script)
--      content = File.read(script)
--      next unless content.include?("PrivacyInfo.xcprivacy")
-+    pods_project.targets.each do |t|
-+      # PBXAggregateTarget and others may not have resources build phase
-+      next unless t.respond_to?(:resources_build_phase)
+ function buildPodfileSnippet(indent) {
+   const lines = [
+     `${indent}${PODFILE_MARKER}`,
+     `${indent}pods_project = installer.pods_project`,
+-    "",
+     `${indent}removed = 0`,
++    "",
+     `${indent}pods_project.targets.each do |t|`,
++    `${indent}  # PBXAggregateTarget and others may not have resources build phase`,
++    `${indent}  next unless t.respond_to?(:resources_build_phase)`,
++    "",
+     `${indent}  phase = t.resources_build_phase`,
+-    `${indent}  next unless phase && phase.files`,
++    `${indent}  next unless phase && phase.respond_to?(:files) && phase.files`,
+     "",
+     `${indent}  phase.files.to_a.each do |bf|`,
+-    `${indent}    ref = bf.file_ref`,
+-    `${indent}    next unless ref && ref.path`,
+-    `${indent}    next unless ref.path.end_with?("PrivacyInfo.xcprivacy")`,
++    `${indent}    ref = bf.respond_to?(:file_ref) ? bf.file_ref : nil`,
++    `${indent}    ref_path = ref && ref.respond_to?(:path) ? ref.path : nil`,
++    `${indent}    next unless ref_path && ref_path.end_with?("PrivacyInfo.xcprivacy")`,
+     "",
+-    `${indent}    phase.remove_build_file(bf)`,
++    `${indent}    # remove build file safely`,
++    `${indent}    if phase.respond_to?(:remove_build_file)`,
++    `${indent}      phase.remove_build_file(bf)`,
++    `${indent}    else`,
++    `${indent}      phase.files.delete(bf)`,
++    `${indent}    end`,
+     `${indent}    removed += 1`,
+     `${indent}  end`,
+     `${indent}end`,
+     "",
+     `${indent}pods_project.save`,
+     `${indent}puts "[BookitGY] Removed #{removed} PrivacyInfo.xcprivacy resource refs from Pods project"`,
+     "",
+   ];
  
--      filtered = content.lines.reject { |line| line.include?("PrivacyInfo.xcprivacy") }.join
--      File.write(script, filtered)
-+      phase = t.resources_build_phase
-+      next unless phase && phase.respond_to?(:files) && phase.files
+   return lines.join("\n");
+ }
  
--      puts "[BookitGY] Stripped PrivacyInfo.xcprivacy from #{script}"
-+      phase.files.to_a.each do |bf|
-+        ref = bf.respond_to?(:file_ref) ? bf.file_ref : nil
-+        ref_path = ref && ref.respond_to?(:path) ? ref.path : nil
-+        next unless ref_path && ref_path.end_with?("PrivacyInfo.xcprivacy")
-+
-+        # remove build file safely
-+        if phase.respond_to?(:remove_build_file)
-+          phase.remove_build_file(bf)
-+        else
-+          phase.files.delete(bf)
-+        end
-+        removed += 1
-+      end
-     end
-+
-+    pods_project.save
-+    puts "[BookitGY] Removed #{removed} PrivacyInfo.xcprivacy resource refs from Pods project"
-   end
- end
+ function findPostInstallEnd(content, startIndex) {
+   const remainder = content.slice(startIndex);
+   const lines = remainder.split("\n");
+   let depth = 0;
+   let position = startIndex;
+ 
+   for (const line of lines) {
+     const lineStart = position;
+     const doCount = (line.match(/\bdo\b/g) || []).length;
+     const endCount = (line.match(/\bend\b/g) || []).length;
+ 
+     depth += doCount;
+     depth -= endCount;
  
 EOF
 )

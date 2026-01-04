@@ -61,18 +61,26 @@ target 'BookitGY' do
     )
     # BOOKITGY_PRIVACYINFO_STRIP
     pods_project = installer.pods_project
-
     removed = 0
+
     pods_project.targets.each do |t|
+      # PBXAggregateTarget and others may not have resources build phase
+      next unless t.respond_to?(:resources_build_phase)
+
       phase = t.resources_build_phase
-      next unless phase && phase.files
+      next unless phase && phase.respond_to?(:files) && phase.files
 
       phase.files.to_a.each do |bf|
-        ref = bf.file_ref
-        next unless ref && ref.path
-        next unless ref.path.end_with?("PrivacyInfo.xcprivacy")
+        ref = bf.respond_to?(:file_ref) ? bf.file_ref : nil
+        ref_path = ref && ref.respond_to?(:path) ? ref.path : nil
+        next unless ref_path && ref_path.end_with?("PrivacyInfo.xcprivacy")
 
-        phase.remove_build_file(bf)
+        # remove build file safely
+        if phase.respond_to?(:remove_build_file)
+          phase.remove_build_file(bf)
+        else
+          phase.files.delete(bf)
+        end
         removed += 1
       end
     end
