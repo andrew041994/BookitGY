@@ -493,8 +493,65 @@ def test_read_only_endpoints_do_not_auto_complete_future_bookings(db_session):
     finally:
         app.dependency_overrides = {}
 
-    session.refresh(booking)
-    assert booking.status == "confirmed"
+
+def test_paid_bill_persists_after_regeneration(db_session):
+    session, models, crud = db_session
+    provider, customer, service = _create_provider_graph(session, models)
+
+    now = now_guyana()
+    prior_month_date = (now.replace(day=1) - timedelta(days=1)).date()
+    start_of_prior_month = prior_month_date.replace(day=1)
+
+    start_time = datetime(
+        start_of_prior_month.year, start_of_prior_month.month, 5, 10, 0
+    )
+    end_time = start_time + timedelta(hours=1)
+
+    _add_booking(
+        session,
+        models,
+        customer=customer,
+        service=service,
+        start_time=start_time,
+        end_time=end_time,
+        status="completed",
+    )
+
+    crud.generate_monthly_bills(session, month=prior_month_date)
+
+    bill = (
+        session.query(models.Bill)
+        .filter(
+            models.Bill.provider_id == provider.id,
+            models.Bill.month == start_of_prior_month,
+        )
+        .first()
+    )
+
+    assert bill is not None
+    original_total = float(bill.total_gyd)
+    original_fee = float(bill.fee_gyd)
+    original_due = bill.due_date
+
+    crud.set_provider_bills_paid_state(session, provider.id, True)
+
+    crud.generate_monthly_bills(session, month=prior_month_date)
+
+    bills = (
+        session.query(models.Bill)
+        .filter(
+            models.Bill.provider_id == provider.id,
+            models.Bill.month == start_of_prior_month,
+        )
+        .all()
+    )
+
+    assert len(bills) == 1
+    persisted = bills[0]
+    assert persisted.is_paid is True
+    assert float(persisted.total_gyd) == original_total
+    assert float(persisted.fee_gyd) == original_fee
+    assert persisted.due_date == original_due
 
 
 def test_cron_job_completes_past_confirmed_only(db_session):

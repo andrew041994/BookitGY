@@ -180,6 +180,18 @@ class BillingStatusUpdate(BaseModel):
     is_paid: bool
 
 
+class BillOut(BaseModel):
+    id: int
+    month: date
+    total_gyd: float
+    fee_gyd: float
+    due_date: Optional[datetime] = None
+    is_paid: bool
+
+    class Config:
+        from_attributes = True
+
+
 class ProviderLockUpdate(BaseModel):
     is_locked: bool
 

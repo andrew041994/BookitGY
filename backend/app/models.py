@@ -11,6 +11,7 @@ from sqlalchemy import (
     Numeric,
     Enum,
     literal,
+    UniqueConstraint,
 )
 
 from .database import Base
@@ -102,6 +103,9 @@ class Booking(Base):
 
 class Bill(Base):
     __tablename__ = "bills"
+    __table_args__ = (
+        UniqueConstraint("provider_id", "month", name="uq_bills_provider_month"),
+    )
     id = Column(Integer, primary_key=True, index=True)
     provider_id = Column(Integer, ForeignKey("providers.id"))
     month = Column(Date)  # first day of the month

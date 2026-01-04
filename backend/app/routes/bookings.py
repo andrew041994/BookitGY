@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Optional, List
 
 from fastapi import APIRouter, Depends, HTTPException, Header
 from sqlalchemy.orm import Session
@@ -76,6 +76,16 @@ def list_provider_billable_bookings(
     provider: models.Provider = Depends(_require_current_provider),
 ):
     return crud.get_billable_bookings_for_provider(db, provider.id)
+
+
+@router.get(
+    "/providers/me/billing/history", response_model=List[schemas.BillOut]
+)
+def list_provider_billing_history(
+    db: Session = Depends(get_db),
+    provider: models.Provider = Depends(_require_current_provider),
+):
+    return crud.list_bills_for_provider(db, provider.id)
 
 
 @router.post("/providers/me/bookings/{booking_id}/confirm")

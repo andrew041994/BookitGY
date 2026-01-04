@@ -894,9 +894,15 @@ def generate_monthly_bills(db: Session, month: date):
     db.commit()
 
 
+def list_bills_for_provider(db: Session, provider_id: int):
+    """Return persisted monthly bills for a provider (newest first)."""
 
-
-
+    return (
+        db.query(models.Bill)
+        .filter(models.Bill.provider_id == provider_id)
+        .order_by(models.Bill.month.desc())
+        .all()
+    )
 
 
 def _calculate_bill_total_due(db: Session, bill: models.Bill, provider_id: int) -> float:
