@@ -6051,8 +6051,7 @@ function MainApp({ token, setToken, showFlash }) {
 
 
       )
-  );
-}
+  }
 
 
 
