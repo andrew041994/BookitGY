@@ -52,28 +52,25 @@ target 'BookitGY' do
     :privacy_file_aggregation_enabled => podfile_properties['apple.privacyManifestAggregationEnabled'] != 'false',
   )
 
-  post_install do |installer|
-    react_native_post_install(
-      installer,
-      config[:reactNativePath],
-      :mac_catalyst_enabled => false,
-      :ccache_enabled => ccache_enabled?(podfile_properties),
-    )
+ post_install do |installer|
+  react_native_post_install(
+    installer,
+    config[:reactNativePath],
+    :mac_catalyst_enabled => false,
+    :ccache_enabled => ccache_enabled?(podfile_properties),
+  )
+
+  # ✅ Prevent duplicate PrivacyInfo.xcprivacy being copied from Pods into the app bundle
+  installer.pods_project.targets.each do |t|
+    phase = t.resources_build_phase
+    next unless phase
+
+    phase.files.each do |f|
+      name = f.display_name
+      next unless name && name.end_with?("PrivacyInfo.xcprivacy")
+      f.remove_from_project
+    end
   end
 end
 
-post_integrate do |installer|
-  # BOOKITGY_PRIVACYINFO_STRIP
-  scripts = Dir.glob(File.join(__dir__, "Pods", "Target Support Files", "**", "*-resources.sh"))
-  removed = 0
-  scripts.each do |script|
-    next unless File.exist?(script)
-    content = File.read(script)
-    next unless content.include?("PrivacyInfo.xcprivacy")
 
-    filtered = content.lines.reject { |line| line.include?("PrivacyInfo.xcprivacy") }.join
-    removed += (content.lines.length - filtered.lines.length)
-    File.write(script, filtered)
-  end
-  puts "[BookitGY] Stripped #{removed} PrivacyInfo.xcprivacy lines from Pods resources scripts"
-end

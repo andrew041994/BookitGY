@@ -17,7 +17,7 @@ export default {
   },
   assetBundlePatterns: ["**/*"],
   newArchEnabled: false,
-  plugins: ["./plugins/strip-pods-privacyinfo", "sentry-expo"],
+  plugins: ["sentry-expo"],
 
   ios: {
     supportsTablet: true,
