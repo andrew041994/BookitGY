@@ -111,6 +111,41 @@ const linking = {
   },
 };
 
+const addBreadcrumb = (category, message, data = {}) => {
+  try {
+    Sentry.Native.addBreadcrumb({
+      category,
+      message,
+      data,
+      level: "info",
+    });
+  } catch (err) {
+    console.log("[breadcrumb] failed", err?.message || err);
+  }
+};
+
+const parseLoginResponse = (payload) => {
+  if (!payload || typeof payload !== "object") {
+    throw new Error("Login response was not JSON");
+  }
+
+  const accessToken =
+    payload.access_token || payload.accessToken || payload.token || null;
+
+  if (!accessToken || typeof accessToken !== "string") {
+    throw new Error("Login response missing access token");
+  }
+
+  return {
+    access_token: accessToken,
+    user_id: payload.user_id ?? payload.userId ?? null,
+    email: payload.email ?? null,
+    is_provider: !!payload.is_provider,
+    is_admin: !!payload.is_admin,
+    username: payload.username,
+  };
+};
+
   const isValidEmail = (value) => {
   const trimmed = value.trim();
   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -294,6 +329,7 @@ const PROFESSION_OPTIONS = [
 
 async function registerForPushNotificationsAsync() {
   try {
+    addBreadcrumb("push", "notifications:permission_check");
     const { status: existingStatus } = await Notifications.getPermissionsAsync();
     let finalStatus = existingStatus;
 
@@ -304,6 +340,7 @@ async function registerForPushNotificationsAsync() {
 
     if (finalStatus !== "granted") {
       console.log("Notification permissions not granted");
+      addBreadcrumb("push", "notifications:denied", { status: finalStatus });
       return null;
     }
 
@@ -316,10 +353,12 @@ async function registerForPushNotificationsAsync() {
       console.log(
         'No "projectId" found in Constants – skipping push token registration in this dev build.'
       );
+      addBreadcrumb("push", "notifications:missing_project_id");
       return null;
     }
 
     const tokenData = await Notifications.getExpoPushTokenAsync({ projectId });
+    addBreadcrumb("push", "notifications:token_received");
     return tokenData.data;
   } catch (err) {
     console.error("[LOGIN_NATIVE_CRASH_GUARD] Error getting push token", err);
@@ -334,6 +373,52 @@ async function registerForPushNotificationsAsync() {
 
 
 const Tab = createBottomTabNavigator();
+
+class AppErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { error: null };
+  }
+
+  static getDerivedStateFromError(error) {
+    return { error };
+  }
+
+  componentDidCatch(error, info) {
+    try {
+      Sentry.Native.captureException(error, {
+        extra: { scope: "app-boundary", info },
+      });
+    } catch (err) {
+      console.log("[AppErrorBoundary] capture failed", err?.message || err);
+    }
+  }
+
+  handleReset = () => {
+    this.setState({ error: null });
+    if (this.props.onReset) {
+      this.props.onReset();
+    }
+  };
+
+  render() {
+    if (this.state.error) {
+      return (
+        <SafeAreaView style={styles.container}>
+          <Text style={styles.title}>Something went wrong</Text>
+          <Text style={styles.subtitleSmall}>
+            We hit an unexpected error. We've reported it and will keep you updated.
+          </Text>
+          <View style={{ width: "100%", marginTop: 16 }}>
+            <Button title="Restart app" onPress={this.handleReset} color="#16a34a" />
+          </View>
+        </SafeAreaView>
+      );
+    }
+
+    return this.props.children;
+  }
+}
 
 // 🔹 New landing/home screen shown BEFORE login
 function LandingScreen({ goToLogin, goToSignup }) {
@@ -402,48 +487,66 @@ function LoginScreen({
         Alert.alert("Error", "Please enter a valid email address");
       }
       return;
-  }
+    }
 
-  setLoading(true);
+    setLoading(true);
 
     try {
+      addBreadcrumb("auth", "login:start", {
+        emailDomain: normalizedEmail.split("@")[1] || "unknown",
+      });
+
       const body = new URLSearchParams({
         username: normalizedEmail,
         password: password,
       }).toString();
 
-    const res = await axios.post(`${API}/auth/login`, body, {
+      const res = await axios.post(`${API}/auth/login`, body, {
         headers: {
           "Content-Type": "application/x-www-form-urlencoded",
         },
       });
 
-    // Try to register push token, but don't fail login if this breaks
-    try {
-      await saveToken(res.data.access_token);
-      const persistedToken = await loadToken();
-      if (!persistedToken) {
+      addBreadcrumb("auth", "login:response", { status: res?.status });
+
+      const parsedLogin = parseLoginResponse(res?.data);
+      console.log("[LOGIN_DEBUG] Parsed login payload", {
+        hasToken: !!parsedLogin.access_token,
+        hasUserId: !!parsedLogin.user_id,
+        isProvider: parsedLogin.is_provider,
+      });
+
+      // Try to register push token, but don't fail login if this breaks
+      try {
+        addBreadcrumb("auth", "login:token_persist:start");
+        await saveToken(parsedLogin.access_token);
+        const persistedToken = await loadToken();
+        if (!persistedToken) {
+          Alert.alert(
+            "Save issue",
+            "We couldn't save your login securely. You'll stay logged in for now."
+          );
+        }
+        addBreadcrumb("auth", "login:token_persist:complete", {
+          persisted: !!persistedToken,
+        });
+      } catch (err) {
+        console.error(
+          "[LOGIN_NATIVE_CRASH_GUARD] Failed to persist access token",
+          err
+        );
+        Sentry.Native.captureException(err, {
+          extra: { scope: "token-persistence" },
+        });
         Alert.alert(
           "Save issue",
           "We couldn't save your login securely. You'll stay logged in for now."
         );
       }
-    } catch (err) {
-      console.error(
-        "[LOGIN_NATIVE_CRASH_GUARD] Failed to persist access token",
-        err
-      );
-      Sentry.Native.captureException(err, {
-        extra: { scope: "token-persistence" },
-      });
-      Alert.alert(
-        "Save issue",
-        "We couldn't save your login securely. You'll stay logged in for now."
-      );
-    }
 
       // Try to register push token, but don't fail login if this breaks
       try {
+        addBreadcrumb("auth", "login:push_registration:start");
         const expoPushToken = await registerForPushNotificationsAsync();
         if (expoPushToken) {
           await axios.put(
@@ -451,36 +554,48 @@ function LoginScreen({
             { expo_push_token: expoPushToken },
             {
               headers: {
-                Authorization: `Bearer ${res.data.access_token}`,
+                Authorization: `Bearer ${parsedLogin.access_token}`,
               },
             }
           );
         }
+        addBreadcrumb("auth", "login:push_registration:complete", {
+          tokenRegistered: !!expoPushToken,
+        });
       } catch (err) {
-        console.error("[LOGIN_NATIVE_CRASH_GUARD] Failed to register push token", err);
+        console.error(
+          "[LOGIN_NATIVE_CRASH_GUARD] Failed to register push token",
+          err
+        );
         Sentry.Native.captureException(err, {
           extra: { scope: "push-registration" },
         });
       }
-   
 
-    // Successful login
       // Successful login
       setToken({
-        token: res.data.access_token,
-        userId: res.data.user_id,
-        email: res.data.email,
-        isProvider: res.data.is_provider,
-        isAdmin: res.data.is_admin,
+        token: parsedLogin.access_token,
+        userId: parsedLogin.user_id,
+        email: parsedLogin.email,
+        isProvider: parsedLogin.is_provider,
+        isAdmin: parsedLogin.is_admin,
+        username: parsedLogin.username,
       });
 
-      setIsAdmin(!!res.data.is_admin);
+      addBreadcrumb("navigation", "login:navigating_post_auth", {
+        isProvider: parsedLogin.is_provider,
+      });
 
-    if (showFlash) {
+      setIsAdmin(!!parsedLogin.is_admin);
+
+      if (showFlash) {
         showFlash("success", "Logged in successfully");
       }
     } catch (e) {
       console.log("Login error:", e.response?.data || e.message);
+      Sentry.Native.captureException(e, {
+        extra: { scope: "login", status: e?.response?.status },
+      });
       if (showFlash) {
         showFlash(
           "error",
@@ -1029,7 +1144,10 @@ function ProfileScreen({ setToken, showFlash, token }) {
         setLoading(true);
         setError("");
 
-        const tokenValue = await AsyncStorage.getItem("accessToken");
+        addBreadcrumb("profile", "me:fetch:start", { refresh: useRefresh });
+
+        const tokenValue =
+          (await loadToken()) || (await AsyncStorage.getItem("accessToken"));
 
         if (!tokenValue) {
           setError("No access token found. Please log in again.");
@@ -1044,7 +1162,15 @@ function ProfileScreen({ setToken, showFlash, token }) {
         // 1) Load base user info
         const res = await axios.get(`${API}/users/me`, { headers });
 
+        if (!res?.data || typeof res.data !== "object") {
+          throw new Error("/users/me responded without JSON body");
+        }
+
         setUser(res.data);
+        addBreadcrumb("profile", "me:fetch:success", {
+          isProvider: res.data.is_provider,
+          hasAvatar: !!res.data.avatar_url,
+        });
         if (typeof res.data.is_provider === "boolean") {
           setIsProviderUser(res.data.is_provider);
         }
@@ -1073,6 +1199,9 @@ function ProfileScreen({ setToken, showFlash, token }) {
               "Error loading provider avatar for profile",
               err.response?.data || err.message
             );
+            Sentry.Native.captureException(err, {
+              extra: { scope: "profile-avatar" },
+            });
           }
         }
 
@@ -1080,6 +1209,7 @@ function ProfileScreen({ setToken, showFlash, token }) {
       } catch (err) {
         console.error("Error loading profile", err);
         setError("Could not load profile.");
+        Sentry.Native.captureException(err, { extra: { scope: "profile" } });
         if (showFlash) {
           showFlash("error", "Could not load profile information.");
         }
@@ -6008,48 +6138,50 @@ function App() {
 
   return (
     <SafeAreaProvider>
-      <SafeAreaView style={{ flex: 1 }} edges={["top", "bottom"]}>
-        <FlashMessage flash={flash} />
+      <AppErrorBoundary onReset={() => setToken(null)}>
+        <SafeAreaView style={{ flex: 1 }} edges={["top", "bottom"]}>
+          <FlashMessage flash={flash} />
 
-        {!token ? (
-          <>
-            {authMode === "landing" && (
-              <LandingScreen
-                goToLogin={() => setAuthMode("login")}
-                goToSignup={() => setAuthMode("signup")}
-              />
-            )}
+          {!token ? (
+            <>
+              {authMode === "landing" && (
+                <LandingScreen
+                  goToLogin={() => setAuthMode("login")}
+                  goToSignup={() => setAuthMode("signup")}
+                />
+              )}
 
-            {authMode === "login" && (
-              <LoginScreen
-                setToken={setToken}
-                setIsAdmin={setIsAdmin}
-                goToSignup={() => setAuthMode("signup")}
-                goToForgot={() => setAuthMode("forgot")}
-                goBack={() => setAuthMode("landing")}
-                showFlash={showFlash}
-              />
-            )}
+              {authMode === "login" && (
+                <LoginScreen
+                  setToken={setToken}
+                  setIsAdmin={setIsAdmin}
+                  goToSignup={() => setAuthMode("signup")}
+                  goToForgot={() => setAuthMode("forgot")}
+                  goBack={() => setAuthMode("landing")}
+                  showFlash={showFlash}
+                />
+              )}
 
-            {authMode === "signup" && (
-              <SignupScreen
-                goToLogin={() => setAuthMode("login")}
-                goBack={() => setAuthMode("landing")}
-                showFlash={showFlash}
-              />
-            )}
-            {authMode === "forgot" && (
-              <ForgotPasswordScreen
-                goToLogin={() => setAuthMode("login")}
-                goBack={() => setAuthMode("landing")}
-                showFlash={showFlash}
-              />
-            )}
-          </>
-        ) : (
-          <MainApp token={token} setToken={setToken} showFlash={showFlash} />
-        )}
-      </SafeAreaView>
+              {authMode === "signup" && (
+                <SignupScreen
+                  goToLogin={() => setAuthMode("login")}
+                  goBack={() => setAuthMode("landing")}
+                  showFlash={showFlash}
+                />
+              )}
+              {authMode === "forgot" && (
+                <ForgotPasswordScreen
+                  goToLogin={() => setAuthMode("login")}
+                  goBack={() => setAuthMode("landing")}
+                  showFlash={showFlash}
+                />
+              )}
+            </>
+          ) : (
+            <MainApp token={token} setToken={setToken} showFlash={showFlash} />
+          )}
+        </SafeAreaView>
+      </AppErrorBoundary>
     </SafeAreaProvider>
   );
 }

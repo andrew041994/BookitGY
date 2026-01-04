@@ -3,6 +3,7 @@ import * as Sentry from 'sentry-expo';
 import Constants from 'expo-constants';
 import { registerRootComponent } from 'expo';
 import App from './App';
+import { initGlobalErrorHandling } from './src/utils/globalErrorHandler';
 
 const sentryDsn =
   Constants?.expoConfig?.extra?.SENTRY_DSN ||
@@ -16,5 +17,7 @@ Sentry.init({
   debug: false,
   tracesSampleRate: 0.15,
 });
+
+initGlobalErrorHandling(Sentry);
 
 registerRootComponent(App);
