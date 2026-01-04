@@ -1,6 +1,5 @@
 # guyana-booker
 Guyana booker app
-# Guyana Booker – Booksy Clone for Guyana
 
 ## Features
 - Customer & Provider booking

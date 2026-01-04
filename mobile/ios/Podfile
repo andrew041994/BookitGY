@@ -9,7 +9,7 @@ podfile_properties = JSON.parse(File.read(podfile_properties_path)) rescue {}
 # Force a single minimum iOS version everywhere (Pods + app)
 platform :ios, "16.0"
 
-install! "cocoapods", :deterministic_uuids => false
+install! "cocoapods", :det提醒istic_uuids => false
 
 prepare_react_native_project!
 
@@ -18,13 +18,10 @@ target "BookitGY" do
 
   config = use_native_modules!
 
-  # Default to static linkage unless you explicitly need frameworks
-  use_frameworks! :linkage => :static if podfile_properties["ios.useFrameworks"] == "static"
-  use_frameworks! :linkage => :dynamic if podfile_properties["ios.useFrameworks"] == "dynamic"
-
   use_react_native!(
     :path => config[:reactNativePath],
-    :hermes_enabled => (podfile_properties["expo.jsEngine"] != "jsc"),
+    :hermes_enabled => podfile_properties["expo.jsEngine"] == "hermes",
+    :fabric_enabled => podfile_properties["newArchEnabled"] == "true",
     :app_path => "#{Pod::Config.instance.installation_root}/.."
   )
 
@@ -41,5 +38,44 @@ target "BookitGY" do
         bc.build_settings["IPHONEOS_DEPLOYMENT_TARGET"] = "16.0"
       end
     end
+  end
+
+  post_integrate do |installer|
+    begin
+      expo_patch_react_imports!(installer) if defined?(expo_patch_react_imports!)
+    rescue => e
+      Pod::UI.warn e
+    end
+
+    # BOOKITGY_PRIVACYINFO_STRIP
+    removed = 0
+
+    # 1) Strip from resources shell scripts
+    scripts = Dir.glob(File.join(__dir__, "Pods", "Target Support Files", "**", "*-resources.sh"))
+    scripts.each do |p|
+      next unless File.exist?(p)
+      c = File.read(p)
+      next unless c.include?("PrivacyInfo.xcprivacy")
+      n = c.lines.reject { |line| line.include?("PrivacyInfo.xcprivacy") }.join
+      if n != c
+        removed += (c.lines.length - n.lines.length)
+        File.write(p, n)
+      end
+    end
+
+    # 2) Strip from xcfilelists (these drive Xcode output tracking)
+    filelists = Dir.glob(File.join(__dir__, "Pods", "Target Support Files", "**", "*resources-*-files.xcfilelist"))
+    filelists.each do |p|
+      next unless File.exist?(p)
+      c = File.read(p)
+      next unless c.include?("PrivacyInfo.xcprivacy")
+      n = c.lines.reject { |line| line.include?("PrivacyInfo.xcprivacy") }.join
+      if n != c
+        removed += (c.lines.length - n.lines.length)
+        File.write(p, n)
+      end
+    end
+
+    puts "[BookitGY] Stripped #{removed} PrivacyInfo.xcprivacy references from CocoaPods resources scripts/filelists"
   end
 end
