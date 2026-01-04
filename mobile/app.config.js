@@ -20,6 +20,7 @@ export default {
   plugins: ["sentry-expo"],
 
   ios: {
+    deploymentTarget: "15.0",
     supportsTablet: true,
     bundleIdentifier: "com.bookitgy.app",
     buildNumber: "1",
