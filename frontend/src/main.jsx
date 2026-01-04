@@ -2,6 +2,7 @@ import React from 'react'
 import ReactDOM from 'react-dom/client'
 import { BrowserRouter, Routes, Route, Link, NavLink, useNavigate, Navigate, Outlet, useLocation } from 'react-router-dom'
 import { apiClient, logApiError } from './lib/api'
+import ProviderLanding from './ProviderLanding'
 import './login.css'
 
 const DEFAULT_SERVICE_CHARGE = 10
@@ -800,6 +801,7 @@ function App() {
         <Route path="/" element={<Home />} />
         <Route path="/login" element={<Login />} />
         <Route path="/reset-password" element={<ResetPassword />} />
+        <Route path="/p/:username" element={<ProviderLanding />} />
         <Route
           path="/admin"
           element={(

@@ -1,8 +1,25 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useFocusEffect } from "@react-navigation/native";
-import { Text, View, StyleSheet, TextInput, Button, Alert, ActivityIndicator, ScrollView,
-         TouchableOpacity, Switch, Linking, Platform, Image,  KeyboardAvoidingView,
-         TouchableWithoutFeedback, Keyboard, RefreshControl,} from "react-native";
+import {
+  Text,
+  View,
+  StyleSheet,
+  TextInput,
+  Button,
+  Alert,
+  ActivityIndicator,
+  ScrollView,
+  TouchableOpacity,
+  Switch,
+  Linking,
+  Platform,
+  Image,
+  KeyboardAvoidingView,
+  TouchableWithoutFeedback,
+  Keyboard,
+  RefreshControl,
+  Share,
+} from "react-native";
 import {
   NavigationContainer,
   getStateFromPath as defaultGetStateFromPath,
@@ -54,7 +71,14 @@ const linking = {
     screens: {
       Home: "",
       Search: {
-        path: ["search", "bookitgy/:username", ":username", ":sharedUsername"],
+        path: [
+          "search",
+          "bookitgy/:username",
+          ":username",
+          ":sharedUsername",
+          "p/:username",
+          "p/:sharedUsername",
+        ],
       },
       Appointments: "appointments",
       Profile: "profile",
@@ -1224,10 +1248,10 @@ function ProfileScreen({ setToken, showFlash, token }) {
   const role = isAdmin ? "Admin" : isProvider ? "Provider" : "Client";
   const providerUsername = user?.username?.trim();
   const providerProfileLink = providerUsername
-    ? `https://bookitgy.com/${providerUsername}`
+    ? `https://bookitgy.com/p/${providerUsername}`
     : null;
   const providerProfileLinkSimple = providerUsername
-    ? `bookitgy/${providerUsername}`
+    ? `bookitgy.com/p/${providerUsername}`
     : null;
   const providerProfileLinkLabel =
     providerProfileLink || "Set a username to generate your link";
@@ -1425,6 +1449,39 @@ function ProfileScreen({ setToken, showFlash, token }) {
                 }}
               >
                 <Text style={styles.profileLinkCopyText}>Copy</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.profileLinkCopy,
+                  styles.profileLinkShare,
+                  !providerProfileLink && styles.profileLinkCopyDisabled,
+                ]}
+                disabled={!providerProfileLink}
+                onPress={async () => {
+                  if (!providerProfileLink) {
+                    showFlash?.(
+                      "error",
+                      "Set a username to generate your link"
+                    );
+                    return;
+                  }
+
+                  try {
+                    await Share.share({
+                      message: providerProfileLink,
+                      url: providerProfileLink,
+                      title: "Book an appointment with me on BookitGY",
+                    });
+                  } catch (err) {
+                    console.log(
+                      "Error sharing profile link",
+                      err?.message || err
+                    );
+                    showFlash?.("error", "Could not share profile link");
+                  }
+                }}
+              >
+                <Text style={styles.profileLinkCopyText}>Share</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -6739,6 +6796,9 @@ mapContainer: {
     paddingVertical: 6,
     borderRadius: 8,
     backgroundColor: "#16A34A",
+  },
+  profileLinkShare: {
+    backgroundColor: "#0B6BF2",
   },
   profileLinkCopyDisabled: {
     backgroundColor: "#9CA3AF",
