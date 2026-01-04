@@ -1,53 +1,316 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
-diff --git a/mobile/src/utils/globalErrorHandler.js b/mobile/src/utils/globalErrorHandler.js
-new file mode 100644
-index 0000000000000000000000000000000000000000..0fec7b9dee06a17b16c338b02a492de28c5fefe5
---- /dev/null
-+++ b/mobile/src/utils/globalErrorHandler.js
-@@ -0,0 +1,43 @@
-+import { Alert, Platform } from "react-native";
-+
-+/**
-+ * Registers a single global error handler that captures fatal JS exceptions
-+ * in release builds without letting them bubble up to RCTFatal.
-+ */
-+export function initGlobalErrorHandling(Sentry) {
-+  const client = Sentry?.Native || Sentry;
-+  const previousHandler =
-+    typeof ErrorUtils?.getGlobalHandler === "function"
-+      ? ErrorUtils.getGlobalHandler()
-+      : null;
-+
-+  if (typeof ErrorUtils?.setGlobalHandler !== "function") return;
-+
-+  ErrorUtils.setGlobalHandler((error, isFatal) => {
-+    try {
-+      client?.captureException?.(error, {
-+        level: isFatal ? "fatal" : "error",
-+        extra: {
-+          scope: "global-handler",
-+          platform: Platform.OS,
-+          isFatal,
-+        },
+diff --git a/mobile/App.js b/mobile/App.js
+index 8ce6eec424cdb940918c80daaeb270c2d2ec1669..af2fd2b26bbf0882cbdb4154a43c82a0c06a7805 100644
+--- a/mobile/App.js
++++ b/mobile/App.js
+@@ -559,50 +559,53 @@ function LoginScreen({
+             }
+           );
+         }
+         addBreadcrumb("auth", "login:push_registration:complete", {
+           tokenRegistered: !!expoPushToken,
+         });
+       } catch (err) {
+         console.error(
+           "[LOGIN_NATIVE_CRASH_GUARD] Failed to register push token",
+           err
+         );
+         Sentry.Native.captureException(err, {
+           extra: { scope: "push-registration" },
+         });
+       }
+ 
+       // Successful login
+       setToken({
+         token: parsedLogin.access_token,
+         userId: parsedLogin.user_id,
+         email: parsedLogin.email,
+         isProvider: parsedLogin.is_provider,
+         isAdmin: parsedLogin.is_admin,
+         username: parsedLogin.username,
+       });
++      console.log("[AUTH_BOOTSTRAP] token set from login", {
++        isProvider: parsedLogin.is_provider,
 +      });
-+    } catch (captureErr) {
-+      console.log("[globalErrorHandler] Failed to send to Sentry", captureErr);
-+    }
+ 
+       addBreadcrumb("navigation", "login:navigating_post_auth", {
+         isProvider: parsedLogin.is_provider,
+       });
+ 
+       setIsAdmin(!!parsedLogin.is_admin);
+ 
+       if (showFlash) {
+         showFlash("success", "Logged in successfully");
+       }
+     } catch (e) {
+       console.log("Login error:", e.response?.data || e.message);
+       Sentry.Native.captureException(e, {
+         extra: { scope: "login", status: e?.response?.status },
+       });
+       if (showFlash) {
+         showFlash(
+           "error",
+           "Login failed: wrong email/password or server unreachable"
+         );
+       }
+     } finally {
+       setLoading(false);
+     }
+   };
+@@ -6072,92 +6075,253 @@ function FlashMessage({ flash }) {
+ 
+   return (
+ 
+     <View
+       style={[
+         styles.flashContainer,
+         { backgroundColor, borderColor },
+       ]}
+     >
+       <Text style={[styles.flashText, { color: textColor }]}>
+         {flash.text}
+       </Text>
+     </View>
+   );
+ }
+ 
+ 
+ // 🔹 App orchestrates landing/login/signup/forgot-password vs main app
+ 
+ function App() {
+   const [token, setToken] = useState(null);
+   const [authMode, setAuthMode] = useState("landing"); // 'landing' | 'login' | 'signup' | 'forgot'
+   const [isAdmin, setIsAdmin] = useState(false);
+ 
+   const [flash, setFlash] = useState(null);
++  const [authLoading, setAuthLoading] = useState(true);
++  const [authError, setAuthError] = useState(null);
++  const lastBootstrappedTokenRef = useRef(null);
 +
-+    if (__DEV__) {
-+      previousHandler?.(error, isFatal);
-+    } else {
-+      console.log("[globalErrorHandler] Captured", error?.message || error);
-+      if (isFatal) {
-+        Alert.alert(
-+          "Something went wrong",
-+          "We hit an unexpected error. Please restart the app and try again."
-+        );
++  const logAuthState = (message, data = {}) => {
++    console.log("[AUTH_BOOTSTRAP]", message, data);
++  };
++
++  const runWithTimeout = useCallback((promise, timeoutMs = 10000) => {
++    return new Promise((resolve, reject) => {
++      const timer = setTimeout(() => {
++        reject(new Error("bootstrap-timeout"));
++      }, timeoutMs);
++
++      promise
++        .then((result) => {
++          clearTimeout(timer);
++          resolve(result);
++        })
++        .catch((err) => {
++          clearTimeout(timer);
++          reject(err);
++        });
++    });
++  }, []);
++
++  const bootstrapSession = useCallback(
++    async (baseToken, source = "unknown") => {
++      const authToken = baseToken?.token || baseToken;
++      if (!authToken) {
++        logAuthState("bootstrap:skipped", { reason: "no-token", source });
++        setAuthLoading(false);
++        return;
 +      }
-+    }
-+  });
-+}
 +
++      if (lastBootstrappedTokenRef.current === authToken) {
++        logAuthState("bootstrap:skipped", { reason: "duplicate", source });
++        setAuthLoading(false);
++        return;
++      }
++
++      logAuthState("bootstrap:start", { source });
++      setAuthLoading(true);
++      setAuthError(null);
++
++      try {
++        await runWithTimeout(
++          (async () => {
++            const res = await axios.get(`${API}/users/me`, {
++              headers: { Authorization: `Bearer ${authToken}` },
++            });
++
++            const profile = res?.data || {};
++            const enrichedToken = {
++              ...(typeof baseToken === "object" ? baseToken : {}),
++              token: authToken,
++              userId:
++                baseToken?.userId ||
++                profile.id ||
++                profile._id ||
++                profile.user_id ||
++                profile.userId ||
++                null,
++              email: baseToken?.email || profile.email || null,
++              isProvider:
++                typeof baseToken?.isProvider === "boolean"
++                  ? baseToken.isProvider
++                  : !!profile.is_provider,
++              isAdmin:
++                typeof baseToken?.isAdmin === "boolean"
++                  ? baseToken.isAdmin
++                  : !!profile.is_admin,
++              username: baseToken?.username || profile.username || null,
++            };
++
++            setToken(enrichedToken);
++            lastBootstrappedTokenRef.current = authToken;
++            logAuthState("bootstrap:profile_loaded", {
++              isProvider: enrichedToken.isProvider,
++              hasUserId: !!enrichedToken.userId,
++            });
++          })(),
++          10000
++        );
++      } catch (err) {
++        logAuthState("bootstrap:error", { message: err?.message || err });
++        setAuthError(err);
++      } finally {
++        setAuthLoading(false);
++        logAuthState("bootstrap:complete", { source });
++      }
++    },
++    [runWithTimeout]
++  );
++
++  useEffect(() => {
++    let cancelled = false;
++    const hydrate = async () => {
++      try {
++        logAuthState("hydrate:start");
++        const storedToken = await loadToken();
++        logAuthState("hydrate:token", { hasStoredToken: !!storedToken });
++
++        if (!cancelled && storedToken) {
++          await bootstrapSession({ token: storedToken }, "storage");
++        }
++      } catch (err) {
++        if (!cancelled) {
++          setAuthError(err);
++          logAuthState("hydrate:error", { message: err?.message || err });
++        }
++      } finally {
++        if (!cancelled) {
++          setAuthLoading(false);
++          logAuthState("hydrate:complete");
++        }
++      }
++    };
++
++    hydrate();
++
++    return () => {
++      cancelled = true;
++    };
++  }, [bootstrapSession]);
++
++  useEffect(() => {
++    if (!token?.token) return;
++    bootstrapSession(token, "token-change");
++  }, [bootstrapSession, token?.token]);
++
++  const retryBootstrap = useCallback(() => {
++    logAuthState("bootstrap:retry");
++    bootstrapSession(token || null, "manual-retry");
++  }, [bootstrapSession, token]);
+ 
+   const formatFlashText = (text) => {
+     if (typeof text === "string") return text;
+     if (text == null) return "Something went wrong.";
+ 
+     const formatErrorItem = (item) => {
+       if (typeof item === "string") return item;
+       if (!item || typeof item !== "object") return String(item);
+ 
+       const message = item.msg || item.message;
+       if (Array.isArray(item.loc) && item.loc.length > 0) {
+         const field = item.loc[item.loc.length - 1];
+         return message ? `${field}: ${message}` : String(item);
+       }
+       if (message) return message;
+       return JSON.stringify(item);
+     };
+ 
+     if (Array.isArray(text)) {
+       return text.map(formatErrorItem).filter(Boolean).join("\n");
+     }
+ 
+     if (typeof text === "object") {
+       if (Array.isArray(text.detail)) {
+         return formatFlashText(text.detail);
+       }
+       if (typeof text.detail === "string") return text.detail;
+       if (typeof text.message === "string") return text.message;
+       if (typeof text.msg === "string") return text.msg;
+       return JSON.stringify(text);
+     }
+ 
+     return String(text);
+   };
+ 
+   const showFlash = (type, text) => {
+     setFlash({ type, text: formatFlashText(text) });
+     setTimeout(() => {
+       setFlash(null);
+     }, 3000);
+   };
+ 
++  if (authLoading) {
++    return (
++      <SafeAreaProvider>
++        <SafeAreaView style={styles.container}>
++          <Text style={styles.title}>Loading…</Text>
++          <Text style={styles.subtitleSmall}>Getting things ready.</Text>
++        </SafeAreaView>
++      </SafeAreaProvider>
++    );
++  }
++
++  if (authError) {
++    const message = authError?.message || "We could not finish signing you in.";
++    return (
++      <SafeAreaProvider>
++        <SafeAreaView style={styles.container}>
++          <Text style={styles.title}>Something went wrong</Text>
++          <Text style={styles.subtitleSmall}>{message}</Text>
++          <View style={{ width: "100%", marginTop: 16 }}>
++            <Button title="Retry" onPress={retryBootstrap} color="#16a34a" />
++          </View>
++        </SafeAreaView>
++      </SafeAreaProvider>
++    );
++  }
++
+   return (
+     <SafeAreaProvider>
+       <AppErrorBoundary onReset={() => setToken(null)}>
+         <SafeAreaView style={{ flex: 1 }} edges={["top", "bottom"]}>
+           <FlashMessage flash={flash} />
+ 
+           {!token ? (
+             <>
+               {authMode === "landing" && (
+                 <LandingScreen
+                   goToLogin={() => setAuthMode("login")}
+                   goToSignup={() => setAuthMode("signup")}
+                 />
+               )}
+ 
+               {authMode === "login" && (
+                 <LoginScreen
+                   setToken={setToken}
+                   setIsAdmin={setIsAdmin}
+                   goToSignup={() => setAuthMode("signup")}
+                   goToForgot={() => setAuthMode("forgot")}
+                   goBack={() => setAuthMode("landing")}
+                   showFlash={showFlash}
+                 />
+               )}
  
 EOF
 )
