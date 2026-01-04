@@ -1,167 +1,71 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
-diff --git a/mobile/plugins/strip-pods-privacyinfo.js b/mobile/plugins/strip-pods-privacyinfo.js
-index 6f183d13de32852b3f13accb4173e52265dfb977..1fec004e58c72ddc51ae26f3276ee20785e50d09 100644
---- a/mobile/plugins/strip-pods-privacyinfo.js
-+++ b/mobile/plugins/strip-pods-privacyinfo.js
-@@ -101,121 +101,144 @@ function processPbxproj(pbxprojPath) {
-   );
-   updated = buildFilesStrip.content;
+diff --git a/mobile/ios/Podfile b/mobile/ios/Podfile
+index bf337aed8c001c01500a208c83615c2d2db257d4..5c2d1d0a2894666fd15138c1a85cacc44e71c530 100644
+--- a/mobile/ios/Podfile
++++ b/mobile/ios/Podfile
+@@ -38,39 +38,54 @@ target 'BookitGY' do
  
-   const fileRefsStrip = stripEntries(updated, fileRefsToRemove, "PrivacyInfo.xcprivacy");
-   updated = fileRefsStrip.content;
+ # @generated begin react-native-maps - expo prebuild (DO NOT MODIFY) sync-e9cc66c360abe50bc66d89fffb3c55b034d7d369
+   pod 'react-native-google-maps', path: File.dirname(`node --print "require.resolve('react-native-maps/package.json')"`)
+ # @generated end react-native-maps
+   config = use_native_modules!(config_command)
  
-   const resourcesStrip = stripResourcesReferences(updated, buildFilesToRemove);
-   updated = resourcesStrip.content;
+   use_frameworks! :linkage => podfile_properties['ios.useFrameworks'].to_sym if podfile_properties['ios.useFrameworks']
+   use_frameworks! :linkage => ENV['USE_FRAMEWORKS'].to_sym if ENV['USE_FRAMEWORKS']
  
-   if (updated !== original) {
-     fs.writeFileSync(pbxprojPath, updated);
-   }
+   use_react_native!(
+     :path => config[:reactNativePath],
+     :hermes_enabled => podfile_properties['expo.jsEngine'] == nil || podfile_properties['expo.jsEngine'] == 'hermes',
+     # An absolute path to your application root.
+     :app_path => "#{Pod::Config.instance.installation_root}/..",
+     :privacy_file_aggregation_enabled => podfile_properties['apple.privacyManifestAggregationEnabled'] != 'false',
+   )
  
-   const totalRemoved = buildFilesStrip.removed + fileRefsStrip.removed + resourcesStrip.removed;
-   console.log(
-     `[strip-pods-privacyinfo] Removed ${totalRemoved} PrivacyInfo.xcprivacy references from ${path.relative(
-       process.cwd(),
-       pbxprojPath
-     )}`
-   );
- }
+   post_install do |installer|
+     react_native_post_install(
+       installer,
+       config[:reactNativePath],
+       :mac_catalyst_enabled => false,
+       :ccache_enabled => ccache_enabled?(podfile_properties),
+     )
+     # BOOKITGY_PRIVACYINFO_STRIP
+-    scripts = Dir.glob(File.join(__dir__, "Pods", "Target Support Files", "Pods-*", "Pods-*-resources.sh"))
++    pods_project = installer.pods_project
++    removed = 0
  
- function buildPodfileSnippet(indent) {
-   const lines = [
-     `${indent}${PODFILE_MARKER}`,
--    `${indent}scripts = Dir.glob(File.join(__dir__, "Pods", "Target Support Files", "Pods-*", "Pods-*-resources.sh"))`,
-+    `${indent}pods_project = installer.pods_project`,
-     "",
--    `${indent}scripts.each do |script|`,
--    `${indent}  next unless File.exist?(script)`,
--    `${indent}  content = File.read(script)`,
--    `${indent}  next unless content.include?("PrivacyInfo.xcprivacy")`,
-+    `${indent}removed = 0`,
-+    `${indent}pods_project.targets.each do |t|`,
-+    `${indent}  phase = t.resources_build_phase`,
-+    `${indent}  next unless phase && phase.files`,
-     "",
--    `${indent}  filtered = content.lines.reject { |line| line.include?("PrivacyInfo.xcprivacy") }.join`,
--    `${indent}  File.write(script, filtered)`,
-+    `${indent}  phase.files.to_a.each do |bf|`,
-+    `${indent}    ref = bf.file_ref`,
-+    `${indent}    next unless ref && ref.path`,
-+    `${indent}    next unless ref.path.end_with?("PrivacyInfo.xcprivacy")`,
-     "",
--    `${indent}  puts "[BookitGY] Stripped PrivacyInfo.xcprivacy from #{script}"`,
-+    `${indent}    phase.remove_build_file(bf)`,
-+    `${indent}    removed += 1`,
-+    `${indent}  end`,
-     `${indent}end`,
-     "",
-+    `${indent}pods_project.save`,
-+    `${indent}puts "[BookitGY] Removed #{removed} PrivacyInfo.xcprivacy resource refs from Pods project"`,
-+    "",
-   ];
+-    scripts.each do |script|
+-      next unless File.exist?(script)
+-      content = File.read(script)
+-      next unless content.include?("PrivacyInfo.xcprivacy")
++    pods_project.targets.each do |t|
++      # PBXAggregateTarget and others may not have resources build phase
++      next unless t.respond_to?(:resources_build_phase)
  
-   return lines.join("\n");
- }
+-      filtered = content.lines.reject { |line| line.include?("PrivacyInfo.xcprivacy") }.join
+-      File.write(script, filtered)
++      phase = t.resources_build_phase
++      next unless phase && phase.respond_to?(:files) && phase.files
  
- function findPostInstallEnd(content, startIndex) {
-   const remainder = content.slice(startIndex);
-   const lines = remainder.split("\n");
-   let depth = 0;
-   let position = startIndex;
- 
-   for (const line of lines) {
-     const lineStart = position;
-     const doCount = (line.match(/\bdo\b/g) || []).length;
-     const endCount = (line.match(/\bend\b/g) || []).length;
- 
-     depth += doCount;
-     depth -= endCount;
- 
-     if (depth === 0) {
-       return lineStart;
-     }
- 
-     position += line.length + 1;
-   }
- 
-   return null;
- }
- 
- function injectPodfilePrivacyStrip(iosDir) {
-   const podfilePath = path.join(iosDir, "Podfile");
-   if (!fs.existsSync(podfilePath)) {
-     return;
-   }
- 
-   let podfileContent = fs.readFileSync(podfilePath, "utf8");
- 
--  if (podfileContent.includes(PODFILE_MARKER)) {
--    return;
--  }
--
-   const postInstallMatch = podfileContent.match(/^[ \t]*post_install\s+do\s*\|[^|]*\|.*$/m);
- 
-   if (postInstallMatch) {
-     const postInstallStart = postInstallMatch.index;
-     const endOfPostInstall = findPostInstallEnd(podfileContent, postInstallStart);
- 
-     if (endOfPostInstall === null) {
-       return;
-     }
- 
-     const indent = postInstallMatch[0].match(/^[ \t]*/)[0];
-     const snippet = buildPodfileSnippet(`${indent}  `);
-     const before = podfileContent.slice(0, endOfPostInstall);
-     const after = podfileContent.slice(endOfPostInstall);
--    const needsLeadingNewline = before.endsWith("\n") ? "" : "\n";
- 
--    podfileContent = `${before}${needsLeadingNewline}${snippet}${after}`;
-+    let cleanedBefore = before;
-+    if (before.includes(PODFILE_MARKER)) {
-+      const snippetIndex = before.indexOf(snippet);
-+      if (snippetIndex !== -1) {
-+        cleanedBefore =
-+          before.slice(0, snippetIndex) + before.slice(snippetIndex + snippet.length);
-+      } else {
-+        const lines = before.split("\n");
-+        const markerIndex = lines.findIndex((line) => line.includes(PODFILE_MARKER));
-+        if (markerIndex !== -1) {
-+          cleanedBefore = lines.slice(0, markerIndex).join("\n");
-+        }
-+      }
+-      puts "[BookitGY] Stripped PrivacyInfo.xcprivacy from #{script}"
++      phase.files.to_a.each do |bf|
++        ref = bf.respond_to?(:file_ref) ? bf.file_ref : nil
++        ref_path = ref && ref.respond_to?(:path) ? ref.path : nil
++        next unless ref_path && ref_path.end_with?("PrivacyInfo.xcprivacy")
 +
-+      if (!cleanedBefore.endsWith("\n")) {
-+        cleanedBefore += "\n";
-+      }
-+    }
++        # remove build file safely
++        if phase.respond_to?(:remove_build_file)
++          phase.remove_build_file(bf)
++        else
++          phase.files.delete(bf)
++        end
++        removed += 1
++      end
+     end
 +
-+    const needsLeadingNewline = cleanedBefore.endsWith("\n") ? "" : "\n";
-+
-+    podfileContent = `${cleanedBefore}${needsLeadingNewline}${snippet}${after}`;
-   } else {
-     const snippet = buildPodfileSnippet("  ");
-     const needsLeadingNewline = podfileContent.endsWith("\n") ? "" : "\n";
- 
-     podfileContent = `${podfileContent}${needsLeadingNewline}post_install do |installer|\n${snippet}end\n`;
-   }
- 
-   fs.writeFileSync(podfilePath, podfileContent);
- 
-   console.log(
-     `[strip-pods-privacyinfo] Injected Podfile privacy strip logic into ${path.relative(
-       process.cwd(),
-       podfilePath
-     )}`
-   );
- }
- 
- module.exports = function withStripPodsPrivacyInfo(config) {
-   return withDangerousMod(config, [
-     "ios",
-     async (config) => {
-       const iosDir = config.modRequest.platformProjectRoot;
-       const pbxprojPaths = findPbxprojFiles(iosDir);
- 
-       for (const pbxprojPath of pbxprojPaths) {
++    pods_project.save
++    puts "[BookitGY] Removed #{removed} PrivacyInfo.xcprivacy resource refs from Pods project"
+   end
+ end
  
 EOF
 )

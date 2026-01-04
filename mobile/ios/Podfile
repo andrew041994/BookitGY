@@ -60,17 +60,24 @@ target 'BookitGY' do
       :ccache_enabled => ccache_enabled?(podfile_properties),
     )
     # BOOKITGY_PRIVACYINFO_STRIP
-    scripts = Dir.glob(File.join(__dir__, "Pods", "Target Support Files", "Pods-*", "Pods-*-resources.sh"))
+    pods_project = installer.pods_project
 
-    scripts.each do |script|
-      next unless File.exist?(script)
-      content = File.read(script)
-      next unless content.include?("PrivacyInfo.xcprivacy")
+    removed = 0
+    pods_project.targets.each do |t|
+      phase = t.resources_build_phase
+      next unless phase && phase.files
 
-      filtered = content.lines.reject { |line| line.include?("PrivacyInfo.xcprivacy") }.join
-      File.write(script, filtered)
+      phase.files.to_a.each do |bf|
+        ref = bf.file_ref
+        next unless ref && ref.path
+        next unless ref.path.end_with?("PrivacyInfo.xcprivacy")
 
-      puts "[BookitGY] Stripped PrivacyInfo.xcprivacy from #{script}"
+        phase.remove_build_file(bf)
+        removed += 1
+      end
     end
+
+    pods_project.save
+    puts "[BookitGY] Removed #{removed} PrivacyInfo.xcprivacy resource refs from Pods project"
   end
 end
