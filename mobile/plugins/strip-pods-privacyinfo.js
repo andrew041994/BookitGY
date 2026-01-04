@@ -25,13 +25,33 @@ function findPbxprojFiles(iosDir) {
   return Array.from(pbxprojFiles);
 }
 
+function isPodsPrivacyPath(rawPath) {
+  if (!rawPath) return false;
+
+  const normalized = rawPath.trim().replace(/^"|"$/g, "");
+  const lower = normalized.toLowerCase();
+
+  return (
+    lower.includes("/pods/") ||
+    lower.startsWith("pods/") ||
+    lower.includes("target support files")
+  );
+}
+
 function collectPrivacyFileRefs(content) {
   const fileRefs = new Set();
-  const fileRefRegex = /([A-F0-9]{24}) \/\* PrivacyInfo\.xcprivacy \*\/ = {[^}]*?};/g;
+  const fileRefRegex = /([A-F0-9]{24}) \/\* PrivacyInfo\.xcprivacy \*\/ = {([\s\S]*?)};/g;
   let match;
 
   while ((match = fileRefRegex.exec(content))) {
-    fileRefs.add(match[1]);
+    const refId = match[1];
+    const block = match[2];
+    const pathMatch = block.match(/path\s*=\s*([^;]+);/);
+    const refPath = pathMatch ? pathMatch[1] : "";
+
+    if (isPodsPrivacyPath(refPath)) {
+      fileRefs.add(refId);
+    }
   }
 
   return fileRefs;
@@ -123,9 +143,34 @@ function processPbxproj(pbxprojPath) {
 function buildPodfileSnippet(indent) {
   const lines = [
     `${indent}${PODFILE_MARKER}`,
-    `${indent}scripts = Dir.glob(File.join(__dir__, "Pods", "Target Support Files", "**", "*-resources.sh"))`,
-    "",
+    `${indent}pods_project = installer.pods_project`,
     `${indent}removed = 0`,
+    `${indent}pods_project.targets.each do |t|`,
+    `${indent}  next unless t.respond_to?(:resources_build_phase)`,
+    `${indent}`,
+    `${indent}  phase = t.resources_build_phase`,
+    `${indent}  next unless phase && phase.respond_to?(:files) && phase.files`,
+    `${indent}`,
+    `${indent}  phase.files.to_a.each do |bf|`,
+    `${indent}    ref = bf.respond_to?(:file_ref) ? bf.file_ref : nil`,
+    `${indent}    ref_path = ref && ref.respond_to?(:path) ? ref.path : nil`,
+    `${indent}    next unless ref_path && ref_path.end_with?("PrivacyInfo.xcprivacy")`,
+    `${indent}`,
+    `${indent}    if phase.respond_to?(:remove_build_file)`,
+    `${indent}      phase.remove_build_file(bf)`,
+    `${indent}    else`,
+    `${indent}      phase.files.delete(bf)`,
+    `${indent}    end`,
+    `${indent}`,
+    `${indent}    removed += 1`,
+    `${indent}  end`,
+    `${indent}end`,
+    `${indent}pods_project.save`,
+    `${indent}puts "[BookitGY] Removed #{removed} PrivacyInfo.xcprivacy resource refs from Pods project"`,
+    `${indent}`,
+    `${indent}scripts = Dir.glob(File.join(__dir__, "Pods", "Target Support Files", "**", "*-resources.sh"))`,
+    `${indent}`,
+    `${indent}removed_scripts = 0`,
     `${indent}scripts.each do |script|`,
     `${indent}  next unless File.exist?(script)`,
     `${indent}  content = File.read(script)`,
@@ -137,12 +182,12 @@ function buildPodfileSnippet(indent) {
     `${indent}  end`,
     "",
     `${indent}  if filtered_lines.length != content.lines.length`,
-    `${indent}    removed += (content.lines.length - filtered_lines.length)`,
+    `${indent}    removed_scripts += (content.lines.length - filtered_lines.length)`,
     `${indent}    File.write(script, filtered_lines.join)`,
     `${indent}  end`,
     `${indent}end`,
     "",
-    `${indent}puts "[BookitGY] Stripped #{removed} PrivacyInfo.xcprivacy lines from Pods resources scripts"`,
+    `${indent}puts "[BookitGY] Stripped #{removed_scripts} PrivacyInfo.xcprivacy lines from Pods resources scripts"`,
     "",
   ];
 
@@ -241,26 +286,33 @@ function injectPodfilePrivacyStrip(iosDir) {
 
   let podfileContent = fs.readFileSync(podfilePath, "utf8");
 
-  const existingPostInstall = findHook(podfileContent, "post_install");
-  if (existingPostInstall) {
-    podfileContent = removeSnippetFromHook(podfileContent, existingPostInstall);
-  }
+  let postInstall = findHook(podfileContent, "post_install");
 
-  let postIntegrate = findHook(podfileContent, "post_integrate");
-
-  if (postIntegrate) {
-    podfileContent = removeSnippetFromHook(podfileContent, postIntegrate);
-    postIntegrate = findHook(podfileContent, "post_integrate");
-    if (!postIntegrate) {
+  if (postInstall) {
+    podfileContent = removeSnippetFromHook(podfileContent, postInstall);
+    postInstall = findHook(podfileContent, "post_install");
+    if (!postInstall) {
       return;
     }
 
-    podfileContent = injectSnippetIntoHook(podfileContent, postIntegrate);
+    podfileContent = injectSnippetIntoHook(podfileContent, postInstall);
   } else {
-    const snippet = buildPodfileSnippet("  ");
-    const needsLeadingNewline = podfileContent.endsWith("\n") ? "" : "\n";
+    let postIntegrate = findHook(podfileContent, "post_integrate");
 
-    podfileContent = `${podfileContent}${needsLeadingNewline}post_integrate do |installer|\n${snippet}end\n`;
+    if (postIntegrate) {
+      podfileContent = removeSnippetFromHook(podfileContent, postIntegrate);
+      postIntegrate = findHook(podfileContent, "post_integrate");
+      if (!postIntegrate) {
+        return;
+      }
+
+      podfileContent = injectSnippetIntoHook(podfileContent, postIntegrate);
+    } else {
+      const snippet = buildPodfileSnippet("  ");
+      const needsLeadingNewline = podfileContent.endsWith("\n") ? "" : "\n";
+
+      podfileContent = `${podfileContent}${needsLeadingNewline}post_integrate do |installer|\n${snippet}end\n`;
+    }
   }
 
   fs.writeFileSync(podfilePath, podfileContent);

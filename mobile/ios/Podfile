@@ -62,9 +62,7 @@ target 'BookitGY' do
     # BOOKITGY_PRIVACYINFO_STRIP
     pods_project = installer.pods_project
     removed = 0
-
     pods_project.targets.each do |t|
-      # PBXAggregateTarget and others may not have resources build phase
       next unless t.respond_to?(:resources_build_phase)
 
       phase = t.resources_build_phase
@@ -75,17 +73,36 @@ target 'BookitGY' do
         ref_path = ref && ref.respond_to?(:path) ? ref.path : nil
         next unless ref_path && ref_path.end_with?("PrivacyInfo.xcprivacy")
 
-        # remove build file safely
         if phase.respond_to?(:remove_build_file)
           phase.remove_build_file(bf)
         else
           phase.files.delete(bf)
         end
+
         removed += 1
       end
     end
-
     pods_project.save
     puts "[BookitGY] Removed #{removed} PrivacyInfo.xcprivacy resource refs from Pods project"
+
+    scripts = Dir.glob(File.join(__dir__, "Pods", "Target Support Files", "**", "*-resources.sh"))
+
+    removed_scripts = 0
+    scripts.each do |script|
+      next unless File.exist?(script)
+      content = File.read(script)
+      next unless content.include?("PrivacyInfo.xcprivacy")
+
+      filtered_lines = content.lines.reject do |line|
+        line.include?("PrivacyInfo.xcprivacy")
+      end
+
+      if filtered_lines.length != content.lines.length
+        removed_scripts += (content.lines.length - filtered_lines.length)
+        File.write(script, filtered_lines.join)
+      end
+    end
+
+    puts "[BookitGY] Stripped #{removed_scripts} PrivacyInfo.xcprivacy lines from Pods resources scripts"
   end
 end

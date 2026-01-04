@@ -28,3 +28,13 @@ pytest -q
 ## Mobile crash reporting
 - The mobile app initializes Sentry via `sentry-expo`; set `SENTRY_DSN` (or `EXPO_PUBLIC_SENTRY_DSN`) in your build environment so release builds can report JavaScript errors.
 - EAS builds automatically upload source maps through the `sentry-expo` plugin configured in `app.config.js`, so TestFlight crashes include readable stack traces.
+
+## iOS privacy manifest prebuild check
+Run this quick verification before kicking off an EAS iOS build to ensure only the app's own `PrivacyInfo.xcprivacy` remains after Expo prebuild:
+
+```bash
+cd mobile
+npx expo prebuild -p ios --clean
+grep -R "PrivacyInfo\.xcprivacy" ios/*.xcodeproj/project.pbxproj ios/Pods/Pods.xcodeproj/project.pbxproj || true
+grep -R "PrivacyInfo\.xcprivacy in Resources" ios/*.xcodeproj/project.pbxproj ios/Pods/Pods.xcodeproj/project.pbxproj || true
+```
