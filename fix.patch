@@ -1,77 +1,151 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
 diff --git a/mobile/plugins/strip-pods-privacyinfo.js b/mobile/plugins/strip-pods-privacyinfo.js
-index 5607cd20c070f6313fbdcb761b14dbf5ed7cf6e3..e3cff078adb3e1b0efcfd3eff1ec497b4829683f 100644
+index e3cff078adb3e1b0efcfd3eff1ec497b4829683f..c497eca214bdd759c8e9c8d98a51d803ae79ea63 100644
 --- a/mobile/plugins/strip-pods-privacyinfo.js
 +++ b/mobile/plugins/strip-pods-privacyinfo.js
-@@ -1,37 +1,111 @@
+@@ -1,29 +1,31 @@
  const fs = require("fs");
  const path = require("path");
  const { withDangerousMod } = require("@expo/config-plugins");
  
-+function findProjectFile(iosDir) {
-+  const entries = fs.readdirSync(iosDir, { withFileTypes: true });
-+  for (const entry of entries) {
-+    if (entry.isDirectory() && entry.name.endsWith(".xcodeproj")) {
-+      const candidate = path.join(iosDir, entry.name, "project.pbxproj");
-+      if (fs.existsSync(candidate)) return candidate;
++const PRIVACYINFO_MARKER = "# BOOKITGY_PRIVACYINFO_STRIP";
++
+ function findProjectFile(iosDir) {
+   const entries = fs.readdirSync(iosDir, { withFileTypes: true });
+   for (const entry of entries) {
+     if (entry.isDirectory() && entry.name.endsWith(".xcodeproj")) {
+       const candidate = path.join(iosDir, entry.name, "project.pbxproj");
+       if (fs.existsSync(candidate)) return candidate;
+     }
+   }
+   return null;
+ }
+ 
+ function collectPodPrivacyFileRefs(content) {
+   const fileRefs = new Set();
+   const fileRefRegex = /([A-F0-9]{24}) \/\* PrivacyInfo\.xcprivacy \*\/ = {[^}]*?};/g;
+   let match;
+ 
+   while ((match = fileRefRegex.exec(content))) {
+     const block = match[0];
+     const pathMatch = block.match(/path = ([^;]+);/);
+     const pathValue = pathMatch ? pathMatch[1].replace(/^"|"$/g, "") : "";
+     if (pathValue.toLowerCase().includes("pods")) {
+       fileRefs.add(match[1]);
+     }
+   }
+ 
+@@ -46,56 +48,146 @@ function collectBuildFilesForRefs(content, fileRefs) {
+ function stripEntries(content, ids, label) {
+   for (const id of ids) {
+     const entryPattern = `\\n?\\s*${id} /\\*[^*]*${label}[^*]*\\*/ = {[^}]*?};\\n?`;
+     const entryRegex = new RegExp(entryPattern, "g");
+     content = content.replace(entryRegex, "\n");
+   }
+   return content;
+ }
+ 
+ function stripResourcesReferences(content, buildFiles) {
+   let removed = 0;
+   for (const id of buildFiles) {
+     const resourceRegex = new RegExp(
+       `\n?\s*${id} /\\* PrivacyInfo\\.xcprivacy in Resources \\*/,?\n`,
+       "g"
+     );
+     const matches = content.match(resourceRegex);
+     if (matches) {
+       removed += matches.length;
+       content = content.replace(resourceRegex, "\n");
+     }
+   }
+   return { content, removed };
+ }
+ 
++function findPostInstallBlock(lines) {
++  let startIndex = -1;
++  for (let i = 0; i < lines.length; i++) {
++    if (/^\s*post_install\s+do\b/.test(lines[i])) {
++      startIndex = i;
++      break;
 +    }
 +  }
-+  return null;
-+}
 +
-+function collectPodPrivacyFileRefs(content) {
-+  const fileRefs = new Set();
-+  const fileRefRegex = /([A-F0-9]{24}) \/\* PrivacyInfo\.xcprivacy \*\/ = {[^}]*?};/g;
-+  let match;
++  if (startIndex === -1) return { startIndex, endIndex: -1 };
 +
-+  while ((match = fileRefRegex.exec(content))) {
-+    const block = match[0];
-+    const pathMatch = block.match(/path = ([^;]+);/);
-+    const pathValue = pathMatch ? pathMatch[1].replace(/^"|"$/g, "") : "";
-+    if (pathValue.toLowerCase().includes("pods")) {
-+      fileRefs.add(match[1]);
++  let depth = 1;
++
++  const countStarts = (line) => {
++    const matches = line.match(/\b(do|if|unless|case|begin|for|while|until|class|module|def)\b/g);
++    return matches ? matches.length : 0;
++  };
++
++  const countEnds = (line) => {
++    const matches = line.match(/\bend\b/g);
++    return matches ? matches.length : 0;
++  };
++
++  for (let i = startIndex + 1; i < lines.length; i++) {
++    depth += countStarts(lines[i]);
++    depth -= countEnds(lines[i]);
++
++    if (depth === 0) {
++      return { startIndex, endIndex: i };
 +    }
 +  }
 +
-+  return fileRefs;
++  return { startIndex, endIndex: -1 };
 +}
 +
-+function collectBuildFilesForRefs(content, fileRefs) {
-+  const buildFiles = new Set();
-+  for (const ref of fileRefs) {
-+    const buildFilePattern = `([A-F0-9]{24}) /\\* PrivacyInfo\\.xcprivacy in Resources \\*/ = {[^}]*?fileRef = ${ref} /\\* PrivacyInfo\\.xcprivacy \\*/;[^}]*?};`;
-+    const buildFileRegex = new RegExp(buildFilePattern, "g");
-+    let match;
-+    while ((match = buildFileRegex.exec(content))) {
-+      buildFiles.add(match[1]);
-+    }
-+  }
-+  return buildFiles;
-+}
++function injectPodfileScript(podfilePath) {
++  if (!fs.existsSync(podfilePath)) return;
 +
-+function stripEntries(content, ids, label) {
-+  for (const id of ids) {
-+    const entryPattern = `\\n?\\s*${id} /\\*[^*]*${label}[^*]*\\*/ = {[^}]*?};\\n?`;
-+    const entryRegex = new RegExp(entryPattern, "g");
-+    content = content.replace(entryRegex, "\n");
++  let content;
++  try {
++    content = fs.readFileSync(podfilePath, "utf8");
++  } catch (error) {
++    return;
 +  }
-+  return content;
-+}
 +
-+function stripResourcesReferences(content, buildFiles) {
-+  let removed = 0;
-+  for (const id of buildFiles) {
-+    const resourceRegex = new RegExp(
-+      `\n?\s*${id} /\\* PrivacyInfo\\.xcprivacy in Resources \\*/,?\n`,
-+      "g"
-+    );
-+    const matches = content.match(resourceRegex);
-+    if (matches) {
-+      removed += matches.length;
-+      content = content.replace(resourceRegex, "\n");
-+    }
++  if (content.includes(PRIVACYINFO_MARKER)) return;
++
++  const lines = content.split("\n");
++  const { startIndex, endIndex } = findPostInstallBlock(lines);
++
++  const snippetLines = [
++    `${PRIVACYINFO_MARKER}`,
++    'scripts = Dir.glob(File.join(__dir__, "Pods", "Target Support Files", "Pods-*", "Pods-*-resources.sh"))',
++    "",
++    "scripts.each do |script|",
++    "  next unless File.exist?(script)",
++    "  content = File.read(script)",
++    '  next unless content.include?("PrivacyInfo.xcprivacy")',
++    "",
++    "  filtered = content.lines.reject { |line| line.include?(\"PrivacyInfo.xcprivacy\") }.join",
++    "  File.write(script, filtered)",
++    "",
++    '  puts "[BookitGY] Stripped PrivacyInfo.xcprivacy from #{script}"',
++    "end",
++  ];
++
++  if (startIndex === -1 || endIndex === -1) {
++    const block = [
++      "",
++      "post_install do |installer|",
++      ...snippetLines.map((line) => `  ${line}`),
++      "end",
++      "",
++    ];
++
++    fs.writeFileSync(podfilePath, `${content}${content.endsWith("\n") ? "" : "\n"}${block.join("\n")}`);
++    return;
 +  }
-+  return { content, removed };
++
++  const indent = `${lines[startIndex].match(/^\s*/)[0]}  `;
++  const insert = ["", ...snippetLines.map((line) => `${indent}${line}`)];
++
++  lines.splice(endIndex, 0, ...insert);
++
++  fs.writeFileSync(podfilePath, `${lines.join("\n")}${content.endsWith("\n") ? "" : "\n"}`);
 +}
 +
  module.exports = function withStripPodsPrivacyInfo(config) {
@@ -79,59 +153,35 @@ index 5607cd20c070f6313fbdcb761b14dbf5ed7cf6e3..e3cff078adb3e1b0efcfd3eff1ec497b
      "ios",
      async (config) => {
        const iosDir = config.modRequest.platformProjectRoot;
--      const podsDir = path.join(iosDir, "Pods", "Target Support Files");
-+      const pbxprojPath = findProjectFile(iosDir);
- 
--      if (!fs.existsSync(podsDir)) return config;
-+      if (!pbxprojPath || !fs.existsSync(pbxprojPath)) return config;
- 
--      for (const entry of fs.readdirSync(podsDir)) {
--        const script = path.join(
--          podsDir,
--          entry,
--          `${entry}-resources.sh`
--        );
-+      let original;
-+      try {
-+        original = fs.readFileSync(pbxprojPath, "utf8");
-+      } catch (error) {
-+        return config;
-+      }
- 
--        if (!fs.existsSync(script)) continue;
-+      const fileRefsToRemove = collectPodPrivacyFileRefs(original);
-+      if (fileRefsToRemove.size === 0) return config;
- 
--        const original = fs.readFileSync(script, "utf8");
--        const filtered = original
--          .split("\n")
--          .filter(line => !line.includes("PrivacyInfo.xcprivacy"))
--          .join("\n");
-+      const buildFilesToRemove = collectBuildFilesForRefs(original, fileRefsToRemove);
- 
--        if (filtered !== original) {
--          fs.writeFileSync(script, filtered);
--        }
-+      let updated = original;
-+      updated = stripEntries(updated, buildFilesToRemove, "PrivacyInfo.xcprivacy in Resources");
-+      updated = stripEntries(updated, fileRefsToRemove, "PrivacyInfo.xcprivacy");
-+      const { content: cleanedContent, removed } = stripResourcesReferences(
-+        updated,
-+        buildFilesToRemove
-+      );
+       const pbxprojPath = findProjectFile(iosDir);
++      const podfilePath = path.join(iosDir, "Podfile");
 +
-+      if (cleanedContent !== original) {
-+        fs.writeFileSync(pbxprojPath, cleanedContent);
++      injectPodfileScript(podfilePath);
+ 
+       if (!pbxprojPath || !fs.existsSync(pbxprojPath)) return config;
+ 
+       let original;
+       try {
+         original = fs.readFileSync(pbxprojPath, "utf8");
+       } catch (error) {
+         return config;
        }
  
-+      console.log(
-+        `Removed ${removed} PrivacyInfo.xcprivacy references from Copy Bundle Resources`
-+      );
-+
-       return config;
-     },
-   ]);
- };
+       const fileRefsToRemove = collectPodPrivacyFileRefs(original);
+       if (fileRefsToRemove.size === 0) return config;
+ 
+       const buildFilesToRemove = collectBuildFilesForRefs(original, fileRefsToRemove);
+ 
+       let updated = original;
+       updated = stripEntries(updated, buildFilesToRemove, "PrivacyInfo.xcprivacy in Resources");
+       updated = stripEntries(updated, fileRefsToRemove, "PrivacyInfo.xcprivacy");
+       const { content: cleanedContent, removed } = stripResourcesReferences(
+         updated,
+         buildFilesToRemove
+       );
+ 
+       if (cleanedContent !== original) {
+         fs.writeFileSync(pbxprojPath, cleanedContent);
  
 EOF
 )
