@@ -59,5 +59,18 @@ target 'BookitGY' do
       :mac_catalyst_enabled => false,
       :ccache_enabled => ccache_enabled?(podfile_properties),
     )
+    # BOOKITGY_PRIVACYINFO_STRIP
+    scripts = Dir.glob(File.join(__dir__, "Pods", "Target Support Files", "Pods-*", "Pods-*-resources.sh"))
+
+    scripts.each do |script|
+      next unless File.exist?(script)
+      content = File.read(script)
+      next unless content.include?("PrivacyInfo.xcprivacy")
+
+      filtered = content.lines.reject { |line| line.include?("PrivacyInfo.xcprivacy") }.join
+      File.write(script, filtered)
+
+      puts "[BookitGY] Stripped PrivacyInfo.xcprivacy from #{script}"
+    end
   end
 end
