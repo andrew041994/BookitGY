@@ -1,5 +1,8 @@
-from dotenv import load_dotenv, find_dotenv
+from pathlib import Path
 import os
+
+import pytest
+from dotenv import load_dotenv, find_dotenv
 from twilio.rest import Client
 
 # Load backend/.env explicitly to ensure credentials are available when running
@@ -11,6 +14,9 @@ load_dotenv(find_dotenv(), override=False)
 sid = os.getenv("TWILIO_ACCOUNT_SID")
 token = os.getenv("TWILIO_AUTH_TOKEN")
 from_number = os.getenv("TWILIO_WHATSAPP_FROM")
+
+if not (sid and token and from_number):
+    pytest.skip("Twilio credentials not configured", allow_module_level=True)
 
 print("SID set? ", bool(sid))
 print("FROM: ", from_number)

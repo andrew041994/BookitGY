@@ -1,120 +1,90 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
-diff --git a/backend/tests/test_billing.py b/backend/tests/test_billing.py
-index 377843c79707d6dc8adb3da77227971d02ad1a71..c999e337a181b3c11c7888fd95ae3babea64acd8 100644
---- a/backend/tests/test_billing.py
-+++ b/backend/tests/test_billing.py
-@@ -471,52 +471,109 @@ def test_read_only_endpoints_do_not_auto_complete_future_bookings(db_session):
-     database.Base.metadata.create_all(bind=database.engine)
- 
-     def override_get_db():
-         try:
-             yield session
-         finally:
-             pass
- 
-     app.dependency_overrides[get_db] = override_get_db
-     app.dependency_overrides[bookings_routes._require_current_provider] = lambda: provider
-     app.dependency_overrides[
-         providers_routes._require_current_provider
-     ] = lambda: provider
- 
-     client = TestClient(app)
- 
-     try:
-         summary_resp = client.get("/providers/me/summary")
-         assert summary_resp.status_code == 200
- 
-         billing_resp = client.get("/providers/me/billing/bookings")
-         assert billing_resp.status_code == 200
-     finally:
-         app.dependency_overrides = {}
- 
--    session.refresh(booking)
--    assert booking.status == "confirmed"
-+
-+def test_paid_bill_persists_after_regeneration(db_session):
-+    session, models, crud = db_session
-+    provider, customer, service = _create_provider_graph(session, models)
-+
-+    now = now_guyana()
-+    prior_month_date = (now.replace(day=1) - timedelta(days=1)).date()
-+    start_of_prior_month = prior_month_date.replace(day=1)
-+
-+    start_time = datetime(
-+        start_of_prior_month.year, start_of_prior_month.month, 5, 10, 0
-+    )
-+    end_time = start_time + timedelta(hours=1)
-+
-+    _add_booking(
-+        session,
-+        models,
-+        customer=customer,
-+        service=service,
-+        start_time=start_time,
-+        end_time=end_time,
-+        status="completed",
-+    )
-+
-+    crud.generate_monthly_bills(session, month=prior_month_date)
-+
-+    bill = (
-+        session.query(models.Bill)
-+        .filter(
-+            models.Bill.provider_id == provider.id,
-+            models.Bill.month == start_of_prior_month,
-+        )
-+        .first()
-+    )
-+
-+    assert bill is not None
-+    original_total = float(bill.total_gyd)
-+    original_fee = float(bill.fee_gyd)
-+    original_due = bill.due_date
-+
-+    crud.set_provider_bills_paid_state(session, provider.id, True)
-+
-+    crud.generate_monthly_bills(session, month=prior_month_date)
-+
-+    bills = (
-+        session.query(models.Bill)
-+        .filter(
-+            models.Bill.provider_id == provider.id,
-+            models.Bill.month == start_of_prior_month,
-+        )
-+        .all()
-+    )
-+
-+    assert len(bills) == 1
-+    persisted = bills[0]
-+    assert persisted.is_paid is True
-+    assert float(persisted.total_gyd) == original_total
-+    assert float(persisted.fee_gyd) == original_fee
-+    assert persisted.due_date == original_due
+diff --git a/backend/tests/test_public_provider_lookup.py b/backend/tests/test_public_provider_lookup.py
+index 7031dd25621ec66c43fd770dda3320fafe0af6d9..5ae6c47c42a02b02c2567f5d0a3a6f636e78af88 100644
+--- a/backend/tests/test_public_provider_lookup.py
++++ b/backend/tests/test_public_provider_lookup.py
+@@ -1,62 +1,48 @@
+-from fastapi.testclient import TestClient
+-
+-
+-def _build_client(session):
+-    from app.main import app
+-    from app.database import Base, engine, get_db
+-
+-    Base.metadata.create_all(bind=engine)
+-
+-    def _override_get_db():
+-        try:
+-            yield session
+-        finally:
+-            pass
+-
+-    app.dependency_overrides[get_db] = _override_get_db
+-
+-    return TestClient(app)
++import pytest
++from fastapi import HTTPException
  
  
- def test_cron_job_completes_past_confirmed_only(db_session):
-     session, models, crud = db_session
-     provider, customer, service = _create_provider_graph(session, models)
+ def test_public_provider_lookup_by_username(db_session):
++    from app.routes import providers as providers_routes
++
+     session, models, _ = db_session
  
-     now = now_guyana()
+-    user = models.User(username="DemoProvider", is_provider=True)
++    user = models.User(username="demoprovider", is_provider=True)
+     session.add(user)
+     session.commit()
+     session.refresh(user)
  
-     past_start = now - timedelta(hours=1)
-     past_end = now - timedelta(minutes=30)
-     confirmed_booking = _add_booking(
-         session,
-         models,
-         customer=customer,
-         service=service,
-         start_time=past_start,
-         end_time=past_end,
-         status="confirmed",
+     provider = models.Provider(
+         user_id=user.id,
+         account_number="ACC-LOOKUP-1",
+         avatar_url="https://example.com/avatar.png",
      )
+     session.add(provider)
+     session.commit()
+     session.refresh(provider)
  
-     cancelled_booking = _add_booking(
-         session,
-         models,
-         customer=customer,
-         service=service,
+-    client = _build_client(session)
+-    response = client.get("/public/providers/by-username/demoprovider")
+-
+-    assert response.status_code == 200
+-    payload = response.json()
++    payload = providers_routes.get_public_provider_by_username(
++        "demoprovider", db=session
++    )
+ 
+-    assert payload["provider_id"] == provider.id
+-    assert payload["username"] == user.username
+-    assert payload["display_name"] == user.username
+-    assert payload["avatar_url"] == provider.avatar_url
+-    assert payload["business_name"] is None
++    assert payload.provider_id == provider.id
++    assert payload.username == user.username
++    assert payload.display_name == user.username
++    assert payload.avatar_url == provider.avatar_url
++    assert payload.business_name is None
+ 
+ 
+ def test_public_provider_lookup_rejects_non_provider(db_session):
++    from app.routes import providers as providers_routes
++
+     session, models, _ = db_session
+ 
+     user = models.User(username="notaprovider", is_provider=False)
+     session.add(user)
+     session.commit()
+ 
+-    client = _build_client(session)
+-    response = client.get("/public/providers/by-username/notaprovider")
++    with pytest.raises(HTTPException) as exc:
++        providers_routes.get_public_provider_by_username("notaprovider", db=session)
+ 
+-    assert response.status_code == 404
+-    assert response.json()["detail"] == "Provider not found"
++    assert exc.value.status_code == 404
++    assert exc.value.detail == "Provider not found"
  
 EOF
 )

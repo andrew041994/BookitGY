@@ -1,11 +1,28 @@
 import sys
 import tempfile
+import sys
+import tempfile
 from pathlib import Path
 
 import pytest
 
+
 repo_root = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(repo_root))
+
+
+def _reload_app_modules():
+    for module_name in [
+        "app.config",
+        "app.database",
+        "app.models",
+        "app.crud",
+        "app.main",
+        "app.routes.providers",
+        "app.routes.bookings",
+        "app.workers.cron",
+    ]:
+        sys.modules.pop(module_name, None)
 
 
 @pytest.fixture()
@@ -19,16 +36,7 @@ def db_session(monkeypatch):
     monkeypatch.setenv("CORS_ALLOW_ORIGINS", "http://localhost")
     monkeypatch.setenv("JWT_SECRET_KEY", "x" * 32)
 
-    for module_name in [
-        "app.config",
-        "app.database",
-        "app.models",
-        "app.crud",
-        "app.main",
-        "app.routes.bookings",
-        "app.workers.cron",
-    ]:
-        sys.modules.pop(module_name, None)
+    _reload_app_modules()
 
     import app.config as config
 

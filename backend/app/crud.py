@@ -1834,6 +1834,7 @@ def list_todays_bookings_for_provider(db: Session, provider_id: int):
     start_of_day = today_start_guyana()
     end_of_day = today_end_guyana()
     now = now_guyana()
+    _auto_complete_finished_bookings(db, provider_id=provider_id, as_of=now)
     normalized_status = normalized_booking_status_expr()
 
     q = (

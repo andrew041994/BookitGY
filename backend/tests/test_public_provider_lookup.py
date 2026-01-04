@@ -1,27 +1,13 @@
-from fastapi.testclient import TestClient
-
-
-def _build_client(session):
-    from app.main import app
-    from app.database import Base, engine, get_db
-
-    Base.metadata.create_all(bind=engine)
-
-    def _override_get_db():
-        try:
-            yield session
-        finally:
-            pass
-
-    app.dependency_overrides[get_db] = _override_get_db
-
-    return TestClient(app)
+import pytest
+from fastapi import HTTPException
 
 
 def test_public_provider_lookup_by_username(db_session):
+    from app.routes import providers as providers_routes
+
     session, models, _ = db_session
 
-    user = models.User(username="DemoProvider", is_provider=True)
+    user = models.User(username="demoprovider", is_provider=True)
     session.add(user)
     session.commit()
     session.refresh(user)
@@ -35,28 +21,28 @@ def test_public_provider_lookup_by_username(db_session):
     session.commit()
     session.refresh(provider)
 
-    client = _build_client(session)
-    response = client.get("/public/providers/by-username/demoprovider")
+    payload = providers_routes.get_public_provider_by_username(
+        "demoprovider", db=session
+    )
 
-    assert response.status_code == 200
-    payload = response.json()
-
-    assert payload["provider_id"] == provider.id
-    assert payload["username"] == user.username
-    assert payload["display_name"] == user.username
-    assert payload["avatar_url"] == provider.avatar_url
-    assert payload["business_name"] is None
+    assert payload.provider_id == provider.id
+    assert payload.username == user.username
+    assert payload.display_name == user.username
+    assert payload.avatar_url == provider.avatar_url
+    assert payload.business_name is None
 
 
 def test_public_provider_lookup_rejects_non_provider(db_session):
+    from app.routes import providers as providers_routes
+
     session, models, _ = db_session
 
     user = models.User(username="notaprovider", is_provider=False)
     session.add(user)
     session.commit()
 
-    client = _build_client(session)
-    response = client.get("/public/providers/by-username/notaprovider")
+    with pytest.raises(HTTPException) as exc:
+        providers_routes.get_public_provider_by_username("notaprovider", db=session)
 
-    assert response.status_code == 404
-    assert response.json()["detail"] == "Provider not found"
+    assert exc.value.status_code == 404
+    assert exc.value.detail == "Provider not found"

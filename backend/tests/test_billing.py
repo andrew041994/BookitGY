@@ -1,7 +1,9 @@
 from datetime import datetime, timedelta
+from datetime import datetime, timedelta
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy.orm import sessionmaker
 
 from app.utils.time import now_guyana
 
@@ -54,6 +56,39 @@ def _add_booking(session, models, *, customer, service, start_time, end_time, st
     session.commit()
     session.refresh(booking)
     return booking
+
+
+def _create_completed_booking_for_month(
+    session,
+    models,
+    *,
+    customer,
+    service,
+    month_start: datetime,
+    day: int,
+    price_gyd: float,
+):
+    billing_service = models.Service(
+        provider_id=service.provider_id,
+        name=f"{service.name}-{day}-{price_gyd}",
+        price_gyd=price_gyd,
+        duration_minutes=service.duration_minutes,
+    )
+    session.add(billing_service)
+    session.commit()
+    session.refresh(billing_service)
+
+    start_time = datetime(month_start.year, month_start.month, day, 10, 0)
+    end_time = start_time + timedelta(hours=1)
+    return _add_booking(
+        session,
+        models,
+        customer=customer,
+        service=billing_service,
+        start_time=start_time,
+        end_time=end_time,
+        status="completed",
+    )
 
 
 def _allow_custom_statuses(models, *values):
@@ -661,3 +696,174 @@ def test_billing_filters_to_completed_items_in_period(db_session):
     # Totals should also reflect only the completed item (10% of 1000 GYD)
     amount_due = crud.get_provider_fees_due(session, provider.id)
     assert amount_due == 100.0
+
+
+def _generate_bill_for_month(session, models, crud, provider, customer, service, month, prices):
+    for idx, price in enumerate(prices, start=1):
+        _create_completed_booking_for_month(
+            session,
+            models,
+            customer=customer,
+            service=service,
+            month_start=month,
+            day=idx,
+            price_gyd=price,
+        )
+
+    crud.generate_monthly_bills(session, month=month.date())
+
+    return (
+        session.query(models.Bill)
+        .filter(models.Bill.provider_id == provider.id, models.Bill.month == month.date())
+        .one()
+    )
+
+
+def test_generate_monthly_bill_creates_persistent_row(db_session):
+    session, models, crud = db_session
+    provider, customer, service = _create_provider_graph(session, models)
+
+    billing_month = datetime(2023, 1, 1)
+    bill = _generate_bill_for_month(
+        session,
+        models,
+        crud,
+        provider,
+        customer,
+        service,
+        billing_month,
+        [1500, 500],
+    )
+
+    assert bill.month == billing_month.date()
+    assert float(bill.total_gyd) == 2000
+    assert float(bill.fee_gyd) == pytest.approx(200.0)
+    assert bill.due_date == datetime(2023, 2, 15, 23, 59)
+
+
+def test_bill_persists_across_sessions(db_session):
+    session, models, crud = db_session
+    provider, customer, service = _create_provider_graph(session, models)
+
+    billing_month = datetime(2023, 1, 1)
+    bill = _generate_bill_for_month(
+        session,
+        models,
+        crud,
+        provider,
+        customer,
+        service,
+        billing_month,
+        [1200],
+    )
+
+    original_total = float(bill.total_gyd)
+    bill_id = bill.id
+
+    SessionMaker = sessionmaker(bind=session.bind, autocommit=False, autoflush=False)
+    session.close()
+
+    with SessionMaker() as new_session:
+        persisted = (
+            new_session.query(models.Bill)
+            .filter(
+                models.Bill.provider_id == provider.id,
+                models.Bill.month == billing_month.date(),
+            )
+            .one()
+        )
+
+        assert persisted.id == bill_id
+        assert float(persisted.total_gyd) == original_total
+        assert (
+            new_session.query(models.Bill)
+            .filter(models.Bill.provider_id == provider.id)
+            .count()
+            == 1
+        )
+
+
+def test_paid_bills_are_not_overwritten(db_session):
+    session, models, crud = db_session
+    provider, customer, service = _create_provider_graph(session, models)
+
+    billing_month = datetime(2023, 1, 1)
+    bill = _generate_bill_for_month(
+        session,
+        models,
+        crud,
+        provider,
+        customer,
+        service,
+        billing_month,
+        [1000],
+    )
+
+    original_total = float(bill.total_gyd)
+    original_fee = float(bill.fee_gyd)
+    original_due = bill.due_date
+
+    crud.set_provider_bills_paid_state(session, provider.id, True)
+    _create_completed_booking_for_month(
+        session,
+        models,
+        customer=customer,
+        service=service,
+        month_start=billing_month,
+        day=10,
+        price_gyd=500,
+    )
+
+    crud.generate_monthly_bills(session, month=billing_month.date())
+
+    persisted = (
+        session.query(models.Bill)
+        .filter(
+            models.Bill.provider_id == provider.id,
+            models.Bill.month == billing_month.date(),
+        )
+        .one()
+    )
+
+    assert persisted.is_paid is True
+    assert float(persisted.total_gyd) == original_total
+    assert float(persisted.fee_gyd) == original_fee
+    assert persisted.due_date == original_due
+
+
+def test_bill_generation_does_not_delete_bookings(db_session):
+    session, models, crud = db_session
+    provider, customer, service = _create_provider_graph(session, models)
+
+    billing_month = datetime(2023, 1, 1)
+    first_booking = _create_completed_booking_for_month(
+        session,
+        models,
+        customer=customer,
+        service=service,
+        month_start=billing_month,
+        day=2,
+        price_gyd=800,
+    )
+    second_booking = _create_completed_booking_for_month(
+        session,
+        models,
+        customer=customer,
+        service=service,
+        month_start=billing_month,
+        day=12,
+        price_gyd=1200,
+    )
+
+    before_count = session.query(models.Booking).count()
+
+    crud.generate_monthly_bills(session, month=billing_month.date())
+
+    after_count = session.query(models.Booking).count()
+    assert after_count == before_count
+    assert {
+        booking.id
+        for booking in session.query(models.Booking)
+        .filter(models.Booking.id.in_([first_booking.id, second_booking.id]))
+        .all()
+    } == {first_booking.id, second_booking.id}
