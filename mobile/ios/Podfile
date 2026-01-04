@@ -16,7 +16,7 @@ end
 ENV["RCT_NEW_ARCH_ENABLED"] ||= "0" if podfile_properties["newArchEnabled"] == "false"
 ENV["EX_DEV_CLIENT_NETWORK_INSPECTOR"] ||= podfile_properties["EX_DEV_CLIENT_NETWORK_INSPECTOR"]
 
-platform :ios, "15.0"
+platform :ios, "16.0"
 
 prepare_react_native_project!
 
