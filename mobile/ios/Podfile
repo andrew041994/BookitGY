@@ -9,7 +9,8 @@ podfile_properties = JSON.parse(File.read(podfile_properties_path)) rescue {}
 # Force a single minimum iOS version everywhere (Pods + app)
 platform :ios, "16.0"
 
-install! "cocoapods", :det提醒istic_uuids => false
+install! "cocoapods", :deterministic_uuids => false
+
 
 prepare_react_native_project!
 
@@ -25,20 +26,40 @@ target "BookitGY" do
     :app_path => "#{Pod::Config.instance.installation_root}/.."
   )
 
-  post_install do |installer|
-    react_native_post_install(
-      installer,
-      config[:reactNativePath],
-      :mac_catalyst_enabled => false
-    )
+      post_install do |installer|
+      react_native_post_install(
+        installer,
+        config[:reactNativePath],
+        :mac_catalyst_enabled => false
+      )
+    
+      deployment_target = "16.0"
+    
+      # 1) Force ALL Pods targets to iOS 16.0
+      installer.pods_project.targets.each do |t|
+        t.build_configurations.each do |bc|
+          bc.build_settings["IPHONEOS_DEPLOYMENT_TARGET"] = deployment_target
+        end
+      end
+    
+      # 2) Force the USER project (BookitGY app target) to iOS 16.0
+      installer.aggregate_targets.each do |agg|
+        agg.user_project.targets.each do |t|
+          t.build_configurations.each do |bc|
+            bc.build_settings["IPHONEOS_DEPLOYMENT_TARGET"] = deployment_target
+          end
+        end
+      end
 
-    # Enforce iOS 16 deployment target for every pod target & config
-    installer.pods_project.targets.each do |t|
-      t.build_configurations.each do |bc|
-        bc.build_settings["IPHONEOS_DEPLOYMENT_TARGET"] = "16.0"
+      # 3) Also bump the project-level setting (some templates rely on this)
+      installer.aggregate_targets.each do |agg|
+        agg.user_project.build_configurations.each do |bc|
+          bc.build_settings["IPHONEOS_DEPLOYMENT_TARGET"] = deployment_target
+        end
+        agg.user_project.save
       end
     end
-  end
+
 
   post_integrate do |installer|
     begin
