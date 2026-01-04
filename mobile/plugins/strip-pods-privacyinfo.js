@@ -4,12 +4,16 @@ const { withDangerousMod } = require("@expo/config-plugins");
 
 const PODFILE_MARKER = "# BOOKITGY_PRIVACYINFO_STRIP";
 
+function escapeRegExp(string) {
+  return string.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 function findPbxprojFiles(iosDir) {
   const pbxprojFiles = new Set();
 
   const entries = fs.readdirSync(iosDir, { withFileTypes: true });
   for (const entry of entries) {
-    if (entry.isDirectory() && entry.name.endsWith(".xcodeproj")) {
+    if (entry.isDirectory() && entry.name.endsWith(".xcodeproj") && entry.name !== "Pods.xcodeproj") {
       const candidate = path.join(iosDir, entry.name, "project.pbxproj");
       if (fs.existsSync(candidate) && !candidate.includes(`${path.sep}Pods${path.sep}`)) {
         pbxprojFiles.add(candidate);
@@ -142,18 +146,35 @@ function processPbxproj(pbxprojPath) {
 function buildPodfileSnippet(indent) {
   const lines = [
     `${indent}${PODFILE_MARKER}`,
-    `${indent}scripts = Dir.glob(File.join(__dir__, "Pods", "Target Support Files", "**", "*-resources.sh"))`,
     `${indent}removed = 0`,
-    `${indent}scripts.each do |script|`,
-    `${indent}  next unless File.exist?(script)`,
-    `${indent}  content = File.read(script)`,
-    `${indent}  next unless content.include?("PrivacyInfo.xcprivacy")`,
     "",
-    `${indent}  filtered = content.lines.reject { |line| line.include?("PrivacyInfo.xcprivacy") }.join`,
-    `${indent}  removed += (content.lines.length - filtered.lines.length)`,
-    `${indent}  File.write(script, filtered)`,
+    `${indent}# 1) Strip from resources shell scripts`,
+    `${indent}scripts = Dir.glob(File.join(__dir__, "Pods", "Target Support Files", "**", "*-resources.sh"))`,
+    `${indent}scripts.each do |p|`,
+    `${indent}  next unless File.exist?(p)`,
+    `${indent}  c = File.read(p)`,
+    `${indent}  next unless c.include?("PrivacyInfo.xcprivacy")`,
+    `${indent}  n = c.lines.reject { |line| line.include?("PrivacyInfo.xcprivacy") }.join`,
+    `${indent}  if n != c`,
+    `${indent}    removed += (c.lines.length - n.lines.length)`,
+    `${indent}    File.write(p, n)`,
+    `${indent}  end`,
     `${indent}end`,
-    `${indent}puts "[BookitGY] Stripped #{removed} PrivacyInfo.xcprivacy lines from Pods resources scripts"`,
+    "",
+    `${indent}# 2) Strip from xcfilelists (these drive Xcode output tracking)`,
+    `${indent}filelists = Dir.glob(File.join(__dir__, "Pods", "Target Support Files", "**", "*resources-*-files.xcfilelist"))`,
+    `${indent}filelists.each do |p|`,
+    `${indent}  next unless File.exist?(p)`,
+    `${indent}  c = File.read(p)`,
+    `${indent}  next unless c.include?("PrivacyInfo.xcprivacy")`,
+    `${indent}  n = c.lines.reject { |line| line.include?("PrivacyInfo.xcprivacy") }.join`,
+    `${indent}  if n != c`,
+    `${indent}    removed += (c.lines.length - n.lines.length)`,
+    `${indent}    File.write(p, n)`,
+    `${indent}  end`,
+    `${indent}end`,
+    "",
+    `${indent}puts "[BookitGY] Stripped #{removed} PrivacyInfo.xcprivacy references from CocoaPods resources scripts/filelists"`,
     "",
   ];
 
@@ -204,32 +225,25 @@ function findHook(content, hookName) {
 }
 
 function removeSnippetFromHook(content, hook) {
-  const { end, indent } = hook;
+  const { start, end, indent } = hook;
   const snippet = buildPodfileSnippet(`${indent}  `);
-  const before = content.slice(0, end);
-  const after = content.slice(end);
+  const hookContent = content.slice(start, end);
 
-  if (!before.includes(PODFILE_MARKER)) {
+  if (!hookContent.includes(PODFILE_MARKER)) {
     return content;
   }
 
-  let cleanedBefore = before;
-  const snippetIndex = before.indexOf(snippet);
+  let cleanedHook = hookContent.replace(snippet, "");
 
-  if (snippetIndex !== -1) {
-    cleanedBefore = before.slice(0, snippetIndex) + before.slice(snippetIndex + snippet.length);
-  } else {
-    const lines = before.split("\n");
-    const markerIndex = lines.findIndex((line) => line.includes(PODFILE_MARKER));
-    if (markerIndex !== -1) {
-      cleanedBefore = lines.slice(0, markerIndex).join("\n");
-      if (!cleanedBefore.endsWith("\n")) {
-        cleanedBefore += "\n";
-      }
-    }
+  if (cleanedHook === hookContent) {
+    const markerBlockRegex = new RegExp(
+      `\n?[\\t ]*${escapeRegExp(PODFILE_MARKER)}[\\s\\S]*?(?=\n${indent}end)`,
+      "m"
+    );
+    cleanedHook = hookContent.replace(markerBlockRegex, "\n");
   }
 
-  return cleanedBefore + after;
+  return content.slice(0, start) + cleanedHook + content.slice(end);
 }
 
 function injectSnippetIntoHook(content, hook) {
