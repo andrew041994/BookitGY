@@ -5779,7 +5779,9 @@ function MainApp({ token, setToken, showFlash }) {
     refreshFavoriteProviders,
   } = useFavoriteProviders(token?.email || token?.userId);
   return (
-    <NavigationContainer linking={linking}>
+
+    // add this later linking={linking}
+    <NavigationContainer >
       {token.isProvider ? (
         // 👇 Provider view: Dashboard + Billing + Profile
         <Tab.Navigator
