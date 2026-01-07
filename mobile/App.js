@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from "react";
+import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useFocusEffect } from "@react-navigation/native";
 import {
   Text,
@@ -65,13 +65,40 @@ const RESERVED_USERNAME_PATHS = new Set([
   "admin",
 ]);
 
-const linking = {
+const getProviderUsernameFromPath = (path) => {
+  const trimmed = `${path || ""}`.replace(/^\/+/, "");
+  if (!trimmed) return null;
+
+  const [firstSegment, secondSegment] = trimmed.split("/");
+  if (firstSegment !== "p" || !secondSegment) return null;
+
+  try {
+    return decodeURIComponent(secondSegment);
+  } catch (error) {
+    return secondSegment;
+  }
+};
+
+const getProviderUsernameFromUrl = (url) => {
+  const safeUrl = handleIncomingURL(url);
+  if (!safeUrl) return null;
+
+  try {
+    const parsed = new URL(safeUrl);
+    return getProviderUsernameFromPath(parsed.pathname);
+  } catch (error) {
+    console.log("[deepLinking] Failed to parse URL", safeUrl, error?.message || error);
+    return null;
+  }
+};
+
+const createLinkingConfig = ({ isProvider }) => ({
   prefixes: ["https://bookitgy.com", "https://www.bookitgy.com", "bookitgy://"],
   config: {
     screens: {
       Home: "",
       Search: "search",
-      PublicProfile: "p/:username",
+      PublicProfile: "public-profile/:username",
       Appointments: "appointments",
       Profile: "profile",
       Dashboard: "dashboard",
@@ -85,6 +112,14 @@ const linking = {
 
       if (RESERVED_USERNAME_PATHS.has(firstSegment)) {
         return defaultGetStateFromPath("/profile", options);
+      }
+
+      const username = getProviderUsernameFromPath(path);
+      if (username) {
+        const targetPath = isProvider
+          ? `/public-profile/${encodeURIComponent(username)}`
+          : `/search?username=${encodeURIComponent(username)}`;
+        return defaultGetStateFromPath(targetPath, options);
       }
 
       return defaultGetStateFromPath(path, options);
@@ -106,7 +141,7 @@ const linking = {
     const subscription = Linking.addEventListener("url", onReceiveURL);
     return () => subscription.remove();
   },
-};
+});
 
   const isValidEmail = (value) => {
   const trimmed = value.trim();
@@ -5768,7 +5803,7 @@ function ProviderBillingScreen({ token, showFlash }) {
 
 
 // Tabs after login
-function MainApp({ token, setToken, showFlash }) {
+function MainApp({ token, setToken, showFlash, navigationRef, onNavReady }) {
    const {
     favoriteIds,
     favoriteProviders,
@@ -5778,10 +5813,26 @@ function MainApp({ token, setToken, showFlash }) {
     syncFavoritesFromList,
     refreshFavoriteProviders,
   } = useFavoriteProviders(token?.email || token?.userId);
+  const linking = useMemo(
+    () => createLinkingConfig({ isProvider: token?.isProvider }),
+    [token?.isProvider]
+  );
   return (
 
     // add this later linking={linking}
-    <NavigationContainer >
+    <NavigationContainer
+      ref={navigationRef}
+      linking={linking}
+      fallback={
+        <View style={styles.center}>
+          <ActivityIndicator size="large" color="#0B6BF2" />
+          <Text style={styles.loadingText}>Loading BookitGY…</Text>
+        </View>
+      }
+      onReady={() => {
+        if (onNavReady) onNavReady();
+      }}
+    >
       {token.isProvider ? (
         // 👇 Provider view: Dashboard + Billing + Profile
         <Tab.Navigator
@@ -5961,6 +6012,9 @@ function App() {
   const [token, setToken] = useState(null);
   const [authMode, setAuthMode] = useState("landing"); // 'landing' | 'login' | 'signup' | 'forgot'
   const [isAdmin, setIsAdmin] = useState(false);
+  const navigationRef = useRef(null);
+  const [isNavReady, setIsNavReady] = useState(false);
+  const [pendingDeepLinkUsername, setPendingDeepLinkUsername] = useState(null);
 
   const [flash, setFlash] = useState(null);
 
@@ -6005,6 +6059,53 @@ function App() {
     }, 3000);
   };
 
+  useEffect(() => {
+    if (!token) {
+      setIsNavReady(false);
+    }
+  }, [token]);
+
+  useEffect(() => {
+    if (token) return undefined;
+    let isActive = true;
+
+    const handleInitialUrl = async () => {
+      const initialUrl = await Linking.getInitialURL();
+      if (!isActive) return;
+
+      const username = getProviderUsernameFromUrl(initialUrl);
+      if (username) setPendingDeepLinkUsername(username);
+    };
+
+    handleInitialUrl();
+
+    const subscription = Linking.addEventListener("url", ({ url }) => {
+      if (!isActive) return;
+      const username = getProviderUsernameFromUrl(url);
+      if (username) setPendingDeepLinkUsername(username);
+    });
+
+    return () => {
+      isActive = false;
+      subscription.remove();
+    };
+  }, [token]);
+
+  useEffect(() => {
+    if (!pendingDeepLinkUsername || !token || !isNavReady) return;
+    if (!navigationRef.current) return;
+
+    const targetRoute = token?.isProvider ? "PublicProfile" : "Search";
+    try {
+      navigationRef.current.navigate(targetRoute, {
+        username: pendingDeepLinkUsername,
+      });
+      setPendingDeepLinkUsername(null);
+    } catch (error) {
+      console.log("[deepLinking] Failed to navigate", error?.message || error);
+    }
+  }, [pendingDeepLinkUsername, token, isNavReady]);
+
   return (
     <SafeAreaProvider>
       <SafeAreaView style={{ flex: 1 }} edges={["top", "bottom"]}>
@@ -6046,7 +6147,13 @@ function App() {
             )}
           </>
         ) : (
-          <MainApp token={token} setToken={setToken} showFlash={showFlash} />
+          <MainApp
+            token={token}
+            setToken={setToken}
+            showFlash={showFlash}
+            navigationRef={navigationRef}
+            onNavReady={() => setIsNavReady(true)}
+          />
         )}
       </SafeAreaView>
     </SafeAreaProvider>

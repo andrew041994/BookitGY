@@ -1,45 +1,65 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
-diff --git a/mobile/src/utils/deepLinking.js b/mobile/src/utils/deepLinking.js
-index 90e8eb68dee3338e47aaefde78d8f4342dc87a0f..48e31c45fe58503859ee9b990dca19b1f5b01b87 100644
---- a/mobile/src/utils/deepLinking.js
-+++ b/mobile/src/utils/deepLinking.js
-@@ -1,29 +1,37 @@
- import { Platform } from "react-native";
- import * as Sentry from "sentry-expo";
+diff --git a/mobile/app.config.js b/mobile/app.config.js
+index 7a5454539e61ab2f9cc7eb354dbee578549cb119..9d60cebded5e8a2cbc8966d5a7376c20fb733b8a 100644
+--- a/mobile/app.config.js
++++ b/mobile/app.config.js
+@@ -36,55 +36,55 @@ export default {
+       NSLocationAlwaysAndWhenInUseUsageDescription:
+         "Location access allows providers to share their business location with customers.",
+       ITSAppUsesNonExemptEncryption: false,
+     },
+     config: {
+       googleMapsApiKey: (process.env.IOS_GOOGLE_MAPS_API_KEY || "").trim(),
  
- export const handleIncomingURL = (url) => {
-   if (!url || typeof url !== "string") return null;
+     },
+   },
  
-   const trimmed = url.trim();
-   if (!trimmed) return null;
+   android: {
+     package: "com.bookitgy.app",
+     versionCode: 1,
+     permissions: ["ACCESS_FINE_LOCATION", "ACCESS_COARSE_LOCATION"],
+     adaptiveIcon: {
+       foregroundImage: "./assets/adaptive-icon.png",
+       backgroundColor: "#16a34a",
+     },
+     intentFilters: [
+       {
+         action: "VIEW",
+         data: [
+           {
+             scheme: "https",
+             host: "bookitgy.com",
+-            pathPrefix: "/",
++            pathPrefix: "/p",
+           },
+           {
+             scheme: "https",
+             host: "www.bookitgy.com",
+-            pathPrefix: "/",
++            pathPrefix: "/p",
+           },
+         ],
+         category: ["BROWSABLE", "DEFAULT"],
+         autoVerify: true,
+       },
+     ],
+     config: {
+       googleMaps: {
+         apiKey: (process.env.ANDROID_GOOGLE_MAPS_API_KEY || "").trim(),
  
-   try {
-     const parsed = new URL(trimmed);
-+    if (parsed.protocol === "bookitgy:" && parsed.hostname) {
-+      const combinedPath = `/${parsed.hostname}${parsed.pathname || ""}`.replace(
-+        /\/{2,}/g,
-+        "/"
-+      );
-+      const normalizedPath = combinedPath.replace(/^\/+/, "");
-+      return `${parsed.protocol}///${normalizedPath}${parsed.search}${parsed.hash}`;
-+    }
-     return parsed.toString();
-   } catch (error) {
-     try {
-       Sentry.Native.captureException(error, {
-         extra: {
-           scope: "deep-link",
-           url: `${url}`,
-           platform: Platform.OS,
-         },
-       });
-     } catch (captureErr) {
-       console.log("[deepLinking] Failed to report error", captureErr?.message || captureErr);
-     }
+       },
+     },
+   },
  
-     console.log("[deepLinking] Invalid incoming URL", url, error?.message || error);
-     return null;
-   }
+   web: { favicon: "./assets/favicon.png" },
+ 
+   extra: {
+     eas: {
+       projectId: "ba67429b-0180-4382-bb17-633982e5a5f8",
+       API_URL: process.env.API_URL || "https://bookitgy.onrender.com",
+     },
+     SENTRY_DSN: process.env.SENTRY_DSN || "",
+   },
  };
  
 EOF

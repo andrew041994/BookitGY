@@ -58,12 +58,12 @@ export default {
           {
             scheme: "https",
             host: "bookitgy.com",
-            pathPrefix: "/",
+            pathPrefix: "/p",
           },
           {
             scheme: "https",
             host: "www.bookitgy.com",
-            pathPrefix: "/",
+            pathPrefix: "/p",
           },
         ],
         category: ["BROWSABLE", "DEFAULT"],
