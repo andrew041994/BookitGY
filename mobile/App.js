@@ -36,7 +36,7 @@ import * as Clipboard from "expo-clipboard";
 import BookitGYLogoTransparent from "./assets/bookitgy-logo-transparent.png"
 import { Ionicons } from "@expo/vector-icons";
 import { SafeAreaProvider,SafeAreaView } from "react-native-safe-area-context";
-import ProviderPublicProfile from "./src/components/ProviderPublicProfile";
+import PublicProfileScreen from "./src/screens/PublicProfileScreen";
 import * as Sentry from "sentry-expo";
 import { handleIncomingURL } from "./src/utils/deepLinking";
 
@@ -70,16 +70,8 @@ const linking = {
   config: {
     screens: {
       Home: "",
-      Search: {
-        path: [
-          "search",
-          "bookitgy/:username",
-          ":username",
-          ":sharedUsername",
-          "p/:username",
-          "p/:sharedUsername",
-        ],
-      },
+      Search: "search",
+      PublicProfile: "p/:username",
       Appointments: "appointments",
       Profile: "profile",
       Dashboard: "dashboard",
@@ -87,14 +79,19 @@ const linking = {
     },
   },
   getStateFromPath: (path, options) => {
-    const trimmed = path?.replace(/^\//, "") || "";
-    const firstSegment = trimmed.split("/")[0];
+    try {
+      const trimmed = path?.replace(/^\//, "") || "";
+      const firstSegment = trimmed.split("/")[0];
 
-    if (RESERVED_USERNAME_PATHS.has(firstSegment)) {
-      return defaultGetStateFromPath("/profile", options);
+      if (RESERVED_USERNAME_PATHS.has(firstSegment)) {
+        return defaultGetStateFromPath("/profile", options);
+      }
+
+      return defaultGetStateFromPath(path, options);
+    } catch (error) {
+      console.log("[deepLinking] Failed to parse path", path, error?.message || error);
+      return undefined;
     }
-
-    return defaultGetStateFromPath(path, options);
   },
   async getInitialURL() {
     const url = await Linking.getInitialURL();
@@ -5838,8 +5835,8 @@ function MainApp({ token, setToken, showFlash }) {
             )}
           </Tab.Screen>
           <Tab.Screen
-            name="ProviderPublicProfile"
-            component={ProviderPublicProfile}
+            name="PublicProfile"
+            component={PublicProfileScreen}
             options={{ tabBarButton: () => null, tabBarStyle: { display: "none" } }}
           />
         </Tab.Navigator>
@@ -5914,8 +5911,8 @@ function MainApp({ token, setToken, showFlash }) {
               )}
             </Tab.Screen>
             <Tab.Screen
-              name="ProviderPublicProfile"
-              component={ProviderPublicProfile}
+              name="PublicProfile"
+              component={PublicProfileScreen}
               options={{ tabBarButton: () => null, tabBarStyle: { display: "none" } }}
             />
           </Tab.Navigator>

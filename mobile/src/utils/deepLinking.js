@@ -9,6 +9,14 @@ export const handleIncomingURL = (url) => {
 
   try {
     const parsed = new URL(trimmed);
+    if (parsed.protocol === "bookitgy:" && parsed.hostname) {
+      const combinedPath = `/${parsed.hostname}${parsed.pathname || ""}`.replace(
+        /\/{2,}/g,
+        "/"
+      );
+      const normalizedPath = combinedPath.replace(/^\/+/, "");
+      return `${parsed.protocol}///${normalizedPath}${parsed.search}${parsed.hash}`;
+    }
     return parsed.toString();
   } catch (error) {
     try {
