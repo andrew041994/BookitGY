@@ -156,13 +156,7 @@ const createLinkingConfig = ({ isProvider }) => ({
     return `${API}${normalizedPath}`;
   };
 
-const getAuthToken = async (tokenState) => {
-  if (tokenState?.token) return tokenState.token;
-  const secureToken = await loadToken();
-  if (secureToken) return secureToken;
-  const legacyToken = await AsyncStorage.getItem("accessToken");
-  return legacyToken || null;
-};
+const getAuthToken = async (tokenState) => tokenState?.token || null;
 
 const FAVORITES_STORAGE_KEY = (userKey) =>
   userKey ? `favoriteProviders:${userKey}` : "favoriteProviders";
@@ -418,8 +412,8 @@ function LoginScreen({
 
     try {
       await saveToken(res.data.access_token);
-      await AsyncStorage.setItem("accessToken", res.data.access_token);
       const persistedToken = await loadToken();
+      console.log("[auth] login success -> token saved:", Boolean(persistedToken));
       if (!persistedToken) {
         Alert.alert(
           "Save issue",
@@ -5950,6 +5944,7 @@ function FlashMessage({ flash }) {
 
 function App() {
   const [token, setToken] = useState(null);
+  const [authLoading, setAuthLoading] = useState(true);
   const [authMode, setAuthMode] = useState("landing"); // 'landing' | 'login' | 'signup' | 'forgot'
   const [isAdmin, setIsAdmin] = useState(false);
   const navigationRef = useRef(null);
@@ -6000,6 +5995,62 @@ function App() {
   };
 
   useEffect(() => {
+    let isActive = true;
+    const restoreSession = async () => {
+      try {
+        const restoredToken = await loadToken();
+        console.log("[auth] token loaded:", Boolean(restoredToken));
+
+        if (!restoredToken) {
+          if (isActive) setToken(null);
+          return;
+        }
+
+        try {
+          const meRes = await axios.get(`${API}/users/me`, {
+            headers: {
+              Authorization: `Bearer ${restoredToken}`,
+            },
+          });
+          if (!isActive) return;
+          setToken({
+            token: restoredToken,
+            userId: meRes.data?.id || meRes.data?.user_id,
+            email: meRes.data?.email,
+            isProvider: Boolean(meRes.data?.is_provider),
+            isAdmin: Boolean(meRes.data?.is_admin),
+          });
+          setIsAdmin(Boolean(meRes.data?.is_admin));
+        } catch (err) {
+          console.log(
+            "[auth] Failed to load user info during bootstrap",
+            err?.message || err
+          );
+          if (isActive) setToken({ token: restoredToken });
+        }
+      } catch (err) {
+        console.log(
+          "[auth] Failed to restore session",
+          err?.message || err
+        );
+        if (isActive) setToken(null);
+      } finally {
+        if (isActive) setAuthLoading(false);
+      }
+    };
+
+    restoreSession();
+
+    return () => {
+      isActive = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    console.log("[auth] authLoading:", authLoading);
+  }, [authLoading]);
+
+  useEffect(() => {
     if (!token) {
       setIsNavReady(false);
     }
@@ -6045,6 +6096,20 @@ function App() {
       console.log("[deepLinking] Failed to navigate", error?.message || error);
     }
   }, [pendingDeepLinkUsername, token, isNavReady]);
+
+  if (authLoading) {
+    return (
+      <SafeAreaProvider>
+        <SafeAreaView style={{ flex: 1 }} edges={["top", "bottom"]}>
+          <FlashMessage flash={flash} />
+          <View style={styles.center}>
+            <ActivityIndicator size="large" color="#0B6BF2" />
+            <Text style={styles.loadingText}>Loading BookitGY…</Text>
+          </View>
+        </SafeAreaView>
+      </SafeAreaProvider>
+    );
+  }
 
   return (
     <SafeAreaProvider>

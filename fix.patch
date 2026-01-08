@@ -1,9 +1,9 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
 diff --git a/mobile/App.js b/mobile/App.js
-index fdbdcc63f9f01b55204d21de6d1c232eb992ad49..34cf9d06f9804b2e35756d67a022890b5b397d0b 100644
+index 34cf9d06f9804b2e35756d67a022890b5b397d0b..643be10e05da52da5210daf40bab7559b1e4907e 100644
 --- a/mobile/App.js
 +++ b/mobile/App.js
-@@ -134,50 +134,58 @@ const createLinkingConfig = ({ isProvider }) => ({
+@@ -134,57 +134,51 @@ const createLinkingConfig = ({ isProvider }) => ({
    subscribe(listener) {
      const onReceiveURL = ({ url }) => {
        const safeUrl = handleIncomingURL(url);
@@ -29,14 +29,15 @@ index fdbdcc63f9f01b55204d21de6d1c232eb992ad49..34cf9d06f9804b2e35756d67a022890b
      return `${API}${normalizedPath}`;
    };
  
-+const getAuthToken = async (tokenState) => {
-+  if (tokenState?.token) return tokenState.token;
-+  const secureToken = await loadToken();
-+  if (secureToken) return secureToken;
-+  const legacyToken = await AsyncStorage.getItem("accessToken");
-+  return legacyToken || null;
-+};
-+
+-const getAuthToken = async (tokenState) => {
+-  if (tokenState?.token) return tokenState.token;
+-  const secureToken = await loadToken();
+-  if (secureToken) return secureToken;
+-  const legacyToken = await AsyncStorage.getItem("accessToken");
+-  return legacyToken || null;
+-};
++const getAuthToken = async (tokenState) => tokenState?.token || null;
+ 
  const FAVORITES_STORAGE_KEY = (userKey) =>
    userKey ? `favoriteProviders:${userKey}` : "favoriteProviders";
  
@@ -61,8 +62,7 @@ index fdbdcc63f9f01b55204d21de6d1c232eb992ad49..34cf9d06f9804b2e35756d67a022890b
      try {
        setFavoritesLoading(true);
        const raw = await AsyncStorage.getItem(storageKey);
-       const parsed = raw ? JSON.parse(raw) : [];
-@@ -388,50 +396,51 @@ function LoginScreen({
+@@ -396,52 +390,52 @@ function LoginScreen({
      if (!trimmedEmail || !isValidEmail(trimmedEmail)) {
        if (showFlash) {
          showFlash("error", "Please enter a valid email address");
@@ -88,8 +88,9 @@ index fdbdcc63f9f01b55204d21de6d1c232eb992ad49..34cf9d06f9804b2e35756d67a022890b
  
      try {
        await saveToken(res.data.access_token);
-+      await AsyncStorage.setItem("accessToken", res.data.access_token);
+-      await AsyncStorage.setItem("accessToken", res.data.access_token);
        const persistedToken = await loadToken();
++      console.log("[auth] login success -> token saved:", Boolean(persistedToken));
        if (!persistedToken) {
          Alert.alert(
            "Save issue",
@@ -114,1525 +115,225 @@ index fdbdcc63f9f01b55204d21de6d1c232eb992ad49..34cf9d06f9804b2e35756d67a022890b
        // Successful login
        setToken({
          token: res.data.access_token,
-@@ -853,101 +862,101 @@ function SignupScreen({ goToLogin, goBack, showFlash }) {
- function ProfileScreen({ setToken, showFlash, token }) {
-   const [user, setUser] = useState(null);
-   const [loading, setLoading] = useState(true);
-   const [error, setError] = useState("");
-    // NEW state for editing profile
-   const [showEdit, setShowEdit] = useState(false);
-   const [editSaving, setEditSaving] = useState(false);
-   const [editProfile, setEditProfile] = useState({
-     full_name: "",
-     phone: "",
-     whatsapp: "",
-     location: "",
-   });
-   // NEW state for "My bookings"
-   const [showBookings, setShowBookings] = useState(false);
-   const [bookings, setBookings] = useState([]);
-   const [bookingsLoading, setBookingsLoading] = useState(false);
-   const [bookingsError, setBookingsError] = useState("");
-   const [avatarUrl, setAvatarUrl] = useState(null);
-   const [refreshing, setRefreshing] = useState(false);
-   const [isProviderUser, setIsProviderUser] = useState(null);
- 
- 
-   const uploadAvatar = async (uri) => {
-     try {
--      const token = await AsyncStorage.getItem("accessToken");
--      if (!token) {
-+      const tokenValue = await getAuthToken(token);
-+      if (!tokenValue) {
-         alert("No access token found. Please log in again.");
-         return;
-       }
- 
-       const filename = uri.split("/").pop() || "avatar.jpg";
-       const match = /\.(\w+)$/.exec(filename);
-       const ext = match ? match[1] : "jpg";
-       const mimeType = ext === "png" ? "image/png" : "image/jpeg";
- 
-       const formData = new FormData();
-       formData.append("file", {
-         uri,
-         name: filename,
-         type: mimeType,
-       });
- 
-       let isProvider = isProviderUser;
- 
-       if (typeof isProvider !== "boolean") {
-         try {
-           const meRes = await axios.get(`${API}/users/me`, {
-             headers: {
--              Authorization: `Bearer ${token}`,
-+              Authorization: `Bearer ${tokenValue}`,
-             },
-           });
- 
-           if (typeof meRes.data?.is_provider === "boolean") {
-             isProvider = meRes.data.is_provider;
-             setIsProviderUser(isProvider);
-           }
- 
-           setUser((prev) => ({ ...(prev || {}), ...meRes.data }));
-         } catch (fetchErr) {
-           console.log(
-             "Could not refresh user before avatar upload",
-             fetchErr.response?.data || fetchErr.message
-           );
-         }
-       }
- 
-       const endpoint =
-         isProvider === true
-           ? `${API}/providers/me/avatar`
-           : `${API}/users/me/avatar`;
- 
-       const res = await axios.post(endpoint, formData, {
-         headers: {
-           "Content-Type": "multipart/form-data",
--          Authorization: `Bearer ${token}`,
-+          Authorization: `Bearer ${tokenValue}`,
-         },
-       });
- 
-       const newUrl = res.data.avatar_url;
- 
-       // update avatar in this screen and shared user state
-       setAvatarUrl(newUrl);
-       setUser((prev) =>
-         prev ? { ...prev, avatar_url: newUrl } : { avatar_url: newUrl }
-       );
-     } catch (err) {
-       console.log(
-         "Avatar upload error:",
-         err.response?.data || err.message
-       );
-       alert("Failed to upload avatar. Please try again.");
-     }
-   };
- 
-   const pickClientAvatar = async () => {
-     try {
-       const result = await ImagePicker.launchImageLibraryAsync({
-         // ✅ This is the safe, supported form in your setup
-         mediaTypes: ImagePicker.MediaTypeOptions.Images,
-         allowsEditing: true,
-@@ -974,51 +983,51 @@ function ProfileScreen({ setToken, showFlash, token }) {
- 
-   const logout = async () => {
-     try {
-       await clearToken();
-       if (setToken) {
-         setToken(null);
-       }
-       if (showFlash) {
-         showFlash("success", "Logged out successfully");
-       }
-     } catch (err) {
-       console.error("Error during logout", err);
-       if (showFlash) {
-         showFlash("error", "Could not log out. Please try again.");
-       }
-     }
-   };
- 
-   const loadProfile = useCallback(
-     async (useRefresh = false) => {
-       try {
-         if (useRefresh) setRefreshing(true);
-         setLoading(true);
-         setError("");
- 
--        const tokenValue = await AsyncStorage.getItem("accessToken");
-+        const tokenValue = await getAuthToken(token);
- 
-         if (!tokenValue) {
-           setError("No access token found. Please log in again.");
-           setLoading(false);
-           return;
-         }
- 
-         const headers = {
-           Authorization: `Bearer ${tokenValue}`,
-         };
- 
-         // 1) Load base user info
-         const res = await axios.get(`${API}/users/me`, { headers });
- 
-         setUser(res.data);
-         if (typeof res.data.is_provider === "boolean") {
-           setIsProviderUser(res.data.is_provider);
-         }
-         setEditProfile({
-           full_name: res.data.full_name || "",
-           phone: res.data.phone || "",
-           whatsapp: res.data.whatsapp || "",
-           location: res.data.location || "",
-         });
- 
-@@ -1056,69 +1065,69 @@ function ProfileScreen({ setToken, showFlash, token }) {
-       }
-     },
-     [showFlash, token]
-   );
- 
-   useEffect(() => {
-     loadProfile();
-   }, [loadProfile, token]);
- 
-     const toggleEditProfile = () => {
-     // ensure form reflects current user
-     if (user && !showEdit) {
-       setEditProfile({
-         full_name: user.full_name || "",
-         phone: user.phone || "",
-         whatsapp: user.whatsapp || "",
-         location: user.location || "",
-       });
-     }
-     setShowEdit((prev) => !prev);
-   };
- 
-   const saveProfileChanges = async () => {
-     try {
-       setEditSaving(true);
--      const token = await AsyncStorage.getItem("accessToken");
--      if (!token) {
-+      const authToken = await getAuthToken(token);
-+      if (!authToken) {
-         if (showFlash) showFlash("error", "No access token found. Please log in again.");
-         return;
-       }
- 
-       const payload = {
-         full_name: editProfile.full_name,
-         phone: editProfile.phone,
-         whatsapp: editProfile.whatsapp,
-         location: editProfile.location,
-       };
- 
-         const res = await axios.put(
-           `${API}/users/me`,
-           payload,
-           {
-             headers: {
--              Authorization: `Bearer ${token}`,
-+              Authorization: `Bearer ${authToken}`,
-             },
-           }
-       );
- 
- 
-       // Refresh local user state so top card updates
-       setUser((prev) => ({
-         ...prev,
-         full_name: res.data.full_name,
-         phone: res.data.phone,
-         whatsapp: res.data.whatsapp,
-         location: res.data.location,
-       }));
- 
-       if (showFlash) showFlash("success", "Profile updated");
-       setShowEdit(false);
-     } catch (err) {
-       console.log("Error saving profile", err.response?.data || err.message);
-       const detail =
-         err.response?.data?.detail || "Could not save profile changes.";
-       if (showFlash) showFlash("error", detail);
-     } finally {
-       setEditSaving(false);
-     }
-   };
-@@ -1131,58 +1140,58 @@ function ProfileScreen({ setToken, showFlash, token }) {
-   };
- 
-   const formatBookingDate = (iso) => {
-     const d = new Date(iso);
-     return d.toLocaleDateString("en-US", {
-       weekday: "short",
-       month: "short",
-       day: "numeric",
-     });
-   };
- 
-   const formatBookingTime = (iso) => {
-     const d = new Date(iso);
-     let h = d.getHours();
-     const m = d.getMinutes();
-     const suffix = h >= 12 ? "PM" : "AM";
-     h = h % 12 || 12;
-     return `${h}:${m.toString().padStart(2, "0")} ${suffix}`;
-   };
- 
-   const loadMyBookings = useCallback(async () => {
-     try {
-       setBookingsLoading(true);
-       setBookingsError("");
- 
--      const token = await AsyncStorage.getItem("accessToken");
--      if (!token) {
-+      const authToken = await getAuthToken(token);
-+      if (!authToken) {
-         setBookingsError("No access token found. Please log in again.");
-         return;
-       }
- 
-       const res = await axios.get(`${API}/bookings/me`, {
--        headers: { Authorization: `Bearer ${token}` },
-+        headers: { Authorization: `Bearer ${authToken}` },
-       });
- 
-       const rawBookings = res.data;
-       const bookingsList = Array.isArray(rawBookings)
-         ? rawBookings
-         : rawBookings?.bookings || rawBookings?.results || [];
- 
-       setBookings(bookingsList);
-     } catch (err) {
-       console.log("Error loading my bookings", err.response?.data || err.message);
-       setBookingsError("Could not load your bookings.");
-       if (showFlash) showFlash("error", "Could not load your bookings.");
-     } finally {
-       setBookingsLoading(false);
-     }
-   }, [showFlash]);
- 
-   const onRefresh = useCallback(async () => {
-     await loadProfile(true);
-     if (showBookings) {
-       await loadMyBookings();
-     }
-   }, [loadMyBookings, loadProfile, showBookings]);
- 
-   if (loading) {
-@@ -1220,62 +1229,62 @@ function ProfileScreen({ setToken, showFlash, token }) {
-   const providerProfileLinkSimple = providerUsername
-     ? `bookitgy.com/p/${providerUsername}`
-     : null;
-   const providerProfileLinkLabel =
-     providerProfileLink || "Set a username to generate your link";
- 
-   const toggleMyBookings = async () => {
-     const next = !showBookings;
-     setShowBookings(next);
-     if (next) {
-       await loadMyBookings();
-     }
-   };
- 
-   const handleClientCancelBooking = (bookingId) => {
-     Alert.alert(
-       "Cancel booking",
-       "Are you sure you want to cancel this booking?",
-       [
-         { text: "No", style: "cancel" },
-         {
-           text: "Yes, cancel",
-           style: "destructive",
-           onPress: async () => {
-             try {
--              const token = await AsyncStorage.getItem("accessToken");
--              if (!token) {
-+              const authToken = await getAuthToken(token);
-+              if (!authToken) {
-                 if (showFlash)
-                   showFlash("error", "No access token found. Please log in.");
-                 return;
-               }
- 
-                   await axios.post(
-                     `${API}/bookings/${bookingId}/cancel`,
-                     {},
-                     {
--                      headers: { Authorization: `Bearer ${token}` },
-+                      headers: { Authorization: `Bearer ${authToken}` },
-                     }
-                   );
- 
- 
- 
-               // update local state so UI reflects cancellation
-               setBookings((prev) =>
-                 (prev || []).map((b) =>
-                   b.id === bookingId ? { ...b, status: "cancelled" } : b
-                 )
-               );
- 
-               if (showFlash) showFlash("success", "Booking cancelled");
-             } catch (err) {
-               console.log(
-                 "Error cancelling booking (client)",
-                 err.response?.data || err.message
-               );
-               if (showFlash) showFlash("error", "Could not cancel booking.");
-             }
-           },
-         },
-       ]
-     );
-   };
-@@ -2156,52 +2165,51 @@ function AppointmentsScreen({ token, showFlash }) {
-     if (Number.isNaN(d.getTime())) return "";
-     return d.toLocaleDateString("en-US", {
-       weekday: "short",
-       month: "short",
-       day: "numeric",
-     });
-   };
- 
-   const formatBookingTime = (iso) => {
-     const d = new Date(iso);
-     if (Number.isNaN(d.getTime())) return "";
-     let h = d.getHours();
-     const m = d.getMinutes();
-     const suffix = h >= 12 ? "PM" : "AM";
-     h = h % 12 || 12;
-     return `${h}:${m.toString().padStart(2, "0")} ${suffix}`;
-   };
- 
-   const fetchBookings = useCallback(
-     async (useRefresh = false) => {
-       try {
-         if (useRefresh) setRefreshing(true);
-         setLoading(true);
-         setError("");
- 
--        const storedToken = await AsyncStorage.getItem("accessToken");
--        const authToken = token?.token || storedToken;
-+        const authToken = await getAuthToken(token);
- 
-         if (!authToken) {
-           setError("Please log in to view your appointments.");
-           setBookings([]);
-           return;
-         }
- 
-         const res = await axios.get(`${API}/bookings/me`, {
-           headers: { Authorization: `Bearer ${authToken}` },
-         });
- 
-         const raw = res.data;
-         const list = Array.isArray(raw)
-           ? raw
-           : raw?.bookings || raw?.results || [];
- 
-         setBookings(list);
-       } catch (err) {
-         console.log(
-           "Error loading appointments",
-           err.response?.data || err.message
-         );
-         setError("Could not load your appointments.");
-         if (showFlash) {
-           showFlash("error", "Could not load your appointments.");
-@@ -2240,52 +2248,51 @@ function AppointmentsScreen({ token, showFlash }) {
-         return;
-       }
- 
-       Linking.openURL(url);
-     } catch (err) {
-       console.log("Error opening maps", err);
-       showFlash &&
-         showFlash("error", "Could not open maps on this device.");
-     }
-   };
- 
-   const handleCancelBooking = (booking) => {
-     const bookingId = booking?.id || booking?.booking_id;
-     if (!bookingId) return;
- 
-     Alert.alert(
-       "Cancel appointment",
-       "Are you sure you want to cancel this appointment?",
-       [
-         { text: "No", style: "cancel" },
-         {
-           text: "Yes, cancel",
-           style: "destructive",
-           onPress: async () => {
-             try {
--              const storedToken = await AsyncStorage.getItem("accessToken");
--              const authToken = token?.token || storedToken;
-+              const authToken = await getAuthToken(token);
- 
-               if (!authToken) {
-                 showFlash &&
-                   showFlash("error", "No access token found. Please log in.");
-                 return;
-               }
- 
-               await axios.post(
-                 `${API}/bookings/${bookingId}/cancel`,
-                 {},
-                 {
-                   headers: { Authorization: `Bearer ${authToken}` },
-                 }
-               );
- 
-               setBookings((prev) =>
-                 (prev || []).map((b) =>
-                   b.id === bookingId || b.booking_id === bookingId
-                     ? { ...b, status: "cancelled" }
-                     : b
-                 )
-               );
- 
-               showFlash && showFlash("success", "Booking cancelled");
-             } catch (err) {
-@@ -2907,68 +2914,68 @@ function SearchScreen({
-         (p) => getProviderId(p) === getProviderId(selectedProvider)
-       );
- 
-       if (match) {
-         await handleSelectProvider(match);
-       } else {
-         setSelectedProvider(null);
-         setServices([]);
-         setAvailability([]);
-         setCatalogImages([]);
-       }
-     }
- 
-     setRefreshing(false);
-   }, [handleSelectProvider, loadProviders, selectedProvider]);
- 
-   const handleBookAppointment = async () => {
-     if (!selectedService || !selectedSlot || !selectedProvider) return;
- 
-     const providerId = getProviderId(selectedProvider);
-     if (!providerId) return;
- 
-     try {
-       setBookingLoading(true);
- 
--      const storedToken = await AsyncStorage.getItem("accessToken");
--      if (!storedToken) {
-+      const authToken = await getAuthToken(token);
-+      if (!authToken) {
-         if (showFlash) {
-           showFlash("error", "No access token found. Please log in again.");
-         } else {
-           Alert.alert("Error", "No access token found. Please log in again.");
-         }
-         return;
-       }
- 
-       await axios.post(
-         `${API}/bookings`,
-         {
-           service_id: selectedService.id,
-           start_time: selectedSlot,
-         },
-         {
--          headers: { Authorization: `Bearer ${storedToken}` },
-+          headers: { Authorization: `Bearer ${authToken}` },
-         }
-       );
- 
-       // Refresh availability so this slot disappears
-       await loadAvailability(providerId, selectedService.id);
- 
-       // Clear selection
-       setSelectedSlot(null);
- 
-       if (showFlash) showFlash("success", "Booking created!");
-       else Alert.alert("Success", "Booking created!");
-     } catch (err) {
-       console.log(
-         "Error creating booking",
-         err.response?.data || err.message
-       );
-       const detail =
-         err.response?.data?.detail ||
-         "Could not create booking. Maybe slot is already taken.";
- 
-       if (showFlash) showFlash("error", detail);
-       else Alert.alert("Error", detail);
- 
-       // Refresh availability after failure to show updated slots
-       try {
-@@ -3602,240 +3609,240 @@ const copyProfileLink = async (link) => {
-     setRefreshing(false);
-   }, [
-     loadServices,
-     loadBookings,
-     loadWorkingHours,
-     loadTodayBookings,
-     loadUpcomingBookings,
-     loadProviderSummary,
-     loadProviderProfile,
-     loadProviderLocation,
-     loadCatalog,
-   ]);
- 
- const resetForm = () => {
-     setNewName("");
-     setNewPrice("");
-     setNewDuration("30");
-     setNewDescription("");
-   };
- 
- const loadBookings = async () => {
-     try {
-       setBookingsLoading(true);
-       setBookingsError("");
- 
--      const storedToken = await AsyncStorage.getItem("accessToken");
--      if (!storedToken) {
-+      const authToken = await getAuthToken(token);
-+      if (!authToken) {
-         setBookingsError("No access token found. Please log in again.");
-         return;
-       }
- 
-       const res = await axios.get(`${API}/providers/me/bookings`, {
-         headers: {
--          Authorization: `Bearer ${storedToken}`,
-+          Authorization: `Bearer ${authToken}`,
-         },
-       });
- 
-       setBookings(res.data || []);
-     } catch (err) {
-       console.log("Error loading bookings", err.response?.data || err.message);
-       setBookingsError("Could not load bookings.");
-       if (showFlash) {
-         showFlash("error", "Could not load bookings.");
-       }
-     } finally {
-       setBookingsLoading(false);
-     }
-   };
- 
- const loadWorkingHours = async () => {
-   try {
-     setHoursLoading(true);
-     setHoursError("");
- 
--    const storedToken = await AsyncStorage.getItem("accessToken");
--    if (!storedToken) {
-+    const authToken = await getAuthToken(token);
-+    if (!authToken) {
-       setHoursError("No access token found. Please log in again.");
-       return;
-     }
- 
-     const res = await axios.get(`${API}/providers/me/working-hours`, {
--      headers: { Authorization: `Bearer ${storedToken}` },
-+      headers: { Authorization: `Bearer ${authToken}` },
-     });
- 
-     const rows = Array.isArray(res.data) ? res.data : [];
- 
-     // Map backend fields -> local editable fields
-     const mapped = rows.map((row) => ({
-       ...row,
-       startLocal: row.start_time ? to12Hour(row.start_time) : "",
-       endLocal: row.end_time ? to12Hour(row.end_time) : "",
-     }));
- 
-      setWorkingHours(mapped);
-   } catch (err) {
-     console.log(
-       "Error loading working hours:",
-       err.response?.status,
-       err.response?.data || err.message
-     );
-     const detail =
-       err.response?.data?.detail ||
-       err.response?.data?.message ||
-       "Could not load working hours.";
-     setHoursError(detail);
-     if (showFlash) showFlash("error", detail);
-   } finally {
-     setHoursLoading(false);
-   }
- };
- 
- 
- 
- const loadTodayBookings = async () => {
-   try {
--    const token = await AsyncStorage.getItem("accessToken");
-+    const authToken = await getAuthToken(token);
-     const res = await axios.get(
-       `${API}/providers/me/bookings/today`,
--      { headers: { Authorization: `Bearer ${token}` } }
-+      { headers: { Authorization: `Bearer ${authToken}` } }
-     );
-     setTodayBookings(res.data || []);
-   } catch (error) {
-     setTodayBookingsError(true);
-   }
- };
- 
- useEffect(() => {
-   const intervalId = setInterval(() => {
-     loadTodayBookings();
-   }, 60 * 1000);
- 
-   return () => clearInterval(intervalId);
- }, []);
- 
- 
- const handleCancelBooking = (bookingId) => {
-   Alert.alert(
-     "Cancel booking",
-     "Are you sure you want to cancel this booking?",
-     [
-       { text: "No", style: "cancel" },
-       {
-         text: "Yes, cancel",
-         style: "destructive",
--        onPress: async () => {
-+          onPress: async () => {
-           try {
--            const storedToken = await AsyncStorage.getItem("accessToken");
--            if (!storedToken) {
-+            const authToken = await getAuthToken(token);
-+            if (!authToken) {
-               if (showFlash) showFlash("error", "No access token found.");
-               return;
-             }
- 
-             await axios.post(
-               `${API}/providers/me/bookings/${bookingId}/cancel`,
-               {},
-               {
-                 headers: {
--                  Authorization: `Bearer ${storedToken}`,
-+                  Authorization: `Bearer ${authToken}`,
-                 },
-               }
-             );
- 
-             if (showFlash) showFlash("success", "Booking cancelled");
- 
-             // 🔹 Optimistically remove from both lists so UI updates immediately
-             setTodayBookings((prev) =>
-               (prev || []).filter((b) => b.id !== bookingId)
-             );
-             setUpcomingBookings((prev) =>
-               (prev || []).filter((b) => b.id !== bookingId)
-             );
- 
-             // 🔹 (Optional) also re-sync with backend
-             // await Promise.all([loadTodayBookings(), loadUpcomingBookings()]);
-           } catch (err) {
-             console.log(
-               "Error cancelling booking",
-               err.response?.data || err.message
-             );
-             if (showFlash) showFlash("error", "Could not cancel booking.");
-           }
-         },
-       },
-     ]
-   );
- };
- 
- 
- // const handleEditBooking = (booking) => {
- //   if (showFlash) {
- //     showFlash("info", "Editing bookings will be added soon.");
- //   }
- //   // Next step: navigate to an Edit Booking screen or show a time picker.
- // };
- 
- const loadServices = async () => {
-     try {
-       setLoading(true);
-       setServicesError("");
- 
--      const storedToken = await AsyncStorage.getItem("accessToken");
--      if (!storedToken) {
-+      const authToken = await getAuthToken(token);
-+      if (!authToken) {
-         setServicesError("No access token found. Please log in again.");
-         return;
-       }
- 
-       const res = await axios.get(`${API}/providers/me/services`, {
-         headers: {
--        Authorization: `Bearer ${storedToken}`,
-+        Authorization: `Bearer ${authToken}`,
-       },
-     });
- 
-         // 🔒 Always normalize to an array
-     const rawServices = res.data;
-     const list = Array.isArray(rawServices)
-       ? rawServices
-       : rawServices?.services || rawServices?.results || [];
- 
-     setServices(list || []);
- 
-     } catch (err) {
-       console.log("Error loading services", err.response?.data || err.message);
-       setServicesError("Could not load services.");
-       if (showFlash) {
-         showFlash("error", "Could not load services.");
-       }
-     } finally {
-       setLoading(false);
-     }
-   };
- 
- const saveWorkingHours = async () => {
-   try {
--    const storedToken = await AsyncStorage.getItem("accessToken");
--    if (!storedToken) {
-+    const authToken = await getAuthToken(token);
-+    if (!authToken) {
-       if (showFlash) showFlash("error", "No access token found.");
-       setHoursFlash({ type: "error", message: "No access token found." });
-       setTimeout(() => setHoursFlash(null), 2000);
-       return;
-     }
- 
-     // Validate and build payload
-     const payload = [];
-     for (const h of workingHours) {
-       const start24 = to24Hour(h.startLocal);
-       const end24 = to24Hour(h.endLocal);
- 
-       if (!h.is_closed) {
-         // For open days, both times must be valid
-         if (!start24 || !end24) {
-           const dayNames = [
-             "Monday",
-             "Tuesday",
-             "Wednesday",
-             "Thursday",
-             "Friday",
-             "Saturday",
-             "Sunday",
-           ];
-           const label = dayNames[h.weekday] || `Day ${h.weekday}`;
-@@ -3859,51 +3866,51 @@ const saveWorkingHours = async () => {
-             "Wednesday",
-             "Thursday",
-             "Friday",
-             "Saturday",
-             "Sunday",
-           ];
-           const label = dayNames[h.weekday] || `Day ${h.weekday}`;
-           const msg = `End time must be after start time for ${label}.`;
-           if (showFlash) showFlash("error", msg);
-           setHoursFlash({ type: "error", message: msg });
-           setTimeout(() => setHoursFlash(null), 2000);
-           return;
-         }
-       }
- 
-       payload.push({
-         weekday: h.weekday,
-         is_closed: h.is_closed,
-         start_time: h.is_closed ? null : start24,
-         end_time: h.is_closed ? null : end24,
-       });
-     }
- 
-     
-     await axios.put(`${API}/providers/me/working-hours`, payload, {
--      headers: { Authorization: `Bearer ${storedToken}` },
-+      headers: { Authorization: `Bearer ${authToken}` },
-     });
- 
- 
-     // if (showFlash) showFlash("success", "Working hours saved");
-     setHoursFlash({ type: "success", message: "Working hours saved" });
-     setTimeout(() => setHoursFlash(null), 2000);
-   } catch (err) {
-     console.log(
-       "Error saving working hours",
-       err.response?.data || err.message
-     );
-     if (showFlash) showFlash("error", "Could not save working hours.");
-     setHoursFlash({ type: "error", message: "Could not save working hours." });
-     setTimeout(() => setHoursFlash(null), 2000);
-   }
- };
- 
- // Convert "HH:MM" → "h:MM AM/PM" (safe)
- const to12Hour = (time24) => {
-   if (!time24 || typeof time24 !== "string") return "";
- 
-   if (!time24.includes(":")) return "";
- 
-   let [h, m] = time24.split(":");
- 
-@@ -3982,248 +3989,248 @@ const to24Hour = (time12) => {
-       }
- 
-       // 4) Default to AM if no suffix provided
-       if (!suffix) suffix = "AM";
- 
-       // 5) Convert to 24h
-       if (suffix === "PM" && h !== 12) h += 12;
-       if (suffix === "AM" && h === 12) h = 0;
- 
-       // 6) Return "HH:MM"
-       return `${h.toString().padStart(2, "0")}:${m.toString().padStart(2, "0")}`;
- };
- 
- 
- 
-   const handleAddService = async () => {
-   if (!newName.trim()) {
-     if (showFlash) showFlash("error", "Service name is required");
-     return;
-   }
- 
-   const priceNumber = newPrice ? Number(newPrice) : 0;
-   const durationNumber = newDuration ? Number(newDuration) : 30;
- 
-   try {
--    const storedToken = await AsyncStorage.getItem("accessToken");
--    if (!storedToken) {
-+    const authToken = await getAuthToken(token);
-+    if (!authToken) {
-       if (showFlash) showFlash("error", "No access token found.");
-       return;
-     }
- 
-     const payload = {
-       name: newName.trim(),
-       description: newDescription.trim(),
-       duration_minutes: durationNumber,
-       price_gyd: priceNumber,
-     };
- 
-     // ✅ Create service on backend and get the created record back
-     const res = await axios.post(
-       `${API}/providers/me/services`,
-       payload,
-       {
-         headers: {
--          Authorization: `Bearer ${storedToken}`,
-+          Authorization: `Bearer ${authToken}`,
-         },
-       }
-     );
- 
-     const created = res.data;
- 
-     // ✅ Optimistically add to local list so it shows immediately
-     setServices((prev) => {
-       const prevArr = Array.isArray(prev) ? prev : [];
-       return [...prevArr, created];
-     });
- 
-     if (showFlash) {
-       showFlash("success", "Service created");
-     }
- 
-     // Reset form + close add UI
-     resetForm();
-     setAdding(false);
- 
-     // Optional: background refresh to stay in sync with backend
-     loadServices();
-   } catch (err) {
-     console.log("Error creating service", err.response?.data || err.message);
-     if (showFlash) {
-       const detail =
-         err.response?.data?.detail || "Could not create service.";
-       showFlash("error", detail);
-     }
-   }
- };
- 
- 
-   const handleDeleteService = async (serviceId) => {
-     try {
--      const storedToken = await AsyncStorage.getItem("accessToken");
--      if (!storedToken) {
-+      const authToken = await getAuthToken(token);
-+      if (!authToken) {
-         if (showFlash) showFlash("error", "No access token found.");
-         return;
-       }
- 
-       await axios.delete(`${API}/providers/me/services/${serviceId}`, {
-         headers: {
--          Authorization: `Bearer ${storedToken}`,
-+          Authorization: `Bearer ${authToken}`,
-         },
-       });
- 
-       if (showFlash) {
-         showFlash("success", "Service deleted");
-       }
- 
-       setServices((prev) => prev.filter((s) => s.id !== serviceId));
-     } catch (err) {
-       console.log("Error deleting service", err.response?.data || err.message);
-       if (showFlash) {
-         showFlash("error", "Could not delete service.");
-       }
-     }
-   };
- 
- 
-   const todayBookingsCount = () => {
-     if (!bookings || bookings.length === 0) return 0;
- 
-     const now = new Date();
-     const y = now.getFullYear();
-     const m = now.getMonth();
-     const d = now.getDate();
- 
-     return bookings.filter((b) => {
-       const start = new Date(b.start_time);
-       return (
-         start.getFullYear() === y &&
-         start.getMonth() === m &&
-         start.getDate() === d
-       );
-     }).length;
-   };
- 
- const loadProviderProfile = async () => {
-   try {
-     setProfileLoading(true);
-     setProfileError("");
- 
--    const storedToken = await AsyncStorage.getItem("accessToken");
--    if (!storedToken) {
-+    const authToken = await getAuthToken(token);
-+    if (!authToken) {
-       setProfileError("No access token found. Please log in again.");
-       return;
-     }
- 
-     const res = await axios.get(`${API}/providers/me/profile`, {
-       headers: {
--        Authorization: `Bearer ${storedToken}`,
-+        Authorization: `Bearer ${authToken}`,
-       },
-     });
- 
-       setProfile({
-         full_name: res.data.full_name || "",
-         phone: res.data.phone || "",
-         whatsapp: res.data.whatsapp || "",
-         location: res.data.location || "",
-         bio: res.data.bio || "",
-         professions: res.data.professions || [],
-         username: res.data.username || "",
-       });
- 
-       setAvatarUrl(res.data.avatar_url || null);
- 
-   } catch (err) {
-     console.log("Error loading provider profile", err.response?.data || err.message);
-     setProfileError("Could not load provider profile.");
-     if (showFlash) showFlash("error", "Could not load provider profile.");
-   } finally {
-     setProfileLoading(false);
-   }
- };
- 
- const loadCatalog = async () => {
-   try {
-     setCatalogLoading(true);
-     setCatalogError("");
- 
--    const storedToken = await AsyncStorage.getItem("accessToken");
--    if (!storedToken) {
-+    const authToken = await getAuthToken(token);
-+    if (!authToken) {
-       setCatalogError("No access token found. Please log in again.");
-       return;
-     }
- 
-     const res = await axios.get(`${API}/providers/me/catalog`, {
--      headers: { Authorization: `Bearer ${storedToken}` },
-+      headers: { Authorization: `Bearer ${authToken}` },
-     });
- 
-     setCatalog(Array.isArray(res.data) ? res.data : []);
-   } catch (err) {
-     console.log(
-       "Error loading provider catalog",
-       err.response?.data || err.message
-     );
-     const detail =
-       err.response?.data?.detail ||
-       "Could not load your catalog images.";
-     setCatalogError(detail);
-     if (showFlash) showFlash("error", detail);
-   } finally {
-     setCatalogLoading(false);
-   }
- };
- 
- 
- const uploadCatalogImage = async (uri) => {
-   try {
-     setCatalogUploading(true);
- 
--    const tokenStr = await AsyncStorage.getItem("accessToken");
--    if (!tokenStr) {
-+    const authToken = await getAuthToken(token);
-+    if (!authToken) {
-       alert("No access token found. Please log in again.");
-       return;
-     }
- 
-     const filename = uri.split("/").pop() || "catalog.jpg";
-     const match = /\.(\w+)$/.exec(filename);
-     const ext = match ? match[1].toLowerCase() : "jpg";
- 
-     let mimeType = "image/jpeg";
-     if (ext === "png") mimeType = "image/png";
-     else if (ext === "webp") mimeType = "image/webp";
- 
-     const formData = new FormData();
-     formData.append("file", {
-       uri,
-       name: filename,
-       type: mimeType,
-     });
- 
-     const res = await axios.post(`${API}/providers/me/catalog`, formData, {
-       headers: {
-         "Content-Type": "multipart/form-data",
--        Authorization: `Bearer ${tokenStr}`,
-+        Authorization: `Bearer ${authToken}`,
-       },
-     });
- 
-     const created = res.data;
-     setCatalog((prev) => [created, ...(prev || [])]);
- 
-     if (showFlash) showFlash("success", "Photo added to your catalog");
-   } catch (err) {
-     console.log(
-       "Error uploading catalog image",
-       err.response?.data || err.message
-     );
-     const detail =
-       err.response?.data?.detail ||
-       "Could not upload image. Please try again.";
-     if (showFlash) showFlash("error", detail);
-   } finally {
-     setCatalogUploading(false);
-   }
- };
- 
- 
- const pickCatalogImage = async () => {
-   try {
-     const result = await ImagePicker.launchImageLibraryAsync({
-@@ -4239,108 +4246,108 @@ const pickCatalogImage = async () => {
- 
-     const asset = result.assets && result.assets[0];
-     if (!asset || !asset.uri) {
-       return;
-     }
- 
-     await uploadCatalogImage(asset.uri);
-   } catch (err) {
-     console.log("Error picking catalog image", err);
-     alert("Could not open your gallery. Please try again.");
-   }
- };
- 
- 
- const handleDeleteCatalogImage = (imageId) => {
-   Alert.alert(
-     "Remove photo",
-     "Do you want to remove this photo from your catalog?",
-     [
-       { text: "Cancel", style: "cancel" },
-       {
-         text: "Remove",
-         style: "destructive",
-         onPress: async () => {
-           try {
--            const tokenStr = await AsyncStorage.getItem("accessToken");
--            if (!tokenStr) {
-+            const authToken = await getAuthToken(token);
-+            if (!authToken) {
-               alert("No access token found. Please log in again.");
-               return;
-             }
- 
-             await axios.delete(`${API}/providers/me/catalog/${imageId}`, {
--              headers: { Authorization: `Bearer ${tokenStr}` },
-+              headers: { Authorization: `Bearer ${authToken}` },
-             });
- 
-             setCatalog((prev) =>
-               (prev || []).filter((img) => img.id !== imageId)
-             );
- 
-             if (showFlash) {
-               showFlash("success", "Photo removed from your catalog");
-             }
-           } catch (err) {
-             console.log(
-               "Error deleting catalog image",
-               err.response?.data || err.message
-             );
-             const detail =
-               err.response?.data?.detail ||
-               "Could not remove photo. Please try again.";
-             if (showFlash) showFlash("error", detail);
-           }
-         },
-       },
-     ]
-   );
- };
- 
- 
- const saveProviderProfile = async () => {
-   try {
--    const storedToken = await AsyncStorage.getItem("accessToken");
--    if (!storedToken) {
-+    const authToken = await getAuthToken(token);
-+    if (!authToken) {
-       if (showFlash) showFlash("error", "No access token found.");
-       return;
-     }
- 
-     const payload = {
-       full_name: profile.full_name,
-       phone: profile.phone,
-       whatsapp: profile.whatsapp,
-       location: profile.location,
-       bio: profile.bio,
-       professions: profile.professions || [],
-     };
- 
-     // ✅ Save provider profile to backend
-     const res = await axios.put(
-       `${API}/providers/me/profile`,
-       payload,
-       {
-         headers: {
--          Authorization: `Bearer ${storedToken}`,
-+          Authorization: `Bearer ${authToken}`,
-         },
-       }
-     );
- 
-     // ✅ Update local state from server response so UI reflects what’s saved
-     setProfile({
-       full_name: res.data.full_name || "",
-       phone: res.data.phone || "",
-       whatsapp: res.data.whatsapp || "",
-       location: res.data.location || "",
-       bio: res.data.bio || "",
-       professions: res.data.professions || [],
-       username: res.data.username || "",
-     });
- 
-     // ✅ Show success flash in the green bar
-     setHoursFlash({ type: "success", message: "Provider profile saved" });
-     setTimeout(() => setHoursFlash(null), 2000);
- 
-     if (showFlash) showFlash("success", "Provider profile saved");
-   } catch (err) {
-     console.log("Error saving provider profile", err.response?.data || err.message);
- 
-     setHoursFlash({ type: "error", message: "Provider profile not saved" });
-     setTimeout(() => setHoursFlash(null), 2000);
-@@ -4354,220 +4361,219 @@ const saveProviderProfile = async () => {
- };
- 
- const pickAvatar = async () => {
-   try {
-     const result = await ImagePicker.launchImageLibraryAsync({
-       mediaTypes: ImagePicker.MediaTypeOptions.Images,
-       allowsEditing: true,
-       aspect: [1, 1],
-       quality: 1,
-     });
- 
-     if (result.canceled) return;
- 
-     const asset = result.assets && result.assets[0];
-     if (!asset || !asset.uri) return;
- 
-     await uploadAvatar(asset.uri);
-   } catch (err) {
-     console.log("Error picking avatar", err);
-   }
- };
- 
- 
- const uploadAvatar = async (uri) => {
-   try {
--    const rawToken = await AsyncStorage.getItem("accessToken");
--    if (!rawToken) {
-+    const authToken = await getAuthToken(token);
-+    if (!authToken) {
-       alert("No access token found. Please log in again.");
-       return;
-     }
- 
-     const filename = uri.split("/").pop() || "avatar.jpg";
-     const match = /\.(\w+)$/.exec(filename);
-     const ext = match ? match[1] : "jpg";
-     const mimeType = ext === "png" ? "image/png" : "image/jpeg";
- 
-     const formData = new FormData();
-     formData.append("file", {
-       uri,
-       name: filename,
-       type: mimeType,
-     });
- 
-     // Decide which endpoint to use: client vs provider
-     let endpoint = `${API}/users/me/avatar`; // default: client
- 
-     try {
-       const meRes = await axios.get(`${API}/users/me`, {
-         headers: {
--          Authorization: `Bearer ${rawToken}`,
-+          Authorization: `Bearer ${authToken}`,
-         },
-       });
- 
-       if (meRes.data?.is_provider) {
-         // logged-in user is a provider → use provider avatar endpoint
-         endpoint = `${API}/providers/me/avatar`;
-       }
-     } catch (e) {
-       console.log(
-         "Could not determine user type for avatar upload; using /users/me/avatar",
-         e.response?.data || e.message
-       );
-     }
- 
-     // Upload to the chosen endpoint
-     const res = await axios.post(endpoint, formData, {
-       headers: {
-         "Content-Type": "multipart/form-data",
--        Authorization: `Bearer ${rawToken}`,
-+        Authorization: `Bearer ${authToken}`,
-       },
-     });
- 
-     const newUrl = res.data.avatar_url;
- 
-     // update avatar in this screen
-     setAvatarUrl(newUrl);
- 
-     // if this screen has a provider object, keep it in sync (no-op for pure clients)
-     if (typeof setProvider === "function") {
-       setProvider((prev) => (prev ? { ...prev, avatar_url: newUrl } : prev));
-     }
-   } catch (err) {
-     console.log("Avatar upload error:", err.response?.data || err.message);
-     alert("Failed to upload avatar. Please try again.");
-   }
- };
- 
- 
- const loadUpcomingBookings = async () => {
-   try {
--    const token = await AsyncStorage.getItem("accessToken");
-+    const authToken = await getAuthToken(token);
-     const res = await axios.get(
-       `${API}/providers/me/bookings/upcoming`,
--      { headers: { Authorization: `Bearer ${token}` } }
-+      { headers: { Authorization: `Bearer ${authToken}` } }
-     );
-     setUpcomingBookings(res.data || []);
-   } catch (error) {
-     setUpcomingBookingsError(true);
-   }
- };
- 
- 
- 
- const getCurrentLocation = async () => {
-   let { status } = await Location.requestForegroundPermissionsAsync();
-   if (status !== "granted") {
-     return null;
-   }
- 
-   const loc = await Location.getCurrentPositionAsync({});
-   return {
-     lat: loc.coords.latitude,
-     long: loc.coords.longitude
-   };
- };
- 
- 
- const handlePinLocation = async () => {
-   try {
--    const token = await AsyncStorage.getItem("accessToken");
--    if (!token) {
-+    const authToken = await getAuthToken(token);
-+    if (!authToken) {
-       if (showFlash) showFlash("error", "No access token found. Please log in again.");
-       return;
-     }
- 
-     const coords = await getCurrentLocation();
-     if (!coords) {
-       Alert.alert(
-         "Permission needed",
-         "Location permission is required to pin your business on the map."
-       );
-       if (showFlash) showFlash("error", "Location permission denied.");
-       return;
-     }
- 
-     // 1) update the user record
-     await axios.put(
-       `${API}/users/me`,
-       { lat: coords.lat, long: coords.long },
--      { headers: { Authorization: `Bearer ${token}` } }
-+      { headers: { Authorization: `Bearer ${authToken}` } }
-     );
- 
-     // 2) ALSO update the provider record so searches & client view use it
-     await axios.put(
-       `${API}/providers/me/location`,
-       { lat: coords.lat, long: coords.long },
--      { headers: { Authorization: `Bearer ${token}` } }
-+      { headers: { Authorization: `Bearer ${authToken}` } }
-     );
- 
-     // 3) update local state so preview uses the latest coords
-     setProviderLocation(coords);
- 
-     if (showFlash) showFlash("success", "Business location pinned here.");
-     Alert.alert(
-       "Location pinned",
-       "Clients will now navigate to this location."
-     );
-   } catch (err) {
-     console.log("Error pinning location", err.response?.data || err.message);
-     if (showFlash) {
-       const msg =
-         err.response?.data?.detail ||
-         err.response?.data?.message ||
-         "Could not pin business location.";
-       showFlash("error", msg);
-     }
-   }
- };
- 
- const loadProviderLocation = async () => {
-   try {
--    const storedToken = await AsyncStorage.getItem("accessToken");
--    if (!storedToken) return;
-+    const authToken = await getAuthToken(token);
-+    if (!authToken) return;
- 
-      const res = await axios.get(`${API}/users/me`, {
-       headers: {
--        Authorization: `Bearer ${storedToken}`,
-+        Authorization: `Bearer ${authToken}`,
-       },
-     });
- 
-     if (res.data.lat != null && res.data.long != null) {
-       setProviderLocation({
-         lat: res.data.lat,
-         long: res.data.long,
-       });
-     }
-   } catch (err) {
-     console.log("Error loading provider location", err.response?.data || err.message);
-   }
- };
- 
- const loadProviderSummary = async () => {
-   try {
--    const storedToken = await AsyncStorage.getItem("accessToken");
--    const authToken = token?.token || storedToken;
-+    const authToken = await getAuthToken(token);
-     if (!authToken) return;
- 
-     const res = await axios.get(`${API}/providers/me/summary`, {
-       headers: {
-         Authorization: `Bearer ${authToken}`,
-       },
-     });
-     setProviderSummary(res.data);
-   } catch (err) {
-     console.log(
-       "Error loading provider summary",
-       err.response?.data || err.message
-     );
-   }
- };
+         userId: res.data.user_id,
+@@ -5928,146 +5922,217 @@ function FlashMessage({ flash }) {
+ 
+   const backgroundColor = isError ? "#fee2e2" : "#dcfce7"; // red / green
+   const borderColor = isError ? "#b91c1c" : "#16a34a";
+   const textColor = isError ? "#7f1d1d" : "#166534";
  
    return (
-     <View style={{ flex: 1 }}>
-       <View style={{ alignItems: "center", marginBottom: 16 }}>
-         {avatarUrl ? (
-           <Image
-             source={{ uri: avatarUrl }}
-             style={{
-               width: 96,
-               height: 96,
-@@ -5494,52 +5500,51 @@ function ProviderBillingScreen({ token, showFlash }) {
-       let totalDue = Math.max(platformFee - billCreditsApplied, 0);
  
-       statements.push({
-         id: statementId,
-         coverageStart,
-         coverageEnd,
-         invoiceDate,
-         status: invoiceDate <= now ? "Generated" : "Scheduled",
-         servicesTotal,
-         platformFee,
-         billCreditsApplied,
-         totalDue,
-         lineItems,
-       });
+     <View
+       style={[
+         styles.flashContainer,
+         { backgroundColor, borderColor },
+       ]}
+     >
+       <Text style={[styles.flashText, { color: textColor }]}>
+         {flash.text}
+       </Text>
+     </View>
+   );
+ }
+ 
+ 
+ // 🔹 App orchestrates landing/login/signup/forgot-password vs main app
+ 
+ function App() {
+   const [token, setToken] = useState(null);
++  const [authLoading, setAuthLoading] = useState(true);
+   const [authMode, setAuthMode] = useState("landing"); // 'landing' | 'login' | 'signup' | 'forgot'
+   const [isAdmin, setIsAdmin] = useState(false);
+   const navigationRef = useRef(null);
+   const [isNavReady, setIsNavReady] = useState(false);
+   const [pendingDeepLinkUsername, setPendingDeepLinkUsername] = useState(null);
+ 
+   const [flash, setFlash] = useState(null);
+ 
+   const formatFlashText = (text) => {
+     if (typeof text === "string") return text;
+     if (text == null) return "Something went wrong.";
+ 
+     const formatErrorItem = (item) => {
+       if (typeof item === "string") return item;
+       if (!item || typeof item !== "object") return String(item);
+ 
+       const message = item.msg || item.message;
+       if (Array.isArray(item.loc) && item.loc.length > 0) {
+         const field = item.loc[item.loc.length - 1];
+         return message ? `${field}: ${message}` : String(item);
+       }
+       if (message) return message;
+       return JSON.stringify(item);
+     };
+ 
+     if (Array.isArray(text)) {
+       return text.map(formatErrorItem).filter(Boolean).join("\n");
      }
  
-     statements.sort((a, b) => b.invoiceDate - a.invoiceDate);
-     setBills(statements);
-   }, []);
- 
-   const fetchBilling = useCallback(async () => {
-     try {
-       setBillingLoading(true);
-       setBillingError("");
- 
--      const storedToken = await AsyncStorage.getItem("accessToken");
--      const authToken = token?.token || storedToken;
-+      const authToken = await getAuthToken(token);
- 
-       if (!authToken) {
-         setBillingError("No access token found. Please log in again.");
-         return;
+     if (typeof text === "object") {
+       if (Array.isArray(text.detail)) {
+         return formatFlashText(text.detail);
        }
+       if (typeof text.detail === "string") return text.detail;
+       if (typeof text.message === "string") return text.message;
+       if (typeof text.msg === "string") return text.msg;
+       return JSON.stringify(text);
+     }
  
-       const billingEndpoint = `${API}/providers/me/billing/bookings`;
+     return String(text);
+   };
  
-       const [bookingsRes, summaryRes] = await Promise.all([
-         axios.get(billingEndpoint, {
-           headers: { Authorization: `Bearer ${authToken}` },
-         }),
-         axios
-           .get(`${API}/providers/me/summary`, {
-             headers: { Authorization: `Bearer ${authToken}` },
-           })
-           .catch(() => null),
-       ]);
+   const showFlash = (type, text) => {
+     setFlash({ type, text: formatFlashText(text) });
+     setTimeout(() => {
+       setFlash(null);
+     }, 3000);
+   };
  
-       const bookingList = Array.isArray(bookingsRes.data)
-         ? bookingsRes.data
-         : bookingsRes.data?.bookings || bookingsRes.data?.results || [];
++  useEffect(() => {
++    let isActive = true;
++    const restoreSession = async () => {
++      try {
++        const restoredToken = await loadToken();
++        console.log("[auth] token loaded:", Boolean(restoredToken));
++
++        if (!restoredToken) {
++          if (isActive) setToken(null);
++          return;
++        }
++
++        try {
++          const meRes = await axios.get(`${API}/users/me`, {
++            headers: {
++              Authorization: `Bearer ${restoredToken}`,
++            },
++          });
++          if (!isActive) return;
++          setToken({
++            token: restoredToken,
++            userId: meRes.data?.id || meRes.data?.user_id,
++            email: meRes.data?.email,
++            isProvider: Boolean(meRes.data?.is_provider),
++            isAdmin: Boolean(meRes.data?.is_admin),
++          });
++          setIsAdmin(Boolean(meRes.data?.is_admin));
++        } catch (err) {
++          console.log(
++            "[auth] Failed to load user info during bootstrap",
++            err?.message || err
++          );
++          if (isActive) setToken({ token: restoredToken });
++        }
++      } catch (err) {
++        console.log(
++          "[auth] Failed to restore session",
++          err?.message || err
++        );
++        if (isActive) setToken(null);
++      } finally {
++        if (isActive) setAuthLoading(false);
++      }
++    };
++
++    restoreSession();
++
++    return () => {
++      isActive = false;
++    };
++  }, []);
++
++  useEffect(() => {
++    console.log("[auth] authLoading:", authLoading);
++  }, [authLoading]);
++
+   useEffect(() => {
+     if (!token) {
+       setIsNavReady(false);
+     }
+   }, [token]);
  
-       const summaryData = summaryRes?.data || null;
-       setBillingSummary(summaryData);
+   useEffect(() => {
+     if (token) return undefined;
+     let isActive = true;
+ 
+     const handleInitialUrl = async () => {
+       const initialUrl = await Linking.getInitialURL();
+       if (!isActive) return;
+ 
+       const username = getProviderUsernameFromUrl(initialUrl);
+       if (username) setPendingDeepLinkUsername(username);
+     };
+ 
+     handleInitialUrl();
+ 
+     const subscription = Linking.addEventListener("url", ({ url }) => {
+       if (!isActive) return;
+       const username = getProviderUsernameFromUrl(url);
+       if (username) setPendingDeepLinkUsername(username);
+     });
+ 
+     return () => {
+       isActive = false;
+       subscription.remove();
+     };
+   }, [token]);
+ 
+   useEffect(() => {
+     if (!pendingDeepLinkUsername || !token || !isNavReady) return;
+     if (!navigationRef.current) return;
+ 
+     const targetRoute = token?.isProvider ? "PublicProfile" : "Search";
+     try {
+       navigationRef.current.navigate(targetRoute, {
+         username: pendingDeepLinkUsername,
+       });
+       setPendingDeepLinkUsername(null);
+     } catch (error) {
+       console.log("[deepLinking] Failed to navigate", error?.message || error);
+     }
+   }, [pendingDeepLinkUsername, token, isNavReady]);
+ 
++  if (authLoading) {
++    return (
++      <SafeAreaProvider>
++        <SafeAreaView style={{ flex: 1 }} edges={["top", "bottom"]}>
++          <FlashMessage flash={flash} />
++          <View style={styles.center}>
++            <ActivityIndicator size="large" color="#0B6BF2" />
++            <Text style={styles.loadingText}>Loading BookitGY…</Text>
++          </View>
++        </SafeAreaView>
++      </SafeAreaProvider>
++    );
++  }
++
+   return (
+     <SafeAreaProvider>
+       <SafeAreaView style={{ flex: 1 }} edges={["top", "bottom"]}>
+         <FlashMessage flash={flash} />
+ 
+         {!token ? (
+           <>
+             {authMode === "landing" && (
+               <LandingScreen
+                 goToLogin={() => setAuthMode("login")}
+                 goToSignup={() => setAuthMode("signup")}
+               />
+             )}
+ 
+             {authMode === "login" && (
+               <LoginScreen
+                 setToken={setToken}
+                 setIsAdmin={setIsAdmin}
+                 goToSignup={() => setAuthMode("signup")}
+                 goToForgot={() => setAuthMode("forgot")}
+                 goBack={() => setAuthMode("landing")}
+                 showFlash={showFlash}
+               />
+             )}
+ 
  
 EOF
 )
