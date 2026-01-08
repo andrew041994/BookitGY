@@ -5911,6 +5911,11 @@ function FlashMessage({ flash }) {
 // 🔹 App orchestrates landing/login/signup/forgot-password vs main app
 
 function App() {
+
+  const mountIdRef = useRef(Math.random().toString(16).slice(2));
+  console.log("APP MOUNT ID:", mountIdRef.current);
+  useEffect(() => console.log("APP useEffect ran for mount", mountIdRef.current), []);
+
   const [token, setToken] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [authMode, setAuthMode] = useState("landing"); // 'landing' | 'login' | 'signup' | 'forgot'
@@ -5922,6 +5927,8 @@ function App() {
   const [pendingDeepLinkUsername, setPendingDeepLinkUsername] = useState(null);
 
   const [flash, setFlash] = useState(null);
+
+
 
   const formatFlashText = (text) => {
     if (typeof text === "string") return text;
@@ -6172,6 +6179,7 @@ function App() {
   }, [pendingDeepLinkUsername, token, isNavReady]);
 
   if (authLoading) {
+
     return (
       <SafeAreaProvider>
         <SafeAreaView style={{ flex: 1 }} edges={["top", "bottom"]}>
@@ -6179,9 +6187,15 @@ function App() {
           <View style={styles.center}>
             <ActivityIndicator size="large" color="#0B6BF2" />
             <Text style={styles.loadingText}>Loading BookitGY…</Text>
+
+            {/* DEBUG LINES */}
+            <Text style={styles.loadingText}>authLoading=true</Text>
+            <Text style={styles.loadingText}>bootStep={bootStep || "unknown"}</Text>
+            <Text style={styles.loadingText}>mount={mountIdRef.current}</Text>
           </View>
         </SafeAreaView>
       </SafeAreaProvider>
+      
     );
   }
 
