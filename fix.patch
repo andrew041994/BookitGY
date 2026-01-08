@@ -1,16 +1,95 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
 diff --git a/mobile/App.js b/mobile/App.js
-index e295b1e5a257f4a38117045af2d04543417e5b4d..29187ec5f2e81cf14620600e11f0e044653181d9 100644
+index 29187ec5f2e81cf14620600e11f0e044653181d9..96cb54705a98c1337d88d29b4a8bbd6d629892f6 100644
 --- a/mobile/App.js
 +++ b/mobile/App.js
-@@ -126,65 +126,80 @@ const createLinkingConfig = ({ isProvider }) => ({
+@@ -69,130 +69,135 @@ const getProviderUsernameFromPath = (path) => {
+   if (!trimmed) return null;
+ 
+   const [firstSegment, secondSegment] = trimmed.split("/");
+   if (firstSegment !== "p" || !secondSegment) return null;
+ 
+   try {
+     return decodeURIComponent(secondSegment);
+   } catch (error) {
+     return secondSegment;
+   }
+ };
+ 
+ const getProviderUsernameFromUrl = (url) => {
+   const safeUrl = handleIncomingURL(url);
+   if (!safeUrl) return null;
+ 
+   try {
+     const parsed = new URL(safeUrl);
+     return getProviderUsernameFromPath(parsed.pathname);
+   } catch (error) {
+     console.log("[deepLinking] Failed to parse URL", safeUrl, error?.message || error);
+     return null;
+   }
+ };
+ 
++const withTimeout = (promise, ms, label) => {
++  let timeoutId;
++  const timeout = new Promise((_, reject) => {
++    timeoutId = setTimeout(() => {
++      const error = new Error(`${label || "Operation"} timed out after ${ms}ms`);
++      error.code = "ETIMEDOUT";
++      reject(error);
++    }, ms);
++  });
++
++  return Promise.race([promise, timeout]).finally(() => {
++    clearTimeout(timeoutId);
++  });
++};
++
+ const createLinkingConfig = ({ isProvider }) => ({
+   prefixes: ["https://bookitgy.com", "https://www.bookitgy.com", "bookitgy://"],
+   config: {
+     screens: {
+       Home: "",
+       Search: "search",
+       PublicProfile: "public-profile/:username",
+       Appointments: "appointments",
+       Profile: "profile",
+       Dashboard: "dashboard",
+       Billing: "billing",
+     },
+   },
+   getStateFromPath: (path, options) => {
+     try {
+       const trimmed = path?.replace(/^\//, "") || "";
+       const firstSegment = trimmed.split("/")[0];
+ 
+       if (RESERVED_USERNAME_PATHS.has(firstSegment)) {
+         return defaultGetStateFromPath("/profile", options);
+       }
+ 
+       const username = getProviderUsernameFromPath(path);
+       if (username) {
+         const targetPath = isProvider
+           ? `/public-profile/${encodeURIComponent(username)}`
+           : `/search?username=${encodeURIComponent(username)}`;
+         return defaultGetStateFromPath(targetPath, options);
+       }
+ 
+       return defaultGetStateFromPath(path, options);
+     } catch (error) {
        console.log("[deepLinking] Failed to parse path", path, error?.message || error);
        return undefined;
      }
    },
    async getInitialURL() {
-     const url = await Linking.getInitialURL();
-     return handleIncomingURL(url);
+-    const url = await Linking.getInitialURL();
+-    return handleIncomingURL(url);
++    try {
++      const url = await withTimeout(Linking.getInitialURL(), 1500, "getInitialURL");
++      return handleIncomingURL(url);
++    } catch (error) {
++      console.log("[deepLinking] Failed to get initial URL", error?.message || error);
++      return null;
++    }
    },
    subscribe(listener) {
      const onReceiveURL = ({ url }) => {
@@ -29,8 +108,7 @@ index e295b1e5a257f4a38117045af2d04543417e5b4d..29187ec5f2e81cf14620600e11f0e044
    return emailRegex.test(trimmed);
  };
  
--  const resolveImageUrl = (url) => {
-+const resolveImageUrl = (url) => {
+ const resolveImageUrl = (url) => {
      if (!url || typeof url !== "string") return null;
      if (url.startsWith("http")) return url;
      if (url.startsWith("//")) return `https:${url}`;
@@ -38,29 +116,28 @@ index e295b1e5a257f4a38117045af2d04543417e5b4d..29187ec5f2e81cf14620600e11f0e044
      return `${API}${normalizedPath}`;
    };
  
-+const withTimeout = (promise, ms, label) => {
-+  let timeoutId;
-+  const timeout = new Promise((_, reject) => {
-+    timeoutId = setTimeout(() => {
-+      const error = new Error(`${label || "Operation"} timed out after ${ms}ms`);
-+      error.code = "ETIMEDOUT";
-+      reject(error);
-+    }, ms);
-+  });
-+
-+  return Promise.race([promise, timeout]).finally(() => {
-+    clearTimeout(timeoutId);
-+  });
-+};
-+
+-const withTimeout = (promise, ms, label) => {
+-  let timeoutId;
+-  const timeout = new Promise((_, reject) => {
+-    timeoutId = setTimeout(() => {
+-      const error = new Error(`${label || "Operation"} timed out after ${ms}ms`);
+-      error.code = "ETIMEDOUT";
+-      reject(error);
+-    }, ms);
+-  });
+-
+-  return Promise.race([promise, timeout]).finally(() => {
+-    clearTimeout(timeoutId);
+-  });
+-};
+-
  const LEGACY_ACCESS_TOKEN_KEY = "accessToken";
  
  const getAuthToken = async (tokenState) => {
    if (tokenState?.token) return tokenState.token;
  
    try {
--    const secure = await loadToken();
-+    const secure = await withTimeout(loadToken(), 1500, "loadToken");
+     const secure = await withTimeout(loadToken(), 1500, "loadToken");
      if (secure) return secure;
    } catch (error) {
      console.log("[auth] Failed to load secure token", error?.message || error);
@@ -79,77 +156,7 @@ index e295b1e5a257f4a38117045af2d04543417e5b4d..29187ec5f2e81cf14620600e11f0e044
    userKey ? `favoriteProviders:${userKey}` : "favoriteProviders";
  
  const getProviderId = (provider) =>
-   provider?.provider_id ?? provider?.id ?? provider?._id ?? null;
- 
- function useFavoriteProviders(userKey) {
-   const storageKey = FAVORITES_STORAGE_KEY(userKey);
-   const [favoriteIds, setFavoriteIds] = useState([]);
-   const [favoriteProviders, setFavoriteProviders] = useState([]);
-   const [favoritesLoading, setFavoritesLoading] = useState(true);
-@@ -6030,60 +6045,67 @@ function App() {
- 
-         if (!isApiRequest) return config;
- 
-         const authToken = await getAuthToken(tokenRef.current);
-         if (authToken) {
-           config.headers = {
-             ...config.headers,
-             Authorization: `Bearer ${authToken}`,
-           };
-         }
- 
-         return config;
-       },
-       (error) => Promise.reject(error)
-     );
- 
-     return () => {
-       axios.interceptors.request.eject(interceptorId);
-     };
-   }, []);
- 
-   useEffect(() => {
-     let isActive = true;
-     const restoreSession = async () => {
-       try {
--        const restoredToken = await getAuthToken();
-+        const restoredToken = await withTimeout(getAuthToken(), 2500, "getAuthToken");
-         console.log("[auth] token loaded:", Boolean(restoredToken));
- 
-         if (!restoredToken) {
-           if (isActive) setToken(null);
-         } else {
-           try {
--            const meRes = await axios.get(`${API}/users/me`, {
--              timeout: 10000,
--            });
-+            const bootstrapClient = axios.create();
-+            const meRes = await withTimeout(
-+              bootstrapClient.get(`${API}/users/me`, {
-+                headers: {
-+                  Authorization: `Bearer ${restoredToken}`,
-+                },
-+              }),
-+              12000,
-+              "/users/me"
-+            );
-             if (isActive) {
-               setToken({
-                 token: restoredToken,
-                 userId: meRes.data?.id || meRes.data?.user_id,
-                 email: meRes.data?.email,
-                 isProvider: Boolean(meRes.data?.is_provider),
-                 isAdmin: Boolean(meRes.data?.is_admin),
-               });
-               setIsAdmin(Boolean(meRes.data?.is_admin));
-             }
-           } catch (err) {
-             console.log(
-               "[auth] Failed to load user info during bootstrap",
-               err?.message || err
-             );
-             if (err?.response?.status === 401 || err?.response?.status === 403) {
-               await clearToken();
+@@ -6104,50 +6109,63 @@ function App() {
                await AsyncStorage.removeItem(LEGACY_ACCESS_TOKEN_KEY);
                if (isActive) setToken(null);
              } else if (isActive) {
@@ -158,6 +165,61 @@ index e295b1e5a257f4a38117045af2d04543417e5b4d..29187ec5f2e81cf14620600e11f0e044
            }
          }
        } catch (err) {
+         console.log(
+           "[auth] Failed to restore session",
+           err?.message || err
+         );
+         if (isActive) setToken(null);
+       } finally {
+         if (isActive) setAuthLoading(false);
+       }
+     };
+ 
+     restoreSession();
+ 
+     return () => {
+       isActive = false;
+     };
+   }, []);
+ 
++  useEffect(() => {
++    if (!authLoading) return undefined;
++
++    const watchdog = setTimeout(() => {
++      if (authLoading) {
++        console.log("[auth] authLoading watchdog timeout");
++        setAuthLoading(false);
++      }
++    }, 15000);
++
++    return () => clearTimeout(watchdog);
++  }, [authLoading]);
++
+   useEffect(() => {
+     console.log("[auth] authLoading:", authLoading);
+   }, [authLoading]);
+ 
+   useEffect(() => {
+     if (!token) {
+       setIsNavReady(false);
+     }
+   }, [token]);
+ 
+   useEffect(() => {
+     if (token) return undefined;
+     let isActive = true;
+ 
+     const handleInitialUrl = async () => {
+       const initialUrl = await Linking.getInitialURL();
+       if (!isActive) return;
+ 
+       const username = getProviderUsernameFromUrl(initialUrl);
+       if (username) setPendingDeepLinkUsername(username);
+     };
+ 
+     handleInitialUrl();
+ 
+     const subscription = Linking.addEventListener("url", ({ url }) => {
  
 EOF
 )

@@ -91,6 +91,21 @@ const getProviderUsernameFromUrl = (url) => {
   }
 };
 
+const withTimeout = (promise, ms, label) => {
+  let timeoutId;
+  const timeout = new Promise((_, reject) => {
+    timeoutId = setTimeout(() => {
+      const error = new Error(`${label || "Operation"} timed out after ${ms}ms`);
+      error.code = "ETIMEDOUT";
+      reject(error);
+    }, ms);
+  });
+
+  return Promise.race([promise, timeout]).finally(() => {
+    clearTimeout(timeoutId);
+  });
+};
+
 const createLinkingConfig = ({ isProvider }) => ({
   prefixes: ["https://bookitgy.com", "https://www.bookitgy.com", "bookitgy://"],
   config: {
@@ -128,8 +143,13 @@ const createLinkingConfig = ({ isProvider }) => ({
     }
   },
   async getInitialURL() {
-    const url = await Linking.getInitialURL();
-    return handleIncomingURL(url);
+    try {
+      const url = await withTimeout(Linking.getInitialURL(), 1500, "getInitialURL");
+      return handleIncomingURL(url);
+    } catch (error) {
+      console.log("[deepLinking] Failed to get initial URL", error?.message || error);
+      return null;
+    }
   },
   subscribe(listener) {
     const onReceiveURL = ({ url }) => {
@@ -155,21 +175,6 @@ const resolveImageUrl = (url) => {
     const normalizedPath = url.startsWith("/") ? url : `/${url}`;
     return `${API}${normalizedPath}`;
   };
-
-const withTimeout = (promise, ms, label) => {
-  let timeoutId;
-  const timeout = new Promise((_, reject) => {
-    timeoutId = setTimeout(() => {
-      const error = new Error(`${label || "Operation"} timed out after ${ms}ms`);
-      error.code = "ETIMEDOUT";
-      reject(error);
-    }, ms);
-  });
-
-  return Promise.race([promise, timeout]).finally(() => {
-    clearTimeout(timeoutId);
-  });
-};
 
 const LEGACY_ACCESS_TOKEN_KEY = "accessToken";
 
@@ -6125,6 +6130,19 @@ function App() {
       isActive = false;
     };
   }, []);
+
+  useEffect(() => {
+    if (!authLoading) return undefined;
+
+    const watchdog = setTimeout(() => {
+      if (authLoading) {
+        console.log("[auth] authLoading watchdog timeout");
+        setAuthLoading(false);
+      }
+    }, 15000);
+
+    return () => clearTimeout(watchdog);
+  }, [authLoading]);
 
   useEffect(() => {
     console.log("[auth] authLoading:", authLoading);
