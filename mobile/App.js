@@ -189,7 +189,11 @@ const getAuthToken = async (tokenState) => {
   }
 
   try {
-    const legacy = await AsyncStorage.getItem(LEGACY_ACCESS_TOKEN_KEY);
+    const legacy = await withTimeout(
+      AsyncStorage.getItem(LEGACY_ACCESS_TOKEN_KEY),
+      1500,
+      "loadLegacyToken"
+    );
     return legacy || null;
   } catch (error) {
     console.log("[auth] Failed to load legacy token", error?.message || error);
@@ -6105,8 +6109,27 @@ function App() {
               err?.message || err
             );
             if (err?.response?.status === 401 || err?.response?.status === 403) {
-              await clearToken();
-              await AsyncStorage.removeItem(LEGACY_ACCESS_TOKEN_KEY);
+              try {
+                await withTimeout(clearToken(), 1500, "clearToken");
+              } catch (storageError) {
+                console.log(
+                  "[auth] Failed to clear secure token",
+                  storageError?.message || storageError
+                );
+              }
+
+              try {
+                await withTimeout(
+                  AsyncStorage.removeItem(LEGACY_ACCESS_TOKEN_KEY),
+                  1500,
+                  "clearLegacyToken"
+                );
+              } catch (storageError) {
+                console.log(
+                  "[auth] Failed to clear legacy token",
+                  storageError?.message || storageError
+                );
+              }
               if (isActive) setToken(null);
             } else if (isActive) {
               setToken({ token: restoredToken });
