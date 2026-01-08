@@ -156,6 +156,14 @@ const createLinkingConfig = ({ isProvider }) => ({
     return `${API}${normalizedPath}`;
   };
 
+const getAuthToken = async (tokenState) => {
+  if (tokenState?.token) return tokenState.token;
+  const secureToken = await loadToken();
+  if (secureToken) return secureToken;
+  const legacyToken = await AsyncStorage.getItem("accessToken");
+  return legacyToken || null;
+};
+
 const FAVORITES_STORAGE_KEY = (userKey) =>
   userKey ? `favoriteProviders:${userKey}` : "favoriteProviders";
 
@@ -410,6 +418,7 @@ function LoginScreen({
 
     try {
       await saveToken(res.data.access_token);
+      await AsyncStorage.setItem("accessToken", res.data.access_token);
       const persistedToken = await loadToken();
       if (!persistedToken) {
         Alert.alert(
@@ -875,8 +884,8 @@ function ProfileScreen({ setToken, showFlash, token }) {
 
   const uploadAvatar = async (uri) => {
     try {
-      const token = await AsyncStorage.getItem("accessToken");
-      if (!token) {
+      const tokenValue = await getAuthToken(token);
+      if (!tokenValue) {
         alert("No access token found. Please log in again.");
         return;
       }
@@ -899,7 +908,7 @@ function ProfileScreen({ setToken, showFlash, token }) {
         try {
           const meRes = await axios.get(`${API}/users/me`, {
             headers: {
-              Authorization: `Bearer ${token}`,
+              Authorization: `Bearer ${tokenValue}`,
             },
           });
 
@@ -925,7 +934,7 @@ function ProfileScreen({ setToken, showFlash, token }) {
       const res = await axios.post(endpoint, formData, {
         headers: {
           "Content-Type": "multipart/form-data",
-          Authorization: `Bearer ${token}`,
+          Authorization: `Bearer ${tokenValue}`,
         },
       });
 
@@ -996,7 +1005,7 @@ function ProfileScreen({ setToken, showFlash, token }) {
         setLoading(true);
         setError("");
 
-        const tokenValue = await AsyncStorage.getItem("accessToken");
+        const tokenValue = await getAuthToken(token);
 
         if (!tokenValue) {
           setError("No access token found. Please log in again.");
@@ -1078,8 +1087,8 @@ function ProfileScreen({ setToken, showFlash, token }) {
   const saveProfileChanges = async () => {
     try {
       setEditSaving(true);
-      const token = await AsyncStorage.getItem("accessToken");
-      if (!token) {
+      const authToken = await getAuthToken(token);
+      if (!authToken) {
         if (showFlash) showFlash("error", "No access token found. Please log in again.");
         return;
       }
@@ -1096,7 +1105,7 @@ function ProfileScreen({ setToken, showFlash, token }) {
           payload,
           {
             headers: {
-              Authorization: `Bearer ${token}`,
+              Authorization: `Bearer ${authToken}`,
             },
           }
       );
@@ -1153,14 +1162,14 @@ function ProfileScreen({ setToken, showFlash, token }) {
       setBookingsLoading(true);
       setBookingsError("");
 
-      const token = await AsyncStorage.getItem("accessToken");
-      if (!token) {
+      const authToken = await getAuthToken(token);
+      if (!authToken) {
         setBookingsError("No access token found. Please log in again.");
         return;
       }
 
       const res = await axios.get(`${API}/bookings/me`, {
-        headers: { Authorization: `Bearer ${token}` },
+        headers: { Authorization: `Bearer ${authToken}` },
       });
 
       const rawBookings = res.data;
@@ -1242,8 +1251,8 @@ function ProfileScreen({ setToken, showFlash, token }) {
           style: "destructive",
           onPress: async () => {
             try {
-              const token = await AsyncStorage.getItem("accessToken");
-              if (!token) {
+              const authToken = await getAuthToken(token);
+              if (!authToken) {
                 if (showFlash)
                   showFlash("error", "No access token found. Please log in.");
                 return;
@@ -1253,7 +1262,7 @@ function ProfileScreen({ setToken, showFlash, token }) {
                     `${API}/bookings/${bookingId}/cancel`,
                     {},
                     {
-                      headers: { Authorization: `Bearer ${token}` },
+                      headers: { Authorization: `Bearer ${authToken}` },
                     }
                   );
 
@@ -2178,8 +2187,7 @@ function AppointmentsScreen({ token, showFlash }) {
         setLoading(true);
         setError("");
 
-        const storedToken = await AsyncStorage.getItem("accessToken");
-        const authToken = token?.token || storedToken;
+        const authToken = await getAuthToken(token);
 
         if (!authToken) {
           setError("Please log in to view your appointments.");
@@ -2262,8 +2270,7 @@ function AppointmentsScreen({ token, showFlash }) {
           style: "destructive",
           onPress: async () => {
             try {
-              const storedToken = await AsyncStorage.getItem("accessToken");
-              const authToken = token?.token || storedToken;
+              const authToken = await getAuthToken(token);
 
               if (!authToken) {
                 showFlash &&
@@ -2929,8 +2936,8 @@ function SearchScreen({
     try {
       setBookingLoading(true);
 
-      const storedToken = await AsyncStorage.getItem("accessToken");
-      if (!storedToken) {
+      const authToken = await getAuthToken(token);
+      if (!authToken) {
         if (showFlash) {
           showFlash("error", "No access token found. Please log in again.");
         } else {
@@ -2946,7 +2953,7 @@ function SearchScreen({
           start_time: selectedSlot,
         },
         {
-          headers: { Authorization: `Bearer ${storedToken}` },
+          headers: { Authorization: `Bearer ${authToken}` },
         }
       );
 
@@ -3624,15 +3631,15 @@ const loadBookings = async () => {
       setBookingsLoading(true);
       setBookingsError("");
 
-      const storedToken = await AsyncStorage.getItem("accessToken");
-      if (!storedToken) {
+      const authToken = await getAuthToken(token);
+      if (!authToken) {
         setBookingsError("No access token found. Please log in again.");
         return;
       }
 
       const res = await axios.get(`${API}/providers/me/bookings`, {
         headers: {
-          Authorization: `Bearer ${storedToken}`,
+          Authorization: `Bearer ${authToken}`,
         },
       });
 
@@ -3653,14 +3660,14 @@ const loadWorkingHours = async () => {
     setHoursLoading(true);
     setHoursError("");
 
-    const storedToken = await AsyncStorage.getItem("accessToken");
-    if (!storedToken) {
+    const authToken = await getAuthToken(token);
+    if (!authToken) {
       setHoursError("No access token found. Please log in again.");
       return;
     }
 
     const res = await axios.get(`${API}/providers/me/working-hours`, {
-      headers: { Authorization: `Bearer ${storedToken}` },
+      headers: { Authorization: `Bearer ${authToken}` },
     });
 
     const rows = Array.isArray(res.data) ? res.data : [];
@@ -3694,10 +3701,10 @@ const loadWorkingHours = async () => {
 
 const loadTodayBookings = async () => {
   try {
-    const token = await AsyncStorage.getItem("accessToken");
+    const authToken = await getAuthToken(token);
     const res = await axios.get(
       `${API}/providers/me/bookings/today`,
-      { headers: { Authorization: `Bearer ${token}` } }
+      { headers: { Authorization: `Bearer ${authToken}` } }
     );
     setTodayBookings(res.data || []);
   } catch (error) {
@@ -3723,10 +3730,10 @@ const handleCancelBooking = (bookingId) => {
       {
         text: "Yes, cancel",
         style: "destructive",
-        onPress: async () => {
+          onPress: async () => {
           try {
-            const storedToken = await AsyncStorage.getItem("accessToken");
-            if (!storedToken) {
+            const authToken = await getAuthToken(token);
+            if (!authToken) {
               if (showFlash) showFlash("error", "No access token found.");
               return;
             }
@@ -3736,7 +3743,7 @@ const handleCancelBooking = (bookingId) => {
               {},
               {
                 headers: {
-                  Authorization: `Bearer ${storedToken}`,
+                  Authorization: `Bearer ${authToken}`,
                 },
               }
             );
@@ -3779,15 +3786,15 @@ const loadServices = async () => {
       setLoading(true);
       setServicesError("");
 
-      const storedToken = await AsyncStorage.getItem("accessToken");
-      if (!storedToken) {
+      const authToken = await getAuthToken(token);
+      if (!authToken) {
         setServicesError("No access token found. Please log in again.");
         return;
       }
 
       const res = await axios.get(`${API}/providers/me/services`, {
         headers: {
-        Authorization: `Bearer ${storedToken}`,
+        Authorization: `Bearer ${authToken}`,
       },
     });
 
@@ -3812,8 +3819,8 @@ const loadServices = async () => {
 
 const saveWorkingHours = async () => {
   try {
-    const storedToken = await AsyncStorage.getItem("accessToken");
-    if (!storedToken) {
+    const authToken = await getAuthToken(token);
+    if (!authToken) {
       if (showFlash) showFlash("error", "No access token found.");
       setHoursFlash({ type: "error", message: "No access token found." });
       setTimeout(() => setHoursFlash(null), 2000);
@@ -3881,7 +3888,7 @@ const saveWorkingHours = async () => {
 
     
     await axios.put(`${API}/providers/me/working-hours`, payload, {
-      headers: { Authorization: `Bearer ${storedToken}` },
+      headers: { Authorization: `Bearer ${authToken}` },
     });
 
 
@@ -4004,8 +4011,8 @@ const to24Hour = (time12) => {
   const durationNumber = newDuration ? Number(newDuration) : 30;
 
   try {
-    const storedToken = await AsyncStorage.getItem("accessToken");
-    if (!storedToken) {
+    const authToken = await getAuthToken(token);
+    if (!authToken) {
       if (showFlash) showFlash("error", "No access token found.");
       return;
     }
@@ -4023,7 +4030,7 @@ const to24Hour = (time12) => {
       payload,
       {
         headers: {
-          Authorization: `Bearer ${storedToken}`,
+          Authorization: `Bearer ${authToken}`,
         },
       }
     );
@@ -4059,15 +4066,15 @@ const to24Hour = (time12) => {
 
   const handleDeleteService = async (serviceId) => {
     try {
-      const storedToken = await AsyncStorage.getItem("accessToken");
-      if (!storedToken) {
+      const authToken = await getAuthToken(token);
+      if (!authToken) {
         if (showFlash) showFlash("error", "No access token found.");
         return;
       }
 
       await axios.delete(`${API}/providers/me/services/${serviceId}`, {
         headers: {
-          Authorization: `Bearer ${storedToken}`,
+          Authorization: `Bearer ${authToken}`,
         },
       });
 
@@ -4108,15 +4115,15 @@ const loadProviderProfile = async () => {
     setProfileLoading(true);
     setProfileError("");
 
-    const storedToken = await AsyncStorage.getItem("accessToken");
-    if (!storedToken) {
+    const authToken = await getAuthToken(token);
+    if (!authToken) {
       setProfileError("No access token found. Please log in again.");
       return;
     }
 
     const res = await axios.get(`${API}/providers/me/profile`, {
       headers: {
-        Authorization: `Bearer ${storedToken}`,
+        Authorization: `Bearer ${authToken}`,
       },
     });
 
@@ -4146,14 +4153,14 @@ const loadCatalog = async () => {
     setCatalogLoading(true);
     setCatalogError("");
 
-    const storedToken = await AsyncStorage.getItem("accessToken");
-    if (!storedToken) {
+    const authToken = await getAuthToken(token);
+    if (!authToken) {
       setCatalogError("No access token found. Please log in again.");
       return;
     }
 
     const res = await axios.get(`${API}/providers/me/catalog`, {
-      headers: { Authorization: `Bearer ${storedToken}` },
+      headers: { Authorization: `Bearer ${authToken}` },
     });
 
     setCatalog(Array.isArray(res.data) ? res.data : []);
@@ -4177,8 +4184,8 @@ const uploadCatalogImage = async (uri) => {
   try {
     setCatalogUploading(true);
 
-    const tokenStr = await AsyncStorage.getItem("accessToken");
-    if (!tokenStr) {
+    const authToken = await getAuthToken(token);
+    if (!authToken) {
       alert("No access token found. Please log in again.");
       return;
     }
@@ -4201,7 +4208,7 @@ const uploadCatalogImage = async (uri) => {
     const res = await axios.post(`${API}/providers/me/catalog`, formData, {
       headers: {
         "Content-Type": "multipart/form-data",
-        Authorization: `Bearer ${tokenStr}`,
+        Authorization: `Bearer ${authToken}`,
       },
     });
 
@@ -4261,14 +4268,14 @@ const handleDeleteCatalogImage = (imageId) => {
         style: "destructive",
         onPress: async () => {
           try {
-            const tokenStr = await AsyncStorage.getItem("accessToken");
-            if (!tokenStr) {
+            const authToken = await getAuthToken(token);
+            if (!authToken) {
               alert("No access token found. Please log in again.");
               return;
             }
 
             await axios.delete(`${API}/providers/me/catalog/${imageId}`, {
-              headers: { Authorization: `Bearer ${tokenStr}` },
+              headers: { Authorization: `Bearer ${authToken}` },
             });
 
             setCatalog((prev) =>
@@ -4297,8 +4304,8 @@ const handleDeleteCatalogImage = (imageId) => {
 
 const saveProviderProfile = async () => {
   try {
-    const storedToken = await AsyncStorage.getItem("accessToken");
-    if (!storedToken) {
+    const authToken = await getAuthToken(token);
+    if (!authToken) {
       if (showFlash) showFlash("error", "No access token found.");
       return;
     }
@@ -4318,7 +4325,7 @@ const saveProviderProfile = async () => {
       payload,
       {
         headers: {
-          Authorization: `Bearer ${storedToken}`,
+          Authorization: `Bearer ${authToken}`,
         },
       }
     );
@@ -4376,8 +4383,8 @@ const pickAvatar = async () => {
 
 const uploadAvatar = async (uri) => {
   try {
-    const rawToken = await AsyncStorage.getItem("accessToken");
-    if (!rawToken) {
+    const authToken = await getAuthToken(token);
+    if (!authToken) {
       alert("No access token found. Please log in again.");
       return;
     }
@@ -4400,7 +4407,7 @@ const uploadAvatar = async (uri) => {
     try {
       const meRes = await axios.get(`${API}/users/me`, {
         headers: {
-          Authorization: `Bearer ${rawToken}`,
+          Authorization: `Bearer ${authToken}`,
         },
       });
 
@@ -4419,7 +4426,7 @@ const uploadAvatar = async (uri) => {
     const res = await axios.post(endpoint, formData, {
       headers: {
         "Content-Type": "multipart/form-data",
-        Authorization: `Bearer ${rawToken}`,
+        Authorization: `Bearer ${authToken}`,
       },
     });
 
@@ -4441,10 +4448,10 @@ const uploadAvatar = async (uri) => {
 
 const loadUpcomingBookings = async () => {
   try {
-    const token = await AsyncStorage.getItem("accessToken");
+    const authToken = await getAuthToken(token);
     const res = await axios.get(
       `${API}/providers/me/bookings/upcoming`,
-      { headers: { Authorization: `Bearer ${token}` } }
+      { headers: { Authorization: `Bearer ${authToken}` } }
     );
     setUpcomingBookings(res.data || []);
   } catch (error) {
@@ -4470,8 +4477,8 @@ const getCurrentLocation = async () => {
 
 const handlePinLocation = async () => {
   try {
-    const token = await AsyncStorage.getItem("accessToken");
-    if (!token) {
+    const authToken = await getAuthToken(token);
+    if (!authToken) {
       if (showFlash) showFlash("error", "No access token found. Please log in again.");
       return;
     }
@@ -4490,14 +4497,14 @@ const handlePinLocation = async () => {
     await axios.put(
       `${API}/users/me`,
       { lat: coords.lat, long: coords.long },
-      { headers: { Authorization: `Bearer ${token}` } }
+      { headers: { Authorization: `Bearer ${authToken}` } }
     );
 
     // 2) ALSO update the provider record so searches & client view use it
     await axios.put(
       `${API}/providers/me/location`,
       { lat: coords.lat, long: coords.long },
-      { headers: { Authorization: `Bearer ${token}` } }
+      { headers: { Authorization: `Bearer ${authToken}` } }
     );
 
     // 3) update local state so preview uses the latest coords
@@ -4522,12 +4529,12 @@ const handlePinLocation = async () => {
 
 const loadProviderLocation = async () => {
   try {
-    const storedToken = await AsyncStorage.getItem("accessToken");
-    if (!storedToken) return;
+    const authToken = await getAuthToken(token);
+    if (!authToken) return;
 
      const res = await axios.get(`${API}/users/me`, {
       headers: {
-        Authorization: `Bearer ${storedToken}`,
+        Authorization: `Bearer ${authToken}`,
       },
     });
 
@@ -4544,8 +4551,7 @@ const loadProviderLocation = async () => {
 
 const loadProviderSummary = async () => {
   try {
-    const storedToken = await AsyncStorage.getItem("accessToken");
-    const authToken = token?.token || storedToken;
+    const authToken = await getAuthToken(token);
     if (!authToken) return;
 
     const res = await axios.get(`${API}/providers/me/summary`, {
@@ -5516,8 +5522,7 @@ function ProviderBillingScreen({ token, showFlash }) {
       setBillingLoading(true);
       setBillingError("");
 
-      const storedToken = await AsyncStorage.getItem("accessToken");
-      const authToken = token?.token || storedToken;
+      const authToken = await getAuthToken(token);
 
       if (!authToken) {
         setBillingError("No access token found. Please log in again.");
