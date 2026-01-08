@@ -6056,6 +6056,7 @@ function App() {
   const [isAdmin, setIsAdmin] = useState(false);
   const navigationRef = useRef(null);
   const tokenRef = useRef(null);
+  const authBootstrapRef = useRef({ inFlight: false, completed: false });
   const [isNavReady, setIsNavReady] = useState(false);
   const [pendingDeepLinkUsername, setPendingDeepLinkUsername] = useState(null);
 
@@ -6139,6 +6140,10 @@ function App() {
   useEffect(() => {
     let isActive = true;
     const restoreSession = async () => {
+      if (authBootstrapRef.current.inFlight || authBootstrapRef.current.completed) {
+        return;
+      }
+      authBootstrapRef.current.inFlight = true;
       const bootstrapStartedAt = Date.now();
       console.log("[auth] bootstrap start");
       try {
@@ -6157,11 +6162,12 @@ function App() {
               baseURL: API,
               timeout: AUTH_ME_TIMEOUT_MS,
             });
+            const bootstrapHeaders = {
+              Authorization: `Bearer ${restoredToken}`,
+            };
             const meRes = await withTimeout(
               bootstrapClient.get("/users/me", {
-                headers: {
-                  Authorization: `Bearer ${restoredToken}`,
-                },
+                headers: bootstrapHeaders,
               }),
               AUTH_ME_TIMEOUT_MS,
               "/users/me"
@@ -6221,6 +6227,8 @@ function App() {
         );
         if (isActive) setToken(null);
       } finally {
+        authBootstrapRef.current.inFlight = false;
+        authBootstrapRef.current.completed = true;
         if (isActive) {
           setAuthLoading(false);
           console.log(
