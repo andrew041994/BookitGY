@@ -1,70 +1,52 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
-diff --git a/mobile/ios/BookitGY/AppDelegate.swift b/mobile/ios/BookitGY/AppDelegate.swift
-index 81a689e3639a0dd9d36e91369bc061deb37a64c6..54e40367b4c17e8dca44e549d19fd2fdde9527ba 100644
---- a/mobile/ios/BookitGY/AppDelegate.swift
-+++ b/mobile/ios/BookitGY/AppDelegate.swift
-@@ -20,61 +20,43 @@ public class AppDelegate: ExpoAppDelegate {
-   ) -> Bool {
-     let delegate = ReactNativeDelegate()
-     let factory = ExpoReactNativeFactory(delegate: delegate)
-     delegate.dependencyProvider = RCTAppDependencyProvider()
- 
-     reactNativeDelegate = delegate
-     reactNativeFactory = factory
-     bindReactNativeFactory(factory)
- 
- #if os(iOS) || os(tvOS)
-     window = UIWindow(frame: UIScreen.main.bounds)
-     factory.startReactNative(
-       withModuleName: "main",
-       in: window,
-       launchOptions: launchOptions)
- #endif
- 
- // @generated begin react-native-maps-init - expo prebuild (DO NOT MODIFY) sync-001d8ce0c176b2a0f2e649d849dac0806af3a551
- #if canImport(GoogleMaps)
- GMSServices.provideAPIKey("AIzaSyDif7VfeWmBgax6MrIyOh3ebblieZtKE8I")
- #endif
- // @generated end react-native-maps-init
-     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
-   }
- 
--  // Linking API
--  public override func application(
--    _ app: UIApplication,
--    open url: URL,
--    options: [UIApplication.OpenURLOptionsKey: Any] = [:]
--  ) -> Bool {
--    return super.application(app, open: url, options: options) || RCTLinkingManager.application(app, open: url, options: options)
--  }
--
--  // Universal Links
--  public override func application(
--    _ application: UIApplication,
--    continue userActivity: NSUserActivity,
--    restorationHandler: @escaping ([UIUserActivityRestoring]?) -> Void
--  ) -> Bool {
--    let result = RCTLinkingManager.application(application, continue: userActivity, restorationHandler: restorationHandler)
--    return super.application(application, continue: userActivity, restorationHandler: restorationHandler) || result
--  }
- }
- 
- class ReactNativeDelegate: ExpoReactNativeFactoryDelegate {
-   // Extension point for config-plugins
- 
-   override func sourceURL(for bridge: RCTBridge) -> URL? {
-     // needed to return the correct URL for expo-dev-client.
-     bridge.bundleURL ?? bundleURL()
-   }
- 
-   override func bundleURL() -> URL? {
- #if DEBUG
-     return RCTBundleURLProvider.sharedSettings().jsBundleURL(forBundleRoot: ".expo/.virtual-metro-entry")
- #else
-     return Bundle.main.url(forResource: "main", withExtension: "jsbundle")
- #endif
-   }
- }
+diff --git a/mobile/package.json b/mobile/package.json
+index 2f357102ba0e596a2f60d318c7d1904ccdee1122..cafea6569cb79635da0f176c74ddd4a58040d2a4 100644
+--- a/mobile/package.json
++++ b/mobile/package.json
+@@ -1,43 +1,42 @@
+ {
+   "name": "guyana-booker-mobile",
+   "version": "1.0.0",
+   "main": "node_modules/expo/AppEntry.js",
+   "scripts": {
+     "start": "expo start",
+     "android": "expo run:android",
+     "ios": "expo run:ios"
+   },
+   "dependencies": {
+     "@react-native-async-storage/async-storage": "2.2.0",
+     "@react-native-community/datetimepicker": "8.4.4",
+     "@react-navigation/bottom-tabs": "^6.6.1",
+     "@react-navigation/native": "^6.1.18",
+     "axios": "^1.13.2",
+     "babel-preset-expo": "~54.0.0",
+     "expo": "^54.0.24",
+-    "expo-clipboard": "~8.0.8",
+     "expo-constants": "~18.0.12",
+     "expo-image-picker": "~17.0.8",
+     "expo-location": "~19.0.7",
+     "expo-secure-store": "~15.0.8",
+     "react": "19.1.0",
+     "react-dom": "19.1.0",
+     "react-native": "0.81.5",
+     "react-native-dotenv": "^3.4.11",
+     "react-native-gesture-handler": "~2.28.0",
+     "react-native-maps": "1.20.1",
+     "react-native-safe-area-context": "~5.6.0",
+     "react-native-screens": "~4.16.0",
+     "react-native-web": "^0.21.0",
+     "sentry-expo": "7.2.0",
+     "tslib": "^2.8.1"
+   },
+   "devDependencies": {
+     "@babel/core": "^7.20.0",
+     "@react-native-community/cli": "^20.0.2",
+     "@types/react": "~19.1.10",
+     "typescript": "~5.9.2"
+   },
+   "private": true,
+   "overrides": {
+     "react": "19.1.0",
  
 EOF
 )
