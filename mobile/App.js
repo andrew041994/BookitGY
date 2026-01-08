@@ -2331,7 +2331,7 @@ function SearchScreen({
   isFavorite,
   syncFavoritesFromList,
 }) {
- 
+  const incomingUsername = route?.params?.incomingUsername ?? null;
 
   const [filteredProviders, setFilteredProviders] = useState([]);
   const [searchQuery, setSearchQuery] = useState("");

@@ -1,64 +1,61 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
-diff --git a/mobile/src/api/client.js b/mobile/src/api/client.js
-new file mode 100644
-index 0000000000000000000000000000000000000000..e9ca098d5484193464d124819e3eef1490d76e00
---- /dev/null
-+++ b/mobile/src/api/client.js
-@@ -0,0 +1,54 @@
-+import axios from "axios";
-+import { clearToken, loadToken } from "../components/tokenStorage";
-+
-+let hasLoggedUnauthorized = false;
-+
-+export const createApiClient = ({ baseURL, onUnauthorized }) => {
-+  const client = axios.create({ baseURL });
-+
-+  client.interceptors.request.use(async (config) => {
-+    const token = await loadToken();
-+    if (token) {
-+      config.headers = {
-+        ...config.headers,
-+        Authorization: `Bearer ${token}`,
-+      };
-+    }
-+    return config;
-+  });
-+
-+  client.interceptors.response.use(
-+    (response) => response,
-+    async (error) => {
-+      const status = error?.response?.status;
-+      if (status === 401) {
-+        if (!hasLoggedUnauthorized) {
-+          console.log("[auth] 401 received, forcing logout");
-+          hasLoggedUnauthorized = true;
-+        }
-+        try {
-+          await clearToken();
-+        } catch (err) {
-+          console.log(
-+            "[auth] Failed to clear secure token",
-+            err?.message || err
-+          );
-+        }
-+
-+        if (typeof onUnauthorized === "function") {
-+          try {
-+            await onUnauthorized();
-+          } catch (handlerError) {
-+            console.log(
-+              "[auth] logout handler failed",
-+              handlerError?.message || handlerError
-+            );
-+          }
-+        }
-+      }
-+      return Promise.reject(error);
-+    }
-+  );
-+
-+  return client;
-+};
+diff --git a/mobile/App.js b/mobile/App.js
+index 0c81eef0524f301a45efc7889b4c6b8cd4f17316..3f5be61a50e21bfef105479b832ded7ca96af21d 100644
+--- a/mobile/App.js
++++ b/mobile/App.js
+@@ -2309,51 +2309,51 @@ function AppointmentsScreen({ token, showFlash }) {
+             finishedBookings.map((booking) =>
+               renderBooking(booking, false)
+             )
+           )}
+         </View>
+       </>
+     )}
+   </ScrollView>
+ );
+ }
+ 
+     
+ 
+ 
+ 
+ 
+ function SearchScreen({
+   token,
+   showFlash,
+   navigation,
+   route,
+   toggleFavorite,
+   isFavorite,
+   syncFavoritesFromList,
+ }) {
+- 
++  const incomingUsername = route?.params?.incomingUsername ?? null;
+ 
+   const [filteredProviders, setFilteredProviders] = useState([]);
+   const [searchQuery, setSearchQuery] = useState("");
+   const [radiusKm, setRadiusKm] = useState(0); // 0 = any distance
+   const [clientLocation, setClientLocation] = useState(null);
+   const [locationError, setLocationError] = useState("");
+   const [providers, setProviders] = useState([]);
+   const [providersLoading, setProvidersLoading] = useState(true);
+   const [providersError, setProvidersError] = useState("");
+   const [selectedProvider, setSelectedProvider] = useState(null);
+   const [services, setServices] = useState([]);
+   const [servicesLoading, setServicesLoading] = useState(false);
+   const [servicesError, setServicesError] = useState("");
+   const [selectedService, setSelectedService] = useState(null);
+   const [catalogImages, setCatalogImages] = useState([]);
+   const [catalogLoading, setCatalogLoading] = useState(false);
+   const [catalogError, setCatalogError] = useState("");
+   const [availability, setAvailability] = useState([]);
+   const [availabilityLoading, setAvailabilityLoading] = useState(false);
+   const [availabilityError, setAvailabilityError] = useState("");
+   const [selectedDate, setSelectedDate] = useState(null);
+   const [selectedSlot, setSelectedSlot] = useState(null); // ISO string
+   const [bookingLoading, setBookingLoading] = useState(false);
+   const [hasSearched, setHasSearched] = useState(false); // 👈 NEW
+   const [refreshing, setRefreshing] = useState(false);
  
 EOF
 )
