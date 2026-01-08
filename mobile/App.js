@@ -148,7 +148,7 @@ const createLinkingConfig = ({ isProvider }) => ({
   return emailRegex.test(trimmed);
 };
 
-  const resolveImageUrl = (url) => {
+const resolveImageUrl = (url) => {
     if (!url || typeof url !== "string") return null;
     if (url.startsWith("http")) return url;
     if (url.startsWith("//")) return `https:${url}`;
@@ -156,13 +156,28 @@ const createLinkingConfig = ({ isProvider }) => ({
     return `${API}${normalizedPath}`;
   };
 
+const withTimeout = (promise, ms, label) => {
+  let timeoutId;
+  const timeout = new Promise((_, reject) => {
+    timeoutId = setTimeout(() => {
+      const error = new Error(`${label || "Operation"} timed out after ${ms}ms`);
+      error.code = "ETIMEDOUT";
+      reject(error);
+    }, ms);
+  });
+
+  return Promise.race([promise, timeout]).finally(() => {
+    clearTimeout(timeoutId);
+  });
+};
+
 const LEGACY_ACCESS_TOKEN_KEY = "accessToken";
 
 const getAuthToken = async (tokenState) => {
   if (tokenState?.token) return tokenState.token;
 
   try {
-    const secure = await loadToken();
+    const secure = await withTimeout(loadToken(), 1500, "loadToken");
     if (secure) return secure;
   } catch (error) {
     console.log("[auth] Failed to load secure token", error?.message || error);
@@ -6052,16 +6067,23 @@ function App() {
     let isActive = true;
     const restoreSession = async () => {
       try {
-        const restoredToken = await getAuthToken();
+        const restoredToken = await withTimeout(getAuthToken(), 2500, "getAuthToken");
         console.log("[auth] token loaded:", Boolean(restoredToken));
 
         if (!restoredToken) {
           if (isActive) setToken(null);
         } else {
           try {
-            const meRes = await axios.get(`${API}/users/me`, {
-              timeout: 10000,
-            });
+            const bootstrapClient = axios.create();
+            const meRes = await withTimeout(
+              bootstrapClient.get(`${API}/users/me`, {
+                headers: {
+                  Authorization: `Bearer ${restoredToken}`,
+                },
+              }),
+              12000,
+              "/users/me"
+            );
             if (isActive) {
               setToken({
                 token: restoredToken,
