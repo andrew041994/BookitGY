@@ -18,7 +18,6 @@ import {
   TouchableWithoutFeedback,
   Keyboard,
   RefreshControl,
-  Share,
 } from "react-native";
 import { NavigationContainer } from "@react-navigation/native";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
@@ -28,13 +27,10 @@ import { clearToken, loadToken, saveToken } from "./src/components/tokenStorage"
 import * as Location from "expo-location";
 import Constants from "expo-constants";
 import * as ImagePicker from "expo-image-picker";
-import * as Clipboard from "expo-clipboard";
 import BookitGYLogoTransparent from "./assets/bookitgy-logo-transparent.png"
 import { Ionicons } from "@expo/vector-icons";
 import { SafeAreaProvider,SafeAreaView } from "react-native-safe-area-context";
-import PublicProfileScreen from "./src/screens/PublicProfileScreen";
 // import * as Sentry from "sentry-expo";
-import { handleIncomingURL } from "./src/utils/deepLinking";
 
 
 
@@ -52,33 +48,6 @@ const API =
   "https://bookitgy.onrender.com";
 
   console.log("### API base URL =", API);
-
-const getProviderUsernameFromPath = (path) => {
-  const trimmed = `${path || ""}`.replace(/^\/+/, "");
-  if (!trimmed) return null;
-
-  const [firstSegment, secondSegment] = trimmed.split("/");
-  if (firstSegment !== "p" || !secondSegment) return null;
-
-  try {
-    return decodeURIComponent(secondSegment);
-  } catch (error) {
-    return secondSegment;
-  }
-};
-
-const getProviderUsernameFromUrl = (url) => {
-  const safeUrl = handleIncomingURL(url);
-  if (!safeUrl) return null;
-
-  try {
-    const parsed = new URL(safeUrl);
-    return getProviderUsernameFromPath(parsed.pathname);
-  } catch (error) {
-    console.log("[deepLinking] Failed to parse URL", safeUrl, error?.message || error);
-    return null;
-  }
-};
 
 const withTimeout = (promise, ms, label) => {
   let timeoutId;
@@ -1196,16 +1165,6 @@ function ProfileScreen({ setToken, showFlash, token }) {
   const isAdmin = user.is_admin;
   const isProvider = user.is_provider;
   const role = isAdmin ? "Admin" : isProvider ? "Provider" : "Client";
-  const providerUsername = user?.username?.trim();
-  const providerProfileLink = providerUsername
-    ? `https://bookitgy.com/p/${providerUsername}`
-    : null;
-  const providerProfileLinkSimple = providerUsername
-    ? `bookitgy.com/p/${providerUsername}`
-    : null;
-  const providerProfileLinkLabel =
-    providerProfileLink || "Set a username to generate your link";
-
   const toggleMyBookings = async () => {
     const next = !showBookings;
     setShowBookings(next);
@@ -1357,86 +1316,6 @@ function ProfileScreen({ setToken, showFlash, token }) {
       </View>
 
       <View style={styles.card}>
-        {isProvider && (
-          <View style={{ marginBottom: 16 }}>
-            <Text style={styles.label}>Profile link</Text>
-            <View style={styles.profileLinkRow}>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.profileLinkText} numberOfLines={1}>
-                  {providerProfileLinkLabel}
-                </Text>
-                {providerProfileLinkSimple && (
-                  <Text style={styles.profileLinkSubtle} numberOfLines={1}>
-                    {providerProfileLinkSimple}
-                  </Text>
-                )}
-              </View>
-              <TouchableOpacity
-                style={[
-                  styles.profileLinkCopy,
-                  !providerProfileLink && styles.profileLinkCopyDisabled,
-                ]}
-                disabled={!providerProfileLink}
-                onPress={async () => {
-                  try {
-                    if (!providerProfileLink) {
-                      showFlash?.(
-                        "error",
-                        "Set a username to generate your link"
-                      );
-                      return;
-                    }
-
-                    await Clipboard.setStringAsync(providerProfileLink);
-                    showFlash?.(
-                      "success",
-                      "Profile link copied to clipboard"
-                    );
-                  } catch (err) {
-                    console.log("Error copying profile link", err?.message || err);
-                    showFlash?.("error", "Could not copy profile link");
-                  }
-                }}
-              >
-                <Text style={styles.profileLinkCopyText}>Copy</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[
-                  styles.profileLinkCopy,
-                  styles.profileLinkShare,
-                  !providerProfileLink && styles.profileLinkCopyDisabled,
-                ]}
-                disabled={!providerProfileLink}
-                onPress={async () => {
-                  if (!providerProfileLink) {
-                    showFlash?.(
-                      "error",
-                      "Set a username to generate your link"
-                    );
-                    return;
-                  }
-
-                  try {
-                    await Share.share({
-                      message: providerProfileLink,
-                      url: providerProfileLink,
-                      title: "Book an appointment with me on BookitGY",
-                    });
-                  } catch (err) {
-                    console.log(
-                      "Error sharing profile link",
-                      err?.message || err
-                    );
-                    showFlash?.("error", "Could not share profile link");
-                  }
-                }}
-              >
-                <Text style={styles.profileLinkCopyText}>Share</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        )}
-
         <Text style={styles.label}>Email</Text>
         <Text style={styles.value}>{user.email}</Text>
 
@@ -2496,10 +2375,6 @@ function SearchScreen({
   const [bookingLoading, setBookingLoading] = useState(false);
   const [hasSearched, setHasSearched] = useState(false); // 👈 NEW
   const [refreshing, setRefreshing] = useState(false);
-  const hasAppliedSharedUsername = useRef(false);
-  const deepLinkUsernameRef = useRef(null);
-  const hasAttemptedDeepLinkOpen = useRef(false);
-
   //Radius 
   const radiusOptions = [0, 5, 10, 15, 20, 25, 30, 40, 50, 75, 100];
 
@@ -2580,28 +2455,6 @@ function SearchScreen({
     setFilteredProviders([providerFromNav]);
     handleSelectProvider(providerFromNav);
   }, [route?.params?.provider, selectedProvider, handleSelectProvider]);
-
-  const incomingUsername = route?.params?.username ?? route?.params?.sharedUsername;
-
-  useEffect(() => {
-    if (!incomingUsername) return;
-
-    const trimmedUsername = `${incomingUsername}`.trim();
-    if (!trimmedUsername) return;
-
-    if (
-      hasAppliedSharedUsername.current &&
-      deepLinkUsernameRef.current === trimmedUsername.toLowerCase()
-    ) {
-      return;
-    }
-
-    hasAppliedSharedUsername.current = true;
-    deepLinkUsernameRef.current = trimmedUsername.toLowerCase();
-    hasAttemptedDeepLinkOpen.current = false;
-    setSearchQuery(trimmedUsername);
-    setHasSearched(true);
-  }, [incomingUsername]);
 
   // Add a useEffect that recomputes filteredProviders
   // whenever providers/search/radius/location changes:
@@ -2690,36 +2543,6 @@ function SearchScreen({
 
     setFilteredProviders(list);
   }, [providers, searchQuery, radiusKm, clientLocation, hasSearched, route?.params?.provider]);
-
-  useEffect(() => {
-    const targetUsername = deepLinkUsernameRef.current;
-    if (!targetUsername || hasAttemptedDeepLinkOpen.current) return;
-    if (providersLoading) return;
-
-    const providerList = Array.isArray(filteredProviders)
-      ? filteredProviders
-      : [];
-
-    const exactMatch = providerList.find(
-      (p) => (p.username || "").toLowerCase() === targetUsername
-    );
-
-    if (exactMatch) {
-      hasAttemptedDeepLinkOpen.current = true;
-      handleSelectProvider(exactMatch);
-      return;
-    }
-
-    if (hasSearched && providerList.length === 0) {
-      hasAttemptedDeepLinkOpen.current = true;
-      if (showFlash) {
-        showFlash(
-          "error",
-          "We couldn't find that provider. Please check the username."
-        );
-      }
-    }
-  }, [filteredProviders, providersLoading, hasSearched, handleSelectProvider, showFlash]);
 
 
 
@@ -3495,43 +3318,6 @@ const [catalog, setCatalog] = useState([]);
 const [catalogLoading, setCatalogLoading] = useState(false);
 const [catalogError, setCatalogError] = useState("");
 const [catalogUploading, setCatalogUploading] = useState(false);
-
-const profileUsername = profile.username?.trim() || token?.username?.trim() || "";
-const profileLink = profileUsername
-  ? `https://bookitgy.com/${profileUsername}`
-  : null;
-const profileLinkSimple = profileUsername ? `bookitgy/${profileUsername}` : null;
-const profileLinkLabel = profileLink || "Set a username to generate your link";
-
-const copyProfileLink = async (link) => {
-  try {
-    if (!link) {
-      if (showFlash) {
-        showFlash("error", "Set a username to generate your link");
-      } else {
-        Alert.alert("Unavailable", "Set a username to generate your link");
-      }
-      return;
-    }
-
-    await Clipboard.setStringAsync(link);
-    if (showFlash) {
-      showFlash("success", "Profile link copied to clipboard");
-    } else {
-      Alert.alert("Copied", "Profile link copied to clipboard");
-    }
-  } catch (err) {
-    console.log("Error copying profile link", err?.message || err);
-    if (showFlash) {
-      showFlash("error", "Could not copy profile link");
-    }
-  }
-};
-
-
-
-
-
 
 
 
@@ -5024,36 +4810,6 @@ const loadProviderSummary = async () => {
               This is what clients will see on your public profile.
             </Text>
 
-            <View style={styles.profileLinkBox}>
-              <Text style={styles.sectionTitle}>Profile link</Text>
-              <Text style={styles.hoursHelp}>
-                Share this with clients so they can book you directly.
-              </Text>
-
-              <View style={styles.profileLinkRow}>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.profileLinkText} numberOfLines={1}>
-                    {profileLinkLabel}
-                  </Text>
-                  {profileLinkSimple && (
-                    <Text style={styles.profileLinkSubtle} numberOfLines={1}>
-                      {profileLinkSimple}
-                    </Text>
-                  )}
-                </View>
-                <TouchableOpacity
-                  style={[
-                    styles.profileLinkCopy,
-                    !profileLink && styles.profileLinkCopyDisabled,
-                  ]}
-                  disabled={!profileLink}
-                  onPress={() => copyProfileLink(profileLink)}
-                >
-                  <Text style={styles.profileLinkCopyText}>Copy</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-
             {profileLoading && (
               <View style={{ paddingVertical: 10 }}>
                 <ActivityIndicator />
@@ -5717,7 +5473,7 @@ function ProviderBillingScreen({ token, showFlash }) {
 
 
 // Tabs after login
-function MainApp({ token, setToken, showFlash, navigationRef, onNavReady }) {
+function MainApp({ token, setToken, showFlash, navigationRef }) {
   const {
     favoriteIds,
     favoriteProviders,
@@ -5731,9 +5487,6 @@ function MainApp({ token, setToken, showFlash, navigationRef, onNavReady }) {
 
     <NavigationContainer
       ref={navigationRef}
-      onReady={() => {
-        if (onNavReady) onNavReady();
-      }}
     >
       {token.isProvider ? (
         // 👇 Provider view: Dashboard + Billing + Profile
@@ -5789,11 +5542,6 @@ function MainApp({ token, setToken, showFlash, navigationRef, onNavReady }) {
               />
             )}
           </Tab.Screen>
-          <Tab.Screen
-            name="PublicProfile"
-            component={PublicProfileScreen}
-            options={{ tabBarButton: () => null, tabBarStyle: { display: "none" } }}
-          />
         </Tab.Navigator>
       ) : (
         // 👇 Client view: Profile + Search
@@ -5865,11 +5613,6 @@ function MainApp({ token, setToken, showFlash, navigationRef, onNavReady }) {
                 <ProfileScreen token={token} setToken={setToken} showFlash={showFlash} />
               )}
             </Tab.Screen>
-            <Tab.Screen
-              name="PublicProfile"
-              component={PublicProfileScreen}
-              options={{ tabBarButton: () => null, tabBarStyle: { display: "none" } }}
-            />
           </Tab.Navigator>
 
 
@@ -5923,8 +5666,6 @@ function App() {
   const navigationRef = useRef(null);
   const tokenRef = useRef(null);
   const authBootstrapRef = useRef({ inFlight: false, completed: false });
-  const [isNavReady, setIsNavReady] = useState(false);
-  const [pendingDeepLinkUsername, setPendingDeepLinkUsername] = useState(null);
 
   const [flash, setFlash] = useState(null);
 
@@ -6131,53 +5872,6 @@ function App() {
     console.log("[auth] authLoading:", authLoading);
   }, [authLoading]);
 
-  useEffect(() => {
-    if (!token) {
-      setIsNavReady(false);
-    }
-  }, [token]);
-
-  useEffect(() => {
-    if (token) return undefined;
-    let isActive = true;
-
-    const handleInitialUrl = async () => {
-      const initialUrl = await Linking.getInitialURL();
-      if (!isActive) return;
-
-      const username = getProviderUsernameFromUrl(initialUrl);
-      if (username) setPendingDeepLinkUsername(username);
-    };
-
-    handleInitialUrl();
-
-    const subscription = Linking.addEventListener("url", ({ url }) => {
-      if (!isActive) return;
-      const username = getProviderUsernameFromUrl(url);
-      if (username) setPendingDeepLinkUsername(username);
-    });
-
-    return () => {
-      isActive = false;
-      subscription.remove();
-    };
-  }, [token]);
-
-  useEffect(() => {
-    if (!pendingDeepLinkUsername || !token || !isNavReady) return;
-    if (!navigationRef.current) return;
-
-    const targetRoute = token?.isProvider ? "PublicProfile" : "Search";
-    try {
-      navigationRef.current.navigate(targetRoute, {
-        username: pendingDeepLinkUsername,
-      });
-      setPendingDeepLinkUsername(null);
-    } catch (error) {
-      console.log("[deepLinking] Failed to navigate", error?.message || error);
-    }
-  }, [pendingDeepLinkUsername, token, isNavReady]);
-
   if (authLoading) {
 
     return (
@@ -6245,7 +5939,6 @@ function App() {
             setToken={setToken}
             showFlash={showFlash}
             navigationRef={navigationRef}
-            onNavReady={() => setIsNavReady(true)}
           />
         )}
       </SafeAreaView>
@@ -6956,56 +6649,6 @@ mapContainer: {
     fontWeight: "600",
     color: "#065F46",
     marginBottom: 8,
-  },
-  profileLinkBox: {
-    width: "100%",
-    padding: 12,
-    backgroundColor: "#F0FDF4",
-    borderWidth: 1,
-    borderColor: "#BBF7D0",
-    borderRadius: 10,
-    marginBottom: 12,
-  },
-  profileLinkRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    backgroundColor: "#fff",
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: "#E5E7EB",
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    marginTop: 8,
-    gap: 12,
-  },
-  profileLinkText: {
-    flex: 1,
-    fontSize: 14,
-    color: "#065F46",
-    fontWeight: "600",
-  },
-  profileLinkSubtle: {
-    fontSize: 12,
-    color: "#6B7280",
-    marginTop: 2,
-  },
-  profileLinkCopy: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 8,
-    backgroundColor: "#16A34A",
-  },
-  profileLinkShare: {
-    backgroundColor: "#0B6BF2",
-  },
-  profileLinkCopyDisabled: {
-    backgroundColor: "#9CA3AF",
-  },
-  profileLinkCopyText: {
-    color: "#fff",
-    fontWeight: "700",
-    fontSize: 13,
   },
   serviceRow: {
     paddingVertical: 10,
