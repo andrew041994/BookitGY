@@ -5802,17 +5802,17 @@ function MainApp({ token, setToken, showFlash, navigationRef, onNavReady }) {
 
     // add this later linking={linking}
     <NavigationContainer
-      ref={navigationRef}
-      linking={linking}
-      fallback={
-        <View style={styles.center}>
-          <ActivityIndicator size="large" color="#0B6BF2" />
-          <Text style={styles.loadingText}>Loading BookitGY…</Text>
-        </View>
-      }
-      onReady={() => {
-        if (onNavReady) onNavReady();
-      }}
+      // ref={navigationRef}
+      // linking={linking}
+      // fallback={
+      //   <View style={styles.center}>
+      //     <ActivityIndicator size="large" color="#0B6BF2" />
+      //     <Text style={styles.loadingText}>Loading BookitGY…</Text>
+      //   </View>
+      // }
+      // onReady={() => {
+      //   if (onNavReady) onNavReady();
+      // }}
     >
       {token.isProvider ? (
         // 👇 Provider view: Dashboard + Billing + Profile
