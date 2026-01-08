@@ -1,0 +1,54 @@
+import axios from "axios";
+import { clearToken, loadToken } from "../components/tokenStorage";
+
+let hasLoggedUnauthorized = false;
+
+export const createApiClient = ({ baseURL, onUnauthorized }) => {
+  const client = axios.create({ baseURL });
+
+  client.interceptors.request.use(async (config) => {
+    const token = await loadToken();
+    if (token) {
+      config.headers = {
+        ...config.headers,
+        Authorization: `Bearer ${token}`,
+      };
+    }
+    return config;
+  });
+
+  client.interceptors.response.use(
+    (response) => response,
+    async (error) => {
+      const status = error?.response?.status;
+      if (status === 401) {
+        if (!hasLoggedUnauthorized) {
+          console.log("[auth] 401 received, forcing logout");
+          hasLoggedUnauthorized = true;
+        }
+        try {
+          await clearToken();
+        } catch (err) {
+          console.log(
+            "[auth] Failed to clear secure token",
+            err?.message || err
+          );
+        }
+
+        if (typeof onUnauthorized === "function") {
+          try {
+            await onUnauthorized();
+          } catch (handlerError) {
+            console.log(
+              "[auth] logout handler failed",
+              handlerError?.message || handlerError
+            );
+          }
+        }
+      }
+      return Promise.reject(error);
+    }
+  );
+
+  return client;
+};
