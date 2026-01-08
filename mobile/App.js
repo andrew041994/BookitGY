@@ -5794,23 +5794,83 @@ function MainApp({ token, setToken, showFlash, navigationRef, onNavReady }) {
     syncFavoritesFromList,
     refreshFavoriteProviders,
   } = useFavoriteProviders(token?.email || token?.userId);
+  const [linkingEnabled, setLinkingEnabled] = useState(true);
+  const [navReady, setNavReady] = useState(false);
+  const [fallbackSeconds, setFallbackSeconds] = useState(0);
+  const [fallbackStartedAt, setFallbackStartedAt] = useState(null);
+  const navReadyRef = useRef(false);
+  const fallbackTimeoutRef = useRef(null);
+  const fallbackIntervalRef = useRef(null);
   const linking = useMemo(
     () => createLinkingConfig({ isProvider: token?.isProvider }),
     [token?.isProvider]
   );
+
+  const clearFallbackTimer = useCallback(() => {
+    if (fallbackTimeoutRef.current) {
+      clearTimeout(fallbackTimeoutRef.current);
+      fallbackTimeoutRef.current = null;
+    }
+    if (fallbackIntervalRef.current) {
+      clearInterval(fallbackIntervalRef.current);
+      fallbackIntervalRef.current = null;
+    }
+  }, []);
+
+  useEffect(() => {
+    navReadyRef.current = false;
+    setNavReady(false);
+    if (!linkingEnabled) {
+      clearFallbackTimer();
+      setFallbackStartedAt(null);
+      setFallbackSeconds(0);
+      return;
+    }
+
+    const startTime = Date.now();
+    setFallbackStartedAt(startTime);
+    setFallbackSeconds(0);
+
+    fallbackTimeoutRef.current = setTimeout(() => {
+      if (!navReadyRef.current) {
+        console.warn(
+          "[navigation] onReady did not fire in time, disabling linking fallback."
+        );
+        setLinkingEnabled(false);
+      }
+    }, 5000);
+
+    fallbackIntervalRef.current = setInterval(() => {
+      setFallbackSeconds(Math.floor((Date.now() - startTime) / 1000));
+    }, 1000);
+
+    return () => {
+      clearFallbackTimer();
+    };
+  }, [clearFallbackTimer, linkingEnabled]);
   return (
 
     // add this later linking={linking}
     <NavigationContainer
       ref={navigationRef}
-      linking={linking}
+      key={`nav-${linkingEnabled ? "linking" : "nolinking"}`}
+      linking={linkingEnabled ? linking : undefined}
       fallback={
         <View style={styles.center}>
           <ActivityIndicator size="large" color="#0B6BF2" />
           <Text style={styles.loadingText}>Loading BookitGY…</Text>
+          <Text style={styles.loadingText}>
+            fallback: linkingEnabled={linkingEnabled ? "true" : "false"}
+          </Text>
+          <Text style={styles.loadingText}>
+            fallback timer: {fallbackStartedAt ? `${fallbackSeconds}s` : "inactive"}
+          </Text>
         </View>
       }
       onReady={() => {
+        navReadyRef.current = true;
+        setNavReady(true);
+        clearFallbackTimer();
         if (onNavReady) onNavReady();
       }}
     >

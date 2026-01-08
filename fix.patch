@@ -1,228 +1,137 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
 diff --git a/mobile/App.js b/mobile/App.js
-index 491ab595da4f9097e51d1bac8faaccf65aa0bf29..dabcb67beda9318a3eb31f9906f7fb37a79a200f 100644
+index dabcb67beda9318a3eb31f9906f7fb37a79a200f..1b255b98887ce2c80013540106edb83a8cff0bd5 100644
 --- a/mobile/App.js
 +++ b/mobile/App.js
-@@ -84,50 +84,54 @@ const getProviderUsernameFromUrl = (url) => {
+@@ -5772,67 +5772,127 @@ function ProviderBillingScreen({ token, showFlash }) {
+                   -{formatMoney(bill.billCreditsApplied)}
+                 </Text>
+               </View>
+             <View style={styles.billingTotalsRow}>
+               <Text style={styles.billingTotalsLabel}>Total due</Text>
+               <Text style={styles.billingTotalsValue}>{formatMoney(bill.totalDue)}</Text>
+             </View>
+           </View>
+         ))}
+     </ScrollView>
+   );
+ }
  
-   try {
-     const parsed = new URL(safeUrl);
-     return getProviderUsernameFromPath(parsed.pathname);
-   } catch (error) {
-     console.log("[deepLinking] Failed to parse URL", safeUrl, error?.message || error);
-     return null;
-   }
- };
  
- const withTimeout = (promise, ms, label) => {
-   let timeoutId;
-   const timeout = new Promise((_, reject) => {
-     timeoutId = setTimeout(() => {
-       const error = new Error(`${label || "Operation"} timed out after ${ms}ms`);
-       error.code = "ETIMEDOUT";
-       reject(error);
-     }, ms);
-   });
- 
-   return Promise.race([promise, timeout]).finally(() => {
-     clearTimeout(timeoutId);
-   });
- };
- 
-+const AUTH_BOOTSTRAP_WATCHDOG_MS = 15000;
-+const AUTH_TOKEN_TIMEOUT_MS = 2000;
-+const AUTH_ME_TIMEOUT_MS = 12000;
+ // Tabs after login
+ function MainApp({ token, setToken, showFlash, navigationRef, onNavReady }) {
+    const {
+     favoriteIds,
+     favoriteProviders,
+     favoritesLoading,
+     toggleFavorite,
+     isFavorite,
+     syncFavoritesFromList,
+     refreshFavoriteProviders,
+   } = useFavoriteProviders(token?.email || token?.userId);
++  const [linkingEnabled, setLinkingEnabled] = useState(true);
++  const [navReady, setNavReady] = useState(false);
++  const [fallbackSeconds, setFallbackSeconds] = useState(0);
++  const [fallbackStartedAt, setFallbackStartedAt] = useState(null);
++  const navReadyRef = useRef(false);
++  const fallbackTimeoutRef = useRef(null);
++  const fallbackIntervalRef = useRef(null);
+   const linking = useMemo(
+     () => createLinkingConfig({ isProvider: token?.isProvider }),
+     [token?.isProvider]
+   );
 +
- const createLinkingConfig = ({ isProvider }) => ({
-   prefixes: ["https://bookitgy.com", "https://www.bookitgy.com", "bookitgy://"],
-   config: {
-     screens: {
-       Home: "",
-       Search: "search",
-       PublicProfile: "public-profile/:username",
-       Appointments: "appointments",
-       Profile: "profile",
-       Dashboard: "dashboard",
-       Billing: "billing",
-     },
-   },
-   getStateFromPath: (path, options) => {
-     try {
-       const trimmed = path?.replace(/^\//, "") || "";
-       const firstSegment = trimmed.split("/")[0];
- 
-       if (RESERVED_USERNAME_PATHS.has(firstSegment)) {
-         return defaultGetStateFromPath("/profile", options);
-       }
- 
-       const username = getProviderUsernameFromPath(path);
-       if (username) {
-         const targetPath = isProvider
-@@ -6053,138 +6057,158 @@ function App() {
-           (requestUrl.startsWith(API) || !isAbsoluteUrl);
- 
-         if (!isApiRequest) return config;
- 
-         const authToken = await getAuthToken(tokenRef.current);
-         if (authToken) {
-           config.headers = {
-             ...config.headers,
-             Authorization: `Bearer ${authToken}`,
-           };
-         }
- 
-         return config;
-       },
-       (error) => Promise.reject(error)
-     );
- 
-     return () => {
-       axios.interceptors.request.eject(interceptorId);
-     };
-   }, []);
- 
-   useEffect(() => {
-     let isActive = true;
-     const restoreSession = async () => {
-+      const bootstrapStartedAt = Date.now();
-+      console.log("[auth] bootstrap start");
-       try {
--        const restoredToken = await withTimeout(getAuthToken(), 2500, "getAuthToken");
-+        const restoredToken = await withTimeout(
-+          getAuthToken(),
-+          AUTH_TOKEN_TIMEOUT_MS,
-+          "getAuthToken"
++  const clearFallbackTimer = useCallback(() => {
++    if (fallbackTimeoutRef.current) {
++      clearTimeout(fallbackTimeoutRef.current);
++      fallbackTimeoutRef.current = null;
++    }
++    if (fallbackIntervalRef.current) {
++      clearInterval(fallbackIntervalRef.current);
++      fallbackIntervalRef.current = null;
++    }
++  }, []);
++
++  useEffect(() => {
++    navReadyRef.current = false;
++    setNavReady(false);
++    if (!linkingEnabled) {
++      clearFallbackTimer();
++      setFallbackStartedAt(null);
++      setFallbackSeconds(0);
++      return;
++    }
++
++    const startTime = Date.now();
++    setFallbackStartedAt(startTime);
++    setFallbackSeconds(0);
++
++    fallbackTimeoutRef.current = setTimeout(() => {
++      if (!navReadyRef.current) {
++        console.warn(
++          "[navigation] onReady did not fire in time, disabling linking fallback."
 +        );
-         console.log("[auth] token loaded:", Boolean(restoredToken));
++        setLinkingEnabled(false);
++      }
++    }, 5000);
++
++    fallbackIntervalRef.current = setInterval(() => {
++      setFallbackSeconds(Math.floor((Date.now() - startTime) / 1000));
++    }, 1000);
++
++    return () => {
++      clearFallbackTimer();
++    };
++  }, [clearFallbackTimer, linkingEnabled]);
+   return (
  
-         if (!restoredToken) {
-           if (isActive) setToken(null);
-         } else {
-           try {
--            const bootstrapClient = axios.create();
-+            const bootstrapClient = axios.create({
-+              baseURL: API,
-+              timeout: AUTH_ME_TIMEOUT_MS,
-+            });
-             const meRes = await withTimeout(
--              bootstrapClient.get(`${API}/users/me`, {
-+              bootstrapClient.get("/users/me", {
-                 headers: {
-                   Authorization: `Bearer ${restoredToken}`,
-                 },
-               }),
--              12000,
-+              AUTH_ME_TIMEOUT_MS,
-               "/users/me"
-             );
-+            console.log("[auth] /users/me success", meRes?.status);
-             if (isActive) {
-               setToken({
-                 token: restoredToken,
-                 userId: meRes.data?.id || meRes.data?.user_id,
-                 email: meRes.data?.email,
-                 isProvider: Boolean(meRes.data?.is_provider),
-                 isAdmin: Boolean(meRes.data?.is_admin),
-               });
-               setIsAdmin(Boolean(meRes.data?.is_admin));
-             }
-           } catch (err) {
-             console.log(
-               "[auth] Failed to load user info during bootstrap",
-               err?.message || err
-             );
-+            console.log(
-+              "[auth] /users/me failed",
-+              err?.response?.status || err?.code || "unknown"
-+            );
-             if (err?.response?.status === 401 || err?.response?.status === 403) {
-               try {
-                 await withTimeout(clearToken(), 1500, "clearToken");
-               } catch (storageError) {
-                 console.log(
-                   "[auth] Failed to clear secure token",
-                   storageError?.message || storageError
-                 );
-               }
- 
-               try {
-                 await withTimeout(
-                   AsyncStorage.removeItem(LEGACY_ACCESS_TOKEN_KEY),
-                   1500,
-                   "clearLegacyToken"
-                 );
-               } catch (storageError) {
-                 console.log(
-                   "[auth] Failed to clear legacy token",
-                   storageError?.message || storageError
-                 );
-               }
-               if (isActive) setToken(null);
-             } else if (isActive) {
-               setToken({ token: restoredToken });
-             }
-           }
-         }
-       } catch (err) {
-         console.log(
-           "[auth] Failed to restore session",
-           err?.message || err
-         );
-         if (isActive) setToken(null);
-       } finally {
--        if (isActive) setAuthLoading(false);
-+        if (isActive) {
-+          setAuthLoading(false);
-+          console.log(
-+            "[auth] bootstrap end",
-+            `${Date.now() - bootstrapStartedAt}ms`
-+          );
-+        }
+     // add this later linking={linking}
+     <NavigationContainer
+       ref={navigationRef}
+-      linking={linking}
++      key={`nav-${linkingEnabled ? "linking" : "nolinking"}`}
++      linking={linkingEnabled ? linking : undefined}
+       fallback={
+         <View style={styles.center}>
+           <ActivityIndicator size="large" color="#0B6BF2" />
+           <Text style={styles.loadingText}>Loading BookitGY…</Text>
++          <Text style={styles.loadingText}>
++            fallback: linkingEnabled={linkingEnabled ? "true" : "false"}
++          </Text>
++          <Text style={styles.loadingText}>
++            fallback timer: {fallbackStartedAt ? `${fallbackSeconds}s` : "inactive"}
++          </Text>
+         </View>
        }
-     };
- 
-     restoreSession();
- 
-     return () => {
-       isActive = false;
-     };
-   }, []);
- 
-   useEffect(() => {
-     if (!authLoading) return undefined;
- 
-     const watchdog = setTimeout(() => {
-       if (authLoading) {
-         console.log("[auth] authLoading watchdog timeout");
-         setAuthLoading(false);
-       }
--    }, 15000);
-+    }, AUTH_BOOTSTRAP_WATCHDOG_MS);
- 
-     return () => clearTimeout(watchdog);
-   }, [authLoading]);
- 
-   useEffect(() => {
-     console.log("[auth] authLoading:", authLoading);
-   }, [authLoading]);
- 
-   useEffect(() => {
-     if (!token) {
-       setIsNavReady(false);
-     }
-   }, [token]);
- 
-   useEffect(() => {
-     if (token) return undefined;
-     let isActive = true;
- 
-     const handleInitialUrl = async () => {
-       const initialUrl = await Linking.getInitialURL();
-       if (!isActive) return;
- 
-       const username = getProviderUsernameFromUrl(initialUrl);
-       if (username) setPendingDeepLinkUsername(username);
-     };
+       onReady={() => {
++        navReadyRef.current = true;
++        setNavReady(true);
++        clearFallbackTimer();
+         if (onNavReady) onNavReady();
+       }}
+     >
+       {token.isProvider ? (
+         // 👇 Provider view: Dashboard + Billing + Profile
+         <Tab.Navigator
+           initialRouteName="Dashboard"
+           screenOptions={({ route }) => ({
+             headerShown: false,
+             tabBarShowLabel: true,
+             tabBarActiveTintColor: "#0B6BF2",
+             tabBarInactiveTintColor: "#A1A1A1",
+             tabBarStyle: {
+               backgroundColor: "#FFFFFF",
+               height: 70,
+               paddingBottom: 25,
+               paddingTop: 8,
+               borderTopWidth: 0,
+               shadowColor: "#000",
+               shadowOpacity: 0.05,
+               shadowRadius: 8,
+               elevation: 4,
+               marginBottom: Platform.OS === "android" ? 8 : 0,
+             },
+             tabBarIcon: ({ color }) => {
  
 EOF
 )
