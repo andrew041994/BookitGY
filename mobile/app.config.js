@@ -17,7 +17,7 @@ export default {
   },
   assetBundlePatterns: ["**/*"],
   newArchEnabled: false,
-  plugins: ["sentry-expo"],
+  // plugins: ["sentry-expo"],
 
   ios: {
     deploymentTarget: "16.0",

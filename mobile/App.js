@@ -33,7 +33,7 @@ import BookitGYLogoTransparent from "./assets/bookitgy-logo-transparent.png"
 import { Ionicons } from "@expo/vector-icons";
 import { SafeAreaProvider,SafeAreaView } from "react-native-safe-area-context";
 import PublicProfileScreen from "./src/screens/PublicProfileScreen";
-import * as Sentry from "sentry-expo";
+// import * as Sentry from "sentry-expo";
 import { handleIncomingURL } from "./src/utils/deepLinking";
 
 
@@ -405,9 +405,9 @@ function LoginScreen({
         "[LOGIN_NATIVE_CRASH_GUARD] Failed to persist access token",
         err
       );
-      Sentry.Native.captureException(err, {
-        extra: { scope: "token-persistence" },
-      });
+      // Sentry.Native.captureException(err, {
+      //   extra: { scope: "token-persistence" },
+      // });
       Alert.alert(
         "Save issue",
         "We couldn't save your login securely. You'll stay logged in for now."
@@ -2753,9 +2753,9 @@ function SearchScreen({
       if (showFlash) {
         showFlash("error", "Could not get your current location.");
       }
-      Sentry.Native.captureException(err, {
-        extra: { scope: "client-location" },
-      });
+      // Sentry.Native.captureException(err, {
+      //   extra: { scope: "client-location" },
+      // });
       return null;
     }
   };
