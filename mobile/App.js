@@ -5883,9 +5883,9 @@ function App() {
             <Text style={styles.loadingText}>Loading BookitGY…</Text>
 
             {/* DEBUG LINES */}
-            <Text style={styles.loadingText}>authLoading=true</Text>
+            {/* <Text style={styles.loadingText}>authLoading=true</Text>
             <Text style={styles.loadingText}>bootStep={bootStep || "unknown"}</Text>
-            <Text style={styles.loadingText}>mount={mountIdRef.current}</Text>
+            <Text style={styles.loadingText}>mount={mountIdRef.current}</Text> */}
           </View>
         </SafeAreaView>
       </SafeAreaProvider>
