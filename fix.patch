@@ -1,229 +1,85 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
 diff --git a/mobile/App.js b/mobile/App.js
-index 643be10e05da52da5210daf40bab7559b1e4907e..e0b08447106220b5501681b63a93734a6a37e571 100644
+index e0b08447106220b5501681b63a93734a6a37e571..b7e09e6b4eff80cc46ef23ce95f1a108965226cb 100644
 --- a/mobile/App.js
 +++ b/mobile/App.js
-@@ -134,51 +134,70 @@ const createLinkingConfig = ({ isProvider }) => ({
-   subscribe(listener) {
-     const onReceiveURL = ({ url }) => {
-       const safeUrl = handleIncomingURL(url);
-       if (safeUrl) listener(safeUrl);
+@@ -6035,75 +6035,75 @@ function App() {
+           config.headers = {
+             ...config.headers,
+             Authorization: `Bearer ${authToken}`,
+           };
+         }
+ 
+         return config;
+       },
+       (error) => Promise.reject(error)
+     );
+ 
+     return () => {
+       axios.interceptors.request.eject(interceptorId);
      };
+   }, []);
  
-     const subscription = Linking.addEventListener("url", onReceiveURL);
-     return () => subscription.remove();
-   },
- });
- 
-   const isValidEmail = (value) => {
-   const trimmed = value.trim();
-   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-   return emailRegex.test(trimmed);
- };
- 
-   const resolveImageUrl = (url) => {
-     if (!url || typeof url !== "string") return null;
-     if (url.startsWith("http")) return url;
-     if (url.startsWith("//")) return `https:${url}`;
-     const normalizedPath = url.startsWith("/") ? url : `/${url}`;
-     return `${API}${normalizedPath}`;
-   };
- 
--const getAuthToken = async (tokenState) => tokenState?.token || null;
-+const LEGACY_ACCESS_TOKEN_KEY = "accessToken";
-+
-+const getAuthToken = async (tokenState) => {
-+  if (tokenState?.token) return tokenState.token;
-+
-+  try {
-+    const secure = await loadToken();
-+    if (secure) return secure;
-+  } catch (error) {
-+    console.log("[auth] Failed to load secure token", error?.message || error);
-+  }
-+
-+  try {
-+    const legacy = await AsyncStorage.getItem(LEGACY_ACCESS_TOKEN_KEY);
-+    return legacy || null;
-+  } catch (error) {
-+    console.log("[auth] Failed to load legacy token", error?.message || error);
-+    return null;
-+  }
-+};
- 
- const FAVORITES_STORAGE_KEY = (userKey) =>
-   userKey ? `favoriteProviders:${userKey}` : "favoriteProviders";
- 
- const getProviderId = (provider) =>
-   provider?.provider_id ?? provider?.id ?? provider?._id ?? null;
- 
- function useFavoriteProviders(userKey) {
-   const storageKey = FAVORITES_STORAGE_KEY(userKey);
-   const [favoriteIds, setFavoriteIds] = useState([]);
-   const [favoriteProviders, setFavoriteProviders] = useState([]);
-   const [favoritesLoading, setFavoritesLoading] = useState(true);
- 
-   const persistIds = useCallback(async (ids) => {
-     try {
-       await AsyncStorage.setItem(storageKey, JSON.stringify(ids));
-     } catch (err) {
-       console.log("Error saving favorites", err?.message || err);
-     }
-   }, [storageKey]);
- 
-   const loadFavoritesFromStorage = useCallback(async () => {
-     try {
-       setFavoritesLoading(true);
-       const raw = await AsyncStorage.getItem(storageKey);
-@@ -5926,129 +5945,166 @@ function FlashMessage({ flash }) {
- 
-   return (
- 
-     <View
-       style={[
-         styles.flashContainer,
-         { backgroundColor, borderColor },
-       ]}
-     >
-       <Text style={[styles.flashText, { color: textColor }]}>
-         {flash.text}
-       </Text>
-     </View>
-   );
- }
- 
- 
- // 🔹 App orchestrates landing/login/signup/forgot-password vs main app
- 
- function App() {
-   const [token, setToken] = useState(null);
-   const [authLoading, setAuthLoading] = useState(true);
-   const [authMode, setAuthMode] = useState("landing"); // 'landing' | 'login' | 'signup' | 'forgot'
-   const [isAdmin, setIsAdmin] = useState(false);
-   const navigationRef = useRef(null);
-+  const tokenRef = useRef(null);
-   const [isNavReady, setIsNavReady] = useState(false);
-   const [pendingDeepLinkUsername, setPendingDeepLinkUsername] = useState(null);
- 
-   const [flash, setFlash] = useState(null);
- 
-   const formatFlashText = (text) => {
-     if (typeof text === "string") return text;
-     if (text == null) return "Something went wrong.";
- 
-     const formatErrorItem = (item) => {
-       if (typeof item === "string") return item;
-       if (!item || typeof item !== "object") return String(item);
- 
-       const message = item.msg || item.message;
-       if (Array.isArray(item.loc) && item.loc.length > 0) {
-         const field = item.loc[item.loc.length - 1];
-         return message ? `${field}: ${message}` : String(item);
-       }
-       if (message) return message;
-       return JSON.stringify(item);
-     };
- 
-     if (Array.isArray(text)) {
-       return text.map(formatErrorItem).filter(Boolean).join("\n");
-     }
- 
-     if (typeof text === "object") {
-       if (Array.isArray(text.detail)) {
-         return formatFlashText(text.detail);
-       }
-       if (typeof text.detail === "string") return text.detail;
-       if (typeof text.message === "string") return text.message;
-       if (typeof text.msg === "string") return text.msg;
-       return JSON.stringify(text);
-     }
- 
-     return String(text);
-   };
- 
-   const showFlash = (type, text) => {
-     setFlash({ type, text: formatFlashText(text) });
-     setTimeout(() => {
-       setFlash(null);
-     }, 3000);
-   };
- 
-+  useEffect(() => {
-+    tokenRef.current = token;
-+  }, [token]);
-+
-+  useEffect(() => {
-+    const interceptorId = axios.interceptors.request.use(
-+      async (config) => {
-+        const requestUrl = config?.url || "";
-+        const isAbsoluteUrl =
-+          typeof requestUrl === "string" && requestUrl.startsWith("http");
-+        const isApiRequest =
-+          typeof requestUrl === "string" &&
-+          (requestUrl.startsWith(API) || !isAbsoluteUrl);
-+
-+        if (!isApiRequest) return config;
-+
-+        const authToken = await getAuthToken(tokenRef.current);
-+        if (authToken) {
-+          config.headers = {
-+            ...config.headers,
-+            Authorization: `Bearer ${authToken}`,
-+          };
-+        }
-+
-+        return config;
-+      },
-+      (error) => Promise.reject(error)
-+    );
-+
-+    return () => {
-+      axios.interceptors.request.eject(interceptorId);
-+    };
-+  }, []);
-+
    useEffect(() => {
      let isActive = true;
      const restoreSession = async () => {
        try {
--        const restoredToken = await loadToken();
-+        const restoredToken = await getAuthToken();
+         const restoredToken = await getAuthToken();
          console.log("[auth] token loaded:", Boolean(restoredToken));
  
          if (!restoredToken) {
            if (isActive) setToken(null);
-           return;
-         }
- 
-         try {
--          const meRes = await axios.get(`${API}/users/me`, {
--            headers: {
--              Authorization: `Bearer ${restoredToken}`,
--            },
+-          return;
+-        }
+-
+-        try {
+-          const meRes = await axios.get(`${API}/users/me`);
+-          if (!isActive) return;
+-          setToken({
+-            token: restoredToken,
+-            userId: meRes.data?.id || meRes.data?.user_id,
+-            email: meRes.data?.email,
+-            isProvider: Boolean(meRes.data?.is_provider),
+-            isAdmin: Boolean(meRes.data?.is_admin),
 -          });
-+          const meRes = await axios.get(`${API}/users/me`);
-           if (!isActive) return;
-           setToken({
-             token: restoredToken,
-             userId: meRes.data?.id || meRes.data?.user_id,
-             email: meRes.data?.email,
-             isProvider: Boolean(meRes.data?.is_provider),
-             isAdmin: Boolean(meRes.data?.is_admin),
-           });
-           setIsAdmin(Boolean(meRes.data?.is_admin));
-         } catch (err) {
-           console.log(
-             "[auth] Failed to load user info during bootstrap",
-             err?.message || err
-           );
--          if (isActive) setToken({ token: restoredToken });
-+          if (err?.response?.status === 401 || err?.response?.status === 403) {
-+            await clearToken();
-+            await AsyncStorage.removeItem(LEGACY_ACCESS_TOKEN_KEY);
-+            if (isActive) setToken(null);
-+          } else if (isActive) {
-+            setToken({ token: restoredToken });
-+          }
+-          setIsAdmin(Boolean(meRes.data?.is_admin));
+-        } catch (err) {
+-          console.log(
+-            "[auth] Failed to load user info during bootstrap",
+-            err?.message || err
+-          );
+-          if (err?.response?.status === 401 || err?.response?.status === 403) {
+-            await clearToken();
+-            await AsyncStorage.removeItem(LEGACY_ACCESS_TOKEN_KEY);
+-            if (isActive) setToken(null);
+-          } else if (isActive) {
+-            setToken({ token: restoredToken });
++        } else {
++          try {
++            const meRes = await axios.get(`${API}/users/me`);
++            if (isActive) {
++              setToken({
++                token: restoredToken,
++                userId: meRes.data?.id || meRes.data?.user_id,
++                email: meRes.data?.email,
++                isProvider: Boolean(meRes.data?.is_provider),
++                isAdmin: Boolean(meRes.data?.is_admin),
++              });
++              setIsAdmin(Boolean(meRes.data?.is_admin));
++            }
++          } catch (err) {
++            console.log(
++              "[auth] Failed to load user info during bootstrap",
++              err?.message || err
++            );
++            if (err?.response?.status === 401 || err?.response?.status === 403) {
++              await clearToken();
++              await AsyncStorage.removeItem(LEGACY_ACCESS_TOKEN_KEY);
++              if (isActive) setToken(null);
++            } else if (isActive) {
++              setToken({ token: restoredToken });
++            }
+           }
          }
        } catch (err) {
          console.log(
@@ -248,7 +104,6 @@ index 643be10e05da52da5210daf40bab7559b1e4907e..e0b08447106220b5501681b63a93734a
    }, [authLoading]);
  
    useEffect(() => {
-     if (!token) {
  
 EOF
 )

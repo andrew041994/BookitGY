@@ -6057,31 +6057,31 @@ function App() {
 
         if (!restoredToken) {
           if (isActive) setToken(null);
-          return;
-        }
-
-        try {
-          const meRes = await axios.get(`${API}/users/me`);
-          if (!isActive) return;
-          setToken({
-            token: restoredToken,
-            userId: meRes.data?.id || meRes.data?.user_id,
-            email: meRes.data?.email,
-            isProvider: Boolean(meRes.data?.is_provider),
-            isAdmin: Boolean(meRes.data?.is_admin),
-          });
-          setIsAdmin(Boolean(meRes.data?.is_admin));
-        } catch (err) {
-          console.log(
-            "[auth] Failed to load user info during bootstrap",
-            err?.message || err
-          );
-          if (err?.response?.status === 401 || err?.response?.status === 403) {
-            await clearToken();
-            await AsyncStorage.removeItem(LEGACY_ACCESS_TOKEN_KEY);
-            if (isActive) setToken(null);
-          } else if (isActive) {
-            setToken({ token: restoredToken });
+        } else {
+          try {
+            const meRes = await axios.get(`${API}/users/me`);
+            if (isActive) {
+              setToken({
+                token: restoredToken,
+                userId: meRes.data?.id || meRes.data?.user_id,
+                email: meRes.data?.email,
+                isProvider: Boolean(meRes.data?.is_provider),
+                isAdmin: Boolean(meRes.data?.is_admin),
+              });
+              setIsAdmin(Boolean(meRes.data?.is_admin));
+            }
+          } catch (err) {
+            console.log(
+              "[auth] Failed to load user info during bootstrap",
+              err?.message || err
+            );
+            if (err?.response?.status === 401 || err?.response?.status === 403) {
+              await clearToken();
+              await AsyncStorage.removeItem(LEGACY_ACCESS_TOKEN_KEY);
+              if (isActive) setToken(null);
+            } else if (isActive) {
+              setToken({ token: restoredToken });
+            }
           }
         }
       } catch (err) {
