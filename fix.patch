@@ -1,11 +1,9 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
 diff --git a/mobile/App.js b/mobile/App.js
-index e0b08447106220b5501681b63a93734a6a37e571..b7e09e6b4eff80cc46ef23ce95f1a108965226cb 100644
+index b7e09e6b4eff80cc46ef23ce95f1a108965226cb..e295b1e5a257f4a38117045af2d04543417e5b4d 100644
 --- a/mobile/App.js
 +++ b/mobile/App.js
-@@ -6035,75 +6035,75 @@ function App() {
-           config.headers = {
-             ...config.headers,
+@@ -6037,51 +6037,53 @@ function App() {
              Authorization: `Bearer ${authToken}`,
            };
          }
@@ -29,81 +27,37 @@ index e0b08447106220b5501681b63a93734a6a37e571..b7e09e6b4eff80cc46ef23ce95f1a108
  
          if (!restoredToken) {
            if (isActive) setToken(null);
--          return;
--        }
--
--        try {
--          const meRes = await axios.get(`${API}/users/me`);
--          if (!isActive) return;
--          setToken({
--            token: restoredToken,
--            userId: meRes.data?.id || meRes.data?.user_id,
--            email: meRes.data?.email,
--            isProvider: Boolean(meRes.data?.is_provider),
--            isAdmin: Boolean(meRes.data?.is_admin),
--          });
--          setIsAdmin(Boolean(meRes.data?.is_admin));
--        } catch (err) {
--          console.log(
--            "[auth] Failed to load user info during bootstrap",
--            err?.message || err
--          );
--          if (err?.response?.status === 401 || err?.response?.status === 403) {
--            await clearToken();
--            await AsyncStorage.removeItem(LEGACY_ACCESS_TOKEN_KEY);
--            if (isActive) setToken(null);
--          } else if (isActive) {
--            setToken({ token: restoredToken });
-+        } else {
-+          try {
-+            const meRes = await axios.get(`${API}/users/me`);
-+            if (isActive) {
-+              setToken({
-+                token: restoredToken,
-+                userId: meRes.data?.id || meRes.data?.user_id,
-+                email: meRes.data?.email,
-+                isProvider: Boolean(meRes.data?.is_provider),
-+                isAdmin: Boolean(meRes.data?.is_admin),
-+              });
-+              setIsAdmin(Boolean(meRes.data?.is_admin));
-+            }
-+          } catch (err) {
-+            console.log(
-+              "[auth] Failed to load user info during bootstrap",
-+              err?.message || err
-+            );
-+            if (err?.response?.status === 401 || err?.response?.status === 403) {
-+              await clearToken();
-+              await AsyncStorage.removeItem(LEGACY_ACCESS_TOKEN_KEY);
-+              if (isActive) setToken(null);
-+            } else if (isActive) {
-+              setToken({ token: restoredToken });
-+            }
+         } else {
+           try {
+-            const meRes = await axios.get(`${API}/users/me`);
++            const meRes = await axios.get(`${API}/users/me`, {
++              timeout: 10000,
++            });
+             if (isActive) {
+               setToken({
+                 token: restoredToken,
+                 userId: meRes.data?.id || meRes.data?.user_id,
+                 email: meRes.data?.email,
+                 isProvider: Boolean(meRes.data?.is_provider),
+                 isAdmin: Boolean(meRes.data?.is_admin),
+               });
+               setIsAdmin(Boolean(meRes.data?.is_admin));
+             }
+           } catch (err) {
+             console.log(
+               "[auth] Failed to load user info during bootstrap",
+               err?.message || err
+             );
+             if (err?.response?.status === 401 || err?.response?.status === 403) {
+               await clearToken();
+               await AsyncStorage.removeItem(LEGACY_ACCESS_TOKEN_KEY);
+               if (isActive) setToken(null);
+             } else if (isActive) {
+               setToken({ token: restoredToken });
+             }
            }
          }
        } catch (err) {
-         console.log(
-           "[auth] Failed to restore session",
-           err?.message || err
-         );
-         if (isActive) setToken(null);
-       } finally {
-         if (isActive) setAuthLoading(false);
-       }
-     };
- 
-     restoreSession();
- 
-     return () => {
-       isActive = false;
-     };
-   }, []);
- 
-   useEffect(() => {
-     console.log("[auth] authLoading:", authLoading);
-   }, [authLoading]);
- 
-   useEffect(() => {
  
 EOF
 )

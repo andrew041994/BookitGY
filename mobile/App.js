@@ -6059,7 +6059,9 @@ function App() {
           if (isActive) setToken(null);
         } else {
           try {
-            const meRes = await axios.get(`${API}/users/me`);
+            const meRes = await axios.get(`${API}/users/me`, {
+              timeout: 10000,
+            });
             if (isActive) {
               setToken({
                 token: restoredToken,
