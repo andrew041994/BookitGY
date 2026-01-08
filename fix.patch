@@ -1,9 +1,98 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
 diff --git a/mobile/App.js b/mobile/App.js
-index 7a8bb96222fae7cbb902879fa1c5ec5cd9bc9ef6..9b90e8e485c235756755ea7be4d53d8e0a52a980 100644
+index 9b90e8e485c235756755ea7be4d53d8e0a52a980..842aa37216372bf6ec1a04d9ec3cc7a60b424711 100644
 --- a/mobile/App.js
 +++ b/mobile/App.js
-@@ -88,75 +88,76 @@ const getProviderUsernameFromUrl = (url) => {
+@@ -1,194 +1,126 @@
+-import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
++import React, { useState, useEffect, useCallback, useRef } from "react";
+ import { useFocusEffect } from "@react-navigation/native";
+ import {
+   Text,
+   View,
+   StyleSheet,
+   TextInput,
+   Button,
+   Alert,
+   ActivityIndicator,
+   ScrollView,
+   TouchableOpacity,
+   Switch,
+   Linking,
+   Platform,
+   Image,
+   KeyboardAvoidingView,
+   TouchableWithoutFeedback,
+   Keyboard,
+   RefreshControl,
+   Share,
+ } from "react-native";
+-import {
+-  NavigationContainer,
+-  getStateFromPath as defaultGetStateFromPath,
+-} from "@react-navigation/native";
++import { NavigationContainer } from "@react-navigation/native";
+ import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
+ import axios from "axios";
+ import AsyncStorage from "@react-native-async-storage/async-storage";
+ import { clearToken, loadToken, saveToken } from "./src/components/tokenStorage";
+ import * as Location from "expo-location";
+ import Constants from "expo-constants";
+ import * as ImagePicker from "expo-image-picker";
+ import * as Clipboard from "expo-clipboard";
+ import BookitGYLogoTransparent from "./assets/bookitgy-logo-transparent.png"
+ import { Ionicons } from "@expo/vector-icons";
+ import { SafeAreaProvider,SafeAreaView } from "react-native-safe-area-context";
+ import PublicProfileScreen from "./src/screens/PublicProfileScreen";
+ import * as Sentry from "sentry-expo";
+ import { handleIncomingURL } from "./src/utils/deepLinking";
+ 
+ 
+ 
+ 
+ 
+ // import { API } from "./App"; // wherever you define your base URL
+ 
+ 
+ 
+ 
+ 
+ const API =
+   Constants.expoConfig?.extra?.API_URL ||
+   Constants.manifest?.extra?.API_URL ||
+   "https://bookitgy.onrender.com";
+ 
+   console.log("### API base URL =", API);
+ 
+-const RESERVED_USERNAME_PATHS = new Set([
+-  "privacy",
+-  "terms",
+-  "confirmation",
+-  "reset-password",
+-  "admin",
+-]);
+-
+ const getProviderUsernameFromPath = (path) => {
+   const trimmed = `${path || ""}`.replace(/^\/+/, "");
+   if (!trimmed) return null;
+ 
+   const [firstSegment, secondSegment] = trimmed.split("/");
+   if (firstSegment !== "p" || !secondSegment) return null;
+ 
+   try {
+     return decodeURIComponent(secondSegment);
+   } catch (error) {
+     return secondSegment;
+   }
+ };
+ 
+ const getProviderUsernameFromUrl = (url) => {
+   const safeUrl = handleIncomingURL(url);
+   if (!safeUrl) return null;
+ 
+   try {
+     const parsed = new URL(safeUrl);
+     return getProviderUsernameFromPath(parsed.pathname);
    } catch (error) {
      console.log("[deepLinking] Failed to parse URL", safeUrl, error?.message || error);
      return null;
@@ -29,60 +118,105 @@ index 7a8bb96222fae7cbb902879fa1c5ec5cd9bc9ef6..9b90e8e485c235756755ea7be4d53d8e
  const AUTH_TOKEN_TIMEOUT_MS = 2000;
  const AUTH_ME_TIMEOUT_MS = 12000;
  
--const createLinkingConfig = ({ isProvider }) => ({
-+const createLinkingConfig = ({ isProvider, isProviderRef }) => ({
-   prefixes: ["https://bookitgy.com", "https://www.bookitgy.com", "bookitgy://"],
-   config: {
-     screens: {
-       Home: "",
-       Search: "search",
-       PublicProfile: "public-profile/:username",
-       Appointments: "appointments",
-       Profile: "profile",
-       Dashboard: "dashboard",
-       Billing: "billing",
-     },
-   },
-   getStateFromPath: (path, options) => {
-     try {
-       const trimmed = path?.replace(/^\//, "") || "";
-       const firstSegment = trimmed.split("/")[0];
+-const createLinkingConfig = ({ isProvider, isProviderRef }) => ({
+-  prefixes: ["https://bookitgy.com", "https://www.bookitgy.com", "bookitgy://"],
+-  config: {
+-    screens: {
+-      Home: "",
+-      Search: "search",
+-      PublicProfile: "public-profile/:username",
+-      Appointments: "appointments",
+-      Profile: "profile",
+-      Dashboard: "dashboard",
+-      Billing: "billing",
+-    },
+-  },
+-  getStateFromPath: (path, options) => {
+-    try {
+-      const trimmed = path?.replace(/^\//, "") || "";
+-      const firstSegment = trimmed.split("/")[0];
+-
+-      if (RESERVED_USERNAME_PATHS.has(firstSegment)) {
+-        return defaultGetStateFromPath("/profile", options);
+-      }
+-
+-      const username = getProviderUsernameFromPath(path);
+-      if (username) {
+-        const providerStatus = isProviderRef?.current ?? isProvider;
+-        const targetPath = providerStatus
+-          ? `/public-profile/${encodeURIComponent(username)}`
+-          : `/search?username=${encodeURIComponent(username)}`;
+-        return defaultGetStateFromPath(targetPath, options);
+-      }
+-
+-      return defaultGetStateFromPath(path, options);
+-    } catch (error) {
+-      console.log("[deepLinking] Failed to parse path", path, error?.message || error);
+-      return undefined;
+-    }
+-  },
+-  async getInitialURL() {
+-    try {
+-      const url = await withTimeout(Linking.getInitialURL(), 1500, "getInitialURL");
+-      return handleIncomingURL(url);
+-    } catch (error) {
+-      console.log("[deepLinking] Failed to get initial URL", error?.message || error);
+-      return null;
+-    }
+-  },
+-  subscribe(listener) {
+-    const onReceiveURL = ({ url }) => {
+-      const safeUrl = handleIncomingURL(url);
+-      if (safeUrl) listener(safeUrl);
+-    };
+-
+-    const subscription = Linking.addEventListener("url", onReceiveURL);
+-    return () => subscription.remove();
+-  },
+-});
+-
+   const isValidEmail = (value) => {
+   const trimmed = value.trim();
+   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+   return emailRegex.test(trimmed);
+ };
  
-       if (RESERVED_USERNAME_PATHS.has(firstSegment)) {
-         return defaultGetStateFromPath("/profile", options);
-       }
+ const resolveImageUrl = (url) => {
+     if (!url || typeof url !== "string") return null;
+     if (url.startsWith("http")) return url;
+     if (url.startsWith("//")) return `https:${url}`;
+     const normalizedPath = url.startsWith("/") ? url : `/${url}`;
+     return `${API}${normalizedPath}`;
+   };
  
-       const username = getProviderUsernameFromPath(path);
-       if (username) {
--        const targetPath = isProvider
-+        const providerStatus = isProviderRef?.current ?? isProvider;
-+        const targetPath = providerStatus
-           ? `/public-profile/${encodeURIComponent(username)}`
-           : `/search?username=${encodeURIComponent(username)}`;
-         return defaultGetStateFromPath(targetPath, options);
-       }
+ const LEGACY_ACCESS_TOKEN_KEY = "accessToken";
  
-       return defaultGetStateFromPath(path, options);
-     } catch (error) {
-       console.log("[deepLinking] Failed to parse path", path, error?.message || error);
-       return undefined;
-     }
-   },
-   async getInitialURL() {
-     try {
-       const url = await withTimeout(Linking.getInitialURL(), 1500, "getInitialURL");
-       return handleIncomingURL(url);
-     } catch (error) {
-       console.log("[deepLinking] Failed to get initial URL", error?.message || error);
-       return null;
-     }
-   },
-   subscribe(listener) {
-     const onReceiveURL = ({ url }) => {
-       const safeUrl = handleIncomingURL(url);
-       if (safeUrl) listener(safeUrl);
-     };
-@@ -5779,104 +5780,110 @@ function ProviderBillingScreen({ token, showFlash }) {
+ const getAuthToken = async (tokenState) => {
+   if (tokenState?.token) return tokenState.token;
+ 
+   try {
+     const secure = await withTimeout(loadToken(), 1500, "loadToken");
+     if (secure) return secure;
+   } catch (error) {
+     console.log("[auth] Failed to load secure token", error?.message || error);
+   }
+@@ -5764,142 +5696,64 @@ function ProviderBillingScreen({ token, showFlash }) {
+                 Platform fee ({serviceChargePct}%)
+               </Text>
+               <Text style={styles.billingTotalsValue}>
+                 {formatMoney(bill.platformFee)}
+               </Text>
+             </View>
+               <View style={styles.billingTotalsRow}>
+                 <Text style={styles.billingTotalsLabel}>Bill credits</Text>
+                 <Text style={styles.billingTotalsValue}>
+                   -{formatMoney(bill.billCreditsApplied)}
+                 </Text>
+               </View>
+             <View style={styles.billingTotalsRow}>
+               <Text style={styles.billingTotalsLabel}>Total due</Text>
+               <Text style={styles.billingTotalsValue}>{formatMoney(bill.totalDue)}</Text>
+             </View>
            </View>
          ))}
      </ScrollView>
@@ -92,7 +226,8 @@ index 7a8bb96222fae7cbb902879fa1c5ec5cd9bc9ef6..9b90e8e485c235756755ea7be4d53d8e
  
  // Tabs after login
  function MainApp({ token, setToken, showFlash, navigationRef, onNavReady }) {
-    const {
+-   const {
++  const {
      favoriteIds,
      favoriteProviders,
      favoritesLoading,
@@ -101,94 +236,89 @@ index 7a8bb96222fae7cbb902879fa1c5ec5cd9bc9ef6..9b90e8e485c235756755ea7be4d53d8e
      syncFavoritesFromList,
      refreshFavoriteProviders,
    } = useFavoriteProviders(token?.email || token?.userId);
-   const [linkingEnabled, setLinkingEnabled] = useState(true);
-   const [navReady, setNavReady] = useState(false);
-   const [fallbackSeconds, setFallbackSeconds] = useState(0);
-   const [fallbackStartedAt, setFallbackStartedAt] = useState(null);
-   const navReadyRef = useRef(false);
-   const fallbackTimeoutRef = useRef(null);
-   const fallbackIntervalRef = useRef(null);
--  const linking = useMemo(
--    () => createLinkingConfig({ isProvider: token?.isProvider }),
--    [token?.isProvider]
--  );
-+  const linkingRef = useRef(null);
-+  const isProviderRef = useRef(token?.isProvider);
-+
-+  useEffect(() => {
-+    isProviderRef.current = token?.isProvider;
-+  }, [token?.isProvider]);
-+
-+  if (!linkingRef.current) {
-+    linkingRef.current = createLinkingConfig({ isProviderRef });
-+  }
- 
-   const clearFallbackTimer = useCallback(() => {
-     if (fallbackTimeoutRef.current) {
-       clearTimeout(fallbackTimeoutRef.current);
-       fallbackTimeoutRef.current = null;
-     }
-     if (fallbackIntervalRef.current) {
-       clearInterval(fallbackIntervalRef.current);
-       fallbackIntervalRef.current = null;
-     }
-   }, []);
- 
-   useEffect(() => {
-     navReadyRef.current = false;
-     setNavReady(false);
-     if (!linkingEnabled) {
-       clearFallbackTimer();
-       setFallbackStartedAt(null);
-       setFallbackSeconds(0);
-       return;
-     }
- 
-     const startTime = Date.now();
-     setFallbackStartedAt(startTime);
-     setFallbackSeconds(0);
- 
-     fallbackTimeoutRef.current = setTimeout(() => {
-       if (!navReadyRef.current) {
-         console.warn(
-           "[navigation] onReady did not fire in time, disabling linking fallback."
-         );
-         setLinkingEnabled(false);
-       }
-     }, 5000);
- 
-     fallbackIntervalRef.current = setInterval(() => {
-       setFallbackSeconds(Math.floor((Date.now() - startTime) / 1000));
-     }, 1000);
- 
-     return () => {
-       clearFallbackTimer();
-     };
-   }, [clearFallbackTimer, linkingEnabled]);
+-  const [linkingEnabled, setLinkingEnabled] = useState(true);
+-  const [navReady, setNavReady] = useState(false);
+-  const [fallbackSeconds, setFallbackSeconds] = useState(0);
+-  const [fallbackStartedAt, setFallbackStartedAt] = useState(null);
+-  const navReadyRef = useRef(false);
+-  const fallbackTimeoutRef = useRef(null);
+-  const fallbackIntervalRef = useRef(null);
+-  const linkingRef = useRef(null);
+-  const isProviderRef = useRef(token?.isProvider);
+-
+-  useEffect(() => {
+-    isProviderRef.current = token?.isProvider;
+-  }, [token?.isProvider]);
+-
+-  if (!linkingRef.current) {
+-    linkingRef.current = createLinkingConfig({ isProviderRef });
+-  }
+-
+-  const clearFallbackTimer = useCallback(() => {
+-    if (fallbackTimeoutRef.current) {
+-      clearTimeout(fallbackTimeoutRef.current);
+-      fallbackTimeoutRef.current = null;
+-    }
+-    if (fallbackIntervalRef.current) {
+-      clearInterval(fallbackIntervalRef.current);
+-      fallbackIntervalRef.current = null;
+-    }
+-  }, []);
+-
+-  useEffect(() => {
+-    navReadyRef.current = false;
+-    setNavReady(false);
+-    if (!linkingEnabled) {
+-      clearFallbackTimer();
+-      setFallbackStartedAt(null);
+-      setFallbackSeconds(0);
+-      return;
+-    }
+-
+-    const startTime = Date.now();
+-    setFallbackStartedAt(startTime);
+-    setFallbackSeconds(0);
+-
+-    fallbackTimeoutRef.current = setTimeout(() => {
+-      if (!navReadyRef.current) {
+-        console.warn(
+-          "[navigation] onReady did not fire in time, disabling linking fallback."
+-        );
+-        setLinkingEnabled(false);
+-      }
+-    }, 5000);
+-
+-    fallbackIntervalRef.current = setInterval(() => {
+-      setFallbackSeconds(Math.floor((Date.now() - startTime) / 1000));
+-    }, 1000);
+-
+-    return () => {
+-      clearFallbackTimer();
+-    };
+-  }, [clearFallbackTimer, linkingEnabled]);
    return (
  
-     // add this later linking={linking}
+-    // add this later linking={linking}
      <NavigationContainer
        ref={navigationRef}
-       key={`nav-${linkingEnabled ? "linking" : "nolinking"}`}
--      linking={linkingEnabled ? linking : undefined}
-+      linking={linkingEnabled ? linkingRef.current : undefined}
-       fallback={
-         <View style={styles.center}>
-           <ActivityIndicator size="large" color="#0B6BF2" />
-           <Text style={styles.loadingText}>Loading BookitGY…</Text>
-           <Text style={styles.loadingText}>
-             fallback: linkingEnabled={linkingEnabled ? "true" : "false"}
-           </Text>
-           <Text style={styles.loadingText}>
-             fallback timer: {fallbackStartedAt ? `${fallbackSeconds}s` : "inactive"}
-           </Text>
-         </View>
-       }
+-      key={`nav-${linkingEnabled ? "linking" : "nolinking"}`}
+-      linking={linkingEnabled ? linkingRef.current : undefined}
+-      fallback={
+-        <View style={styles.center}>
+-          <ActivityIndicator size="large" color="#0B6BF2" />
+-          <Text style={styles.loadingText}>Loading BookitGY…</Text>
+-          <Text style={styles.loadingText}>
+-            fallback: linkingEnabled={linkingEnabled ? "true" : "false"}
+-          </Text>
+-          <Text style={styles.loadingText}>
+-            fallback timer: {fallbackStartedAt ? `${fallbackSeconds}s` : "inactive"}
+-          </Text>
+-        </View>
+-      }
        onReady={() => {
-         navReadyRef.current = true;
-         setNavReady(true);
-         clearFallbackTimer();
+-        navReadyRef.current = true;
+-        setNavReady(true);
+-        clearFallbackTimer();
          if (onNavReady) onNavReady();
        }}
      >
@@ -198,6 +328,22 @@ index 7a8bb96222fae7cbb902879fa1c5ec5cd9bc9ef6..9b90e8e485c235756755ea7be4d53d8e
            initialRouteName="Dashboard"
            screenOptions={({ route }) => ({
              headerShown: false,
+             tabBarShowLabel: true,
+             tabBarActiveTintColor: "#0B6BF2",
+             tabBarInactiveTintColor: "#A1A1A1",
+             tabBarStyle: {
+               backgroundColor: "#FFFFFF",
+               height: 70,
+               paddingBottom: 25,
+               paddingTop: 8,
+               borderTopWidth: 0,
+               shadowColor: "#000",
+               shadowOpacity: 0.05,
+               shadowRadius: 8,
+               elevation: 4,
+               marginBottom: Platform.OS === "android" ? 8 : 0,
+             },
+             tabBarIcon: ({ color }) => {
  
 EOF
 )

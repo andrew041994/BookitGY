@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useFocusEffect } from "@react-navigation/native";
 import {
   Text,
@@ -20,10 +20,7 @@ import {
   RefreshControl,
   Share,
 } from "react-native";
-import {
-  NavigationContainer,
-  getStateFromPath as defaultGetStateFromPath,
-} from "@react-navigation/native";
+import { NavigationContainer } from "@react-navigation/native";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import axios from "axios";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -55,14 +52,6 @@ const API =
   "https://bookitgy.onrender.com";
 
   console.log("### API base URL =", API);
-
-const RESERVED_USERNAME_PATHS = new Set([
-  "privacy",
-  "terms",
-  "confirmation",
-  "reset-password",
-  "admin",
-]);
 
 const getProviderUsernameFromPath = (path) => {
   const trimmed = `${path || ""}`.replace(/^\/+/, "");
@@ -109,63 +98,6 @@ const withTimeout = (promise, ms, label) => {
 const AUTH_BOOTSTRAP_WATCHDOG_MS = 15000;
 const AUTH_TOKEN_TIMEOUT_MS = 2000;
 const AUTH_ME_TIMEOUT_MS = 12000;
-
-const createLinkingConfig = ({ isProvider, isProviderRef }) => ({
-  prefixes: ["https://bookitgy.com", "https://www.bookitgy.com", "bookitgy://"],
-  config: {
-    screens: {
-      Home: "",
-      Search: "search",
-      PublicProfile: "public-profile/:username",
-      Appointments: "appointments",
-      Profile: "profile",
-      Dashboard: "dashboard",
-      Billing: "billing",
-    },
-  },
-  getStateFromPath: (path, options) => {
-    try {
-      const trimmed = path?.replace(/^\//, "") || "";
-      const firstSegment = trimmed.split("/")[0];
-
-      if (RESERVED_USERNAME_PATHS.has(firstSegment)) {
-        return defaultGetStateFromPath("/profile", options);
-      }
-
-      const username = getProviderUsernameFromPath(path);
-      if (username) {
-        const providerStatus = isProviderRef?.current ?? isProvider;
-        const targetPath = providerStatus
-          ? `/public-profile/${encodeURIComponent(username)}`
-          : `/search?username=${encodeURIComponent(username)}`;
-        return defaultGetStateFromPath(targetPath, options);
-      }
-
-      return defaultGetStateFromPath(path, options);
-    } catch (error) {
-      console.log("[deepLinking] Failed to parse path", path, error?.message || error);
-      return undefined;
-    }
-  },
-  async getInitialURL() {
-    try {
-      const url = await withTimeout(Linking.getInitialURL(), 1500, "getInitialURL");
-      return handleIncomingURL(url);
-    } catch (error) {
-      console.log("[deepLinking] Failed to get initial URL", error?.message || error);
-      return null;
-    }
-  },
-  subscribe(listener) {
-    const onReceiveURL = ({ url }) => {
-      const safeUrl = handleIncomingURL(url);
-      if (safeUrl) listener(safeUrl);
-    };
-
-    const subscription = Linking.addEventListener("url", onReceiveURL);
-    return () => subscription.remove();
-  },
-});
 
   const isValidEmail = (value) => {
   const trimmed = value.trim();
@@ -5786,7 +5718,7 @@ function ProviderBillingScreen({ token, showFlash }) {
 
 // Tabs after login
 function MainApp({ token, setToken, showFlash, navigationRef, onNavReady }) {
-   const {
+  const {
     favoriteIds,
     favoriteProviders,
     favoritesLoading,
@@ -5795,89 +5727,11 @@ function MainApp({ token, setToken, showFlash, navigationRef, onNavReady }) {
     syncFavoritesFromList,
     refreshFavoriteProviders,
   } = useFavoriteProviders(token?.email || token?.userId);
-  const [linkingEnabled, setLinkingEnabled] = useState(true);
-  const [navReady, setNavReady] = useState(false);
-  const [fallbackSeconds, setFallbackSeconds] = useState(0);
-  const [fallbackStartedAt, setFallbackStartedAt] = useState(null);
-  const navReadyRef = useRef(false);
-  const fallbackTimeoutRef = useRef(null);
-  const fallbackIntervalRef = useRef(null);
-  const linkingRef = useRef(null);
-  const isProviderRef = useRef(token?.isProvider);
-
-  useEffect(() => {
-    isProviderRef.current = token?.isProvider;
-  }, [token?.isProvider]);
-
-  if (!linkingRef.current) {
-    linkingRef.current = createLinkingConfig({ isProviderRef });
-  }
-
-  const clearFallbackTimer = useCallback(() => {
-    if (fallbackTimeoutRef.current) {
-      clearTimeout(fallbackTimeoutRef.current);
-      fallbackTimeoutRef.current = null;
-    }
-    if (fallbackIntervalRef.current) {
-      clearInterval(fallbackIntervalRef.current);
-      fallbackIntervalRef.current = null;
-    }
-  }, []);
-
-  useEffect(() => {
-    navReadyRef.current = false;
-    setNavReady(false);
-    if (!linkingEnabled) {
-      clearFallbackTimer();
-      setFallbackStartedAt(null);
-      setFallbackSeconds(0);
-      return;
-    }
-
-    const startTime = Date.now();
-    setFallbackStartedAt(startTime);
-    setFallbackSeconds(0);
-
-    fallbackTimeoutRef.current = setTimeout(() => {
-      if (!navReadyRef.current) {
-        console.warn(
-          "[navigation] onReady did not fire in time, disabling linking fallback."
-        );
-        setLinkingEnabled(false);
-      }
-    }, 5000);
-
-    fallbackIntervalRef.current = setInterval(() => {
-      setFallbackSeconds(Math.floor((Date.now() - startTime) / 1000));
-    }, 1000);
-
-    return () => {
-      clearFallbackTimer();
-    };
-  }, [clearFallbackTimer, linkingEnabled]);
   return (
 
-    // add this later linking={linking}
     <NavigationContainer
       ref={navigationRef}
-      key={`nav-${linkingEnabled ? "linking" : "nolinking"}`}
-      linking={linkingEnabled ? linkingRef.current : undefined}
-      fallback={
-        <View style={styles.center}>
-          <ActivityIndicator size="large" color="#0B6BF2" />
-          <Text style={styles.loadingText}>Loading BookitGY…</Text>
-          <Text style={styles.loadingText}>
-            fallback: linkingEnabled={linkingEnabled ? "true" : "false"}
-          </Text>
-          <Text style={styles.loadingText}>
-            fallback timer: {fallbackStartedAt ? `${fallbackSeconds}s` : "inactive"}
-          </Text>
-        </View>
-      }
       onReady={() => {
-        navReadyRef.current = true;
-        setNavReady(true);
-        clearFallbackTimer();
         if (onNavReady) onNavReady();
       }}
     >
