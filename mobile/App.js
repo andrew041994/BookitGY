@@ -110,7 +110,7 @@ const AUTH_BOOTSTRAP_WATCHDOG_MS = 15000;
 const AUTH_TOKEN_TIMEOUT_MS = 2000;
 const AUTH_ME_TIMEOUT_MS = 12000;
 
-const createLinkingConfig = ({ isProvider }) => ({
+const createLinkingConfig = ({ isProvider, isProviderRef }) => ({
   prefixes: ["https://bookitgy.com", "https://www.bookitgy.com", "bookitgy://"],
   config: {
     screens: {
@@ -134,7 +134,8 @@ const createLinkingConfig = ({ isProvider }) => ({
 
       const username = getProviderUsernameFromPath(path);
       if (username) {
-        const targetPath = isProvider
+        const providerStatus = isProviderRef?.current ?? isProvider;
+        const targetPath = providerStatus
           ? `/public-profile/${encodeURIComponent(username)}`
           : `/search?username=${encodeURIComponent(username)}`;
         return defaultGetStateFromPath(targetPath, options);
@@ -5801,10 +5802,16 @@ function MainApp({ token, setToken, showFlash, navigationRef, onNavReady }) {
   const navReadyRef = useRef(false);
   const fallbackTimeoutRef = useRef(null);
   const fallbackIntervalRef = useRef(null);
-  const linking = useMemo(
-    () => createLinkingConfig({ isProvider: token?.isProvider }),
-    [token?.isProvider]
-  );
+  const linkingRef = useRef(null);
+  const isProviderRef = useRef(token?.isProvider);
+
+  useEffect(() => {
+    isProviderRef.current = token?.isProvider;
+  }, [token?.isProvider]);
+
+  if (!linkingRef.current) {
+    linkingRef.current = createLinkingConfig({ isProviderRef });
+  }
 
   const clearFallbackTimer = useCallback(() => {
     if (fallbackTimeoutRef.current) {
@@ -5854,7 +5861,7 @@ function MainApp({ token, setToken, showFlash, navigationRef, onNavReady }) {
     <NavigationContainer
       ref={navigationRef}
       key={`nav-${linkingEnabled ? "linking" : "nolinking"}`}
-      linking={linkingEnabled ? linking : undefined}
+      linking={linkingEnabled ? linkingRef.current : undefined}
       fallback={
         <View style={styles.center}>
           <ActivityIndicator size="large" color="#0B6BF2" />
