@@ -156,7 +156,26 @@ const createLinkingConfig = ({ isProvider }) => ({
     return `${API}${normalizedPath}`;
   };
 
-const getAuthToken = async (tokenState) => tokenState?.token || null;
+const LEGACY_ACCESS_TOKEN_KEY = "accessToken";
+
+const getAuthToken = async (tokenState) => {
+  if (tokenState?.token) return tokenState.token;
+
+  try {
+    const secure = await loadToken();
+    if (secure) return secure;
+  } catch (error) {
+    console.log("[auth] Failed to load secure token", error?.message || error);
+  }
+
+  try {
+    const legacy = await AsyncStorage.getItem(LEGACY_ACCESS_TOKEN_KEY);
+    return legacy || null;
+  } catch (error) {
+    console.log("[auth] Failed to load legacy token", error?.message || error);
+    return null;
+  }
+};
 
 const FAVORITES_STORAGE_KEY = (userKey) =>
   userKey ? `favoriteProviders:${userKey}` : "favoriteProviders";
@@ -5948,6 +5967,7 @@ function App() {
   const [authMode, setAuthMode] = useState("landing"); // 'landing' | 'login' | 'signup' | 'forgot'
   const [isAdmin, setIsAdmin] = useState(false);
   const navigationRef = useRef(null);
+  const tokenRef = useRef(null);
   const [isNavReady, setIsNavReady] = useState(false);
   const [pendingDeepLinkUsername, setPendingDeepLinkUsername] = useState(null);
 
@@ -5995,10 +6015,44 @@ function App() {
   };
 
   useEffect(() => {
+    tokenRef.current = token;
+  }, [token]);
+
+  useEffect(() => {
+    const interceptorId = axios.interceptors.request.use(
+      async (config) => {
+        const requestUrl = config?.url || "";
+        const isAbsoluteUrl =
+          typeof requestUrl === "string" && requestUrl.startsWith("http");
+        const isApiRequest =
+          typeof requestUrl === "string" &&
+          (requestUrl.startsWith(API) || !isAbsoluteUrl);
+
+        if (!isApiRequest) return config;
+
+        const authToken = await getAuthToken(tokenRef.current);
+        if (authToken) {
+          config.headers = {
+            ...config.headers,
+            Authorization: `Bearer ${authToken}`,
+          };
+        }
+
+        return config;
+      },
+      (error) => Promise.reject(error)
+    );
+
+    return () => {
+      axios.interceptors.request.eject(interceptorId);
+    };
+  }, []);
+
+  useEffect(() => {
     let isActive = true;
     const restoreSession = async () => {
       try {
-        const restoredToken = await loadToken();
+        const restoredToken = await getAuthToken();
         console.log("[auth] token loaded:", Boolean(restoredToken));
 
         if (!restoredToken) {
@@ -6007,11 +6061,7 @@ function App() {
         }
 
         try {
-          const meRes = await axios.get(`${API}/users/me`, {
-            headers: {
-              Authorization: `Bearer ${restoredToken}`,
-            },
-          });
+          const meRes = await axios.get(`${API}/users/me`);
           if (!isActive) return;
           setToken({
             token: restoredToken,
@@ -6026,7 +6076,13 @@ function App() {
             "[auth] Failed to load user info during bootstrap",
             err?.message || err
           );
-          if (isActive) setToken({ token: restoredToken });
+          if (err?.response?.status === 401 || err?.response?.status === 403) {
+            await clearToken();
+            await AsyncStorage.removeItem(LEGACY_ACCESS_TOKEN_KEY);
+            if (isActive) setToken(null);
+          } else if (isActive) {
+            setToken({ token: restoredToken });
+          }
         }
       } catch (err) {
         console.log(

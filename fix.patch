@@ -1,9 +1,9 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
 diff --git a/mobile/App.js b/mobile/App.js
-index 34cf9d06f9804b2e35756d67a022890b5b397d0b..643be10e05da52da5210daf40bab7559b1e4907e 100644
+index 643be10e05da52da5210daf40bab7559b1e4907e..e0b08447106220b5501681b63a93734a6a37e571 100644
 --- a/mobile/App.js
 +++ b/mobile/App.js
-@@ -134,57 +134,51 @@ const createLinkingConfig = ({ isProvider }) => ({
+@@ -134,51 +134,70 @@ const createLinkingConfig = ({ isProvider }) => ({
    subscribe(listener) {
      const onReceiveURL = ({ url }) => {
        const safeUrl = handleIncomingURL(url);
@@ -29,14 +29,27 @@ index 34cf9d06f9804b2e35756d67a022890b5b397d0b..643be10e05da52da5210daf40bab7559
      return `${API}${normalizedPath}`;
    };
  
--const getAuthToken = async (tokenState) => {
--  if (tokenState?.token) return tokenState.token;
--  const secureToken = await loadToken();
--  if (secureToken) return secureToken;
--  const legacyToken = await AsyncStorage.getItem("accessToken");
--  return legacyToken || null;
--};
-+const getAuthToken = async (tokenState) => tokenState?.token || null;
+-const getAuthToken = async (tokenState) => tokenState?.token || null;
++const LEGACY_ACCESS_TOKEN_KEY = "accessToken";
++
++const getAuthToken = async (tokenState) => {
++  if (tokenState?.token) return tokenState.token;
++
++  try {
++    const secure = await loadToken();
++    if (secure) return secure;
++  } catch (error) {
++    console.log("[auth] Failed to load secure token", error?.message || error);
++  }
++
++  try {
++    const legacy = await AsyncStorage.getItem(LEGACY_ACCESS_TOKEN_KEY);
++    return legacy || null;
++  } catch (error) {
++    console.log("[auth] Failed to load legacy token", error?.message || error);
++    return null;
++  }
++};
  
  const FAVORITES_STORAGE_KEY = (userKey) =>
    userKey ? `favoriteProviders:${userKey}` : "favoriteProviders";
@@ -62,65 +75,7 @@ index 34cf9d06f9804b2e35756d67a022890b5b397d0b..643be10e05da52da5210daf40bab7559
      try {
        setFavoritesLoading(true);
        const raw = await AsyncStorage.getItem(storageKey);
-@@ -396,52 +390,52 @@ function LoginScreen({
-     if (!trimmedEmail || !isValidEmail(trimmedEmail)) {
-       if (showFlash) {
-         showFlash("error", "Please enter a valid email address");
-       } else {
-         Alert.alert("Error", "Please enter a valid email address");
-       }
-       return;
-   }
- 
-   setLoading(true);
- 
-     try {
-       const body = new URLSearchParams({
-         username: normalizedEmail,
-         password: password,
-       }).toString();
- 
-     const res = await axios.post(`${API}/auth/login`, body, {
-         headers: {
-           "Content-Type": "application/x-www-form-urlencoded",
-         },
-       });
- 
-     try {
-       await saveToken(res.data.access_token);
--      await AsyncStorage.setItem("accessToken", res.data.access_token);
-       const persistedToken = await loadToken();
-+      console.log("[auth] login success -> token saved:", Boolean(persistedToken));
-       if (!persistedToken) {
-         Alert.alert(
-           "Save issue",
-           "We couldn't save your login securely. You'll stay logged in for now."
-         );
-       }
-     } catch (err) {
-       console.error(
-         "[LOGIN_NATIVE_CRASH_GUARD] Failed to persist access token",
-         err
-       );
-       Sentry.Native.captureException(err, {
-         extra: { scope: "token-persistence" },
-       });
-       Alert.alert(
-         "Save issue",
-         "We couldn't save your login securely. You'll stay logged in for now."
-       );
-     }
- 
-     // Successful login
-       // Successful login
-       setToken({
-         token: res.data.access_token,
-         userId: res.data.user_id,
-@@ -5928,146 +5922,217 @@ function FlashMessage({ flash }) {
- 
-   const backgroundColor = isError ? "#fee2e2" : "#dcfce7"; // red / green
-   const borderColor = isError ? "#b91c1c" : "#16a34a";
-   const textColor = isError ? "#7f1d1d" : "#166534";
+@@ -5926,129 +5945,166 @@ function FlashMessage({ flash }) {
  
    return (
  
@@ -142,10 +97,11 @@ index 34cf9d06f9804b2e35756d67a022890b5b397d0b..643be10e05da52da5210daf40bab7559
  
  function App() {
    const [token, setToken] = useState(null);
-+  const [authLoading, setAuthLoading] = useState(true);
+   const [authLoading, setAuthLoading] = useState(true);
    const [authMode, setAuthMode] = useState("landing"); // 'landing' | 'login' | 'signup' | 'forgot'
    const [isAdmin, setIsAdmin] = useState(false);
    const navigationRef = useRef(null);
++  const tokenRef = useRef(null);
    const [isNavReady, setIsNavReady] = useState(false);
    const [pendingDeepLinkUsername, setPendingDeepLinkUsername] = useState(null);
  
@@ -193,147 +149,106 @@ index 34cf9d06f9804b2e35756d67a022890b5b397d0b..643be10e05da52da5210daf40bab7559
    };
  
 +  useEffect(() => {
-+    let isActive = true;
-+    const restoreSession = async () => {
-+      try {
-+        const restoredToken = await loadToken();
-+        console.log("[auth] token loaded:", Boolean(restoredToken));
++    tokenRef.current = token;
++  }, [token]);
 +
-+        if (!restoredToken) {
-+          if (isActive) setToken(null);
-+          return;
++  useEffect(() => {
++    const interceptorId = axios.interceptors.request.use(
++      async (config) => {
++        const requestUrl = config?.url || "";
++        const isAbsoluteUrl =
++          typeof requestUrl === "string" && requestUrl.startsWith("http");
++        const isApiRequest =
++          typeof requestUrl === "string" &&
++          (requestUrl.startsWith(API) || !isAbsoluteUrl);
++
++        if (!isApiRequest) return config;
++
++        const authToken = await getAuthToken(tokenRef.current);
++        if (authToken) {
++          config.headers = {
++            ...config.headers,
++            Authorization: `Bearer ${authToken}`,
++          };
 +        }
 +
-+        try {
-+          const meRes = await axios.get(`${API}/users/me`, {
-+            headers: {
-+              Authorization: `Bearer ${restoredToken}`,
-+            },
-+          });
-+          if (!isActive) return;
-+          setToken({
-+            token: restoredToken,
-+            userId: meRes.data?.id || meRes.data?.user_id,
-+            email: meRes.data?.email,
-+            isProvider: Boolean(meRes.data?.is_provider),
-+            isAdmin: Boolean(meRes.data?.is_admin),
-+          });
-+          setIsAdmin(Boolean(meRes.data?.is_admin));
-+        } catch (err) {
-+          console.log(
-+            "[auth] Failed to load user info during bootstrap",
-+            err?.message || err
-+          );
-+          if (isActive) setToken({ token: restoredToken });
-+        }
-+      } catch (err) {
-+        console.log(
-+          "[auth] Failed to restore session",
-+          err?.message || err
-+        );
-+        if (isActive) setToken(null);
-+      } finally {
-+        if (isActive) setAuthLoading(false);
-+      }
-+    };
-+
-+    restoreSession();
++        return config;
++      },
++      (error) => Promise.reject(error)
++    );
 +
 +    return () => {
-+      isActive = false;
++      axios.interceptors.request.eject(interceptorId);
 +    };
 +  }, []);
 +
-+  useEffect(() => {
-+    console.log("[auth] authLoading:", authLoading);
-+  }, [authLoading]);
-+
    useEffect(() => {
-     if (!token) {
-       setIsNavReady(false);
-     }
-   }, [token]);
- 
-   useEffect(() => {
-     if (token) return undefined;
      let isActive = true;
+     const restoreSession = async () => {
+       try {
+-        const restoredToken = await loadToken();
++        const restoredToken = await getAuthToken();
+         console.log("[auth] token loaded:", Boolean(restoredToken));
  
-     const handleInitialUrl = async () => {
-       const initialUrl = await Linking.getInitialURL();
-       if (!isActive) return;
+         if (!restoredToken) {
+           if (isActive) setToken(null);
+           return;
+         }
  
-       const username = getProviderUsernameFromUrl(initialUrl);
-       if (username) setPendingDeepLinkUsername(username);
+         try {
+-          const meRes = await axios.get(`${API}/users/me`, {
+-            headers: {
+-              Authorization: `Bearer ${restoredToken}`,
+-            },
+-          });
++          const meRes = await axios.get(`${API}/users/me`);
+           if (!isActive) return;
+           setToken({
+             token: restoredToken,
+             userId: meRes.data?.id || meRes.data?.user_id,
+             email: meRes.data?.email,
+             isProvider: Boolean(meRes.data?.is_provider),
+             isAdmin: Boolean(meRes.data?.is_admin),
+           });
+           setIsAdmin(Boolean(meRes.data?.is_admin));
+         } catch (err) {
+           console.log(
+             "[auth] Failed to load user info during bootstrap",
+             err?.message || err
+           );
+-          if (isActive) setToken({ token: restoredToken });
++          if (err?.response?.status === 401 || err?.response?.status === 403) {
++            await clearToken();
++            await AsyncStorage.removeItem(LEGACY_ACCESS_TOKEN_KEY);
++            if (isActive) setToken(null);
++          } else if (isActive) {
++            setToken({ token: restoredToken });
++          }
+         }
+       } catch (err) {
+         console.log(
+           "[auth] Failed to restore session",
+           err?.message || err
+         );
+         if (isActive) setToken(null);
+       } finally {
+         if (isActive) setAuthLoading(false);
+       }
      };
  
-     handleInitialUrl();
- 
-     const subscription = Linking.addEventListener("url", ({ url }) => {
-       if (!isActive) return;
-       const username = getProviderUsernameFromUrl(url);
-       if (username) setPendingDeepLinkUsername(username);
-     });
+     restoreSession();
  
      return () => {
        isActive = false;
-       subscription.remove();
      };
-   }, [token]);
+   }, []);
  
    useEffect(() => {
-     if (!pendingDeepLinkUsername || !token || !isNavReady) return;
-     if (!navigationRef.current) return;
+     console.log("[auth] authLoading:", authLoading);
+   }, [authLoading]);
  
-     const targetRoute = token?.isProvider ? "PublicProfile" : "Search";
-     try {
-       navigationRef.current.navigate(targetRoute, {
-         username: pendingDeepLinkUsername,
-       });
-       setPendingDeepLinkUsername(null);
-     } catch (error) {
-       console.log("[deepLinking] Failed to navigate", error?.message || error);
-     }
-   }, [pendingDeepLinkUsername, token, isNavReady]);
- 
-+  if (authLoading) {
-+    return (
-+      <SafeAreaProvider>
-+        <SafeAreaView style={{ flex: 1 }} edges={["top", "bottom"]}>
-+          <FlashMessage flash={flash} />
-+          <View style={styles.center}>
-+            <ActivityIndicator size="large" color="#0B6BF2" />
-+            <Text style={styles.loadingText}>Loading BookitGY…</Text>
-+          </View>
-+        </SafeAreaView>
-+      </SafeAreaProvider>
-+    );
-+  }
-+
-   return (
-     <SafeAreaProvider>
-       <SafeAreaView style={{ flex: 1 }} edges={["top", "bottom"]}>
-         <FlashMessage flash={flash} />
- 
-         {!token ? (
-           <>
-             {authMode === "landing" && (
-               <LandingScreen
-                 goToLogin={() => setAuthMode("login")}
-                 goToSignup={() => setAuthMode("signup")}
-               />
-             )}
- 
-             {authMode === "login" && (
-               <LoginScreen
-                 setToken={setToken}
-                 setIsAdmin={setIsAdmin}
-                 goToSignup={() => setAuthMode("signup")}
-                 goToForgot={() => setAuthMode("forgot")}
-                 goBack={() => setAuthMode("landing")}
-                 showFlash={showFlash}
-               />
-             )}
- 
+   useEffect(() => {
+     if (!token) {
  
 EOF
 )
