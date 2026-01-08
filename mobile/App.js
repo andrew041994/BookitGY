@@ -29,7 +29,6 @@ import axios from "axios";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { clearToken, loadToken, saveToken } from "./src/components/tokenStorage";
 import * as Location from "expo-location";
-import * as Notifications from "expo-notifications";
 import Constants from "expo-constants";
 import * as ImagePicker from "expo-image-picker";
 import * as Clipboard from "expo-clipboard";
@@ -324,47 +323,6 @@ const PROFESSION_OPTIONS = [
   "Men's Grooming Specialist",
 ];
 
-async function registerForPushNotificationsAsync() {
-  try {
-    const { status: existingStatus } = await Notifications.getPermissionsAsync();
-    let finalStatus = existingStatus;
-
-    if (existingStatus !== "granted") {
-      const { status } = await Notifications.requestPermissionsAsync();
-      finalStatus = status;
-    }
-
-    if (finalStatus !== "granted") {
-      console.log("Notification permissions not granted");
-      return null;
-    }
-
-    // Try to infer projectId from Constants (managed or dev client)
-    const projectId =
-      Constants?.expoConfig?.extra?.eas?.projectId ??
-      Constants?.easConfig?.projectId;
-
-    if (!projectId) {
-      console.log(
-        'No "projectId" found in Constants – skipping push token registration in this dev build.'
-      );
-      return null;
-    }
-
-    const tokenData = await Notifications.getExpoPushTokenAsync({ projectId });
-    return tokenData.data;
-  } catch (err) {
-    console.error("[LOGIN_NATIVE_CRASH_GUARD] Error getting push token", err);
-    Sentry.Native.captureException(err, {
-      extra: { scope: "push-registration" },
-    });
-    return null;
-  }
-}
-
-  
-
-
 const Tab = createBottomTabNavigator();
 
 // 🔹 New landing/home screen shown BEFORE login
@@ -450,7 +408,6 @@ function LoginScreen({
         },
       });
 
-    // Try to register push token, but don't fail login if this breaks
     try {
       await saveToken(res.data.access_token);
       const persistedToken = await loadToken();
@@ -473,28 +430,6 @@ function LoginScreen({
         "We couldn't save your login securely. You'll stay logged in for now."
       );
     }
-
-      // Try to register push token, but don't fail login if this breaks
-      try {
-        const expoPushToken = await registerForPushNotificationsAsync();
-        if (expoPushToken) {
-          await axios.put(
-            `${API}/users/me`,
-            { expo_push_token: expoPushToken },
-            {
-              headers: {
-                Authorization: `Bearer ${res.data.access_token}`,
-              },
-            }
-          );
-        }
-      } catch (err) {
-        console.error("[LOGIN_NATIVE_CRASH_GUARD] Failed to register push token", err);
-        Sentry.Native.captureException(err, {
-          extra: { scope: "push-registration" },
-        });
-      }
-   
 
     // Successful login
       // Successful login
