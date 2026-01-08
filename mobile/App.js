@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from "react";
+import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useFocusEffect } from "@react-navigation/native";
 import {
   Text,
@@ -24,6 +24,7 @@ import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import axios from "axios";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { clearToken, loadToken, saveToken } from "./src/components/tokenStorage";
+import { createApiClient } from "./src/api/client";
 import * as Location from "expo-location";
 import Constants from "expo-constants";
 import * as ImagePicker from "expo-image-picker";
@@ -802,7 +803,7 @@ function SignupScreen({ goToLogin, goBack, showFlash }) {
 
 
 // Placeholder screens so MainApp compiles — replace with your real ones
-function ProfileScreen({ setToken, showFlash, token }) {
+function ProfileScreen({ apiClient, authLoading, setToken, showFlash, token }) {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -827,8 +828,8 @@ function ProfileScreen({ setToken, showFlash, token }) {
 
   const uploadAvatar = async (uri) => {
     try {
-      const tokenValue = await getAuthToken(token);
-      if (!tokenValue) {
+      const storedToken = await loadToken();
+      if (!storedToken) {
         alert("No access token found. Please log in again.");
         return;
       }
@@ -849,11 +850,7 @@ function ProfileScreen({ setToken, showFlash, token }) {
 
       if (typeof isProvider !== "boolean") {
         try {
-          const meRes = await axios.get(`${API}/users/me`, {
-            headers: {
-              Authorization: `Bearer ${tokenValue}`,
-            },
-          });
+          const meRes = await apiClient.get("/users/me");
 
           if (typeof meRes.data?.is_provider === "boolean") {
             isProvider = meRes.data.is_provider;
@@ -871,13 +868,12 @@ function ProfileScreen({ setToken, showFlash, token }) {
 
       const endpoint =
         isProvider === true
-          ? `${API}/providers/me/avatar`
-          : `${API}/users/me/avatar`;
+          ? "/providers/me/avatar"
+          : "/users/me/avatar";
 
-      const res = await axios.post(endpoint, formData, {
+      const res = await apiClient.post(endpoint, formData, {
         headers: {
           "Content-Type": "multipart/form-data",
-          Authorization: `Bearer ${tokenValue}`,
         },
       });
 
@@ -948,20 +944,16 @@ function ProfileScreen({ setToken, showFlash, token }) {
         setLoading(true);
         setError("");
 
-        const tokenValue = await getAuthToken(token);
-
-        if (!tokenValue) {
+        const storedToken = await loadToken();
+        console.log("[profile] token present?", Boolean(storedToken));
+        if (!storedToken) {
           setError("No access token found. Please log in again.");
           setLoading(false);
           return;
         }
 
-        const headers = {
-          Authorization: `Bearer ${tokenValue}`,
-        };
-
         // 1) Load base user info
-        const res = await axios.get(`${API}/users/me`, { headers });
+        const res = await apiClient.get("/users/me");
 
         setUser(res.data);
         if (typeof res.data.is_provider === "boolean") {
@@ -980,10 +972,7 @@ function ProfileScreen({ setToken, showFlash, token }) {
         // If this user is a provider, also check provider profile
         if ((token && token.isProvider) || res.data.is_provider) {
           try {
-            const provRes = await axios.get(
-              `${API}/providers/me/profile`,
-              { headers }
-            );
+            const provRes = await apiClient.get("/providers/me/profile");
             if (provRes.data.avatar_url) {
               avatar = provRes.data.avatar_url;
             }
@@ -1007,12 +996,13 @@ function ProfileScreen({ setToken, showFlash, token }) {
         if (useRefresh) setRefreshing(false);
       }
     },
-    [showFlash, token]
+    [apiClient, showFlash, token]
   );
 
   useEffect(() => {
+    if (authLoading || !token?.token) return;
     loadProfile();
-  }, [loadProfile, token]);
+  }, [authLoading, loadProfile, token?.token]);
 
     const toggleEditProfile = () => {
     // ensure form reflects current user
@@ -1030,8 +1020,8 @@ function ProfileScreen({ setToken, showFlash, token }) {
   const saveProfileChanges = async () => {
     try {
       setEditSaving(true);
-      const authToken = await getAuthToken(token);
-      if (!authToken) {
+      const storedToken = await loadToken();
+      if (!storedToken) {
         if (showFlash) showFlash("error", "No access token found. Please log in again.");
         return;
       }
@@ -1043,15 +1033,7 @@ function ProfileScreen({ setToken, showFlash, token }) {
         location: editProfile.location,
       };
 
-        const res = await axios.put(
-          `${API}/users/me`,
-          payload,
-          {
-            headers: {
-              Authorization: `Bearer ${authToken}`,
-            },
-          }
-      );
+        const res = await apiClient.put("/users/me", payload);
 
 
       // Refresh local user state so top card updates
@@ -3262,7 +3244,7 @@ function SearchScreen({
 //   );
 // }
 
-function ProviderDashboardScreen({ token, showFlash }) {
+function ProviderDashboardScreen({ apiClient, token, showFlash }) {
   // const providerLabel = profile?.full_name || "Provider";
   const [services, setServices] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -3875,17 +3857,13 @@ const loadProviderProfile = async () => {
     setProfileLoading(true);
     setProfileError("");
 
-    const authToken = await getAuthToken(token);
-    if (!authToken) {
+    const storedToken = await loadToken();
+    if (!storedToken) {
       setProfileError("No access token found. Please log in again.");
       return;
     }
 
-    const res = await axios.get(`${API}/providers/me/profile`, {
-      headers: {
-        Authorization: `Bearer ${authToken}`,
-      },
-    });
+    const res = await apiClient.get("/providers/me/profile");
 
       setProfile({
         full_name: res.data.full_name || "",
@@ -4143,8 +4121,8 @@ const pickAvatar = async () => {
 
 const uploadAvatar = async (uri) => {
   try {
-    const authToken = await getAuthToken(token);
-    if (!authToken) {
+    const storedToken = await loadToken();
+    if (!storedToken) {
       alert("No access token found. Please log in again.");
       return;
     }
@@ -4162,18 +4140,14 @@ const uploadAvatar = async (uri) => {
     });
 
     // Decide which endpoint to use: client vs provider
-    let endpoint = `${API}/users/me/avatar`; // default: client
+    let endpoint = "/users/me/avatar"; // default: client
 
     try {
-      const meRes = await axios.get(`${API}/users/me`, {
-        headers: {
-          Authorization: `Bearer ${authToken}`,
-        },
-      });
+      const meRes = await apiClient.get("/users/me");
 
       if (meRes.data?.is_provider) {
         // logged-in user is a provider → use provider avatar endpoint
-        endpoint = `${API}/providers/me/avatar`;
+        endpoint = "/providers/me/avatar";
       }
     } catch (e) {
       console.log(
@@ -4183,10 +4157,9 @@ const uploadAvatar = async (uri) => {
     }
 
     // Upload to the chosen endpoint
-    const res = await axios.post(endpoint, formData, {
+    const res = await apiClient.post(endpoint, formData, {
       headers: {
         "Content-Type": "multipart/form-data",
-        Authorization: `Bearer ${authToken}`,
       },
     });
 
@@ -4289,14 +4262,10 @@ const handlePinLocation = async () => {
 
 const loadProviderLocation = async () => {
   try {
-    const authToken = await getAuthToken(token);
-    if (!authToken) return;
+    const storedToken = await loadToken();
+    if (!storedToken) return;
 
-     const res = await axios.get(`${API}/users/me`, {
-      headers: {
-        Authorization: `Bearer ${authToken}`,
-      },
-    });
+     const res = await apiClient.get("/users/me");
 
     if (res.data.lat != null && res.data.long != null) {
       setProviderLocation({
@@ -5473,7 +5442,7 @@ function ProviderBillingScreen({ token, showFlash }) {
 
 
 // Tabs after login
-function MainApp({ token, setToken, showFlash, navigationRef }) {
+function MainApp({ apiClient, authLoading, token, setToken, showFlash, navigationRef }) {
   const {
     favoriteIds,
     favoriteProviders,
@@ -5522,7 +5491,11 @@ function MainApp({ token, setToken, showFlash, navigationRef }) {
         >
           <Tab.Screen name="Dashboard">
             {() => (
-              <ProviderDashboardScreen token={token} showFlash={showFlash} />
+              <ProviderDashboardScreen
+                apiClient={apiClient}
+                token={token}
+                showFlash={showFlash}
+              />
             )}
           </Tab.Screen>
 
@@ -5536,6 +5509,8 @@ function MainApp({ token, setToken, showFlash, navigationRef }) {
           <Tab.Screen name="Profile">
             {() => (
               <ProfileScreen
+                apiClient={apiClient}
+                authLoading={authLoading}
                 token={token}
                 setToken={setToken}
                 showFlash={showFlash}
@@ -5610,7 +5585,13 @@ function MainApp({ token, setToken, showFlash, navigationRef }) {
             </Tab.Screen>
             <Tab.Screen name="Profile">
               {() => (
-                <ProfileScreen token={token} setToken={setToken} showFlash={showFlash} />
+                <ProfileScreen
+                  apiClient={apiClient}
+                  authLoading={authLoading}
+                  token={token}
+                  setToken={setToken}
+                  showFlash={showFlash}
+                />
               )}
             </Tab.Screen>
           </Tab.Navigator>
@@ -5664,10 +5645,29 @@ function App() {
   const [authMode, setAuthMode] = useState("landing"); // 'landing' | 'login' | 'signup' | 'forgot'
   const [isAdmin, setIsAdmin] = useState(false);
   const navigationRef = useRef(null);
-  const tokenRef = useRef(null);
   const authBootstrapRef = useRef({ inFlight: false, completed: false });
 
   const [flash, setFlash] = useState(null);
+  const handleUnauthorized = useCallback(async () => {
+    try {
+      await AsyncStorage.removeItem(LEGACY_ACCESS_TOKEN_KEY);
+    } catch (storageError) {
+      console.log(
+        "[auth] Failed to clear legacy token",
+        storageError?.message || storageError
+      );
+    }
+    setToken(null);
+  }, []);
+
+  const apiClient = useMemo(
+    () =>
+      createApiClient({
+        baseURL: API,
+        onUnauthorized: handleUnauthorized,
+      }),
+    [handleUnauthorized]
+  );
 
 
 
@@ -5713,40 +5713,6 @@ function App() {
   };
 
   useEffect(() => {
-    tokenRef.current = token;
-  }, [token]);
-
-  useEffect(() => {
-    const interceptorId = axios.interceptors.request.use(
-      async (config) => {
-        const requestUrl = config?.url || "";
-        const isAbsoluteUrl =
-          typeof requestUrl === "string" && requestUrl.startsWith("http");
-        const isApiRequest =
-          typeof requestUrl === "string" &&
-          (requestUrl.startsWith(API) || !isAbsoluteUrl);
-
-        if (!isApiRequest) return config;
-
-        const authToken = await getAuthToken(tokenRef.current);
-        if (authToken) {
-          config.headers = {
-            ...config.headers,
-            Authorization: `Bearer ${authToken}`,
-          };
-        }
-
-        return config;
-      },
-      (error) => Promise.reject(error)
-    );
-
-    return () => {
-      axios.interceptors.request.eject(interceptorId);
-    };
-  }, []);
-
-  useEffect(() => {
     let isActive = true;
     const restoreSession = async () => {
       if (authBootstrapRef.current.inFlight || authBootstrapRef.current.completed) {
@@ -5767,16 +5733,12 @@ function App() {
           if (isActive) setToken(null);
         } else {
           try {
-            const bootstrapClient = axios.create({
-              baseURL: API,
-              timeout: AUTH_ME_TIMEOUT_MS,
-            });
-            const bootstrapHeaders = {
-              Authorization: `Bearer ${restoredToken}`,
-            };
             const meRes = await withTimeout(
-              bootstrapClient.get("/users/me", {
-                headers: bootstrapHeaders,
+              apiClient.get("/users/me", {
+                headers: {
+                  Authorization: `Bearer ${restoredToken}`,
+                },
+                timeout: AUTH_ME_TIMEOUT_MS,
               }),
               AUTH_ME_TIMEOUT_MS,
               "/users/me"
@@ -5853,7 +5815,7 @@ function App() {
     return () => {
       isActive = false;
     };
-  }, []);
+  }, [apiClient]);
 
   useEffect(() => {
     if (!authLoading) return undefined;
@@ -5935,6 +5897,8 @@ function App() {
           </>
         ) : (
           <MainApp
+            apiClient={apiClient}
+            authLoading={authLoading}
             token={token}
             setToken={setToken}
             showFlash={showFlash}

@@ -1,52 +1,1119 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
-diff --git a/mobile/package.json b/mobile/package.json
-index 2f357102ba0e596a2f60d318c7d1904ccdee1122..cafea6569cb79635da0f176c74ddd4a58040d2a4 100644
---- a/mobile/package.json
-+++ b/mobile/package.json
-@@ -1,43 +1,42 @@
- {
-   "name": "guyana-booker-mobile",
-   "version": "1.0.0",
-   "main": "node_modules/expo/AppEntry.js",
-   "scripts": {
-     "start": "expo start",
-     "android": "expo run:android",
-     "ios": "expo run:ios"
+diff --git a/mobile/App.js b/mobile/App.js
+index 055e068760c0376d25acc3a95469ceca29081578..0c81eef0524f301a45efc7889b4c6b8cd4f17316 100644
+--- a/mobile/App.js
++++ b/mobile/App.js
+@@ -1,51 +1,52 @@
+-import React, { useState, useEffect, useCallback, useRef } from "react";
++import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
+ import { useFocusEffect } from "@react-navigation/native";
+ import {
+   Text,
+   View,
+   StyleSheet,
+   TextInput,
+   Button,
+   Alert,
+   ActivityIndicator,
+   ScrollView,
+   TouchableOpacity,
+   Switch,
+   Linking,
+   Platform,
+   Image,
+   KeyboardAvoidingView,
+   TouchableWithoutFeedback,
+   Keyboard,
+   RefreshControl,
+ } from "react-native";
+ import { NavigationContainer } from "@react-navigation/native";
+ import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
+ import axios from "axios";
+ import AsyncStorage from "@react-native-async-storage/async-storage";
+ import { clearToken, loadToken, saveToken } from "./src/components/tokenStorage";
++import { createApiClient } from "./src/api/client";
+ import * as Location from "expo-location";
+ import Constants from "expo-constants";
+ import * as ImagePicker from "expo-image-picker";
+ import BookitGYLogoTransparent from "./assets/bookitgy-logo-transparent.png"
+ import { Ionicons } from "@expo/vector-icons";
+ import { SafeAreaProvider,SafeAreaView } from "react-native-safe-area-context";
+ // import * as Sentry from "sentry-expo";
+ 
+ 
+ 
+ 
+ 
+ // import { API } from "./App"; // wherever you define your base URL
+ 
+ 
+ 
+ 
+ 
+ const API =
+   Constants.expoConfig?.extra?.API_URL ||
+   Constants.manifest?.extra?.API_URL ||
+   "https://bookitgy.onrender.com";
+ 
+   console.log("### API base URL =", API);
+ 
+@@ -780,126 +781,121 @@ function SignupScreen({ goToLogin, goBack, showFlash }) {
+       </View>
+ 
+       {goToLogin && (
+         <View style={{ width: "100%", marginBottom: 10 }}>
+           <Button
+             title="Already have an account? Login"
+             onPress={goToLogin}
+             color="#166534"
+           />
+         </View>
+       )}
+ 
+       {goBack && (
+         <View style={{ width: "100%" }}>
+           <Button title="Back" onPress={goBack} color="#6b7280" />
+         </View>
+       )}
+     </View>
+     </KeyboardAvoidingView>
+   );
+ }
+ 
+ 
+ 
+ // Placeholder screens so MainApp compiles — replace with your real ones
+-function ProfileScreen({ setToken, showFlash, token }) {
++function ProfileScreen({ apiClient, authLoading, setToken, showFlash, token }) {
+   const [user, setUser] = useState(null);
+   const [loading, setLoading] = useState(true);
+   const [error, setError] = useState("");
+    // NEW state for editing profile
+   const [showEdit, setShowEdit] = useState(false);
+   const [editSaving, setEditSaving] = useState(false);
+   const [editProfile, setEditProfile] = useState({
+     full_name: "",
+     phone: "",
+     whatsapp: "",
+     location: "",
+   });
+   // NEW state for "My bookings"
+   const [showBookings, setShowBookings] = useState(false);
+   const [bookings, setBookings] = useState([]);
+   const [bookingsLoading, setBookingsLoading] = useState(false);
+   const [bookingsError, setBookingsError] = useState("");
+   const [avatarUrl, setAvatarUrl] = useState(null);
+   const [refreshing, setRefreshing] = useState(false);
+   const [isProviderUser, setIsProviderUser] = useState(null);
+ 
+ 
+   const uploadAvatar = async (uri) => {
+     try {
+-      const tokenValue = await getAuthToken(token);
+-      if (!tokenValue) {
++      const storedToken = await loadToken();
++      if (!storedToken) {
+         alert("No access token found. Please log in again.");
+         return;
+       }
+ 
+       const filename = uri.split("/").pop() || "avatar.jpg";
+       const match = /\.(\w+)$/.exec(filename);
+       const ext = match ? match[1] : "jpg";
+       const mimeType = ext === "png" ? "image/png" : "image/jpeg";
+ 
+       const formData = new FormData();
+       formData.append("file", {
+         uri,
+         name: filename,
+         type: mimeType,
+       });
+ 
+       let isProvider = isProviderUser;
+ 
+       if (typeof isProvider !== "boolean") {
+         try {
+-          const meRes = await axios.get(`${API}/users/me`, {
+-            headers: {
+-              Authorization: `Bearer ${tokenValue}`,
+-            },
+-          });
++          const meRes = await apiClient.get("/users/me");
+ 
+           if (typeof meRes.data?.is_provider === "boolean") {
+             isProvider = meRes.data.is_provider;
+             setIsProviderUser(isProvider);
+           }
+ 
+           setUser((prev) => ({ ...(prev || {}), ...meRes.data }));
+         } catch (fetchErr) {
+           console.log(
+             "Could not refresh user before avatar upload",
+             fetchErr.response?.data || fetchErr.message
+           );
+         }
+       }
+ 
+       const endpoint =
+         isProvider === true
+-          ? `${API}/providers/me/avatar`
+-          : `${API}/users/me/avatar`;
++          ? "/providers/me/avatar"
++          : "/users/me/avatar";
+ 
+-      const res = await axios.post(endpoint, formData, {
++      const res = await apiClient.post(endpoint, formData, {
+         headers: {
+           "Content-Type": "multipart/form-data",
+-          Authorization: `Bearer ${tokenValue}`,
+         },
+       });
+ 
+       const newUrl = res.data.avatar_url;
+ 
+       // update avatar in this screen and shared user state
+       setAvatarUrl(newUrl);
+       setUser((prev) =>
+         prev ? { ...prev, avatar_url: newUrl } : { avatar_url: newUrl }
+       );
+     } catch (err) {
+       console.log(
+         "Avatar upload error:",
+         err.response?.data || err.message
+       );
+       alert("Failed to upload avatar. Please try again.");
+     }
+   };
+ 
+   const pickClientAvatar = async () => {
+     try {
+       const result = await ImagePicker.launchImageLibraryAsync({
+         // ✅ This is the safe, supported form in your setup
+         mediaTypes: ImagePicker.MediaTypeOptions.Images,
+         allowsEditing: true,
+@@ -926,154 +922,140 @@ function ProfileScreen({ setToken, showFlash, token }) {
+ 
+   const logout = async () => {
+     try {
+       await clearToken();
+       if (setToken) {
+         setToken(null);
+       }
+       if (showFlash) {
+         showFlash("success", "Logged out successfully");
+       }
+     } catch (err) {
+       console.error("Error during logout", err);
+       if (showFlash) {
+         showFlash("error", "Could not log out. Please try again.");
+       }
+     }
+   };
+ 
+   const loadProfile = useCallback(
+     async (useRefresh = false) => {
+       try {
+         if (useRefresh) setRefreshing(true);
+         setLoading(true);
+         setError("");
+ 
+-        const tokenValue = await getAuthToken(token);
+-
+-        if (!tokenValue) {
++        const storedToken = await loadToken();
++        console.log("[profile] token present?", Boolean(storedToken));
++        if (!storedToken) {
+           setError("No access token found. Please log in again.");
+           setLoading(false);
+           return;
+         }
+ 
+-        const headers = {
+-          Authorization: `Bearer ${tokenValue}`,
+-        };
+-
+         // 1) Load base user info
+-        const res = await axios.get(`${API}/users/me`, { headers });
++        const res = await apiClient.get("/users/me");
+ 
+         setUser(res.data);
+         if (typeof res.data.is_provider === "boolean") {
+           setIsProviderUser(res.data.is_provider);
+         }
+         setEditProfile({
+           full_name: res.data.full_name || "",
+           phone: res.data.phone || "",
+           whatsapp: res.data.whatsapp || "",
+           location: res.data.location || "",
+         });
+ 
+         // 2) Try to get avatar
+         let avatar = res.data.avatar_url || null;
+ 
+         // If this user is a provider, also check provider profile
+         if ((token && token.isProvider) || res.data.is_provider) {
+           try {
+-            const provRes = await axios.get(
+-              `${API}/providers/me/profile`,
+-              { headers }
+-            );
++            const provRes = await apiClient.get("/providers/me/profile");
+             if (provRes.data.avatar_url) {
+               avatar = provRes.data.avatar_url;
+             }
+           } catch (err) {
+             console.log(
+               "Error loading provider avatar for profile",
+               err.response?.data || err.message
+             );
+           }
+         }
+ 
+         setAvatarUrl(avatar);
+       } catch (err) {
+         console.error("Error loading profile", err);
+         setError("Could not load profile.");
+         if (showFlash) {
+           showFlash("error", "Could not load profile information.");
+         }
+       } finally {
+         setLoading(false);
+         if (useRefresh) setRefreshing(false);
+       }
+     },
+-    [showFlash, token]
++    [apiClient, showFlash, token]
+   );
+ 
+   useEffect(() => {
++    if (authLoading || !token?.token) return;
+     loadProfile();
+-  }, [loadProfile, token]);
++  }, [authLoading, loadProfile, token?.token]);
+ 
+     const toggleEditProfile = () => {
+     // ensure form reflects current user
+     if (user && !showEdit) {
+       setEditProfile({
+         full_name: user.full_name || "",
+         phone: user.phone || "",
+         whatsapp: user.whatsapp || "",
+         location: user.location || "",
+       });
+     }
+     setShowEdit((prev) => !prev);
+   };
+ 
+   const saveProfileChanges = async () => {
+     try {
+       setEditSaving(true);
+-      const authToken = await getAuthToken(token);
+-      if (!authToken) {
++      const storedToken = await loadToken();
++      if (!storedToken) {
+         if (showFlash) showFlash("error", "No access token found. Please log in again.");
+         return;
+       }
+ 
+       const payload = {
+         full_name: editProfile.full_name,
+         phone: editProfile.phone,
+         whatsapp: editProfile.whatsapp,
+         location: editProfile.location,
+       };
+ 
+-        const res = await axios.put(
+-          `${API}/users/me`,
+-          payload,
+-          {
+-            headers: {
+-              Authorization: `Bearer ${authToken}`,
+-            },
+-          }
+-      );
++        const res = await apiClient.put("/users/me", payload);
+ 
+ 
+       // Refresh local user state so top card updates
+       setUser((prev) => ({
+         ...prev,
+         full_name: res.data.full_name,
+         phone: res.data.phone,
+         whatsapp: res.data.whatsapp,
+         location: res.data.location,
+       }));
+ 
+       if (showFlash) showFlash("success", "Profile updated");
+       setShowEdit(false);
+     } catch (err) {
+       console.log("Error saving profile", err.response?.data || err.message);
+       const detail =
+         err.response?.data?.detail || "Could not save profile changes.";
+       if (showFlash) showFlash("error", detail);
+     } finally {
+       setEditSaving(false);
+     }
+   };
+ 
+ 
+   const handleComingSoon = (label) => {
+@@ -3240,51 +3222,51 @@ function SearchScreen({
+                       ]}
+                       disabled={!selectedSlot || bookingLoading}
+                       onPress={handleBookAppointment}
+                     >
+                       <Text style={styles.bookButtonLabel}>
+                         {bookingLoading ? "Booking..." : "Book Appointment"}
+                       </Text>
+                     </TouchableOpacity>
+                   </View>
+                 )}
+               </ScrollView>
+          );
+       }
+ 
+ 
+ 
+ 
+ // function AdminScreen() {
+ //   return (
+ //     <View style={styles.container}>
+ //       <Text style={styles.title}>Provider</Text>
+ //     </View>
+ //   );
+ // }
+ 
+-function ProviderDashboardScreen({ token, showFlash }) {
++function ProviderDashboardScreen({ apiClient, token, showFlash }) {
+   // const providerLabel = profile?.full_name || "Provider";
+   const [services, setServices] = useState([]);
+   const [loading, setLoading] = useState(true);
+   const [servicesError, setServicesError] = useState("");
+   const [adding, setAdding] = useState(false);
+   const [newName, setNewName] = useState("");
+   const [newPrice, setNewPrice] = useState("");
+   const [newDuration, setNewDuration] = useState("30");
+   const [newDescription, setNewDescription] = useState("");
+   const [bookings, setBookings] = useState([]);
+   const [bookingsLoading, setBookingsLoading] = useState(true);
+   const [bookingsError, setBookingsError] = useState("");
+   const [workingHours, setWorkingHours] = useState([]);
+   const [hoursLoading, setHoursLoading] = useState(false);
+   const [hoursError, setHoursError] = useState("");
+   const [showHours, setShowHours] = useState(false);
+   const [hoursFlash, setHoursFlash] = useState(null);
+   const [refreshing, setRefreshing] = useState(false);
+   const [showProfileEditor, setShowProfileEditor] = useState(false);
+   const [profileLoading, setProfileLoading] = useState(false);
+   const [profileError, setProfileError] = useState("");
+   const [profile, setProfile] = useState({
+     full_name: "",
+     phone: "",
+     whatsapp: "",
+@@ -3853,61 +3835,57 @@ const to24Hour = (time12) => {
+ 
+ 
+   const todayBookingsCount = () => {
+     if (!bookings || bookings.length === 0) return 0;
+ 
+     const now = new Date();
+     const y = now.getFullYear();
+     const m = now.getMonth();
+     const d = now.getDate();
+ 
+     return bookings.filter((b) => {
+       const start = new Date(b.start_time);
+       return (
+         start.getFullYear() === y &&
+         start.getMonth() === m &&
+         start.getDate() === d
+       );
+     }).length;
+   };
+ 
+ const loadProviderProfile = async () => {
+   try {
+     setProfileLoading(true);
+     setProfileError("");
+ 
+-    const authToken = await getAuthToken(token);
+-    if (!authToken) {
++    const storedToken = await loadToken();
++    if (!storedToken) {
+       setProfileError("No access token found. Please log in again.");
+       return;
+     }
+ 
+-    const res = await axios.get(`${API}/providers/me/profile`, {
+-      headers: {
+-        Authorization: `Bearer ${authToken}`,
+-      },
+-    });
++    const res = await apiClient.get("/providers/me/profile");
+ 
+       setProfile({
+         full_name: res.data.full_name || "",
+         phone: res.data.phone || "",
+         whatsapp: res.data.whatsapp || "",
+         location: res.data.location || "",
+         bio: res.data.bio || "",
+         professions: res.data.professions || [],
+         username: res.data.username || "",
+       });
+ 
+       setAvatarUrl(res.data.avatar_url || null);
+ 
+   } catch (err) {
+     console.log("Error loading provider profile", err.response?.data || err.message);
+     setProfileError("Could not load provider profile.");
+     if (showFlash) showFlash("error", "Could not load provider profile.");
+   } finally {
+     setProfileLoading(false);
+   }
+ };
+ 
+ const loadCatalog = async () => {
+   try {
+     setCatalogLoading(true);
+@@ -4121,94 +4099,89 @@ const saveProviderProfile = async () => {
+ };
+ 
+ const pickAvatar = async () => {
+   try {
+     const result = await ImagePicker.launchImageLibraryAsync({
+       mediaTypes: ImagePicker.MediaTypeOptions.Images,
+       allowsEditing: true,
+       aspect: [1, 1],
+       quality: 1,
+     });
+ 
+     if (result.canceled) return;
+ 
+     const asset = result.assets && result.assets[0];
+     if (!asset || !asset.uri) return;
+ 
+     await uploadAvatar(asset.uri);
+   } catch (err) {
+     console.log("Error picking avatar", err);
+   }
+ };
+ 
+ 
+ const uploadAvatar = async (uri) => {
+   try {
+-    const authToken = await getAuthToken(token);
+-    if (!authToken) {
++    const storedToken = await loadToken();
++    if (!storedToken) {
+       alert("No access token found. Please log in again.");
+       return;
+     }
+ 
+     const filename = uri.split("/").pop() || "avatar.jpg";
+     const match = /\.(\w+)$/.exec(filename);
+     const ext = match ? match[1] : "jpg";
+     const mimeType = ext === "png" ? "image/png" : "image/jpeg";
+ 
+     const formData = new FormData();
+     formData.append("file", {
+       uri,
+       name: filename,
+       type: mimeType,
+     });
+ 
+     // Decide which endpoint to use: client vs provider
+-    let endpoint = `${API}/users/me/avatar`; // default: client
++    let endpoint = "/users/me/avatar"; // default: client
+ 
+     try {
+-      const meRes = await axios.get(`${API}/users/me`, {
+-        headers: {
+-          Authorization: `Bearer ${authToken}`,
+-        },
+-      });
++      const meRes = await apiClient.get("/users/me");
+ 
+       if (meRes.data?.is_provider) {
+         // logged-in user is a provider → use provider avatar endpoint
+-        endpoint = `${API}/providers/me/avatar`;
++        endpoint = "/providers/me/avatar";
+       }
+     } catch (e) {
+       console.log(
+         "Could not determine user type for avatar upload; using /users/me/avatar",
+         e.response?.data || e.message
+       );
+     }
+ 
+     // Upload to the chosen endpoint
+-    const res = await axios.post(endpoint, formData, {
++    const res = await apiClient.post(endpoint, formData, {
+       headers: {
+         "Content-Type": "multipart/form-data",
+-        Authorization: `Bearer ${authToken}`,
+       },
+     });
+ 
+     const newUrl = res.data.avatar_url;
+ 
+     // update avatar in this screen
+     setAvatarUrl(newUrl);
+ 
+     // if this screen has a provider object, keep it in sync (no-op for pure clients)
+     if (typeof setProvider === "function") {
+       setProvider((prev) => (prev ? { ...prev, avatar_url: newUrl } : prev));
+     }
+   } catch (err) {
+     console.log("Avatar upload error:", err.response?.data || err.message);
+     alert("Failed to upload avatar. Please try again.");
+   }
+ };
+ 
+ 
+ const loadUpcomingBookings = async () => {
+   try {
+     const authToken = await getAuthToken(token);
+     const res = await axios.get(
+       `${API}/providers/me/bookings/upcoming`,
+       { headers: { Authorization: `Bearer ${authToken}` } }
+@@ -4267,58 +4240,54 @@ const handlePinLocation = async () => {
+       { headers: { Authorization: `Bearer ${authToken}` } }
+     );
+ 
+     // 3) update local state so preview uses the latest coords
+     setProviderLocation(coords);
+ 
+     if (showFlash) showFlash("success", "Business location pinned here.");
+     Alert.alert(
+       "Location pinned",
+       "Clients will now navigate to this location."
+     );
+   } catch (err) {
+     console.log("Error pinning location", err.response?.data || err.message);
+     if (showFlash) {
+       const msg =
+         err.response?.data?.detail ||
+         err.response?.data?.message ||
+         "Could not pin business location.";
+       showFlash("error", msg);
+     }
+   }
+ };
+ 
+ const loadProviderLocation = async () => {
+   try {
+-    const authToken = await getAuthToken(token);
+-    if (!authToken) return;
++    const storedToken = await loadToken();
++    if (!storedToken) return;
+ 
+-     const res = await axios.get(`${API}/users/me`, {
+-      headers: {
+-        Authorization: `Bearer ${authToken}`,
+-      },
+-    });
++     const res = await apiClient.get("/users/me");
+ 
+     if (res.data.lat != null && res.data.long != null) {
+       setProviderLocation({
+         lat: res.data.lat,
+         long: res.data.long,
+       });
+     }
+   } catch (err) {
+     console.log("Error loading provider location", err.response?.data || err.message);
+   }
+ };
+ 
+ const loadProviderSummary = async () => {
+   try {
+     const authToken = await getAuthToken(token);
+     if (!authToken) return;
+ 
+     const res = await axios.get(`${API}/providers/me/summary`, {
+       headers: {
+         Authorization: `Bearer ${authToken}`,
+       },
+     });
+     setProviderSummary(res.data);
+   } catch (err) {
+     console.log(
+@@ -5451,113 +5420,119 @@ function ProviderBillingScreen({ token, showFlash }) {
+               <Text style={styles.billingTotalsLabel}>
+                 Platform fee ({serviceChargePct}%)
+               </Text>
+               <Text style={styles.billingTotalsValue}>
+                 {formatMoney(bill.platformFee)}
+               </Text>
+             </View>
+               <View style={styles.billingTotalsRow}>
+                 <Text style={styles.billingTotalsLabel}>Bill credits</Text>
+                 <Text style={styles.billingTotalsValue}>
+                   -{formatMoney(bill.billCreditsApplied)}
+                 </Text>
+               </View>
+             <View style={styles.billingTotalsRow}>
+               <Text style={styles.billingTotalsLabel}>Total due</Text>
+               <Text style={styles.billingTotalsValue}>{formatMoney(bill.totalDue)}</Text>
+             </View>
+           </View>
+         ))}
+     </ScrollView>
+   );
+ }
+ 
+ 
+ // Tabs after login
+-function MainApp({ token, setToken, showFlash, navigationRef }) {
++function MainApp({ apiClient, authLoading, token, setToken, showFlash, navigationRef }) {
+   const {
+     favoriteIds,
+     favoriteProviders,
+     favoritesLoading,
+     toggleFavorite,
+     isFavorite,
+     syncFavoritesFromList,
+     refreshFavoriteProviders,
+   } = useFavoriteProviders(token?.email || token?.userId);
+   return (
+ 
+     <NavigationContainer
+       ref={navigationRef}
+     >
+       {token.isProvider ? (
+         // 👇 Provider view: Dashboard + Billing + Profile
+         <Tab.Navigator
+           initialRouteName="Dashboard"
+           screenOptions={({ route }) => ({
+             headerShown: false,
+             tabBarShowLabel: true,
+             tabBarActiveTintColor: "#0B6BF2",
+             tabBarInactiveTintColor: "#A1A1A1",
+             tabBarStyle: {
+               backgroundColor: "#FFFFFF",
+               height: 70,
+               paddingBottom: 25,
+               paddingTop: 8,
+               borderTopWidth: 0,
+               shadowColor: "#000",
+               shadowOpacity: 0.05,
+               shadowRadius: 8,
+               elevation: 4,
+               marginBottom: Platform.OS === "android" ? 8 : 0,
+             },
+             tabBarIcon: ({ color }) => {
+               let iconName = "home-outline";
+ 
+               if (route.name === "Dashboard") iconName = "speedometer-outline";
+               else if (route.name === "Billing") iconName = "card-outline";
+               else if (route.name === "Profile") iconName = "person-outline";
+ 
+               return <Ionicons name={iconName} size={24} color={color} />;
+             },
+           })}
+         >
+           <Tab.Screen name="Dashboard">
+             {() => (
+-              <ProviderDashboardScreen token={token} showFlash={showFlash} />
++              <ProviderDashboardScreen
++                apiClient={apiClient}
++                token={token}
++                showFlash={showFlash}
++              />
+             )}
+           </Tab.Screen>
+ 
+           <Tab.Screen name="Billing">
+             {() => (
+               <ProviderBillingScreen token={token} showFlash={showFlash} />
+             )}
+           </Tab.Screen>
+ 
+ 
+           <Tab.Screen name="Profile">
+             {() => (
+               <ProfileScreen
++                apiClient={apiClient}
++                authLoading={authLoading}
+                 token={token}
+                 setToken={setToken}
+                 showFlash={showFlash}
+               />
+             )}
+           </Tab.Screen>
+         </Tab.Navigator>
+       ) : (
+         // 👇 Client view: Profile + Search
+         <Tab.Navigator
+             screenOptions={({ route }) => ({
+               headerShown: false,
+               tabBarShowLabel: true,
+               tabBarActiveTintColor: "#0B6BF2",
+               tabBarInactiveTintColor: "#A1A1A1",
+               tabBarStyle: {
+                 backgroundColor: "#FFFFFF",
+                 height: 70,
+                 paddingBottom: 25,
+                 paddingTop: 8,
+                 borderTopWidth: 0,
+                 shadowColor: "#000",
+                 shadowOpacity: 0.05,
+                 shadowRadius: 8,
+                 elevation: 4,
+@@ -5588,51 +5563,57 @@ function MainApp({ token, setToken, showFlash, navigationRef }) {
+                   toggleFavorite={toggleFavorite}
+                   isFavorite={isFavorite}
+                   syncFavoritesFromList={syncFavoritesFromList}
+                   refreshFavoriteProviders={refreshFavoriteProviders}
+                 />
+               )}
+             </Tab.Screen>
+             <Tab.Screen name="Search">
+               {({ navigation, route }) => (
+                 <SearchScreen
+                   token={token}
+                   showFlash={showFlash}
+                   navigation={navigation}
+                   route={route}
+                   toggleFavorite={toggleFavorite}
+                   isFavorite={isFavorite}
+                   syncFavoritesFromList={syncFavoritesFromList}
+                 />
+               )}
+             </Tab.Screen>
+             <Tab.Screen name="Appointments">
+               {() => <AppointmentsScreen token={token} showFlash={showFlash} />}
+             </Tab.Screen>
+             <Tab.Screen name="Profile">
+               {() => (
+-                <ProfileScreen token={token} setToken={setToken} showFlash={showFlash} />
++                <ProfileScreen
++                  apiClient={apiClient}
++                  authLoading={authLoading}
++                  token={token}
++                  setToken={setToken}
++                  showFlash={showFlash}
++                />
+               )}
+             </Tab.Screen>
+           </Tab.Navigator>
+ 
+ 
+       )}
+     </NavigationContainer>
+   );
+ }
+ 
+ 
+ 
+ 
+ //Flash message component
+ 
+ function FlashMessage({ flash }) {
+   if (!flash || !flash.text) return null;
+ 
+   const isError = flash.type === "error";
+ 
+   const backgroundColor = isError ? "#fee2e2" : "#dcfce7"; // red / green
+   const borderColor = isError ? "#b91c1c" : "#16a34a";
+   const textColor = isError ? "#7f1d1d" : "#166534";
+ 
+   return (
+@@ -5642,163 +5623,144 @@ function FlashMessage({ flash }) {
+         styles.flashContainer,
+         { backgroundColor, borderColor },
+       ]}
+     >
+       <Text style={[styles.flashText, { color: textColor }]}>
+         {flash.text}
+       </Text>
+     </View>
+   );
+ }
+ 
+ 
+ // 🔹 App orchestrates landing/login/signup/forgot-password vs main app
+ 
+ function App() {
+ 
+   const mountIdRef = useRef(Math.random().toString(16).slice(2));
+   console.log("APP MOUNT ID:", mountIdRef.current);
+   useEffect(() => console.log("APP useEffect ran for mount", mountIdRef.current), []);
+ 
+   const [token, setToken] = useState(null);
+   const [authLoading, setAuthLoading] = useState(true);
+   const [authMode, setAuthMode] = useState("landing"); // 'landing' | 'login' | 'signup' | 'forgot'
+   const [isAdmin, setIsAdmin] = useState(false);
+   const navigationRef = useRef(null);
+-  const tokenRef = useRef(null);
+   const authBootstrapRef = useRef({ inFlight: false, completed: false });
+ 
+   const [flash, setFlash] = useState(null);
++  const handleUnauthorized = useCallback(async () => {
++    try {
++      await AsyncStorage.removeItem(LEGACY_ACCESS_TOKEN_KEY);
++    } catch (storageError) {
++      console.log(
++        "[auth] Failed to clear legacy token",
++        storageError?.message || storageError
++      );
++    }
++    setToken(null);
++  }, []);
++
++  const apiClient = useMemo(
++    () =>
++      createApiClient({
++        baseURL: API,
++        onUnauthorized: handleUnauthorized,
++      }),
++    [handleUnauthorized]
++  );
+ 
+ 
+ 
+   const formatFlashText = (text) => {
+     if (typeof text === "string") return text;
+     if (text == null) return "Something went wrong.";
+ 
+     const formatErrorItem = (item) => {
+       if (typeof item === "string") return item;
+       if (!item || typeof item !== "object") return String(item);
+ 
+       const message = item.msg || item.message;
+       if (Array.isArray(item.loc) && item.loc.length > 0) {
+         const field = item.loc[item.loc.length - 1];
+         return message ? `${field}: ${message}` : String(item);
+       }
+       if (message) return message;
+       return JSON.stringify(item);
+     };
+ 
+     if (Array.isArray(text)) {
+       return text.map(formatErrorItem).filter(Boolean).join("\n");
+     }
+ 
+     if (typeof text === "object") {
+       if (Array.isArray(text.detail)) {
+         return formatFlashText(text.detail);
+       }
+       if (typeof text.detail === "string") return text.detail;
+       if (typeof text.message === "string") return text.message;
+       if (typeof text.msg === "string") return text.msg;
+       return JSON.stringify(text);
+     }
+ 
+     return String(text);
+   };
+ 
+   const showFlash = (type, text) => {
+     setFlash({ type, text: formatFlashText(text) });
+     setTimeout(() => {
+       setFlash(null);
+     }, 3000);
+   };
+ 
+-  useEffect(() => {
+-    tokenRef.current = token;
+-  }, [token]);
+-
+-  useEffect(() => {
+-    const interceptorId = axios.interceptors.request.use(
+-      async (config) => {
+-        const requestUrl = config?.url || "";
+-        const isAbsoluteUrl =
+-          typeof requestUrl === "string" && requestUrl.startsWith("http");
+-        const isApiRequest =
+-          typeof requestUrl === "string" &&
+-          (requestUrl.startsWith(API) || !isAbsoluteUrl);
+-
+-        if (!isApiRequest) return config;
+-
+-        const authToken = await getAuthToken(tokenRef.current);
+-        if (authToken) {
+-          config.headers = {
+-            ...config.headers,
+-            Authorization: `Bearer ${authToken}`,
+-          };
+-        }
+-
+-        return config;
+-      },
+-      (error) => Promise.reject(error)
+-    );
+-
+-    return () => {
+-      axios.interceptors.request.eject(interceptorId);
+-    };
+-  }, []);
+-
+   useEffect(() => {
+     let isActive = true;
+     const restoreSession = async () => {
+       if (authBootstrapRef.current.inFlight || authBootstrapRef.current.completed) {
+         return;
+       }
+       authBootstrapRef.current.inFlight = true;
+       const bootstrapStartedAt = Date.now();
+       console.log("[auth] bootstrap start");
+       try {
+         const restoredToken = await withTimeout(
+           getAuthToken(),
+           AUTH_TOKEN_TIMEOUT_MS,
+           "getAuthToken"
+         );
+         console.log("[auth] token loaded:", Boolean(restoredToken));
+ 
+         if (!restoredToken) {
+           if (isActive) setToken(null);
+         } else {
+           try {
+-            const bootstrapClient = axios.create({
+-              baseURL: API,
+-              timeout: AUTH_ME_TIMEOUT_MS,
+-            });
+-            const bootstrapHeaders = {
+-              Authorization: `Bearer ${restoredToken}`,
+-            };
+             const meRes = await withTimeout(
+-              bootstrapClient.get("/users/me", {
+-                headers: bootstrapHeaders,
++              apiClient.get("/users/me", {
++                headers: {
++                  Authorization: `Bearer ${restoredToken}`,
++                },
++                timeout: AUTH_ME_TIMEOUT_MS,
+               }),
+               AUTH_ME_TIMEOUT_MS,
+               "/users/me"
+             );
+             console.log("[auth] /users/me success", meRes?.status);
+             if (isActive) {
+               setToken({
+                 token: restoredToken,
+                 userId: meRes.data?.id || meRes.data?.user_id,
+                 email: meRes.data?.email,
+                 isProvider: Boolean(meRes.data?.is_provider),
+                 isAdmin: Boolean(meRes.data?.is_admin),
+               });
+               setIsAdmin(Boolean(meRes.data?.is_admin));
+             }
+           } catch (err) {
+             console.log(
+               "[auth] Failed to load user info during bootstrap",
+               err?.message || err
+             );
+             console.log(
+               "[auth] /users/me failed",
+               err?.response?.status || err?.code || "unknown"
+             );
+             if (err?.response?.status === 401 || err?.response?.status === 403) {
+@@ -5831,51 +5793,51 @@ function App() {
+         }
+       } catch (err) {
+         console.log(
+           "[auth] Failed to restore session",
+           err?.message || err
+         );
+         if (isActive) setToken(null);
+       } finally {
+         authBootstrapRef.current.inFlight = false;
+         authBootstrapRef.current.completed = true;
+         if (isActive) {
+           setAuthLoading(false);
+           console.log(
+             "[auth] bootstrap end",
+             `${Date.now() - bootstrapStartedAt}ms`
+           );
+         }
+       }
+     };
+ 
+     restoreSession();
+ 
+     return () => {
+       isActive = false;
+     };
+-  }, []);
++  }, [apiClient]);
+ 
+   useEffect(() => {
+     if (!authLoading) return undefined;
+ 
+     const watchdog = setTimeout(() => {
+       if (authLoading) {
+         console.log("[auth] authLoading watchdog timeout");
+         setAuthLoading(false);
+       }
+     }, AUTH_BOOTSTRAP_WATCHDOG_MS);
+ 
+     return () => clearTimeout(watchdog);
+   }, [authLoading]);
+ 
+   useEffect(() => {
+     console.log("[auth] authLoading:", authLoading);
+   }, [authLoading]);
+ 
+   if (authLoading) {
+ 
+     return (
+       <SafeAreaProvider>
+         <SafeAreaView style={{ flex: 1 }} edges={["top", "bottom"]}>
+           <FlashMessage flash={flash} />
+           <View style={styles.center}>
+@@ -5913,50 +5875,52 @@ function App() {
+                 setIsAdmin={setIsAdmin}
+                 goToSignup={() => setAuthMode("signup")}
+                 goToForgot={() => setAuthMode("forgot")}
+                 goBack={() => setAuthMode("landing")}
+                 showFlash={showFlash}
+               />
+             )}
+ 
+             {authMode === "signup" && (
+               <SignupScreen
+                 goToLogin={() => setAuthMode("login")}
+                 goBack={() => setAuthMode("landing")}
+                 showFlash={showFlash}
+               />
+             )}
+             {authMode === "forgot" && (
+               <ForgotPasswordScreen
+                 goToLogin={() => setAuthMode("login")}
+                 goBack={() => setAuthMode("landing")}
+                 showFlash={showFlash}
+               />
+             )}
+           </>
+         ) : (
+           <MainApp
++            apiClient={apiClient}
++            authLoading={authLoading}
+             token={token}
+             setToken={setToken}
+             showFlash={showFlash}
+             navigationRef={navigationRef}
+           />
+         )}
+       </SafeAreaView>
+     </SafeAreaProvider>
+   );
+ }
+ 
+ 
+ 
+ 
+ const styles = StyleSheet.create({
+   container: {
+     flex: 1,
+     backgroundColor: "#f0fdf4",
+     justifyContent: "center",
+     alignItems: "center",
+     padding: 20,
    },
-   "dependencies": {
-     "@react-native-async-storage/async-storage": "2.2.0",
-     "@react-native-community/datetimepicker": "8.4.4",
-     "@react-navigation/bottom-tabs": "^6.6.1",
-     "@react-navigation/native": "^6.1.18",
-     "axios": "^1.13.2",
-     "babel-preset-expo": "~54.0.0",
-     "expo": "^54.0.24",
--    "expo-clipboard": "~8.0.8",
-     "expo-constants": "~18.0.12",
-     "expo-image-picker": "~17.0.8",
-     "expo-location": "~19.0.7",
-     "expo-secure-store": "~15.0.8",
-     "react": "19.1.0",
-     "react-dom": "19.1.0",
-     "react-native": "0.81.5",
-     "react-native-dotenv": "^3.4.11",
-     "react-native-gesture-handler": "~2.28.0",
-     "react-native-maps": "1.20.1",
-     "react-native-safe-area-context": "~5.6.0",
-     "react-native-screens": "~4.16.0",
-     "react-native-web": "^0.21.0",
-     "sentry-expo": "7.2.0",
-     "tslib": "^2.8.1"
-   },
-   "devDependencies": {
-     "@babel/core": "^7.20.0",
-     "@react-native-community/cli": "^20.0.2",
-     "@types/react": "~19.1.10",
-     "typescript": "~5.9.2"
-   },
-   "private": true,
-   "overrides": {
-     "react": "19.1.0",
+   title: {
+     fontSize: 36,
+     fontWeight: "bold",
  
 EOF
 )
