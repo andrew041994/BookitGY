@@ -1,75 +1,121 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
 diff --git a/mobile/App.js b/mobile/App.js
-index 96cb54705a98c1337d88d29b4a8bbd6d629892f6..491ab595da4f9097e51d1bac8faaccf65aa0bf29 100644
+index 491ab595da4f9097e51d1bac8faaccf65aa0bf29..dabcb67beda9318a3eb31f9906f7fb37a79a200f 100644
 --- a/mobile/App.js
 +++ b/mobile/App.js
-@@ -167,51 +167,55 @@ const createLinkingConfig = ({ isProvider }) => ({
-   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-   return emailRegex.test(trimmed);
- };
- 
- const resolveImageUrl = (url) => {
-     if (!url || typeof url !== "string") return null;
-     if (url.startsWith("http")) return url;
-     if (url.startsWith("//")) return `https:${url}`;
-     const normalizedPath = url.startsWith("/") ? url : `/${url}`;
-     return `${API}${normalizedPath}`;
-   };
- 
- const LEGACY_ACCESS_TOKEN_KEY = "accessToken";
- 
- const getAuthToken = async (tokenState) => {
-   if (tokenState?.token) return tokenState.token;
+@@ -84,50 +84,54 @@ const getProviderUsernameFromUrl = (url) => {
  
    try {
-     const secure = await withTimeout(loadToken(), 1500, "loadToken");
-     if (secure) return secure;
+     const parsed = new URL(safeUrl);
+     return getProviderUsernameFromPath(parsed.pathname);
    } catch (error) {
-     console.log("[auth] Failed to load secure token", error?.message || error);
-   }
- 
-   try {
--    const legacy = await AsyncStorage.getItem(LEGACY_ACCESS_TOKEN_KEY);
-+    const legacy = await withTimeout(
-+      AsyncStorage.getItem(LEGACY_ACCESS_TOKEN_KEY),
-+      1500,
-+      "loadLegacyToken"
-+    );
-     return legacy || null;
-   } catch (error) {
-     console.log("[auth] Failed to load legacy token", error?.message || error);
+     console.log("[deepLinking] Failed to parse URL", safeUrl, error?.message || error);
      return null;
    }
  };
  
- const FAVORITES_STORAGE_KEY = (userKey) =>
-   userKey ? `favoriteProviders:${userKey}` : "favoriteProviders";
+ const withTimeout = (promise, ms, label) => {
+   let timeoutId;
+   const timeout = new Promise((_, reject) => {
+     timeoutId = setTimeout(() => {
+       const error = new Error(`${label || "Operation"} timed out after ${ms}ms`);
+       error.code = "ETIMEDOUT";
+       reject(error);
+     }, ms);
+   });
  
- const getProviderId = (provider) =>
-   provider?.provider_id ?? provider?.id ?? provider?._id ?? null;
+   return Promise.race([promise, timeout]).finally(() => {
+     clearTimeout(timeoutId);
+   });
+ };
  
- function useFavoriteProviders(userKey) {
-   const storageKey = FAVORITES_STORAGE_KEY(userKey);
-   const [favoriteIds, setFavoriteIds] = useState([]);
-   const [favoriteProviders, setFavoriteProviders] = useState([]);
-   const [favoritesLoading, setFavoritesLoading] = useState(true);
- 
-   const persistIds = useCallback(async (ids) => {
++const AUTH_BOOTSTRAP_WATCHDOG_MS = 15000;
++const AUTH_TOKEN_TIMEOUT_MS = 2000;
++const AUTH_ME_TIMEOUT_MS = 12000;
++
+ const createLinkingConfig = ({ isProvider }) => ({
+   prefixes: ["https://bookitgy.com", "https://www.bookitgy.com", "bookitgy://"],
+   config: {
+     screens: {
+       Home: "",
+       Search: "search",
+       PublicProfile: "public-profile/:username",
+       Appointments: "appointments",
+       Profile: "profile",
+       Dashboard: "dashboard",
+       Billing: "billing",
+     },
+   },
+   getStateFromPath: (path, options) => {
      try {
-       await AsyncStorage.setItem(storageKey, JSON.stringify(ids));
-     } catch (err) {
-       console.log("Error saving favorites", err?.message || err);
-     }
-@@ -6083,52 +6087,71 @@ function App() {
+       const trimmed = path?.replace(/^\//, "") || "";
+       const firstSegment = trimmed.split("/")[0];
+ 
+       if (RESERVED_USERNAME_PATHS.has(firstSegment)) {
+         return defaultGetStateFromPath("/profile", options);
+       }
+ 
+       const username = getProviderUsernameFromPath(path);
+       if (username) {
+         const targetPath = isProvider
+@@ -6053,138 +6057,158 @@ function App() {
+           (requestUrl.startsWith(API) || !isAbsoluteUrl);
+ 
+         if (!isApiRequest) return config;
+ 
+         const authToken = await getAuthToken(tokenRef.current);
+         if (authToken) {
+           config.headers = {
+             ...config.headers,
+             Authorization: `Bearer ${authToken}`,
+           };
+         }
+ 
+         return config;
+       },
+       (error) => Promise.reject(error)
+     );
+ 
+     return () => {
+       axios.interceptors.request.eject(interceptorId);
+     };
+   }, []);
+ 
+   useEffect(() => {
+     let isActive = true;
+     const restoreSession = async () => {
++      const bootstrapStartedAt = Date.now();
++      console.log("[auth] bootstrap start");
+       try {
+-        const restoredToken = await withTimeout(getAuthToken(), 2500, "getAuthToken");
++        const restoredToken = await withTimeout(
++          getAuthToken(),
++          AUTH_TOKEN_TIMEOUT_MS,
++          "getAuthToken"
++        );
+         console.log("[auth] token loaded:", Boolean(restoredToken));
+ 
+         if (!restoredToken) {
+           if (isActive) setToken(null);
+         } else {
+           try {
+-            const bootstrapClient = axios.create();
++            const bootstrapClient = axios.create({
++              baseURL: API,
++              timeout: AUTH_ME_TIMEOUT_MS,
++            });
              const meRes = await withTimeout(
-               bootstrapClient.get(`${API}/users/me`, {
+-              bootstrapClient.get(`${API}/users/me`, {
++              bootstrapClient.get("/users/me", {
                  headers: {
                    Authorization: `Bearer ${restoredToken}`,
                  },
                }),
-               12000,
+-              12000,
++              AUTH_ME_TIMEOUT_MS,
                "/users/me"
              );
++            console.log("[auth] /users/me success", meRes?.status);
              if (isActive) {
                setToken({
                  token: restoredToken,
@@ -85,30 +131,32 @@ index 96cb54705a98c1337d88d29b4a8bbd6d629892f6..491ab595da4f9097e51d1bac8faaccf6
                "[auth] Failed to load user info during bootstrap",
                err?.message || err
              );
++            console.log(
++              "[auth] /users/me failed",
++              err?.response?.status || err?.code || "unknown"
++            );
              if (err?.response?.status === 401 || err?.response?.status === 403) {
--              await clearToken();
--              await AsyncStorage.removeItem(LEGACY_ACCESS_TOKEN_KEY);
-+              try {
-+                await withTimeout(clearToken(), 1500, "clearToken");
-+              } catch (storageError) {
-+                console.log(
-+                  "[auth] Failed to clear secure token",
-+                  storageError?.message || storageError
-+                );
-+              }
-+
-+              try {
-+                await withTimeout(
-+                  AsyncStorage.removeItem(LEGACY_ACCESS_TOKEN_KEY),
-+                  1500,
-+                  "clearLegacyToken"
-+                );
-+              } catch (storageError) {
-+                console.log(
-+                  "[auth] Failed to clear legacy token",
-+                  storageError?.message || storageError
-+                );
-+              }
+               try {
+                 await withTimeout(clearToken(), 1500, "clearToken");
+               } catch (storageError) {
+                 console.log(
+                   "[auth] Failed to clear secure token",
+                   storageError?.message || storageError
+                 );
+               }
+ 
+               try {
+                 await withTimeout(
+                   AsyncStorage.removeItem(LEGACY_ACCESS_TOKEN_KEY),
+                   1500,
+                   "clearLegacyToken"
+                 );
+               } catch (storageError) {
+                 console.log(
+                   "[auth] Failed to clear legacy token",
+                   storageError?.message || storageError
+                 );
+               }
                if (isActive) setToken(null);
              } else if (isActive) {
                setToken({ token: restoredToken });
@@ -122,7 +170,14 @@ index 96cb54705a98c1337d88d29b4a8bbd6d629892f6..491ab595da4f9097e51d1bac8faaccf6
          );
          if (isActive) setToken(null);
        } finally {
-         if (isActive) setAuthLoading(false);
+-        if (isActive) setAuthLoading(false);
++        if (isActive) {
++          setAuthLoading(false);
++          console.log(
++            "[auth] bootstrap end",
++            `${Date.now() - bootstrapStartedAt}ms`
++          );
++        }
        }
      };
  
@@ -134,6 +189,40 @@ index 96cb54705a98c1337d88d29b4a8bbd6d629892f6..491ab595da4f9097e51d1bac8faaccf6
    }, []);
  
    useEffect(() => {
+     if (!authLoading) return undefined;
+ 
+     const watchdog = setTimeout(() => {
+       if (authLoading) {
+         console.log("[auth] authLoading watchdog timeout");
+         setAuthLoading(false);
+       }
+-    }, 15000);
++    }, AUTH_BOOTSTRAP_WATCHDOG_MS);
+ 
+     return () => clearTimeout(watchdog);
+   }, [authLoading]);
+ 
+   useEffect(() => {
+     console.log("[auth] authLoading:", authLoading);
+   }, [authLoading]);
+ 
+   useEffect(() => {
+     if (!token) {
+       setIsNavReady(false);
+     }
+   }, [token]);
+ 
+   useEffect(() => {
+     if (token) return undefined;
+     let isActive = true;
+ 
+     const handleInitialUrl = async () => {
+       const initialUrl = await Linking.getInitialURL();
+       if (!isActive) return;
+ 
+       const username = getProviderUsernameFromUrl(initialUrl);
+       if (username) setPendingDeepLinkUsername(username);
+     };
  
 EOF
 )

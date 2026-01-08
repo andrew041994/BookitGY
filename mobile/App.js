@@ -106,6 +106,10 @@ const withTimeout = (promise, ms, label) => {
   });
 };
 
+const AUTH_BOOTSTRAP_WATCHDOG_MS = 15000;
+const AUTH_TOKEN_TIMEOUT_MS = 2000;
+const AUTH_ME_TIMEOUT_MS = 12000;
+
 const createLinkingConfig = ({ isProvider }) => ({
   prefixes: ["https://bookitgy.com", "https://www.bookitgy.com", "bookitgy://"],
   config: {
@@ -6075,24 +6079,34 @@ function App() {
   useEffect(() => {
     let isActive = true;
     const restoreSession = async () => {
+      const bootstrapStartedAt = Date.now();
+      console.log("[auth] bootstrap start");
       try {
-        const restoredToken = await withTimeout(getAuthToken(), 2500, "getAuthToken");
+        const restoredToken = await withTimeout(
+          getAuthToken(),
+          AUTH_TOKEN_TIMEOUT_MS,
+          "getAuthToken"
+        );
         console.log("[auth] token loaded:", Boolean(restoredToken));
 
         if (!restoredToken) {
           if (isActive) setToken(null);
         } else {
           try {
-            const bootstrapClient = axios.create();
+            const bootstrapClient = axios.create({
+              baseURL: API,
+              timeout: AUTH_ME_TIMEOUT_MS,
+            });
             const meRes = await withTimeout(
-              bootstrapClient.get(`${API}/users/me`, {
+              bootstrapClient.get("/users/me", {
                 headers: {
                   Authorization: `Bearer ${restoredToken}`,
                 },
               }),
-              12000,
+              AUTH_ME_TIMEOUT_MS,
               "/users/me"
             );
+            console.log("[auth] /users/me success", meRes?.status);
             if (isActive) {
               setToken({
                 token: restoredToken,
@@ -6107,6 +6121,10 @@ function App() {
             console.log(
               "[auth] Failed to load user info during bootstrap",
               err?.message || err
+            );
+            console.log(
+              "[auth] /users/me failed",
+              err?.response?.status || err?.code || "unknown"
             );
             if (err?.response?.status === 401 || err?.response?.status === 403) {
               try {
@@ -6143,7 +6161,13 @@ function App() {
         );
         if (isActive) setToken(null);
       } finally {
-        if (isActive) setAuthLoading(false);
+        if (isActive) {
+          setAuthLoading(false);
+          console.log(
+            "[auth] bootstrap end",
+            `${Date.now() - bootstrapStartedAt}ms`
+          );
+        }
       }
     };
 
@@ -6162,7 +6186,7 @@ function App() {
         console.log("[auth] authLoading watchdog timeout");
         setAuthLoading(false);
       }
-    }, 15000);
+    }, AUTH_BOOTSTRAP_WATCHDOG_MS);
 
     return () => clearTimeout(watchdog);
   }, [authLoading]);
