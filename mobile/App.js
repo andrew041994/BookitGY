@@ -21,6 +21,7 @@ import {
 } from "react-native";
 import { NavigationContainer } from "@react-navigation/native";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
+import { enableScreens } from "react-native-screens";
 import axios from "axios";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { clearToken, loadToken, saveToken } from "./src/components/tokenStorage";
@@ -33,6 +34,8 @@ import { Ionicons } from "@expo/vector-icons";
 import { SafeAreaProvider,SafeAreaView } from "react-native-safe-area-context";
 // import * as Sentry from "sentry-expo";
 
+// Disable native screens on iOS to prevent detent-related props hitting unsupported RCTView selectors.
+enableScreens(Platform.OS !== "ios");
 
 
 
