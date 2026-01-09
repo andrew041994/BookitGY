@@ -302,19 +302,38 @@ FROM_NUMBER = os.getenv("TWILIO_WHATSAPP_FROM")
 print(f"[WhatsApp debug] FROM_NUMBER = {FROM_NUMBER!r}")
 
 
+def normalize_whatsapp_number(value: Optional[str]) -> str:
+    if not value:
+        return ""
+    normalized = str(value)
+    if not normalized.startswith("whatsapp:"):
+        normalized = f"whatsapp:{normalized}"
+    return normalized
+
+
 def send_whatsapp(to: str, body: str) -> None:
     """Send a WhatsApp message, or log a preview if Twilio isn't configured."""
     print(
         "[WhatsApp debug] send_whatsapp called with: "
         f"client={bool(twilio_client)}, FROM={FROM_NUMBER!r}, to={to!r}"
     )
+    normalized_from = normalize_whatsapp_number(FROM_NUMBER)
+    normalized_to = normalize_whatsapp_number(to)
+    print(
+        "[WhatsApp debug] normalized numbers: "
+        f"FROM={normalized_from!r}, TO={normalized_to!r}"
+    )
 
-    if not twilio_client or not to or not FROM_NUMBER:
+    if not twilio_client or not normalized_to or not normalized_from:
         print(f"[WhatsApp Preview] To {to}: {body}")
         return
 
     try:
-        msg = twilio_client.messages.create(from_=FROM_NUMBER, body=body, to=to)
+        msg = twilio_client.messages.create(
+            from_=normalized_from,
+            body=body,
+            to=normalized_to,
+        )
         print(f"[WhatsApp debug] Twilio message SID: {msg.sid}")
     except Exception as e:
         print(f"WhatsApp error: {e}")

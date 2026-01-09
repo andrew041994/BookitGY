@@ -1,53 +1,93 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
-diff --git a/mobile/package.json b/mobile/package.json
-index cafea6569cb79635da0f176c74ddd4a58040d2a4..83a3505bae581d4cbe9d7a1c5384b45aec385836 100644
---- a/mobile/package.json
-+++ b/mobile/package.json
-@@ -3,43 +3,43 @@
-   "version": "1.0.0",
-   "main": "node_modules/expo/AppEntry.js",
-   "scripts": {
-     "start": "expo start",
-     "android": "expo run:android",
-     "ios": "expo run:ios"
-   },
-   "dependencies": {
-     "@react-native-async-storage/async-storage": "2.2.0",
-     "@react-native-community/datetimepicker": "8.4.4",
-     "@react-navigation/bottom-tabs": "^6.6.1",
-     "@react-navigation/native": "^6.1.18",
-     "axios": "^1.13.2",
-     "babel-preset-expo": "~54.0.0",
-     "expo": "^54.0.24",
-     "expo-constants": "~18.0.12",
-     "expo-image-picker": "~17.0.8",
-     "expo-location": "~19.0.7",
-     "expo-secure-store": "~15.0.8",
-     "react": "19.1.0",
-     "react-dom": "19.1.0",
-     "react-native": "0.81.5",
-     "react-native-dotenv": "^3.4.11",
-     "react-native-gesture-handler": "~2.28.0",
-     "react-native-maps": "1.20.1",
--    "react-native-safe-area-context": "~5.6.0",
-+    "react-native-safe-area-context": "~5.6.2",
-     "react-native-screens": "~4.16.0",
-     "react-native-web": "^0.21.0",
-     "sentry-expo": "7.2.0",
-     "tslib": "^2.8.1"
-   },
-   "devDependencies": {
-     "@babel/core": "^7.20.0",
-     "@react-native-community/cli": "^20.0.2",
-     "@types/react": "~19.1.10",
-     "typescript": "~5.9.2"
-   },
-   "private": true,
-   "overrides": {
-     "react": "19.1.0",
-     "react-dom": "19.1.0"
-   }
- }
+diff --git a/backend/app/crud.py b/backend/app/crud.py
+index a9609b7f0596477949a23de97974deecb786d3ff..1e9ef667c5fb35ec4a360022e3a4cc6c539d3bf8 100644
+--- a/backend/app/crud.py
++++ b/backend/app/crud.py
+@@ -280,63 +280,82 @@ def generate_account_number_for_email(email: str) -> str:
+     digest = hashlib.sha1(normalized.encode("utf-8")).hexdigest()[:8].upper()
+     return f"ACC-{digest}"
+ 
+ 
+ # ---------------------------------------------------------------------------
+ # Twilio / WhatsApp helper
+ # ---------------------------------------------------------------------------
+ # ---------------------------------------------------------------------------
+ # Twilio / WhatsApp helper
+ # ---------------------------------------------------------------------------
+ 
+ twilio_client = None
+ if os.getenv("TWILIO_ACCOUNT_SID"):
+     print("[WhatsApp debug] TWILIO_ACCOUNT_SID is set")
+     twilio_client = Client(
+         os.getenv("TWILIO_ACCOUNT_SID"),
+         os.getenv("TWILIO_AUTH_TOKEN"),
+     )
+ else:
+     print("[WhatsApp debug] TWILIO_ACCOUNT_SID is NOT set")
+ 
+ FROM_NUMBER = os.getenv("TWILIO_WHATSAPP_FROM")
+ print(f"[WhatsApp debug] FROM_NUMBER = {FROM_NUMBER!r}")
+ 
+ 
++def normalize_whatsapp_number(value: Optional[str]) -> str:
++    if not value:
++        return ""
++    normalized = str(value)
++    if not normalized.startswith("whatsapp:"):
++        normalized = f"whatsapp:{normalized}"
++    return normalized
++
++
+ def send_whatsapp(to: str, body: str) -> None:
+     """Send a WhatsApp message, or log a preview if Twilio isn't configured."""
+     print(
+         "[WhatsApp debug] send_whatsapp called with: "
+         f"client={bool(twilio_client)}, FROM={FROM_NUMBER!r}, to={to!r}"
+     )
++    normalized_from = normalize_whatsapp_number(FROM_NUMBER)
++    normalized_to = normalize_whatsapp_number(to)
++    print(
++        "[WhatsApp debug] normalized numbers: "
++        f"FROM={normalized_from!r}, TO={normalized_to!r}"
++    )
+ 
+-    if not twilio_client or not to or not FROM_NUMBER:
++    if not twilio_client or not normalized_to or not normalized_from:
+         print(f"[WhatsApp Preview] To {to}: {body}")
+         return
+ 
+     try:
+-        msg = twilio_client.messages.create(from_=FROM_NUMBER, body=body, to=to)
++        msg = twilio_client.messages.create(
++            from_=normalized_from,
++            body=body,
++            to=normalized_to,
++        )
+         print(f"[WhatsApp debug] Twilio message SID: {msg.sid}")
+     except Exception as e:
+         print(f"WhatsApp error: {e}")
+ 
+ 
+ def notify_booking_created(
+     customer: Optional[models.User],
+     provider_user: Optional[models.User],
+     service: models.Service,
+     booking: models.Booking,
+ ) -> None:
+     """Send all notifications for a newly confirmed booking.
+ 
+     - WhatsApp to customer (if configured)
+     - WhatsApp to provider (if configured)
+     - Push to customer (if configured)
+     - Push to provider (if configured)
+     """
+     if not (customer and provider_user):
+         return
+ 
+     # Customer: one confirmation message
+     if customer.whatsapp:
+         send_whatsapp(
+             customer.whatsapp,
  
 EOF
 )
