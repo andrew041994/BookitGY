@@ -34,8 +34,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { SafeAreaProvider,SafeAreaView } from "react-native-safe-area-context";
 // import * as Sentry from "sentry-expo";
 
-// Disable native screens on iOS to prevent detent-related props hitting unsupported RCTView selectors.
-enableScreens(Platform.OS !== "ios");
+enableScreens(false);
 
 
 

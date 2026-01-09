@@ -1,72 +1,53 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
-diff --git a/mobile/App.js b/mobile/App.js
-index 3f5be61a50e21bfef105479b832ded7ca96af21d..d9208b7b9ee43d5bc2ada24c2a8dab66b805553d 100644
---- a/mobile/App.js
-+++ b/mobile/App.js
-@@ -1,60 +1,63 @@
- import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
- import { useFocusEffect } from "@react-navigation/native";
- import {
-   Text,
-   View,
-   StyleSheet,
-   TextInput,
-   Button,
-   Alert,
-   ActivityIndicator,
-   ScrollView,
-   TouchableOpacity,
-   Switch,
-   Linking,
-   Platform,
-   Image,
-   KeyboardAvoidingView,
-   TouchableWithoutFeedback,
-   Keyboard,
-   RefreshControl,
- } from "react-native";
- import { NavigationContainer } from "@react-navigation/native";
- import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
-+import { enableScreens } from "react-native-screens";
- import axios from "axios";
- import AsyncStorage from "@react-native-async-storage/async-storage";
- import { clearToken, loadToken, saveToken } from "./src/components/tokenStorage";
- import { createApiClient } from "./src/api/client";
- import * as Location from "expo-location";
- import Constants from "expo-constants";
- import * as ImagePicker from "expo-image-picker";
- import BookitGYLogoTransparent from "./assets/bookitgy-logo-transparent.png"
- import { Ionicons } from "@expo/vector-icons";
- import { SafeAreaProvider,SafeAreaView } from "react-native-safe-area-context";
- // import * as Sentry from "sentry-expo";
- 
-+// Disable native screens on iOS to prevent detent-related props hitting unsupported RCTView selectors.
-+enableScreens(Platform.OS !== "ios");
- 
- 
- 
- 
- // import { API } from "./App"; // wherever you define your base URL
- 
- 
- 
- 
- 
- const API =
-   Constants.expoConfig?.extra?.API_URL ||
-   Constants.manifest?.extra?.API_URL ||
-   "https://bookitgy.onrender.com";
- 
-   console.log("### API base URL =", API);
- 
- const withTimeout = (promise, ms, label) => {
-   let timeoutId;
-   const timeout = new Promise((_, reject) => {
-     timeoutId = setTimeout(() => {
-       const error = new Error(`${label || "Operation"} timed out after ${ms}ms`);
-       error.code = "ETIMEDOUT";
-       reject(error);
-     }, ms);
+diff --git a/mobile/package.json b/mobile/package.json
+index cafea6569cb79635da0f176c74ddd4a58040d2a4..83a3505bae581d4cbe9d7a1c5384b45aec385836 100644
+--- a/mobile/package.json
++++ b/mobile/package.json
+@@ -3,43 +3,43 @@
+   "version": "1.0.0",
+   "main": "node_modules/expo/AppEntry.js",
+   "scripts": {
+     "start": "expo start",
+     "android": "expo run:android",
+     "ios": "expo run:ios"
+   },
+   "dependencies": {
+     "@react-native-async-storage/async-storage": "2.2.0",
+     "@react-native-community/datetimepicker": "8.4.4",
+     "@react-navigation/bottom-tabs": "^6.6.1",
+     "@react-navigation/native": "^6.1.18",
+     "axios": "^1.13.2",
+     "babel-preset-expo": "~54.0.0",
+     "expo": "^54.0.24",
+     "expo-constants": "~18.0.12",
+     "expo-image-picker": "~17.0.8",
+     "expo-location": "~19.0.7",
+     "expo-secure-store": "~15.0.8",
+     "react": "19.1.0",
+     "react-dom": "19.1.0",
+     "react-native": "0.81.5",
+     "react-native-dotenv": "^3.4.11",
+     "react-native-gesture-handler": "~2.28.0",
+     "react-native-maps": "1.20.1",
+-    "react-native-safe-area-context": "~5.6.0",
++    "react-native-safe-area-context": "~5.6.2",
+     "react-native-screens": "~4.16.0",
+     "react-native-web": "^0.21.0",
+     "sentry-expo": "7.2.0",
+     "tslib": "^2.8.1"
+   },
+   "devDependencies": {
+     "@babel/core": "^7.20.0",
+     "@react-native-community/cli": "^20.0.2",
+     "@types/react": "~19.1.10",
+     "typescript": "~5.9.2"
+   },
+   "private": true,
+   "overrides": {
+     "react": "19.1.0",
+     "react-dom": "19.1.0"
+   }
+ }
  
 EOF
 )
