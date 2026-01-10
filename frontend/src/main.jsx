@@ -523,18 +523,28 @@ function App() {
     }
 
 
-    const toggleProviderLock = async (providerId, shouldLock) => {
+    const toggleProviderSuspension = async (userId, shouldSuspend) => {
+      if (!userId) {
+        setError('Unable to update provider account status. Missing user id.')
+        console.error('Missing user id for provider suspension request.')
+        return
+      }
+
       setBillingRows((prev) =>
         prev.map((row) =>
-          row.provider_id === providerId ? { ...row, is_locked: shouldLock } : row
+          row.user_id === userId || row.userId === userId
+            ? { ...row, is_suspended: shouldSuspend }
+            : row
         )
       )
 
       try {
-        await apiClient.put(
-          `/admin/billing/${providerId}/lock`,
-          { is_locked: shouldLock }
-        )
+        // Admin suspension endpoint: POST /admin/users/:userId/suspend or /admin/users/:userId/unsuspend
+        if (shouldSuspend) {
+          await apiClient.post(`/admin/users/${userId}/suspend`)
+        } else {
+          await apiClient.post(`/admin/users/${userId}/unsuspend`)
+        }
 
         await fetchBillingRows()
       } catch (err) {
@@ -693,7 +703,10 @@ function App() {
               <span>Account status</span>
               <span className="sr-only">Actions</span>
             </div>
-            {filteredRows.map((row) => (
+            {filteredRows.map((row) => {
+              const isSuspended = row.is_suspended ?? row.isSuspended ?? row.is_locked ?? false
+              const userId = row.user_id ?? row.userId ?? row.provider_id
+              return (
               <div key={row.provider_id} className="billing-table__row">
                 <div>
                   <p className="billing-provider">{row.name || 'Unnamed provider'}</p>
@@ -706,8 +719,8 @@ function App() {
                 <span className={row.is_paid ? 'status-pill paid' : 'status-pill unpaid'}>
                   {row.is_paid ? 'Paid' : 'Unpaid'}
                 </span>
-                <span className={row.is_locked ? 'status-pill unpaid' : 'status-pill paid'}>
-                  {row.is_locked ? 'Suspended' : 'Active'}
+                <span className={isSuspended ? 'status-pill unpaid' : 'status-pill paid'}>
+                  {isSuspended ? 'Suspended' : 'Active'}
                 </span>
                 <div className="billing-actions">
                   <button className="ghost-btn" onClick={() => updateProviderStatus(row.provider_id, false)} disabled={loading}>
@@ -717,15 +730,15 @@ function App() {
                     Paid
                   </button>
                   <button
-                    className={row.is_locked ? 'primary-btn' : 'ghost-btn'}
-                    onClick={() => toggleProviderLock(row.provider_id, !row.is_locked)}
+                    className={isSuspended ? 'primary-btn' : 'ghost-btn'}
+                    onClick={() => toggleProviderSuspension(userId, !isSuspended)}
                     disabled={loading}
                   >
-                    {row.is_locked ? 'Restore account' : 'Suspend account'}
+                    {isSuspended ? 'Reactivate account' : 'Suspend account'}
                   </button>
                 </div>
               </div>
-            ))}
+            )})}
 
             {showNoMatches && (
               <p className="muted">No providers match your current filters.</p>
