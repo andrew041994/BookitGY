@@ -37,6 +37,8 @@ def _send_email(message: Mail, error_detail: str) -> None:
 
 def send_verification_email(to_email: str, verification_link: str) -> None:
     _ensure_email_configured()
+    print(f"[EMAIL] Sending verification email")
+
 
     subject = "Verify your BookitGY email"
     content = (
