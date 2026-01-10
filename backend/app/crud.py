@@ -1,8 +1,9 @@
 import os
 from datetime import datetime, timedelta, date
+import logging
 from decimal import Decimal, ROUND_HALF_UP
 from typing import Optional, List
-from sqlalchemy import func, cast, String, case
+from sqlalchemy import func, cast, String, case, select
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
 from passlib.context import CryptContext
@@ -16,6 +17,7 @@ from app.utils.time import now_guyana, today_start_guyana, today_end_guyana
 
 load_dotenv(find_dotenv(), override=False)
 
+logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -1166,6 +1168,8 @@ def get_provider_current_month_due_from_completed_bookings(
 
 
 def _provider_billing_row(db: Session, provider: models.Provider, user: models.User):
+    cycle_month = current_billing_cycle_month()
+    billing_cycle = get_billing_cycle_for_account(db, provider.account_number, cycle_month)
     latest_bill = (
         db.query(models.Bill)
         .filter(models.Bill.provider_id == provider.id)
@@ -1173,14 +1177,11 @@ def _provider_billing_row(db: Session, provider: models.Provider, user: models.U
         .first()
     )
 
-    if latest_bill:
-        amount_due = get_provider_current_month_due_from_completed_bookings(
-            db, provider.id
-        )
-        is_paid = bool(latest_bill.is_paid)
-    else:
-        amount_due = 0.0
-        is_paid = True
+    amount_due = get_provider_current_month_due_from_completed_bookings(
+        db, provider.id
+    )
+    is_paid = bool(billing_cycle.is_paid) if billing_cycle else False
+    paid_at = billing_cycle.paid_at if billing_cycle else None
 
     return {
         "provider_id": provider.id,
@@ -1193,6 +1194,7 @@ def _provider_billing_row(db: Session, provider: models.Provider, user: models.U
         "is_locked": bool(getattr(provider, "is_locked", False)),
         "is_suspended": bool(getattr(user, "is_suspended", False)),
         "last_due_date": latest_bill.due_date if latest_bill else None,
+        "paid_at": paid_at,
     }
 
 
@@ -1202,6 +1204,14 @@ def list_provider_billing_rows(db: Session):
         .join(models.User, models.Provider.user_id == models.User.id)
         .all()
     )
+
+    cycle_month = current_billing_cycle_month()
+    account_numbers = [
+        provider.account_number
+        for provider, _user in rows
+        if provider.account_number
+    ]
+    ensure_billing_cycles_for_accounts(db, account_numbers, cycle_month)
 
     return [_provider_billing_row(db, provider, user) for provider, user in rows]
 
@@ -1218,18 +1228,185 @@ def get_provider_billing_row(db: Session, provider_id: int):
         return None
 
     provider, user = row
+    if provider.account_number:
+        ensure_billing_cycles_for_accounts(
+            db, [provider.account_number], current_billing_cycle_month()
+        )
     return _provider_billing_row(db, provider, user)
 
 
 def set_provider_bills_paid_state(db: Session, provider_id: int, is_paid: bool) -> int:
-    updated = (
-        db.query(models.Bill)
-        .filter(models.Bill.provider_id == provider_id)
-        .update({models.Bill.is_paid: is_paid}, synchronize_session=False)
+    provider = (
+        db.query(models.Provider)
+        .filter(models.Provider.id == provider_id)
+        .first()
+    )
+    if not provider or not provider.account_number:
+        return 0
+
+    cycle_month = current_billing_cycle_month()
+    billing_cycle = get_or_create_billing_cycle(db, provider.account_number, cycle_month)
+    if not billing_cycle:
+        return 0
+
+    billing_cycle.is_paid = bool(is_paid)
+    billing_cycle.paid_at = now_guyana() if is_paid else None
+    db.commit()
+    return 1
+
+
+def current_billing_cycle_month(reference: datetime | date | None = None) -> date:
+    if reference is None:
+        reference = now_guyana()
+    if isinstance(reference, datetime):
+        reference = reference.date()
+    return date(reference.year, reference.month, 1)
+
+
+def get_billing_cycle_for_account(
+    db: Session, account_number: str | None, cycle_month: date
+) -> Optional[models.BillingCycle]:
+    if not account_number:
+        return None
+    return (
+        db.query(models.BillingCycle)
+        .filter(
+            models.BillingCycle.account_number == account_number,
+            models.BillingCycle.cycle_month == cycle_month,
+        )
+        .first()
     )
 
+
+def ensure_billing_cycles_for_accounts(
+    db: Session, account_numbers: List[str], cycle_month: date
+) -> dict[str, models.BillingCycle]:
+    if not account_numbers:
+        return {}
+    unique_numbers = {num for num in account_numbers if num}
+    if not unique_numbers:
+        return {}
+
+    existing = (
+        db.query(models.BillingCycle)
+        .filter(
+            models.BillingCycle.cycle_month == cycle_month,
+            models.BillingCycle.account_number.in_(unique_numbers),
+        )
+        .all()
+    )
+    existing_map = {row.account_number: row for row in existing}
+    missing = [num for num in unique_numbers if num not in existing_map]
+    if missing:
+        created = []
+        for num in missing:
+            billing_cycle = models.BillingCycle(
+                account_number=num,
+                cycle_month=cycle_month,
+                is_paid=False,
+            )
+            db.add(billing_cycle)
+            created.append(billing_cycle)
+        db.commit()
+        for billing_cycle in created:
+            existing_map[billing_cycle.account_number] = billing_cycle
+    return existing_map
+
+
+def get_or_create_billing_cycle(
+    db: Session, account_number: str, cycle_month: date
+) -> Optional[models.BillingCycle]:
+    existing = get_billing_cycle_for_account(db, account_number, cycle_month)
+    if existing:
+        return existing
+
+    billing_cycle = models.BillingCycle(
+        account_number=account_number,
+        cycle_month=cycle_month,
+        is_paid=False,
+    )
+    db.add(billing_cycle)
+    try:
+        db.commit()
+        return billing_cycle
+    except IntegrityError:
+        db.rollback()
+        return get_billing_cycle_for_account(db, account_number, cycle_month)
+
+
+def mark_billing_cycle_paid(
+    db: Session,
+    *,
+    account_number: str,
+    cycle_month: date,
+    provider_user: Optional[models.User] = None,
+    send_email=None,
+) -> models.BillingCycle:
+    billing_cycle = get_or_create_billing_cycle(db, account_number, cycle_month)
+    if not billing_cycle:
+        raise ValueError("Billing cycle not found or created.")
+
+    if not billing_cycle.is_paid:
+        billing_cycle.is_paid = True
+        billing_cycle.paid_at = now_guyana()
+        db.commit()
+        if send_email and provider_user and provider_user.email:
+            try:
+                send_email(
+                    provider_user.email,
+                    account_number=account_number,
+                    cycle_month=cycle_month,
+                )
+            except Exception:
+                logger.exception(
+                    "Failed to send billing paid email for account=%s",
+                    account_number,
+                )
+    return billing_cycle
+
+
+def ensure_billing_cycles_for_month(db: Session, cycle_month: date) -> int:
+    providers = db.query(models.Provider).filter(
+        models.Provider.account_number.isnot(None)
+    ).all()
+    account_numbers = [provider.account_number for provider in providers if provider.account_number]
+    existing = ensure_billing_cycles_for_accounts(db, account_numbers, cycle_month)
+    return len(existing)
+
+
+def suspend_unpaid_providers_for_cycle(db: Session, cycle_month: date) -> int:
+    unpaid_accounts = (
+        db.query(models.BillingCycle.account_number)
+        .filter(
+            models.BillingCycle.cycle_month == cycle_month,
+            models.BillingCycle.is_paid.is_(False),
+        )
+        .all()
+    )
+    account_numbers = [row[0] for row in unpaid_accounts if row[0]]
+    if not account_numbers:
+        return 0
+
+    provider_user_ids = select(models.Provider.user_id).filter(
+        models.Provider.account_number.in_(account_numbers)
+    )
+    updated = (
+        db.query(models.User)
+        .filter(
+            models.User.id.in_(provider_user_ids),
+            models.User.is_suspended.is_(False),
+        )
+        .update({models.User.is_suspended: True}, synchronize_session=False)
+    )
     db.commit()
     return updated
+
+
+def auto_suspend_unpaid_providers(db: Session, reference_date: date) -> int:
+    if reference_date.day < 15:
+        return 0
+    cycle_month = current_billing_cycle_month(reference_date)
+    return suspend_unpaid_providers_for_cycle(db, cycle_month)
 
 
 def set_provider_lock_state(db: Session, provider_id: int, is_locked: bool) -> int:

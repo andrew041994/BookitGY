@@ -1,3 +1,4 @@
+from datetime import date
 from fastapi import HTTPException, status
 from sendgrid import SendGridAPIClient
 from sendgrid.helpers.mail import Mail
@@ -89,3 +90,27 @@ def send_password_reset_email(to_email: str, reset_link: str) -> None:
     )
 
     _send_email(message, "Failed to send password reset email.")
+
+
+def send_billing_paid_email(
+    to_email: str, *, account_number: str, cycle_month: date
+) -> None:
+    _ensure_email_configured()
+    support_contact = settings.SENDGRID_FROM_EMAIL or "support@bookitgy.com"
+    month_label = cycle_month.strftime("%B %Y")
+    subject = "Payment received — thank you"
+    content = (
+        "Thanks for your payment. We've received your BookitGY billing payment.\n\n"
+        f"Account number: {account_number}\n"
+        f"Billing month: {month_label}\n\n"
+        f"If you have any questions, contact us at {support_contact}."
+    )
+
+    message = Mail(
+        from_email=settings.SENDGRID_FROM_EMAIL,
+        to_emails=to_email,
+        subject=subject,
+        plain_text_content=content,
+    )
+
+    _send_email(message, "Failed to send billing payment confirmation email.")

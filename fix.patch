@@ -1,9 +1,10 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
 diff --git a/frontend/src/main.jsx b/frontend/src/main.jsx
-index 1ce4f29c087088a8ad510d28f7d4f3b1c5c0a30b..2bc61644ae5a78f1f81ea7c52dbb252d1579755a 100644
+index 2bc61644ae5a78f1f81ea7c52dbb252d1579755a..04a8f6e6db0a20623f4797339a81509488c1f057 100644
 --- a/frontend/src/main.jsx
 +++ b/frontend/src/main.jsx
-@@ -437,51 +437,51 @@ function App() {
+@@ -436,112 +436,127 @@ function App() {
+             <p className="credentials-hint">
                Demo login: <strong>customer@guyana.com</strong> / <strong>pass</strong>
              </p>
            )}
@@ -28,9 +29,9 @@ index 1ce4f29c087088a8ad510d28f7d4f3b1c5c0a30b..2bc61644ae5a78f1f81ea7c52dbb252d
      const [searchTerm, setSearchTerm] = React.useState('')
      const [startDate, setStartDate] = React.useState('')
      const [endDate, setEndDate] = React.useState('')
-     const [bulkUpdating, setBulkUpdating] = React.useState(false)
--    const [suspendingByUserId, setSuspendingByUserId] = React.useState({})
-+    const [suspendingByAccountNumber, setSuspendingByAccountNumber] = React.useState({})
+-    const [bulkUpdating, setBulkUpdating] = React.useState(false)
+     const [suspendingByAccountNumber, setSuspendingByAccountNumber] = React.useState({})
++    const [payingByAccountNumber, setPayingByAccountNumber] = React.useState({})
  
      const fetchBillingRows = React.useCallback(async () => {
        setLoading(true)
@@ -56,86 +57,97 @@ index 1ce4f29c087088a8ad510d28f7d4f3b1c5c0a30b..2bc61644ae5a78f1f81ea7c52dbb252d
            return
          }
          setBillingRows(responseRows)
-@@ -502,107 +502,105 @@ function App() {
-     const updateProviderStatus = async (providerId, isPaid) => {
-       // optimistic update (UI changes instantly)
-       setBillingRows((prev) =>
-         prev.map((row) =>
-           row.provider_id === providerId ? { ...row, is_paid: isPaid } : row
-         )
-       )
+       } catch (err) {
+         logApiError(err)
+         setError('Unable to load provider billing details. Please refresh and try again.')
+         setBillingRows([])
+       } finally {
+         setLoading(false)
+         setHasLoaded(true)
+       }
+     }, [])
+ 
+     React.useEffect(() => {
+       fetchBillingRows()
+     }, [fetchBillingRows])
+ 
+-    const updateProviderStatus = async (providerId, isPaid) => {
+-      // optimistic update (UI changes instantly)
+-      setBillingRows((prev) =>
+-        prev.map((row) =>
+-          row.provider_id === providerId ? { ...row, is_paid: isPaid } : row
+-        )
+-      )
++    const markProviderPaid = async (accountNumber) => {
++      if (!accountNumber) {
++        setError('Missing account number for provider; billing rows must include account_number')
++        return
++      }
++
++      if (payingByAccountNumber[accountNumber]) return
++
++      setPayingByAccountNumber((prev) => ({ ...prev, [accountNumber]: true }))
++      setError('')
  
        try {
-         await apiClient.put(
-           `/admin/billing/${providerId}/status`,
-           { is_paid: isPaid }
+-        await apiClient.put(
+-          `/admin/billing/${providerId}/status`,
+-          { is_paid: isPaid }
++        const res = await apiClient.post(
++          `/admin/billing/${accountNumber}/mark-paid`
++        )
++        const payload = res?.data
++        setBillingRows((prev) =>
++          prev.map((row) =>
++            row.account_number === accountNumber
++              ? {
++                ...row,
++                is_paid: payload?.is_paid ?? true,
++                paid_at: payload?.paid_at ?? row.paid_at,
++              }
++              : row
++          )
          )
- 
-         // OPTIONAL: if you want truth from server, refetch after success
-         // await fetchBillingRows()
+-
+-        // OPTIONAL: if you want truth from server, refetch after success
+-        // await fetchBillingRows()
        } catch (err) {
          logApiError(err)
          setError("Failed to update provider billing status.")
-         // rollback safely
-         fetchBillingRows()
+-        // rollback safely
+-        fetchBillingRows()
++      } finally {
++        setPayingByAccountNumber((prev) => {
++          const next = { ...prev }
++          delete next[accountNumber]
++          return next
++        })
        }
      }
  
  
--    const toggleProviderSuspension = async (userId, shouldSuspend) => {
--      if (!userId) {
--        setError('Missing user_id for provider; backend /admin/billing must return user_id')
--        console.error('Missing user_id for provider suspension request.')
-+    const toggleProviderSuspension = async (accountNumber, shouldSuspend) => {
-+      if (!accountNumber) {
-+        setError('Missing account number for provider; billing rows must include account_number')
-+        console.error('Missing account number for provider suspension request.')
+     const toggleProviderSuspension = async (accountNumber, shouldSuspend) => {
+       if (!accountNumber) {
+         setError('Missing account number for provider; billing rows must include account_number')
+         console.error('Missing account number for provider suspension request.')
          return
        }
  
--      if (suspendingByUserId[userId]) return
--
--      const url = shouldSuspend
--        ? `/admin/users/${userId}/suspend`
--        : `/admin/users/${userId}/unsuspend`
-+      if (suspendingByAccountNumber[accountNumber]) return
+       if (suspendingByAccountNumber[accountNumber]) return
  
        if (import.meta.env?.DEV) {
          console.log('[billing] toggle suspend click', {
--          userId,
-+          accountNumber,
+           accountNumber,
            currentSuspended: !shouldSuspend,
            nextSuspended: shouldSuspend,
          })
--        console.log('[billing] POST', url)
-+        console.log('[billing] POST', '/admin/providers/suspension')
+         console.log('[billing] POST', '/admin/providers/suspension')
        }
  
--      setSuspendingByUserId((prev) => ({ ...prev, [userId]: true }))
-+      setSuspendingByAccountNumber((prev) => ({ ...prev, [accountNumber]: true }))
+       setSuspendingByAccountNumber((prev) => ({ ...prev, [accountNumber]: true }))
  
        try {
--        // Admin suspension endpoint: POST /admin/users/:userId/suspend or /admin/users/:userId/unsuspend
--        const res = await apiClient.post(url)
--        const responseUser = res?.data?.user ?? res?.data
--        const hasServerSuspensionValue = typeof responseUser?.is_suspended === 'boolean'
--        const nextSuspended = hasServerSuspensionValue ? responseUser.is_suspended : shouldSuspend
-+        const res = await apiClient.post('/admin/providers/suspension', {
-+          account_number: accountNumber,
-+          is_suspended: shouldSuspend,
-+        })
-+        const responsePayload = res?.data
-+        const hasServerSuspensionValue = typeof responsePayload?.is_suspended === 'boolean'
-+        const nextSuspended = hasServerSuspensionValue ? responsePayload.is_suspended : shouldSuspend
- 
-         if (import.meta.env?.DEV) {
-           console.log('[billing] OK', res.status, res.data)
-         }
- 
-         setBillingRows((prev) =>
-           prev.map((row) =>
--            row.user_id === userId || row.userId === userId
-+            row.account_number === accountNumber
+@@ -563,81 +578,50 @@ function App() {
                ? { ...row, is_suspended: nextSuspended }
                : row
            )
@@ -152,41 +164,127 @@ index 1ce4f29c087088a8ad510d28f7d4f3b1c5c0a30b..2bc61644ae5a78f1f81ea7c52dbb252d
              || 'Failed to update provider account status.'
          )
        } finally {
--        setSuspendingByUserId((prev) => {
-+        setSuspendingByAccountNumber((prev) => {
+         setSuspendingByAccountNumber((prev) => {
            const next = { ...prev }
--          delete next[userId]
-+          delete next[accountNumber]
+           delete next[accountNumber]
            return next
          })
        }
      }
  
  
-     const markAll = async (isPaid) => {
-       if (!billingRows.length) return
-       setBulkUpdating(true)
-       setError('')
+-    const markAll = async (isPaid) => {
+-      if (!billingRows.length) return
+-      setBulkUpdating(true)
+-      setError('')
+-
+-      // Optimistic UI update
+-      setBillingRows((prev) => prev.map((row) => ({ ...row, is_paid: isPaid })))
+-
+-      try {
+-        await Promise.all(
+-          billingRows.map((row) =>
+-            apiClient.put(
+-              `/admin/billing/${row.provider_id}/status`,
+-              { is_paid: isPaid }
+-            )
+-          )
+-        )
+-
+-        // Single refetch = clean + guaranteed correct
+-        await fetchBillingRows()
+-      } catch (err) {
+-        logApiError(err)
+-        setError('Failed to update all provider statuses.')
+-        await fetchBillingRows()
+-      } finally {
+-        setBulkUpdating(false)
+-      }
+-    }
+-
+-
+-
+     const normalizedSearch = searchTerm.trim().toLowerCase()
  
-       // Optimistic UI update
-       setBillingRows((prev) => prev.map((row) => ({ ...row, is_paid: isPaid })))
+     const formatAmount = (value) =>
+       Number(value ?? 0).toLocaleString(undefined, {
+         minimumFractionDigits: 0,
+         maximumFractionDigits: 2,
+       })
+     const isWithinDateRange = (row) => {
+       if (!startDate && !endDate) return true
+       if (!row.last_due_date) return false
  
-       try {
-         await Promise.all(
-           billingRows.map((row) =>
-             apiClient.put(
-               `/admin/billing/${row.provider_id}/status`,
-               { is_paid: isPaid }
-             )
-           )
-         )
+       const dueDate = new Date(row.last_due_date)
+       if (Number.isNaN(dueDate.getTime())) return false
  
-         // Single refetch = clean + guaranteed correct
-@@ -715,78 +713,80 @@ function App() {
+       if (startDate) {
+         const start = new Date(startDate)
+         start.setHours(0, 0, 0, 0)
+         if (dueDate < start) return false
+       }
+ 
+       if (endDate) {
+         const end = new Date(endDate)
+         end.setHours(23, 59, 59, 999)
+         if (dueDate > end) return false
+       }
+@@ -659,54 +643,50 @@ function App() {
+       })
+       : billingRows
+ 
+     const showEmptyState = hasLoaded && !loading && !error && billingRows.length === 0
+     const showNoMatches = hasLoaded && !loading && !error && billingRows.length > 0 && filteredRows.length === 0
+ 
+     const formatDueDate = (value) => {
+       if (!value) return 'No bill yet'
+       const parsed = new Date(value)
+       if (Number.isNaN(parsed.getTime())) return 'Unknown date'
+       return parsed.toLocaleDateString(undefined, {
+         year: 'numeric',
+         month: 'short',
+         day: 'numeric',
+       })
+     }
+ 
+     return (
+       <div className="admin-page">
+         <div className="admin-header">
+           <div>
+             <p className="eyebrow">Billing</p>
+             <h1>Provider Billing</h1>
+             <p className="header-subtitle">Monitor outstanding balances, search by account or phone, and mark charges as paid.</p>
+           </div>
+-          <div className="button-row">
+-            <button className="ghost-btn" onClick={() => markAll(false)} disabled={bulkUpdating || loading}>Mark all unpaid</button>
+-            <button className="primary-btn" onClick={() => markAll(true)} disabled={bulkUpdating || loading}>Mark all paid</button>
+-          </div>
+         </div>
+ 
+         <div className="admin-card">
+           <div className="billing-toolbar">
+             <div className="billing-search">
+               <label htmlFor="billing-search-input">Filter by account or phone</label>
+               <input
+                 id="billing-search-input"
+                 type="search"
+                 placeholder="e.g. ACC-1234 or +592..."
+                 value={searchTerm}
+                 onChange={(e) => setSearchTerm(e.target.value)}
+               />
+             </div>
+             <div className="billing-date-range">
+               <label>Date range (last due date)</label>
+               <div className="billing-date-range__inputs">
+                 <input
                    type="date"
-                   value={endDate}
-                   onChange={(e) => setEndDate(e.target.value)}
-                   aria-label="End date"
+                   value={startDate}
+                   onChange={(e) => setStartDate(e.target.value)}
+                   aria-label="Start date"
+                 />
+                 <span aria-hidden="true">—</span>
+                 <input
+@@ -717,72 +697,76 @@ function App() {
                  />
                </div>
              </div>
@@ -208,11 +306,12 @@ index 1ce4f29c087088a8ad510d28f7d4f3b1c5c0a30b..2bc61644ae5a78f1f81ea7c52dbb252d
              </div>
              {filteredRows.map((row) => {
                const isSuspended = row.is_suspended ?? row.isSuspended ?? row.is_locked ?? false
--              const userId = row.user_id ?? row.userId
--              const isSuspensionLoading = Boolean(userId && suspendingByUserId[userId])
-+              const accountNumber = row.account_number
-+              const isSuspensionLoading = Boolean(
-+                accountNumber && suspendingByAccountNumber[accountNumber]
+               const accountNumber = row.account_number
+               const isSuspensionLoading = Boolean(
+                 accountNumber && suspendingByAccountNumber[accountNumber]
+               )
++              const isPaying = Boolean(
++                accountNumber && payingByAccountNumber[accountNumber]
 +              )
                return (
                <div key={row.provider_id} className="billing-table__row">
@@ -231,16 +330,21 @@ index 1ce4f29c087088a8ad510d28f7d4f3b1c5c0a30b..2bc61644ae5a78f1f81ea7c52dbb252d
                    {isSuspended ? 'Suspended' : 'Active'}
                  </span>
                  <div className="billing-actions">
-                   <button className="ghost-btn" onClick={() => updateProviderStatus(row.provider_id, false)} disabled={loading}>
-                     Unpaid
-                   </button>
-                   <button className="primary-btn" onClick={() => updateProviderStatus(row.provider_id, true)} disabled={loading}>
-                     Paid
+-                  <button className="ghost-btn" onClick={() => updateProviderStatus(row.provider_id, false)} disabled={loading}>
+-                    Unpaid
+-                  </button>
+-                  <button className="primary-btn" onClick={() => updateProviderStatus(row.provider_id, true)} disabled={loading}>
+-                    Paid
++                  <button
++                    className={row.is_paid ? 'ghost-btn' : 'primary-btn'}
++                    onClick={() => markProviderPaid(accountNumber)}
++                    disabled={loading || isPaying || row.is_paid}
++                  >
++                    {row.is_paid ? 'Paid' : 'Mark as paid'}
                    </button>
                    <button
                      className={isSuspended ? 'primary-btn' : 'ghost-btn'}
--                    onClick={() => toggleProviderSuspension(userId, !isSuspended)}
-+                    onClick={() => toggleProviderSuspension(accountNumber, !isSuspended)}
+                     onClick={() => toggleProviderSuspension(accountNumber, !isSuspended)}
                      disabled={isSuspensionLoading}
                    >
                      {isSuspended ? 'Reactivate account' : 'Suspend account'}
@@ -262,10 +366,6 @@ index 1ce4f29c087088a8ad510d28f7d4f3b1c5c0a30b..2bc61644ae5a78f1f81ea7c52dbb252d
      )
    }
  
-   const AdminLayout = () => {
-     const location = useLocation()
-     return (
-       <div className="admin-shell">
  
 EOF
 )

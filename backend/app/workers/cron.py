@@ -70,6 +70,28 @@ def auto_complete_finished_bookings_job():
         db.close()
 
 
+def ensure_monthly_billing_cycles_job():
+    """Ensure billing cycle rows exist for the current month."""
+    _ensure_tables_initialized()
+    db: Session = SessionLocal()
+    try:
+        cycle_month = crud.current_billing_cycle_month()
+        crud.ensure_billing_cycles_for_month(db, cycle_month)
+    finally:
+        db.close()
+
+
+def auto_suspend_unpaid_providers_job():
+    """Suspend providers who remain unpaid for the current cycle."""
+    _ensure_tables_initialized()
+    db: Session = SessionLocal()
+    try:
+        reference_date = now_guyana().date()
+        crud.auto_suspend_unpaid_providers(db, reference_date)
+    finally:
+        db.close()
+
+
 def registerCronJobs(scheduler):
     """
     Register all recurring scheduled tasks.
@@ -82,3 +104,9 @@ def registerCronJobs(scheduler):
 
     # Auto-complete finished bookings: run frequently to keep statuses current
     scheduler.add_job(auto_complete_finished_bookings_job, "interval", minutes=1)
+
+    # Monthly billing cycle reset: ensure rows exist for the new month
+    scheduler.add_job(ensure_monthly_billing_cycles_job, "cron", day=1, hour=0, minute=5)
+
+    # Auto-suspend unpaid providers on the 15th
+    scheduler.add_job(auto_suspend_unpaid_providers_job, "cron", day=15, hour=0, minute=5)

@@ -458,8 +458,8 @@ function App() {
     const [searchTerm, setSearchTerm] = React.useState('')
     const [startDate, setStartDate] = React.useState('')
     const [endDate, setEndDate] = React.useState('')
-    const [bulkUpdating, setBulkUpdating] = React.useState(false)
     const [suspendingByAccountNumber, setSuspendingByAccountNumber] = React.useState({})
+    const [payingByAccountNumber, setPayingByAccountNumber] = React.useState({})
 
     const fetchBillingRows = React.useCallback(async () => {
       setLoading(true)
@@ -499,27 +499,42 @@ function App() {
       fetchBillingRows()
     }, [fetchBillingRows])
 
-    const updateProviderStatus = async (providerId, isPaid) => {
-      // optimistic update (UI changes instantly)
-      setBillingRows((prev) =>
-        prev.map((row) =>
-          row.provider_id === providerId ? { ...row, is_paid: isPaid } : row
-        )
-      )
+    const markProviderPaid = async (accountNumber) => {
+      if (!accountNumber) {
+        setError('Missing account number for provider; billing rows must include account_number')
+        return
+      }
+
+      if (payingByAccountNumber[accountNumber]) return
+
+      setPayingByAccountNumber((prev) => ({ ...prev, [accountNumber]: true }))
+      setError('')
 
       try {
-        await apiClient.put(
-          `/admin/billing/${providerId}/status`,
-          { is_paid: isPaid }
+        const res = await apiClient.post(
+          `/admin/billing/${accountNumber}/mark-paid`
         )
-
-        // OPTIONAL: if you want truth from server, refetch after success
-        // await fetchBillingRows()
+        const payload = res?.data
+        setBillingRows((prev) =>
+          prev.map((row) =>
+            row.account_number === accountNumber
+              ? {
+                ...row,
+                is_paid: payload?.is_paid ?? true,
+                paid_at: payload?.paid_at ?? row.paid_at,
+              }
+              : row
+          )
+        )
       } catch (err) {
         logApiError(err)
         setError("Failed to update provider billing status.")
-        // rollback safely
-        fetchBillingRows()
+      } finally {
+        setPayingByAccountNumber((prev) => {
+          const next = { ...prev }
+          delete next[accountNumber]
+          return next
+        })
       }
     }
 
@@ -583,37 +598,6 @@ function App() {
         })
       }
     }
-
-
-    const markAll = async (isPaid) => {
-      if (!billingRows.length) return
-      setBulkUpdating(true)
-      setError('')
-
-      // Optimistic UI update
-      setBillingRows((prev) => prev.map((row) => ({ ...row, is_paid: isPaid })))
-
-      try {
-        await Promise.all(
-          billingRows.map((row) =>
-            apiClient.put(
-              `/admin/billing/${row.provider_id}/status`,
-              { is_paid: isPaid }
-            )
-          )
-        )
-
-        // Single refetch = clean + guaranteed correct
-        await fetchBillingRows()
-      } catch (err) {
-        logApiError(err)
-        setError('Failed to update all provider statuses.')
-        await fetchBillingRows()
-      } finally {
-        setBulkUpdating(false)
-      }
-    }
-
 
 
     const normalizedSearch = searchTerm.trim().toLowerCase()
@@ -681,10 +665,6 @@ function App() {
             <h1>Provider Billing</h1>
             <p className="header-subtitle">Monitor outstanding balances, search by account or phone, and mark charges as paid.</p>
           </div>
-          <div className="button-row">
-            <button className="ghost-btn" onClick={() => markAll(false)} disabled={bulkUpdating || loading}>Mark all unpaid</button>
-            <button className="primary-btn" onClick={() => markAll(true)} disabled={bulkUpdating || loading}>Mark all paid</button>
-          </div>
         </div>
 
         <div className="admin-card">
@@ -739,6 +719,9 @@ function App() {
               const isSuspensionLoading = Boolean(
                 accountNumber && suspendingByAccountNumber[accountNumber]
               )
+              const isPaying = Boolean(
+                accountNumber && payingByAccountNumber[accountNumber]
+              )
               return (
               <div key={row.provider_id} className="billing-table__row">
                 <div>
@@ -756,11 +739,12 @@ function App() {
                   {isSuspended ? 'Suspended' : 'Active'}
                 </span>
                 <div className="billing-actions">
-                  <button className="ghost-btn" onClick={() => updateProviderStatus(row.provider_id, false)} disabled={loading}>
-                    Unpaid
-                  </button>
-                  <button className="primary-btn" onClick={() => updateProviderStatus(row.provider_id, true)} disabled={loading}>
-                    Paid
+                  <button
+                    className={row.is_paid ? 'ghost-btn' : 'primary-btn'}
+                    onClick={() => markProviderPaid(accountNumber)}
+                    disabled={loading || isPaying || row.is_paid}
+                  >
+                    {row.is_paid ? 'Paid' : 'Mark as paid'}
                   </button>
                   <button
                     className={isSuspended ? 'primary-btn' : 'ghost-btn'}

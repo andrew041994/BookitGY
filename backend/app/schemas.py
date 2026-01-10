@@ -196,11 +196,20 @@ class ProviderBillingRow(BaseModel):
     amount_due_gyd: float
     is_paid: bool
     is_locked: bool = False
+    is_suspended: bool = False
     last_due_date: Optional[datetime] = None
+    paid_at: Optional[datetime] = None
 
 
 class BillingStatusUpdate(BaseModel):
     is_paid: bool
+
+
+class BillingCycleStatusOut(BaseModel):
+    account_number: str
+    cycle_month: date
+    is_paid: bool
+    paid_at: Optional[datetime] = None
 
 
 class BillOut(BaseModel):

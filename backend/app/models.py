@@ -124,6 +124,14 @@ class BillCredit(Base):
     amount_gyd = Column(Numeric(10, 2), default=0)
     created_at = Column(DateTime, default=now_guyana)
 
+
+class BillingCycle(Base):
+    __tablename__ = "billing_cycles"
+    account_number = Column(String, primary_key=True)
+    cycle_month = Column(Date, primary_key=True)
+    is_paid = Column(Boolean, default=False)
+    paid_at = Column(DateTime(timezone=True), nullable=True)
+
 class Promotion(Base):
     __tablename__ = "promotions"
     id = Column(Integer, primary_key=True, index=True)

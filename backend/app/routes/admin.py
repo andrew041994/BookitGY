@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app import crud, schemas, models
+from app.utils.email import send_billing_paid_email
 from app.database import get_db
 from app.security import get_current_user_from_header
 
@@ -123,6 +124,43 @@ def list_provider_billing(
     _: models.User = Depends(_require_admin),
 ):
     return crud.list_provider_billing_rows(db)
+
+
+@router.post(
+    "/billing/{account_number}/mark-paid",
+    response_model=schemas.BillingCycleStatusOut,
+)
+def mark_billing_cycle_paid(
+    account_number: str,
+    db: Session = Depends(get_db),
+    _: models.User = Depends(_require_admin),
+):
+    row = (
+        db.query(models.Provider, models.User)
+        .join(models.User, models.Provider.user_id == models.User.id)
+        .filter(models.Provider.account_number == account_number)
+        .first()
+    )
+
+    if not row:
+        raise HTTPException(status_code=404, detail="Provider not found")
+
+    provider, user = row
+    cycle_month = crud.current_billing_cycle_month()
+    billing_cycle = crud.mark_billing_cycle_paid(
+        db,
+        account_number=provider.account_number,
+        cycle_month=cycle_month,
+        provider_user=user,
+        send_email=send_billing_paid_email,
+    )
+
+    return {
+        "account_number": provider.account_number,
+        "cycle_month": billing_cycle.cycle_month,
+        "is_paid": billing_cycle.is_paid,
+        "paid_at": billing_cycle.paid_at,
+    }
 
 
 @router.put(
