@@ -22,6 +22,9 @@ def _send_email(message: Mail, error_detail: str) -> None:
     try:
         client = SendGridAPIClient(settings.SENDGRID_API_KEY)
         response = client.send(message)
+        print("[EMAIL] sendgrid status:", response.status_code)
+        print("[EMAIL] sendgrid body:", response.body)
+        print("[EMAIL] sendgrid headers:", response.headers)
     except Exception as exc:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -37,9 +40,7 @@ def _send_email(message: Mail, error_detail: str) -> None:
 
 def send_verification_email(to_email: str, verification_link: str) -> None:
     _ensure_email_configured()
-    print(f"[EMAIL] Sending verification email")
-
-
+    print(f"[EMAIL] Sending verification email to {to_email}")
     subject = "Verify your BookitGY email"
     content = (
         "Welcome to BookitGY!\n\n"
