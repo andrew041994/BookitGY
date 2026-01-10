@@ -1,266 +1,87 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
-diff --git a/frontend/src/main.jsx b/frontend/src/main.jsx
-index 8d615f48726971df91356aef4fb8c4785654cf84..1ce4f29c087088a8ad510d28f7d4f3b1c5c0a30b 100644
---- a/frontend/src/main.jsx
-+++ b/frontend/src/main.jsx
-@@ -437,50 +437,51 @@ function App() {
-               Demo login: <strong>customer@guyana.com</strong> / <strong>pass</strong>
-             </p>
-           )}
-         </div>
-       </div>
-     </div>
-   )
+diff --git a/backend/app/routes/admin.py b/backend/app/routes/admin.py
+index 456ef2d19574b5cdeb03b1e75f135c46848fcb3c..2f586f518bbc0a4d65c4d095a6e24fd477eaae8a 100644
+--- a/backend/app/routes/admin.py
++++ b/backend/app/routes/admin.py
+@@ -37,50 +37,78 @@ def update_service_charge(
  
-   const ProtectedRoute = ({ children }) => {
-     const location = useLocation()
-     if (!token) {
-       return <Navigate to="/login" replace state={{ from: location }} />
-     }
-     return children
-   }
- 
-   const AdminBilling = () => {
-     const [billingRows, setBillingRows] = React.useState([])
-     const [loading, setLoading] = React.useState(false)
-     const [error, setError] = React.useState('')
-     const [hasLoaded, setHasLoaded] = React.useState(false)
-     const [searchTerm, setSearchTerm] = React.useState('')
-     const [startDate, setStartDate] = React.useState('')
-     const [endDate, setEndDate] = React.useState('')
-     const [bulkUpdating, setBulkUpdating] = React.useState(false)
-+    const [suspendingByUserId, setSuspendingByUserId] = React.useState({})
- 
-     const fetchBillingRows = React.useCallback(async () => {
-       setLoading(true)
-       setError('')
-       try {
-         const res = await apiClient.get('/admin/billing')
-         const responseData = res.data
-         const hasValidRows =
-           Array.isArray(responseData) ||
-           Array.isArray(responseData?.providers) ||
-           Array.isArray(responseData?.data)
-         const responseRows = Array.isArray(responseData)
-           ? responseData
-           : Array.isArray(responseData?.providers)
-             ? responseData.providers
-             : Array.isArray(responseData?.data)
-               ? responseData.data
-               : []
- 
-         if (!hasValidRows) {
-           setError('Unable to load provider billing details. Please refresh and try again.')
-           setBillingRows([])
-           return
-         }
-         setBillingRows(responseRows)
-@@ -503,76 +504,107 @@ function App() {
-       setBillingRows((prev) =>
-         prev.map((row) =>
-           row.provider_id === providerId ? { ...row, is_paid: isPaid } : row
-         )
-       )
- 
-       try {
-         await apiClient.put(
-           `/admin/billing/${providerId}/status`,
-           { is_paid: isPaid }
-         )
- 
-         // OPTIONAL: if you want truth from server, refetch after success
-         // await fetchBillingRows()
-       } catch (err) {
-         logApiError(err)
-         setError("Failed to update provider billing status.")
-         // rollback safely
-         fetchBillingRows()
-       }
-     }
+ @router.post("/users/{user_id}/suspend", response_model=schemas.UserSuspensionOut)
+ def suspend_user(
+     user_id: int,
+     db: Session = Depends(get_db),
+     _: models.User = Depends(_require_admin),
+ ):
+     user = crud.set_user_suspension(db, user_id, True)
+     if not user:
+         raise HTTPException(status_code=404, detail="User not found")
+     return user
  
  
-     const toggleProviderSuspension = async (userId, shouldSuspend) => {
-       if (!userId) {
--        setError('Unable to update provider account status. Missing user id.')
--        console.error('Missing user id for provider suspension request.')
-+        setError('Missing user_id for provider; backend /admin/billing must return user_id')
-+        console.error('Missing user_id for provider suspension request.')
-         return
-       }
+ @router.post("/users/{user_id}/unsuspend", response_model=schemas.UserSuspensionOut)
+ def unsuspend_user(
+     user_id: int,
+     db: Session = Depends(get_db),
+     _: models.User = Depends(_require_admin),
+ ):
+     user = crud.set_user_suspension(db, user_id, False)
+     if not user:
+         raise HTTPException(status_code=404, detail="User not found")
+     return user
  
--      setBillingRows((prev) =>
--        prev.map((row) =>
--          row.user_id === userId || row.userId === userId
--            ? { ...row, is_suspended: shouldSuspend }
--            : row
--        )
--      )
-+      if (suspendingByUserId[userId]) return
+ 
++@router.post("/providers/suspension", response_model=schemas.ProviderSuspensionOut)
++def update_provider_suspension(
++    payload: schemas.ProviderSuspensionUpdate,
++    db: Session = Depends(get_db),
++    _: models.User = Depends(_require_admin),
++):
++    provider = (
++        db.query(models.Provider)
++        .filter(models.Provider.account_number == payload.account_number)
++        .first()
++    )
 +
-+      const url = shouldSuspend
-+        ? `/admin/users/${userId}/suspend`
-+        : `/admin/users/${userId}/unsuspend`
-+
-+      if (import.meta.env?.DEV) {
-+        console.log('[billing] toggle suspend click', {
-+          userId,
-+          currentSuspended: !shouldSuspend,
-+          nextSuspended: shouldSuspend,
-+        })
-+        console.log('[billing] POST', url)
-+      }
-+
-+      setSuspendingByUserId((prev) => ({ ...prev, [userId]: true }))
- 
-       try {
-         // Admin suspension endpoint: POST /admin/users/:userId/suspend or /admin/users/:userId/unsuspend
--        if (shouldSuspend) {
--          await apiClient.post(`/admin/users/${userId}/suspend`)
--        } else {
--          await apiClient.post(`/admin/users/${userId}/unsuspend`)
-+        const res = await apiClient.post(url)
-+        const responseUser = res?.data?.user ?? res?.data
-+        const hasServerSuspensionValue = typeof responseUser?.is_suspended === 'boolean'
-+        const nextSuspended = hasServerSuspensionValue ? responseUser.is_suspended : shouldSuspend
-+
-+        if (import.meta.env?.DEV) {
-+          console.log('[billing] OK', res.status, res.data)
-         }
- 
--        await fetchBillingRows()
-+        setBillingRows((prev) =>
-+          prev.map((row) =>
-+            row.user_id === userId || row.userId === userId
-+              ? { ...row, is_suspended: nextSuspended }
-+              : row
-+          )
++    if not provider:
++        raise HTTPException(
++            status_code=404,
++            detail="Provider not found for account number",
 +        )
 +
-+        if (!hasServerSuspensionValue) {
-+          await fetchBillingRows()
-+        }
-       } catch (err) {
-         logApiError(err)
--        setError('Failed to update provider account status.')
--        fetchBillingRows()
-+        setError(
-+          err?.response?.data?.detail
-+            || err?.response?.data?.message
-+            || 'Failed to update provider account status.'
++    user = crud.set_user_suspension(db, provider.user_id, payload.is_suspended)
++    if not user:
++        raise HTTPException(
++            status_code=404,
++            detail="User not found for provider account number",
 +        )
-+      } finally {
-+        setSuspendingByUserId((prev) => {
-+          const next = { ...prev }
-+          delete next[userId]
-+          return next
-+        })
-       }
-     }
- 
- 
-     const markAll = async (isPaid) => {
-       if (!billingRows.length) return
-       setBulkUpdating(true)
-       setError('')
- 
-       // Optimistic UI update
-       setBillingRows((prev) => prev.map((row) => ({ ...row, is_paid: isPaid })))
- 
-       try {
-         await Promise.all(
-           billingRows.map((row) =>
-             apiClient.put(
-               `/admin/billing/${row.provider_id}/status`,
-               { is_paid: isPaid }
-             )
-           )
-         )
- 
-         // Single refetch = clean + guaranteed correct
-         await fetchBillingRows()
-       } catch (err) {
-@@ -683,78 +715,79 @@ function App() {
-                   type="date"
-                   value={endDate}
-                   onChange={(e) => setEndDate(e.target.value)}
-                   aria-label="End date"
-                 />
-               </div>
-             </div>
-             {loading && <span className="muted">Loading providers…</span>}
-           </div>
- 
-           {error && <p className="form-error">{error}</p>}
- 
-           <div className="billing-table">
-             <div className="billing-table__head">
-               <span>Name</span>
-               <span>Account number</span>
-               <span>Phone number</span>
-               <span>Amount due (platform fees)</span>
-               <span>Last due date</span>
-               <span>Status</span>
-               <span>Account status</span>
-               <span className="sr-only">Actions</span>
-             </div>
-             {filteredRows.map((row) => {
-               const isSuspended = row.is_suspended ?? row.isSuspended ?? row.is_locked ?? false
--              const userId = row.user_id ?? row.userId ?? row.provider_id
-+              const userId = row.user_id ?? row.userId
-+              const isSuspensionLoading = Boolean(userId && suspendingByUserId[userId])
-               return (
-               <div key={row.provider_id} className="billing-table__row">
-                 <div>
-                   <p className="billing-provider">{row.name || 'Unnamed provider'}</p>
-                   <p className="muted">ID #{row.provider_id}</p>
-                 </div>
-                 <strong>{row.account_number || 'N/A'}</strong>
-                 <span>{row.phone || 'No phone added'}</span>
-                 <strong>{formatAmount(row.amount_due_gyd)} GYD</strong>
-                 <span>{formatDueDate(row.last_due_date)}</span>
-                 <span className={row.is_paid ? 'status-pill paid' : 'status-pill unpaid'}>
-                   {row.is_paid ? 'Paid' : 'Unpaid'}
-                 </span>
-                 <span className={isSuspended ? 'status-pill unpaid' : 'status-pill paid'}>
-                   {isSuspended ? 'Suspended' : 'Active'}
-                 </span>
-                 <div className="billing-actions">
-                   <button className="ghost-btn" onClick={() => updateProviderStatus(row.provider_id, false)} disabled={loading}>
-                     Unpaid
-                   </button>
-                   <button className="primary-btn" onClick={() => updateProviderStatus(row.provider_id, true)} disabled={loading}>
-                     Paid
-                   </button>
-                   <button
-                     className={isSuspended ? 'primary-btn' : 'ghost-btn'}
-                     onClick={() => toggleProviderSuspension(userId, !isSuspended)}
--                    disabled={loading}
-+                    disabled={isSuspensionLoading}
-                   >
-                     {isSuspended ? 'Reactivate account' : 'Suspend account'}
-                   </button>
-                 </div>
-               </div>
-             )})}
- 
-             {showNoMatches && (
-               <p className="muted">No providers match your current filters.</p>
-             )}
- 
-             {showEmptyState && (
-               <p className="muted">No providers match that account, phone, or date range.</p>
-             )}
-           </div>
-         </div>
-       </div>
++
++    return {"account_number": provider.account_number, "is_suspended": user.is_suspended}
++
++
+ @router.put(
+     "/promotions/{account_number}",
+     response_model=schemas.BillCreditOut,
+ )
+ def apply_bill_credit(
+     account_number: str,
+     payload: schemas.BillCreditUpdate,
+     db: Session = Depends(get_db),
+     _: models.User = Depends(_require_admin),
+ ):
+     provider = (
+         db.query(models.Provider)
+         .filter(models.Provider.account_number == account_number)
+         .first()
      )
-   }
  
-   const AdminLayout = () => {
-     const location = useLocation()
-     return (
-       <div className="admin-shell">
-         <aside className="admin-sidebar">
+     if not provider:
+         raise HTTPException(status_code=404, detail="Provider not found")
+ 
+     credit = crud.create_bill_credit(db, provider.id, payload.credit_gyd)
+     balance = crud.get_provider_credit_balance(db, provider.id)
+ 
+     return {
+         "provider_id": provider.id,
+         "account_number": provider.account_number,
  
 EOF
 )

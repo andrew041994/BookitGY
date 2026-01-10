@@ -59,6 +59,34 @@ def unsuspend_user(
     return user
 
 
+@router.post("/providers/suspension", response_model=schemas.ProviderSuspensionOut)
+def update_provider_suspension(
+    payload: schemas.ProviderSuspensionUpdate,
+    db: Session = Depends(get_db),
+    _: models.User = Depends(_require_admin),
+):
+    provider = (
+        db.query(models.Provider)
+        .filter(models.Provider.account_number == payload.account_number)
+        .first()
+    )
+
+    if not provider:
+        raise HTTPException(
+            status_code=404,
+            detail="Provider not found for account number",
+        )
+
+    user = crud.set_user_suspension(db, provider.user_id, payload.is_suspended)
+    if not user:
+        raise HTTPException(
+            status_code=404,
+            detail="User not found for provider account number",
+        )
+
+    return {"account_number": provider.account_number, "is_suspended": user.is_suspended}
+
+
 @router.put(
     "/promotions/{account_number}",
     response_model=schemas.BillCreditOut,
