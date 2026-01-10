@@ -122,15 +122,14 @@ def _create_access_token(subject: str) -> str:
     )
 
 def _create_email_verification_token(email: str) -> str:
-    aware_now = datetime.now(GUYANA_TIMEZONE)
-    now = aware_now.replace(tzinfo=None)
-    expire = now + timedelta(minutes=settings.EMAIL_TOKEN_EXPIRES_MINUTES)
+    now = datetime.now(timezone.utc)
+    exp = now + timedelta(minutes=settings.EMAIL_TOKEN_EXPIRES_MINUTES)
 
     payload = {
         "sub": email,
         "type": "email_verification",
-        "exp": expire,
-        "iat": int(aware_now.timestamp()),
+        "iat": int(now.timestamp()),
+        "exp": int(exp.timestamp()),
         "nonce": secrets.token_urlsafe(8),
     }
 
@@ -138,6 +137,7 @@ def _create_email_verification_token(email: str) -> str:
         payload,
         settings.EMAIL_TOKEN_SECRET,
         algorithm=settings.JWT_ALGORITHM,
+    
     )
 
 
