@@ -99,6 +99,19 @@ class UserSuspensionOut(BaseModel):
     class Config:
         from_attributes = True
 
+
+class ProviderSuspensionUpdate(BaseModel):
+    account_number: str
+    is_suspended: bool
+
+
+class ProviderSuspensionOut(BaseModel):
+    account_number: str
+    is_suspended: bool
+
+    class Config:
+        from_attributes = True
+
 class ServiceCreate(BaseModel):
     name: str
     description: str

@@ -459,7 +459,7 @@ function App() {
     const [startDate, setStartDate] = React.useState('')
     const [endDate, setEndDate] = React.useState('')
     const [bulkUpdating, setBulkUpdating] = React.useState(false)
-    const [suspendingByUserId, setSuspendingByUserId] = React.useState({})
+    const [suspendingByAccountNumber, setSuspendingByAccountNumber] = React.useState({})
 
     const fetchBillingRows = React.useCallback(async () => {
       setLoading(true)
@@ -524,36 +524,34 @@ function App() {
     }
 
 
-    const toggleProviderSuspension = async (userId, shouldSuspend) => {
-      if (!userId) {
-        setError('Missing user_id for provider; backend /admin/billing must return user_id')
-        console.error('Missing user_id for provider suspension request.')
+    const toggleProviderSuspension = async (accountNumber, shouldSuspend) => {
+      if (!accountNumber) {
+        setError('Missing account number for provider; billing rows must include account_number')
+        console.error('Missing account number for provider suspension request.')
         return
       }
 
-      if (suspendingByUserId[userId]) return
-
-      const url = shouldSuspend
-        ? `/admin/users/${userId}/suspend`
-        : `/admin/users/${userId}/unsuspend`
+      if (suspendingByAccountNumber[accountNumber]) return
 
       if (import.meta.env?.DEV) {
         console.log('[billing] toggle suspend click', {
-          userId,
+          accountNumber,
           currentSuspended: !shouldSuspend,
           nextSuspended: shouldSuspend,
         })
-        console.log('[billing] POST', url)
+        console.log('[billing] POST', '/admin/providers/suspension')
       }
 
-      setSuspendingByUserId((prev) => ({ ...prev, [userId]: true }))
+      setSuspendingByAccountNumber((prev) => ({ ...prev, [accountNumber]: true }))
 
       try {
-        // Admin suspension endpoint: POST /admin/users/:userId/suspend or /admin/users/:userId/unsuspend
-        const res = await apiClient.post(url)
-        const responseUser = res?.data?.user ?? res?.data
-        const hasServerSuspensionValue = typeof responseUser?.is_suspended === 'boolean'
-        const nextSuspended = hasServerSuspensionValue ? responseUser.is_suspended : shouldSuspend
+        const res = await apiClient.post('/admin/providers/suspension', {
+          account_number: accountNumber,
+          is_suspended: shouldSuspend,
+        })
+        const responsePayload = res?.data
+        const hasServerSuspensionValue = typeof responsePayload?.is_suspended === 'boolean'
+        const nextSuspended = hasServerSuspensionValue ? responsePayload.is_suspended : shouldSuspend
 
         if (import.meta.env?.DEV) {
           console.log('[billing] OK', res.status, res.data)
@@ -561,7 +559,7 @@ function App() {
 
         setBillingRows((prev) =>
           prev.map((row) =>
-            row.user_id === userId || row.userId === userId
+            row.account_number === accountNumber
               ? { ...row, is_suspended: nextSuspended }
               : row
           )
@@ -578,9 +576,9 @@ function App() {
             || 'Failed to update provider account status.'
         )
       } finally {
-        setSuspendingByUserId((prev) => {
+        setSuspendingByAccountNumber((prev) => {
           const next = { ...prev }
-          delete next[userId]
+          delete next[accountNumber]
           return next
         })
       }
@@ -737,8 +735,10 @@ function App() {
             </div>
             {filteredRows.map((row) => {
               const isSuspended = row.is_suspended ?? row.isSuspended ?? row.is_locked ?? false
-              const userId = row.user_id ?? row.userId
-              const isSuspensionLoading = Boolean(userId && suspendingByUserId[userId])
+              const accountNumber = row.account_number
+              const isSuspensionLoading = Boolean(
+                accountNumber && suspendingByAccountNumber[accountNumber]
+              )
               return (
               <div key={row.provider_id} className="billing-table__row">
                 <div>
@@ -764,7 +764,7 @@ function App() {
                   </button>
                   <button
                     className={isSuspended ? 'primary-btn' : 'ghost-btn'}
-                    onClick={() => toggleProviderSuspension(userId, !isSuspended)}
+                    onClick={() => toggleProviderSuspension(accountNumber, !isSuspended)}
                     disabled={isSuspensionLoading}
                   >
                     {isSuspended ? 'Reactivate account' : 'Suspend account'}
