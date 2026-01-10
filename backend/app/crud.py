@@ -27,6 +27,9 @@ pwd_context = CryptContext(schemes=["pbkdf2_sha256"], deprecated="auto")
 
 EXPO_PUSH_URL = "https://exp.host/--/api/v2/push/send"
 DEFAULT_SERVICE_CHARGE_PERCENTAGE = Decimal("10.0")
+SUSPENDED_PROVIDER_MESSAGE = (
+    "Provider account is suspended and cannot accept bookings."
+)
 
 
 def normalized_booking_status_value(status: str | None) -> str:
@@ -172,6 +175,7 @@ def list_providers(db: Session, profession: Optional[str] = None):
         results.append(
             {
                 "provider_id": provider.id,
+                "user_id": user.id,
                 "name": get_display_name(user),
                 "location": user.location or "",
                 "lat": user.lat,
@@ -180,6 +184,7 @@ def list_providers(db: Session, profession: Optional[str] = None):
                 "professions": professions,
                 "services": services,
                 "avatar_url": provider.avatar_url,
+                "is_suspended": bool(getattr(user, "is_suspended", False)),
             }
         )
 
@@ -437,6 +442,33 @@ def get_user_by_id(db: Session, user_id: int):
     return db.query(models.User).filter(models.User.id == user_id).first()
 
 
+def set_user_suspension(
+    db: Session,
+    user_id: int,
+    is_suspended: bool,
+) -> Optional[models.User]:
+    user = db.query(models.User).filter(models.User.id == user_id).first()
+    if not user:
+        return None
+
+    user.is_suspended = is_suspended
+    db.commit()
+    db.refresh(user)
+    return user
+
+
+def assert_provider_not_suspended(
+    db: Session,
+    provider_user_id: int,
+) -> models.User:
+    user = db.query(models.User).filter(models.User.id == provider_user_id).first()
+    if not user:
+        raise ValueError("Provider user not found")
+    if getattr(user, "is_suspended", False):
+        raise PermissionError(SUSPENDED_PROVIDER_MESSAGE)
+    return user
+
+
 def get_user_by_username(db: Session, username: str):
     """Return user by username, or None if not found."""
     normalized = normalize_username(username)
@@ -685,6 +717,8 @@ def create_booking(
     )
     if not provider_user:
         raise ValueError("Provider user not found")
+
+    assert_provider_not_suspended(db, provider_user.id)
 
     # Current local time (Guyana, naive to match DB usage)
     now = now_guyana()
@@ -1150,12 +1184,14 @@ def _provider_billing_row(db: Session, provider: models.Provider, user: models.U
 
     return {
         "provider_id": provider.id,
+        "user_id": user.id,
         "name": get_display_name(user),
         "account_number": provider.account_number or "",
         "phone": user.phone or "",
         "amount_due_gyd": float(amount_due or 0.0),
         "is_paid": is_paid,
         "is_locked": bool(getattr(provider, "is_locked", False)),
+        "is_suspended": bool(getattr(user, "is_suspended", False)),
         "last_due_date": latest_bill.due_date if latest_bill else None,
     }
 
@@ -1401,6 +1437,45 @@ def list_bookings_for_customer(db: Session, customer_id: int):
 
     return results
 
+
+
+def confirm_booking_for_provider(
+    db: Session, booking_id: int, provider_id: int
+) -> bool:
+    booking = (
+        db.query(models.Booking)
+        .join(models.Service, models.Booking.service_id == models.Service.id)
+        .join(models.Provider, models.Service.provider_id == models.Provider.id)
+        .filter(
+            models.Booking.id == booking_id,
+            models.Provider.id == provider_id,
+        )
+        .first()
+    )
+
+    if not booking:
+        return False
+
+    provider = (
+        db.query(models.Provider)
+        .filter(models.Provider.id == provider_id)
+        .first()
+    )
+    if not provider:
+        return False
+
+    assert_provider_not_suspended(db, provider.user_id)
+
+    normalized_status = normalized_booking_status_value(booking.status)
+    if normalized_status == "cancelled":
+        return False
+
+    if normalized_status != "confirmed":
+        booking.status = "confirmed"
+        db.commit()
+        db.refresh(booking)
+
+    return True
 
 
 def cancel_booking_for_customer(

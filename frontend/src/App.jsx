@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { BrowserRouter, Routes, Route, Link, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { apiClient, logApiError } from './lib/api';
 
@@ -8,6 +8,7 @@ const SERVICE_CHARGE_STORAGE_KEY = 'bookitgy.service_charge_rate';
 const sampleProviders = [
   {
     id: 1,
+    userId: 1,
     name: 'Ariana De Freitas',
     accountNumber: 'ACC-0001',
     phoneNumber: '592-600-1001',
@@ -16,7 +17,7 @@ const sampleProviders = [
     long: -58.155,
     outstanding: 32000,
     credit: 5000,
-    isLocked: false,
+    isSuspended: false,
     autoSuspended: false,
     lastActive: '2024-10-10',
     totalBookings: 42,
@@ -26,6 +27,7 @@ const sampleProviders = [
   },
   {
     id: 2,
+    userId: 2,
     name: 'Jamall Adams',
     accountNumber: 'ACC-0002',
     phoneNumber: '592-600-1002',
@@ -34,7 +36,7 @@ const sampleProviders = [
     long: -58.2439,
     outstanding: 18000,
     credit: 0,
-    isLocked: false,
+    isSuspended: false,
     autoSuspended: false,
     lastActive: '2024-09-28',
     totalBookings: 18,
@@ -44,6 +46,7 @@ const sampleProviders = [
   },
   {
     id: 3,
+    userId: 3,
     name: 'Kittisha Jones',
     accountNumber: 'ACC-0003',
     phoneNumber: '592-600-1003',
@@ -52,7 +55,7 @@ const sampleProviders = [
     long: -58.151,
     outstanding: 52000,
     credit: 15000,
-    isLocked: true,
+    isSuspended: true,
     autoSuspended: false,
     lastActive: '2024-08-30',
     totalBookings: 7,
@@ -62,6 +65,7 @@ const sampleProviders = [
   },
   {
     id: 4,
+    userId: 4,
     name: 'Linden Collective',
     accountNumber: 'ACC-0004',
     phoneNumber: '592-600-1004',
@@ -70,7 +74,7 @@ const sampleProviders = [
     long: -58.2705,
     outstanding: 12000,
     credit: 0,
-    isLocked: false,
+    isSuspended: false,
     autoSuspended: false,
     lastActive: '2024-10-11',
     totalBookings: 26,
@@ -161,42 +165,43 @@ function useBillingCore() {
     return () => clearInterval(interval);
   }, []);
 
-  useEffect(() => {
-    const fetchProviders = async () => {
-      try {
-        setLoadingProviders(true);
-        const res = await apiClient.get('/providers');
-        if (Array.isArray(res.data) && res.data.length) {
-          const normalized = res.data.map((p) => ({
-            id: p.provider_id || p.id,
-            name: p.name || 'Provider',
-            accountNumber: p.account_number || p.accountNumber || '—',
-            phoneNumber: p.phone || p.phone_number || '—',
-            location: p.location || 'Unknown area',
-            lat: p.lat,
-            long: p.long,
-            outstanding: Math.floor(Math.random() * 40000) + 5000,
-            credit: 0,
-            isLocked: false,
-            autoSuspended: false,
-            lastActive: '2024-10-10',
-            totalBookings: Math.floor(Math.random() * 40) + 5,
-            cancellations: Math.floor(Math.random() * 5),
-            noShows: Math.floor(Math.random() * 2),
-            services: p.services || [],
-          }));
-          setProviders(normalized);
-        }
-      } catch (e) {
-        logApiError(e);
-        console.log('Using sample providers', e.message);
-      } finally {
-        setLoadingProviders(false);
+  const fetchProviders = useCallback(async () => {
+    try {
+      setLoadingProviders(true);
+      const res = await apiClient.get('/providers');
+      if (Array.isArray(res.data) && res.data.length) {
+        const normalized = res.data.map((p) => ({
+          id: p.provider_id || p.id,
+          userId: p.user_id || p.userId,
+          name: p.name || 'Provider',
+          accountNumber: p.account_number || p.accountNumber || '—',
+          phoneNumber: p.phone || p.phone_number || '—',
+          location: p.location || 'Unknown area',
+          lat: p.lat,
+          long: p.long,
+          outstanding: Math.floor(Math.random() * 40000) + 5000,
+          credit: 0,
+          isSuspended: p.is_suspended ?? p.isSuspended ?? false,
+          autoSuspended: false,
+          lastActive: '2024-10-10',
+          totalBookings: Math.floor(Math.random() * 40) + 5,
+          cancellations: Math.floor(Math.random() * 5),
+          noShows: Math.floor(Math.random() * 2),
+          services: p.services || [],
+        }));
+        setProviders(normalized);
       }
-    };
-
-    fetchProviders();
+    } catch (e) {
+      logApiError(e);
+      console.log('Using sample providers', e.message);
+    } finally {
+      setLoadingProviders(false);
+    }
   }, []);
+
+  useEffect(() => {
+    fetchProviders();
+  }, [fetchProviders]);
 
   useEffect(() => {
     const fetchBilling = async () => {
@@ -210,6 +215,7 @@ function useBillingCore() {
             return {
               id: row.provider_id ?? row.id,
               providerId: row.provider_id ?? row.id,
+              userId: row.user_id ?? row.userId,
               providerName: row.name || 'Provider',
               accountNumber: row.account_number || row.accountNumber || '—',
               phoneNumber: row.phone || row.phone_number || '—',
@@ -217,6 +223,7 @@ function useBillingCore() {
               amount: Math.round(amount),
               baseServiceCost: 0,
               isPaid: !!row.is_paid,
+              isSuspended: row.is_suspended ?? row.isSuspended ?? false,
             };
           }),
         );
@@ -287,7 +294,8 @@ function useBillingCore() {
         providerName: providerById[charge.providerId]?.name || charge.providerName || 'Provider',
         accountNumber: providerById[charge.providerId]?.accountNumber || charge.accountNumber || '—',
         phoneNumber: providerById[charge.providerId]?.phoneNumber || charge.phoneNumber || '—',
-        isLocked: providerById[charge.providerId]?.isLocked || false,
+        userId: providerById[charge.providerId]?.userId || charge.userId,
+        isSuspended: providerById[charge.providerId]?.isSuspended ?? charge.isSuspended ?? false,
         autoSuspended: providerById[charge.providerId]?.autoSuspended || false,
         isCurrentCycle: charge.month === billingCycleStart,
       })),
@@ -305,13 +313,22 @@ function useBillingCore() {
     setCreditInputs((prev) => ({ ...prev, [providerId]: '' }));
   };
 
-  const toggleLock = (providerId) => {
-    setProviders((prev) => prev.map((p) => (p.id === providerId ? { ...p, isLocked: !p.isLocked } : p)));
-  };
-
-  const setProviderLockState = (providerId, locked) => {
-    setProviders((prev) => prev.map((p) => (p.id === providerId ? { ...p, isLocked: locked } : p)));
-  };
+  const setProviderSuspensionState = useCallback(
+    async (userId, suspended) => {
+      if (!userId) return;
+      try {
+        if (suspended) {
+          await apiClient.post(`/admin/users/${userId}/suspend`);
+        } else {
+          await apiClient.post(`/admin/users/${userId}/unsuspend`);
+        }
+        await fetchProviders();
+      } catch (e) {
+        logApiError(e);
+      }
+    },
+    [fetchProviders],
+  );
 
   const toggleChargeSelection = (chargeId) => {
     setSelectedChargeIds((prev) => (prev.includes(chargeId) ? prev.filter((id) => id !== chargeId) : [...prev, chargeId]));
@@ -349,11 +366,10 @@ function useBillingCore() {
     setCharges,
     setCreditInputs,
     setChargesPaidState,
+    setProviderSuspensionState,
     suspensionCutoffLabel,
     toggleAllChargesSelection,
     toggleChargeSelection,
-    toggleLock,
-    setProviderLockState,
     updateSingleChargeStatus,
   };
 }
@@ -601,7 +617,7 @@ function useLeafletMap(providers) {
         providers
           .filter((p) => p.lat && p.long)
           .forEach((provider) => {
-            const suspended = provider.isLocked || provider.autoSuspended;
+            const suspended = provider.isSuspended || provider.autoSuspended;
             const statusLabel = provider.autoSuspended ? 'Suspended (Unpaid)' : suspended ? 'Suspended' : 'Active';
             const marker = window.L.marker([provider.lat, provider.long]).addTo(mapInstance);
             marker.bindPopup(
@@ -637,7 +653,7 @@ function BillingActionsPanel({
   updateSingleChargeStatus,
   billingCycleStart,
   suspensionCutoffLabel,
-  setProviderLockState,
+  setProviderSuspensionState,
 }) {
   const [searchTerm, setSearchTerm] = useState('');
 
@@ -694,13 +710,13 @@ function BillingActionsPanel({
               const statusLabel = charge.isPaid ? 'Paid' : charge.isCurrentCycle ? 'Unpaid (current)' : 'Unpaid';
               const badgeBackground = charge.isPaid ? '#dcfce7' : charge.isCurrentCycle ? '#fee2e2' : '#fef9c3';
               const badgeColor = charge.isPaid ? '#15803d' : charge.isCurrentCycle ? '#b91c1c' : '#92400e';
-              const suspended = charge.isLocked || charge.autoSuspended;
+              const suspended = charge.isSuspended || charge.autoSuspended;
               const accountStatusLabel = charge.autoSuspended
                 ? 'Suspended (Unpaid)'
-                : charge.isLocked
+                : charge.isSuspended
                   ? 'Suspended by Admin'
                   : 'Active';
-              const suspendDisabled = charge.autoSuspended && !charge.isLocked;
+              const suspendDisabled = charge.autoSuspended && !charge.isSuspended;
 
               return (
                 <tr key={charge.id} style={{ borderBottom: '1px solid #e5e7eb' }}>
@@ -752,20 +768,20 @@ function BillingActionsPanel({
                         Mark Unpaid
                       </button>
                       <button
-                        onClick={() => setProviderLockState(charge.providerId, !charge.isLocked)}
+                        onClick={() => setProviderSuspensionState(charge.userId, !charge.isSuspended)}
                         disabled={suspendDisabled}
                         style={{
                           padding: '8px 12px',
                           borderRadius: '8px',
                           border: '1px solid #e5e7eb',
-                          background: charge.isLocked ? '#ecfdf3' : '#fee2e2',
-                          color: charge.isLocked ? '#15803d' : '#b91c1c',
+                          background: charge.isSuspended ? '#ecfdf3' : '#fee2e2',
+                          color: charge.isSuspended ? '#15803d' : '#b91c1c',
                           fontWeight: 700,
                           opacity: suspendDisabled ? 0.6 : 1,
                           cursor: suspendDisabled ? 'not-allowed' : 'pointer',
                         }}
                       >
-                        {charge.isLocked ? 'Restore account' : 'Suspend account'}
+                        {charge.isSuspended ? 'Reactivate account' : 'Suspend account'}
                       </button>
                     </div>
                     <div style={{ color: '#6b7280', fontSize: '12px', marginTop: '6px', maxWidth: '320px' }}>
@@ -801,7 +817,7 @@ function BillingActionsPanel({
   );
 }
 
-function ProviderAccountsTable({ providers, creditInputs, setCreditInputs, applyCredit, toggleLock }) {
+function ProviderAccountsTable({ providers, creditInputs, setCreditInputs, applyCredit, setProviderSuspensionState }) {
   return (
     <div style={{ overflowX: 'auto' }}>
       <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '3000px' }}>
@@ -817,9 +833,9 @@ function ProviderAccountsTable({ providers, creditInputs, setCreditInputs, apply
         </thead>
         <tbody>
           {providers.map((provider) => {
-            const suspended = provider.isLocked || provider.autoSuspended;
-            const statusLabel = provider.autoSuspended ? 'Suspended (Unpaid)' : provider.isLocked ? 'Suspended' : 'Active';
-            const toggleDisabled = provider.autoSuspended && !provider.isLocked;
+            const suspended = provider.isSuspended || provider.autoSuspended;
+            const statusLabel = provider.autoSuspended ? 'Suspended (Unpaid)' : provider.isSuspended ? 'Suspended' : 'Active';
+            const toggleDisabled = provider.autoSuspended && !provider.isSuspended;
 
             return (
               <tr key={provider.id} style={{ borderBottom: '1px solid #e5e7eb' }}>
@@ -869,7 +885,7 @@ function ProviderAccountsTable({ providers, creditInputs, setCreditInputs, apply
                 </td>
                 <td style={{ padding: '10px' }}>
                   <button
-                    onClick={() => toggleLock(provider.id)}
+                    onClick={() => setProviderSuspensionState(provider.userId, !provider.isSuspended)}
                     disabled={toggleDisabled}
                     style={{
                       padding: '8px 12px',
@@ -882,7 +898,7 @@ function ProviderAccountsTable({ providers, creditInputs, setCreditInputs, apply
                       cursor: toggleDisabled ? 'not-allowed' : 'pointer',
                     }}
                   >
-                    {provider.isLocked ? 'Unlock' : suspended ? 'Locked' : 'Lock'}
+                    {provider.isSuspended ? 'Reactivate' : 'Suspend'}
                   </button>
                   {toggleDisabled && (
                     <div style={{ fontSize: '12px', color: '#6b7280', marginTop: '4px' }}>
@@ -912,11 +928,10 @@ function AdminDashboard() {
     setCharges,
     setCreditInputs,
     setChargesPaidState,
+    setProviderSuspensionState,
     suspensionCutoffLabel,
     toggleAllChargesSelection,
     toggleChargeSelection,
-    toggleLock,
-    setProviderLockState,
     updateSingleChargeStatus,
   } = useBillingCore();
 
@@ -1085,7 +1100,7 @@ function AdminDashboard() {
           toggleAllChargesSelection={toggleAllChargesSelection}
           toggleChargeSelection={toggleChargeSelection}
           updateSingleChargeStatus={updateSingleChargeStatus}
-          setProviderLockState={setProviderLockState}
+          setProviderSuspensionState={setProviderSuspensionState}
         />
       </ReportSection>
 
@@ -1095,7 +1110,7 @@ function AdminDashboard() {
           creditInputs={creditInputs}
           providers={providers}
           setCreditInputs={setCreditInputs}
-          toggleLock={toggleLock}
+          setProviderSuspensionState={setProviderSuspensionState}
         />
       </ReportSection>
 
@@ -1197,11 +1212,10 @@ function BillingManagement() {
     resolvedCharges,
     selectedChargeIds,
     setChargesPaidState,
+    setProviderSuspensionState,
     suspensionCutoffLabel,
     toggleAllChargesSelection,
     toggleChargeSelection,
-    toggleLock,
-    setProviderLockState,
     updateSingleChargeStatus,
     setCreditInputs,
   } = useBillingCore();
@@ -1252,7 +1266,7 @@ function BillingManagement() {
           toggleAllChargesSelection={toggleAllChargesSelection}
           toggleChargeSelection={toggleChargeSelection}
           updateSingleChargeStatus={updateSingleChargeStatus}
-          setProviderLockState={setProviderLockState}
+          setProviderSuspensionState={setProviderSuspensionState}
         />
       </ReportSection>
 
@@ -1262,7 +1276,7 @@ function BillingManagement() {
           creditInputs={creditInputs}
           providers={providers}
           setCreditInputs={setCreditInputs}
-          toggleLock={toggleLock}
+          setProviderSuspensionState={setProviderSuspensionState}
         />
       </ReportSection>
     </div>

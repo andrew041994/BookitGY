@@ -1,93 +1,958 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
-diff --git a/backend/app/crud.py b/backend/app/crud.py
-index a9609b7f0596477949a23de97974deecb786d3ff..1e9ef667c5fb35ec4a360022e3a4cc6c539d3bf8 100644
---- a/backend/app/crud.py
-+++ b/backend/app/crud.py
-@@ -280,63 +280,82 @@ def generate_account_number_for_email(email: str) -> str:
-     digest = hashlib.sha1(normalized.encode("utf-8")).hexdigest()[:8].upper()
-     return f"ACC-{digest}"
+diff --git a/frontend/src/App.jsx b/frontend/src/App.jsx
+index 60ad3e2e1b8a17fb335c1859403786e85179a01b..b26b14889018dd4dce1fde6594a9b5af1b74bb0c 100644
+--- a/frontend/src/App.jsx
++++ b/frontend/src/App.jsx
+@@ -1,98 +1,102 @@
+-import React, { useEffect, useMemo, useState } from 'react';
++import React, { useCallback, useEffect, useMemo, useState } from 'react';
+ import { BrowserRouter, Routes, Route, Link, Navigate, useLocation, useNavigate } from 'react-router-dom';
+ import { apiClient, logApiError } from './lib/api';
+ 
+ const DEFAULT_SERVICE_CHARGE = 10;
+ const SERVICE_CHARGE_STORAGE_KEY = 'bookitgy.service_charge_rate';
+ 
+ const sampleProviders = [
+   {
+     id: 1,
++    userId: 1,
+     name: 'Ariana De Freitas',
+     accountNumber: 'ACC-0001',
+     phoneNumber: '592-600-1001',
+     location: 'Georgetown',
+     lat: 6.8013,
+     long: -58.155,
+     outstanding: 32000,
+     credit: 5000,
+-    isLocked: false,
++    isSuspended: false,
+     autoSuspended: false,
+     lastActive: '2024-10-10',
+     totalBookings: 42,
+     cancellations: 3,
+     noShows: 1,
+     services: ['Makeup', 'Hair Styling'],
+   },
+   {
+     id: 2,
++    userId: 2,
+     name: 'Jamall Adams',
+     accountNumber: 'ACC-0002',
+     phoneNumber: '592-600-1002',
+     location: 'East Bank',
+     lat: 6.7484,
+     long: -58.2439,
+     outstanding: 18000,
+     credit: 0,
+-    isLocked: false,
++    isSuspended: false,
+     autoSuspended: false,
+     lastActive: '2024-09-28',
+     totalBookings: 18,
+     cancellations: 4,
+     noShows: 0,
+     services: ['Barber', 'Beard Trim'],
+   },
+   {
+     id: 3,
++    userId: 3,
+     name: 'Kittisha Jones',
+     accountNumber: 'ACC-0003',
+     phoneNumber: '592-600-1003',
+     location: 'Kitty',
+     lat: 6.8236,
+     long: -58.151,
+     outstanding: 52000,
+     credit: 15000,
+-    isLocked: true,
++    isSuspended: true,
+     autoSuspended: false,
+     lastActive: '2024-08-30',
+     totalBookings: 7,
+     cancellations: 2,
+     noShows: 1,
+     services: ['Massage'],
+   },
+   {
+     id: 4,
++    userId: 4,
+     name: 'Linden Collective',
+     accountNumber: 'ACC-0004',
+     phoneNumber: '592-600-1004',
+     location: 'Linden',
+     lat: 5.9896,
+     long: -58.2705,
+     outstanding: 12000,
+     credit: 0,
+-    isLocked: false,
++    isSuspended: false,
+     autoSuspended: false,
+     lastActive: '2024-10-11',
+     totalBookings: 26,
+     cancellations: 1,
+     noShows: 0,
+     services: ['Spa', 'Nails'],
+   },
+ ];
+ 
+ const sampleCharges = [
+   { id: 101, providerId: 1, month: '2024-10-01', amount: 26000, isPaid: false },
+   { id: 102, providerId: 1, month: '2024-09-01', amount: 15000, isPaid: true },
+   { id: 103, providerId: 2, month: '2024-10-01', amount: 9000, isPaid: false },
+   { id: 104, providerId: 3, month: '2024-10-01', amount: 22000, isPaid: false },
+   { id: 105, providerId: 4, month: '2024-10-01', amount: 12000, isPaid: true },
+ ];
+ 
+ const sampleBookings = [
+   { id: 1, providerId: 1, clientId: 10, status: 'completed', startTime: '2024-10-12T12:00:00Z' },
+   { id: 2, providerId: 1, clientId: 11, status: 'cancelled', startTime: '2024-10-12T15:00:00Z' },
+   { id: 3, providerId: 2, clientId: 12, status: 'completed', startTime: '2024-10-11T16:00:00Z' },
+   { id: 4, providerId: 2, clientId: 13, status: 'pending', startTime: '2024-10-10T10:00:00Z' },
+   { id: 5, providerId: 3, clientId: 14, status: 'no-show', startTime: '2024-10-01T10:00:00Z' },
+   { id: 6, providerId: 4, clientId: 10, status: 'completed', startTime: '2024-10-12T09:00:00Z' },
+   { id: 7, providerId: 4, clientId: 16, status: 'cancelled', startTime: '2024-09-15T09:00:00Z' },
+@@ -139,106 +143,109 @@ function useBillingCore() {
+   }, []);
+ 
+   const [providers, setProviders] = useState(sampleProviders);
+   const [charges, setCharges] = useState(() =>
+     sampleCharges.map((charge) => {
+       const baseServiceCost = Math.round((charge.amount / DEFAULT_SERVICE_CHARGE) * 100);
+ 
+       return {
+         ...charge,
+         baseServiceCost,
+         isPaid: charge.month === billingCycleStart ? false : charge.isPaid ?? false,
+       };
+     }),
+   );
+   const [selectedChargeIds, setSelectedChargeIds] = useState([]);
+   const [creditInputs, setCreditInputs] = useState({});
+   const [loadingProviders, setLoadingProviders] = useState(false);
+   const [suspensionClock, setSuspensionClock] = useState(() => Date.now());
+   const suspensionCutoffLabel = useMemo(() => getSuspensionCutoffDate().toISOString().slice(0, 10), []);
+ 
+   useEffect(() => {
+     const interval = setInterval(() => setSuspensionClock(Date.now()), 1000 * 60 * 30);
+     return () => clearInterval(interval);
+   }, []);
+ 
+-  useEffect(() => {
+-    const fetchProviders = async () => {
+-      try {
+-        setLoadingProviders(true);
+-        const res = await apiClient.get('/providers');
+-        if (Array.isArray(res.data) && res.data.length) {
+-          const normalized = res.data.map((p) => ({
+-            id: p.provider_id || p.id,
+-            name: p.name || 'Provider',
+-            accountNumber: p.account_number || p.accountNumber || '—',
+-            phoneNumber: p.phone || p.phone_number || '—',
+-            location: p.location || 'Unknown area',
+-            lat: p.lat,
+-            long: p.long,
+-            outstanding: Math.floor(Math.random() * 40000) + 5000,
+-            credit: 0,
+-            isLocked: false,
+-            autoSuspended: false,
+-            lastActive: '2024-10-10',
+-            totalBookings: Math.floor(Math.random() * 40) + 5,
+-            cancellations: Math.floor(Math.random() * 5),
+-            noShows: Math.floor(Math.random() * 2),
+-            services: p.services || [],
+-          }));
+-          setProviders(normalized);
+-        }
+-      } catch (e) {
+-        logApiError(e);
+-        console.log('Using sample providers', e.message);
+-      } finally {
+-        setLoadingProviders(false);
++  const fetchProviders = useCallback(async () => {
++    try {
++      setLoadingProviders(true);
++      const res = await apiClient.get('/providers');
++      if (Array.isArray(res.data) && res.data.length) {
++        const normalized = res.data.map((p) => ({
++          id: p.provider_id || p.id,
++          userId: p.user_id || p.userId,
++          name: p.name || 'Provider',
++          accountNumber: p.account_number || p.accountNumber || '—',
++          phoneNumber: p.phone || p.phone_number || '—',
++          location: p.location || 'Unknown area',
++          lat: p.lat,
++          long: p.long,
++          outstanding: Math.floor(Math.random() * 40000) + 5000,
++          credit: 0,
++          isSuspended: p.is_suspended ?? p.isSuspended ?? false,
++          autoSuspended: false,
++          lastActive: '2024-10-10',
++          totalBookings: Math.floor(Math.random() * 40) + 5,
++          cancellations: Math.floor(Math.random() * 5),
++          noShows: Math.floor(Math.random() * 2),
++          services: p.services || [],
++        }));
++        setProviders(normalized);
+       }
+-    };
++    } catch (e) {
++      logApiError(e);
++      console.log('Using sample providers', e.message);
++    } finally {
++      setLoadingProviders(false);
++    }
++  }, []);
+ 
++  useEffect(() => {
+     fetchProviders();
+-  }, []);
++  }, [fetchProviders]);
+ 
+   useEffect(() => {
+     const fetchBilling = async () => {
+       try {
+         const res = await apiClient.get('/admin/billing');
+         if (!Array.isArray(res.data) || res.data.length === 0) return;
+ 
+         setCharges(
+           res.data.map((row) => {
+             const amount = Number(row.amount_due_gyd ?? 0);
+             return {
+               id: row.provider_id ?? row.id,
+               providerId: row.provider_id ?? row.id,
++              userId: row.user_id ?? row.userId,
+               providerName: row.name || 'Provider',
+               accountNumber: row.account_number || row.accountNumber || '—',
+               phoneNumber: row.phone || row.phone_number || '—',
+               month: billingCycleStart,
+               amount: Math.round(amount),
+               baseServiceCost: 0,
+               isPaid: !!row.is_paid,
++              isSuspended: row.is_suspended ?? row.isSuspended ?? false,
+             };
+           }),
+         );
+       } catch (e) {
+         logApiError(e);
+         console.log('Using sample billing data', e.message);
+       }
+     };
+ 
+     fetchBilling();
+   }, [billingCycleStart]);
+ 
+   useEffect(() => {
+     setCharges((prev) => {
+       if (!providers.length) return prev;
+ 
+       let nextId = prev.reduce((max, c) => Math.max(max, c.id), 0) + 1;
+       let updated = [...prev];
+ 
+       providers.forEach((provider) => {
+         const existing = updated.find((c) => c.providerId === provider.id);
+         if (!existing) {
+           const amount = provider.outstanding || Math.floor(Math.random() * 20000) + 5000;
+           updated.push({
+             id: nextId++,
+@@ -265,117 +272,126 @@ function useBillingCore() {
+         );
+         const autoSuspended = inSuspensionWindow && hasUnpaidCurrentCharge;
+ 
+         if (provider.autoSuspended === autoSuspended) return provider;
+ 
+         return { ...provider, autoSuspended };
+       }),
+     );
+   }, [billingCycleStart, charges, suspensionClock]);
+ 
+   const providerById = useMemo(() => {
+     const map = {};
+     providers.forEach((p) => {
+       map[p.id] = p;
+     });
+     return map;
+   }, [providers]);
+ 
+   const resolvedCharges = useMemo(
+     () =>
+       charges.map((charge) => ({
+         ...charge,
+         providerName: providerById[charge.providerId]?.name || charge.providerName || 'Provider',
+         accountNumber: providerById[charge.providerId]?.accountNumber || charge.accountNumber || '—',
+         phoneNumber: providerById[charge.providerId]?.phoneNumber || charge.phoneNumber || '—',
+-        isLocked: providerById[charge.providerId]?.isLocked || false,
++        userId: providerById[charge.providerId]?.userId || charge.userId,
++        isSuspended: providerById[charge.providerId]?.isSuspended ?? charge.isSuspended ?? false,
+         autoSuspended: providerById[charge.providerId]?.autoSuspended || false,
+         isCurrentCycle: charge.month === billingCycleStart,
+       })),
+     [charges, providerById, billingCycleStart],
+   );
+ 
+   const applyCredit = (providerId) => {
+     const creditValue = Number(creditInputs[providerId] || 0);
+     if (!creditValue) return;
+     setProviders((prev) =>
+       prev.map((p) =>
+         p.id === providerId ? { ...p, credit: p.credit + creditValue, outstanding: Math.max(0, p.outstanding - creditValue) } : p,
+       ),
+     );
+     setCreditInputs((prev) => ({ ...prev, [providerId]: '' }));
+   };
+ 
+-  const toggleLock = (providerId) => {
+-    setProviders((prev) => prev.map((p) => (p.id === providerId ? { ...p, isLocked: !p.isLocked } : p)));
+-  };
+-
+-  const setProviderLockState = (providerId, locked) => {
+-    setProviders((prev) => prev.map((p) => (p.id === providerId ? { ...p, isLocked: locked } : p)));
+-  };
++  const setProviderSuspensionState = useCallback(
++    async (userId, suspended) => {
++      if (!userId) return;
++      try {
++        if (suspended) {
++          await apiClient.post(`/admin/users/${userId}/suspend`);
++        } else {
++          await apiClient.post(`/admin/users/${userId}/unsuspend`);
++        }
++        await fetchProviders();
++      } catch (e) {
++        logApiError(e);
++      }
++    },
++    [fetchProviders],
++  );
+ 
+   const toggleChargeSelection = (chargeId) => {
+     setSelectedChargeIds((prev) => (prev.includes(chargeId) ? prev.filter((id) => id !== chargeId) : [...prev, chargeId]));
+   };
+ 
+   const toggleAllChargesSelection = (chargeIds = charges.map((c) => c.id)) => {
+     const allSelected = chargeIds.length && chargeIds.every((id) => selectedChargeIds.includes(id));
+ 
+     if (allSelected) {
+       setSelectedChargeIds((prev) => prev.filter((id) => !chargeIds.includes(id)));
+     } else {
+       setSelectedChargeIds((prev) => Array.from(new Set([...prev, ...chargeIds])));
+     }
+   };
+ 
+   const setChargesPaidState = (paidState) => {
+     setCharges((prev) => prev.map((c) => (selectedChargeIds.includes(c.id) ? { ...c, isPaid: paidState } : c)));
+     setSelectedChargeIds([]);
+   };
+ 
+   const updateSingleChargeStatus = (chargeId, paidState) => {
+     setCharges((prev) => prev.map((c) => (c.id === chargeId ? { ...c, isPaid: paidState } : c)));
+     setSelectedChargeIds((prev) => prev.filter((id) => id !== chargeId));
+   };
+ 
+   return {
+     applyCredit,
+     billingCycleStart,
+     charges,
+     creditInputs,
+     loadingProviders,
+     providers,
+     resolvedCharges,
+     selectedChargeIds,
+     setCharges,
+     setCreditInputs,
+     setChargesPaidState,
++    setProviderSuspensionState,
+     suspensionCutoffLabel,
+     toggleAllChargesSelection,
+     toggleChargeSelection,
+-    toggleLock,
+-    setProviderLockState,
+     updateSingleChargeStatus,
+   };
+ }
+ 
+ function Login({ onLogin }) {
+   const [email, setEmail] = useState('admin@guyana.com');
+   const [password, setPassword] = useState('pass');
+   const navigate = useNavigate();
+ 
+   const login = async () => {
+     try {
+       const res = await apiClient.post('/auth/login', new URLSearchParams({
+         username: email,
+         password: password,
+       }));
+       const token = res.data.access_token;
+       localStorage.setItem('token', token);
+       apiClient.defaults.headers.common.Authorization = `Bearer ${token}`;
+       onLogin?.(token);
+       navigate('/admin');
+     } catch {
+       alert('Wrong credentials');
+     }
+   };
+ 
+@@ -579,87 +595,87 @@ function useLeafletMap(providers) {
+         script.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
+         script.async = true;
+         script.dataset.leaflet = 'true';
+         script.onload = initMap;
+         document.body.appendChild(script);
+       } else {
+         initMap();
+       }
+     };
+ 
+     let mapInstance;
+ 
+     const initMap = () => {
+       if (!window.L || document.getElementById('provider-map')?.dataset.ready === 'true') return;
+       const mapElement = document.getElementById('provider-map');
+       if (!mapElement) return;
+       mapElement.dataset.ready = 'true';
+       mapInstance = window.L.map('provider-map').setView([6.8013, -58.155], 11);
+       window.L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+         maxZoom: 19,
+       }).addTo(mapInstance);
+ 
+         providers
+           .filter((p) => p.lat && p.long)
+           .forEach((provider) => {
+-            const suspended = provider.isLocked || provider.autoSuspended;
++            const suspended = provider.isSuspended || provider.autoSuspended;
+             const statusLabel = provider.autoSuspended ? 'Suspended (Unpaid)' : suspended ? 'Suspended' : 'Active';
+             const marker = window.L.marker([provider.lat, provider.long]).addTo(mapInstance);
+             marker.bindPopup(
+               `<div style="font-weight:700">${provider.name}</div>` +
+                 `<div style="color:#6b7280">${provider.location}</div>` +
+                 `<div style="font-size:12px">Services: ${provider.services?.join(', ') || 'N/A'}</div>` +
+                 `<div style="font-size:12px; color:${suspended ? '#b91c1c' : '#16a34a'}">${statusLabel}</div>`
+             );
+           });
+       };
+ 
+     ensureLeaflet();
+ 
+     return () => {
+       if (mapInstance) {
+         mapInstance.remove();
+       }
+       const mapElement = document.getElementById('provider-map');
+       if (mapElement) {
+         mapElement.dataset.ready = 'false';
+         mapElement.innerHTML = '';
+       }
+     };
+   }, [providers]);
+ }
+ 
+ function BillingActionsPanel({
+   resolvedCharges,
+   selectedChargeIds,
+   toggleAllChargesSelection,
+   toggleChargeSelection,
+   setChargesPaidState,
+   updateSingleChargeStatus,
+   billingCycleStart,
+   suspensionCutoffLabel,
+-  setProviderLockState,
++  setProviderSuspensionState,
+ }) {
+   const [searchTerm, setSearchTerm] = useState('');
+ 
+   const filteredCharges = useMemo(() => {
+     const term = searchTerm.trim().toLowerCase();
+     if (!term) return resolvedCharges;
+ 
+     return resolvedCharges.filter((charge) => {
+       const account = (charge.accountNumber || '').toLowerCase();
+       const phone = (charge.phoneNumber || '').toLowerCase();
+       return account.includes(term) || phone.includes(term);
+     });
+   }, [resolvedCharges, searchTerm]);
+ 
+   const filteredChargeIds = filteredCharges.map((c) => c.id);
+   const allVisibleSelected =
+     filteredCharges.length > 0 && filteredCharges.every((charge) => selectedChargeIds.includes(charge.id));
+ 
+   return (
+     <>
+       <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '12px' }}>
+         <input
+           type="text"
+           value={searchTerm}
+           onChange={(e) => setSearchTerm(e.target.value)}
+@@ -672,57 +688,57 @@ function BillingActionsPanel({
+           <thead>
+             <tr style={{ textAlign: 'left', background: '#f3f4f6' }}>
+               <th style={{ padding: '10px' }}>
+                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                   <input
+                     type="checkbox"
+                     checked={allVisibleSelected}
+                     onChange={() => toggleAllChargesSelection(filteredChargeIds)}
+                   />
+                   <span>Select</span>
+                 </div>
+               </th>
+               <th style={{ padding: '10px' }}>Name</th>
+               <th style={{ padding: '10px' }}>Account Number</th>
+               <th style={{ padding: '10px' }}>Phone Number</th>
+               <th style={{ padding: '10px' }}>Amount Due (Platform Fees)</th>
+               <th style={{ padding: '10px' }}>Status</th>
+               <th style={{ padding: '10px' }}>Actions</th>
+             </tr>
+           </thead>
+           <tbody>
+             {filteredCharges.map((charge) => {
+               const statusLabel = charge.isPaid ? 'Paid' : charge.isCurrentCycle ? 'Unpaid (current)' : 'Unpaid';
+               const badgeBackground = charge.isPaid ? '#dcfce7' : charge.isCurrentCycle ? '#fee2e2' : '#fef9c3';
+               const badgeColor = charge.isPaid ? '#15803d' : charge.isCurrentCycle ? '#b91c1c' : '#92400e';
+-              const suspended = charge.isLocked || charge.autoSuspended;
++              const suspended = charge.isSuspended || charge.autoSuspended;
+               const accountStatusLabel = charge.autoSuspended
+                 ? 'Suspended (Unpaid)'
+-                : charge.isLocked
++                : charge.isSuspended
+                   ? 'Suspended by Admin'
+                   : 'Active';
+-              const suspendDisabled = charge.autoSuspended && !charge.isLocked;
++              const suspendDisabled = charge.autoSuspended && !charge.isSuspended;
+ 
+               return (
+                 <tr key={charge.id} style={{ borderBottom: '1px solid #e5e7eb' }}>
+                   <td style={{ padding: '10px' }}>
+                     <input
+                       type="checkbox"
+                       checked={selectedChargeIds.includes(charge.id)}
+                       onChange={() => toggleChargeSelection(charge.id)}
+                     />
+                   </td>
+                   <td style={{ padding: '10px' }}>{charge.providerName}</td>
+                   <td style={{ padding: '10px' }}>{charge.accountNumber}</td>
+                   <td style={{ padding: '10px' }}>{charge.phoneNumber}</td>
+                   <td style={{ padding: '10px' }}>GYD {charge.amount.toLocaleString()}</td>
+                   <td style={{ padding: '10px' }}>
+                     <span
+                       style={{
+                         padding: '4px 8px',
+                         borderRadius: '999px',
+                         background: badgeBackground,
+                         color: badgeColor,
+                         fontWeight: 700,
+                         fontSize: '12px',
+                       }}
+                     >
+@@ -730,215 +746,214 @@ function BillingActionsPanel({
+                     </span>
+                     <div style={{ marginTop: '6px', fontSize: '12px', color: suspended ? '#b91c1c' : '#15803d', fontWeight: 700 }}>
+                       {accountStatusLabel}
+                     </div>
+                     {charge.autoSuspended && (
+                       <div style={{ fontSize: '12px', color: '#92400e', marginTop: '2px' }}>
+                         Auto-suspended on the 15th when current charges are unpaid.
+                       </div>
+                     )}
+                   </td>
+                   <td style={{ padding: '10px' }}>
+                     <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                       <button
+                         onClick={() => updateSingleChargeStatus(charge.id, true)}
+                         style={{ padding: '8px 12px', background: '#16a34a', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 700 }}
+                       >
+                         Mark Paid
+                       </button>
+                       <button
+                         onClick={() => updateSingleChargeStatus(charge.id, false)}
+                         style={{ padding: '8px 12px', background: '#f3f4f6', color: '#111827', border: '1px solid #e5e7eb', borderRadius: '8px', fontWeight: 700 }}
+                       >
+                         Mark Unpaid
+                       </button>
+                       <button
+-                        onClick={() => setProviderLockState(charge.providerId, !charge.isLocked)}
++                        onClick={() => setProviderSuspensionState(charge.userId, !charge.isSuspended)}
+                         disabled={suspendDisabled}
+                         style={{
+                           padding: '8px 12px',
+                           borderRadius: '8px',
+                           border: '1px solid #e5e7eb',
+-                          background: charge.isLocked ? '#ecfdf3' : '#fee2e2',
+-                          color: charge.isLocked ? '#15803d' : '#b91c1c',
++                          background: charge.isSuspended ? '#ecfdf3' : '#fee2e2',
++                          color: charge.isSuspended ? '#15803d' : '#b91c1c',
+                           fontWeight: 700,
+                           opacity: suspendDisabled ? 0.6 : 1,
+                           cursor: suspendDisabled ? 'not-allowed' : 'pointer',
+                         }}
+                       >
+-                        {charge.isLocked ? 'Restore account' : 'Suspend account'}
++                        {charge.isSuspended ? 'Reactivate account' : 'Suspend account'}
+                       </button>
+                     </div>
+                     <div style={{ color: '#6b7280', fontSize: '12px', marginTop: '6px', maxWidth: '320px' }}>
+                       Suspended providers are hidden from searches and cannot accept appointments.
+                       {suspendDisabled && ' Mark the current cycle as paid to restore automatically.'}
+                     </div>
+                   </td>
+                 </tr>
+               );
+             })}
+           </tbody>
+         </table>
+       </div>
+       <div style={{ display: 'flex', gap: '10px', marginTop: '12px', flexWrap: 'wrap', alignItems: 'center' }}>
+         <button
+           onClick={() => setChargesPaidState(true)}
+           style={{ padding: '10px 14px', background: '#16a34a', color: 'white', border: 'none', borderRadius: '10px', fontWeight: 700 }}
+         >
+           Mark Paid
+         </button>
+         <button
+           onClick={() => setChargesPaidState(false)}
+           style={{ padding: '10px 14px', background: '#f3f4f6', color: '#111827', border: '1px solid #e5e7eb', borderRadius: '10px', fontWeight: 700 }}
+         >
+           Mark Unpaid
+         </button>
+         <div style={{ color: '#6b7280', fontSize: '14px' }}>
+           Charges default to <strong>Unpaid</strong> on the 1st of each month (current cycle: {billingCycleStart}). Accounts
+           automatically suspend at midnight on the 15th ({suspensionCutoffLabel}) if the current cycle remains unpaid.
+         </div>
+       </div>
+     </>
+   );
+ }
+ 
+-function ProviderAccountsTable({ providers, creditInputs, setCreditInputs, applyCredit, toggleLock }) {
++function ProviderAccountsTable({ providers, creditInputs, setCreditInputs, applyCredit, setProviderSuspensionState }) {
+   return (
+     <div style={{ overflowX: 'auto' }}>
+       <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '3000px' }}>
+         <thead>
+           <tr style={{ background: '#f3f4f6', textAlign: 'left' }}>
+             <th style={{ padding: '10px' }}>Provider</th>
+             <th style={{ padding: '10px' }}>Outstanding</th>
+             <th style={{ padding: '10px' }}>Credit</th>
+             <th style={{ padding: '10px' }}>Apply Credit</th>
+             <th style={{ padding: '10px' }}>Status</th>
+             <th style={{ padding: '10px' }}>Actions</th>
+           </tr>
+         </thead>
+         <tbody>
+           {providers.map((provider) => {
+-            const suspended = provider.isLocked || provider.autoSuspended;
+-            const statusLabel = provider.autoSuspended ? 'Suspended (Unpaid)' : provider.isLocked ? 'Suspended' : 'Active';
+-            const toggleDisabled = provider.autoSuspended && !provider.isLocked;
++            const suspended = provider.isSuspended || provider.autoSuspended;
++            const statusLabel = provider.autoSuspended ? 'Suspended (Unpaid)' : provider.isSuspended ? 'Suspended' : 'Active';
++            const toggleDisabled = provider.autoSuspended && !provider.isSuspended;
+ 
+             return (
+               <tr key={provider.id} style={{ borderBottom: '1px solid #e5e7eb' }}>
+                 <td style={{ padding: '10px' }}>
+                   <div style={{ fontWeight: 700 }}>{provider.name}</div>
+                   <div style={{ color: '#6b7280' }}>{provider.location}</div>
+                 </td>
+                 <td style={{ padding: '10px' }}>GYD {provider.outstanding.toLocaleString()}</td>
+                 <td style={{ padding: '10px' }}>GYD {provider.credit.toLocaleString()}</td>
+                 <td style={{ padding: '10px' }}>
+                   <div style={{ display: 'flex', gap: '8px' }}>
+                     <input
+                       type="number"
+                       placeholder="Amount"
+                       value={creditInputs[provider.id] || ''}
+                       onChange={(e) => setCreditInputs((prev) => ({ ...prev, [provider.id]: e.target.value }))}
+                       style={{ padding: '8px', borderRadius: '8px', border: '1px solid #d1d5db', width: '120px' }}
+                     />
+                     <button
+                       onClick={() => applyCredit(provider.id)}
+                       style={{
+                         background: '#16a34a',
+                         color: 'white',
+                         border: 'none',
+                         borderRadius: '8px',
+                         padding: '8px 10px',
+                         fontWeight: 700,
+                       }}
+                     >
+                       Apply
+                     </button>
+                   </div>
+                 </td>
+                 <td style={{ padding: '10px' }}>
+                   {suspended ? (
+                     <div style={{ display: 'grid', gap: '4px' }}>
+                       <span style={{ color: '#b91c1c', fontWeight: 700 }}>{statusLabel}</span>
+                       {provider.autoSuspended && (
+                         <span style={{ color: '#92400e', fontSize: '12px' }}>
+                           Auto-suspended on the 15th due to unpaid charges.
+                         </span>
+                       )}
+                     </div>
+                   ) : (
+                     <span style={{ color: '#15803d', fontWeight: 700 }}>Active</span>
+                   )}
+                 </td>
+                 <td style={{ padding: '10px' }}>
+                   <button
+-                    onClick={() => toggleLock(provider.id)}
++                    onClick={() => setProviderSuspensionState(provider.userId, !provider.isSuspended)}
+                     disabled={toggleDisabled}
+                     style={{
+                       padding: '8px 12px',
+                       borderRadius: '8px',
+                       border: 'none',
+                       color: suspended ? '#16a34a' : 'white',
+                       background: suspended ? '#ecfdf3' : '#b91c1c',
+                       fontWeight: 700,
+                       opacity: toggleDisabled ? 0.6 : 1,
+                       cursor: toggleDisabled ? 'not-allowed' : 'pointer',
+                     }}
+                   >
+-                    {provider.isLocked ? 'Unlock' : suspended ? 'Locked' : 'Lock'}
++                    {provider.isSuspended ? 'Reactivate' : 'Suspend'}
+                   </button>
+                   {toggleDisabled && (
+                     <div style={{ fontSize: '12px', color: '#6b7280', marginTop: '4px' }}>
+                       Set the charge to paid to restore the account.
+                     </div>
+                   )}
+                 </td>
+               </tr>
+             );
+           })}
+         </tbody>
+       </table>
+     </div>
+   );
+ }
+ 
+ function AdminDashboard() {
+   const {
+     applyCredit,
+     billingCycleStart,
+     charges,
+     creditInputs,
+     loadingProviders,
+     providers,
+     resolvedCharges,
+     selectedChargeIds,
+     setCharges,
+     setCreditInputs,
+     setChargesPaidState,
++    setProviderSuspensionState,
+     suspensionCutoffLabel,
+     toggleAllChargesSelection,
+     toggleChargeSelection,
+-    toggleLock,
+-    setProviderLockState,
+     updateSingleChargeStatus,
+   } = useBillingCore();
+ 
+   const [serviceCharge, setServiceCharge] = useState(DEFAULT_SERVICE_CHARGE);
+   const [serviceChargeDraft, setServiceChargeDraft] = useState(DEFAULT_SERVICE_CHARGE);
+ 
+   useLeafletMap(providers);
+ 
+   const recalculateChargesForRate = (rate) => {
+     const safeRate = normalizeServiceCharge(rate);
+     setCharges((prev) => prev.map((c) => ({ ...c, amount: Math.round(c.baseServiceCost * (safeRate / 100)) })));
+     setServiceCharge(safeRate);
+     setServiceChargeDraft(safeRate);
+   };
+ 
+   useEffect(() => {
+     const storedRate = loadStoredServiceCharge();
+     if (storedRate !== null) {
+       recalculateChargesForRate(storedRate);
+     }
+   }, []);
+ 
+   const saveServiceCharge = () => {
+     const safeRate = normalizeServiceCharge(serviceChargeDraft);
+     persistServiceCharge(safeRate);
+@@ -1063,61 +1078,61 @@ function AdminDashboard() {
+                 Reset to {DEFAULT_SERVICE_CHARGE}%
+               </button>
+             </div>
+           </div>
+         </ReportSection>
+ 
+         <ReportSection title="Booking Health">
+           <div style={{ display: 'grid', gap: '8px' }}>
+             <StatCard label="Bookings Today" value={bookingStats.today} />
+             <StatCard label="Bookings This Week" value={bookingStats.thisWeek} />
+             <StatCard label="Bookings This Month" value={bookingStats.thisMonth} />
+           </div>
+         </ReportSection>
+       </div>
+ 
+       <ReportSection title="Billing Actions" fullWidth>
+         <BillingActionsPanel
+           billingCycleStart={billingCycleStart}
+           resolvedCharges={resolvedCharges}
+           selectedChargeIds={selectedChargeIds}
+           setChargesPaidState={setChargesPaidState}
+           suspensionCutoffLabel={suspensionCutoffLabel}
+           toggleAllChargesSelection={toggleAllChargesSelection}
+           toggleChargeSelection={toggleChargeSelection}
+           updateSingleChargeStatus={updateSingleChargeStatus}
+-          setProviderLockState={setProviderLockState}
++          setProviderSuspensionState={setProviderSuspensionState}
+         />
+       </ReportSection>
+ 
+       <ReportSection title="Provider Accounts">
+         <ProviderAccountsTable
+           applyCredit={applyCredit}
+           creditInputs={creditInputs}
+           providers={providers}
+           setCreditInputs={setCreditInputs}
+-          toggleLock={toggleLock}
++          setProviderSuspensionState={setProviderSuspensionState}
+         />
+       </ReportSection>
+ 
+       <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '16px', marginBottom: '16px' }}>
+         <ReportSection title="Signups Over Time">
+           <div style={{ display: 'grid', gap: '8px' }}>
+             {signupHistory.map((item) => (
+               <div key={item.month} style={{ border: '1px solid #e5e7eb', borderRadius: '10px', padding: '10px', background: '#f9fafb' }}>
+                 <div style={{ fontWeight: 700 }}>{item.month}</div>
+                 <ProgressRow label="Providers" value={item.providers} total={50} accent="#16a34a" />
+                 <ProgressRow label="Clients" value={item.clients} total={120} accent="#0ea5e9" />
+               </div>
+             ))}
+           </div>
+         </ReportSection>
+ 
+         <ReportSection title="Bookings & Revenue">
+           <div style={{ display: 'grid', gap: '8px' }}>
+             <StatCard label="Completion Rate" value={`${bookingStats.completionRate}%`} />
+             <StatCard label="Cancellation Rate" value={`${bookingStats.cancellationRate}%`} />
+             <StatCard label="No-show Rate" value={`${bookingStats.noShowRate}%`} />
+             <StatCard label="Revenue to Date" value={`GYD ${revenueTotal.toLocaleString()}`} />
+           </div>
+         </ReportSection>
+       </div>
+@@ -1175,116 +1190,115 @@ function AdminDashboard() {
+           </div>
+         </div>
+       </ReportSection>
+ 
+       <ReportSection title="Provider Map">
+         <div style={{ height: '420px', borderRadius: '12px', overflow: 'hidden', border: '1px solid #e5e7eb', background: '#f3f4f6' }}>
+           <div id="provider-map" style={{ height: '100%', width: '100%' }}></div>
+         </div>
+         {loadingProviders && <div style={{ marginTop: '8px', color: '#6b7280' }}>Loading provider pins…</div>}
+       </ReportSection>
+     </div>
+   );
+ }
  
  
- # ---------------------------------------------------------------------------
- # Twilio / WhatsApp helper
- # ---------------------------------------------------------------------------
- # ---------------------------------------------------------------------------
- # Twilio / WhatsApp helper
- # ---------------------------------------------------------------------------
  
- twilio_client = None
- if os.getenv("TWILIO_ACCOUNT_SID"):
-     print("[WhatsApp debug] TWILIO_ACCOUNT_SID is set")
-     twilio_client = Client(
-         os.getenv("TWILIO_ACCOUNT_SID"),
-         os.getenv("TWILIO_AUTH_TOKEN"),
-     )
- else:
-     print("[WhatsApp debug] TWILIO_ACCOUNT_SID is NOT set")
+ function BillingManagement() {
+   const {
+     applyCredit,
+     billingCycleStart,
+     creditInputs,
+     providers,
+     resolvedCharges,
+     selectedChargeIds,
+     setChargesPaidState,
++    setProviderSuspensionState,
+     suspensionCutoffLabel,
+     toggleAllChargesSelection,
+     toggleChargeSelection,
+-    toggleLock,
+-    setProviderLockState,
+     updateSingleChargeStatus,
+     setCreditInputs,
+   } = useBillingCore();
  
- FROM_NUMBER = os.getenv("TWILIO_WHATSAPP_FROM")
- print(f"[WhatsApp debug] FROM_NUMBER = {FROM_NUMBER!r}")
+   const unpaidCharges = resolvedCharges.filter((c) => !c.isPaid);
+   const outstandingBalance = providers.reduce((acc, p) => acc + p.outstanding, 0);
+ 
+   return (
+     <div style={{ padding: '28px', background: '#f9fafb', minHeight: '100vh' }}>
+       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+         <div>
+           <h1 style={{ margin: 0, fontSize: '28px', fontWeight: 800, color: '#111827' }}>Billing Center</h1>
+           <p style={{ margin: '4px 0 0', color: '#6b7280' }}>
+             Mark charges paid in bulk or individually. New cycles start unpaid on the 1st; unpaid accounts auto-suspend at
+             midnight on the 15th.
+           </p>
+         </div>
+         <Link to="/admin" style={{ color: '#16a34a', fontWeight: 700, textDecoration: 'none' }}>
+           ← Back to dashboard
+         </Link>
+       </div>
+ 
+       <div
+         style={{
+           display: 'grid',
+           gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+           gap: '12px',
+           marginBottom: '16px',
+         }}
+       >
+         <StatCard label="Billing cycle start" value={billingCycleStart} helper="Unpaid by default on this date" />
+         <StatCard label="Auto-suspension" value={suspensionCutoffLabel} helper="Midnight cutoff on the 15th" />
+         <StatCard label="Unpaid charges" value={`${unpaidCharges.length}`} helper={`${selectedChargeIds.length} selected`} />
+         <StatCard
+           label="Outstanding balance"
+           value={`GYD ${outstandingBalance.toLocaleString()}`}
+           helper="Across all providers"
+         />
+       </div>
+ 
+       <ReportSection title="Charge Management">
+         <BillingActionsPanel
+           billingCycleStart={billingCycleStart}
+           resolvedCharges={resolvedCharges}
+           selectedChargeIds={selectedChargeIds}
+           setChargesPaidState={setChargesPaidState}
+           suspensionCutoffLabel={suspensionCutoffLabel}
+           toggleAllChargesSelection={toggleAllChargesSelection}
+           toggleChargeSelection={toggleChargeSelection}
+           updateSingleChargeStatus={updateSingleChargeStatus}
+-          setProviderLockState={setProviderLockState}
++          setProviderSuspensionState={setProviderSuspensionState}
+         />
+       </ReportSection>
+ 
+       <ReportSection title="Provider Status & Credits">
+         <ProviderAccountsTable
+           applyCredit={applyCredit}
+           creditInputs={creditInputs}
+           providers={providers}
+           setCreditInputs={setCreditInputs}
+-          toggleLock={toggleLock}
++          setProviderSuspensionState={setProviderSuspensionState}
+         />
+       </ReportSection>
+     </div>
+   );
+ }
  
  
-+def normalize_whatsapp_number(value: Optional[str]) -> str:
-+    if not value:
-+        return ""
-+    normalized = str(value)
-+    if not normalized.startswith("whatsapp:"):
-+        normalized = f"whatsapp:{normalized}"
-+    return normalized
-+
-+
- def send_whatsapp(to: str, body: str) -> None:
-     """Send a WhatsApp message, or log a preview if Twilio isn't configured."""
-     print(
-         "[WhatsApp debug] send_whatsapp called with: "
-         f"client={bool(twilio_client)}, FROM={FROM_NUMBER!r}, to={to!r}"
-     )
-+    normalized_from = normalize_whatsapp_number(FROM_NUMBER)
-+    normalized_to = normalize_whatsapp_number(to)
-+    print(
-+        "[WhatsApp debug] normalized numbers: "
-+        f"FROM={normalized_from!r}, TO={normalized_to!r}"
-+    )
- 
--    if not twilio_client or not to or not FROM_NUMBER:
-+    if not twilio_client or not normalized_to or not normalized_from:
-         print(f"[WhatsApp Preview] To {to}: {body}")
-         return
- 
-     try:
--        msg = twilio_client.messages.create(from_=FROM_NUMBER, body=body, to=to)
-+        msg = twilio_client.messages.create(
-+            from_=normalized_from,
-+            body=body,
-+            to=normalized_to,
-+        )
-         print(f"[WhatsApp debug] Twilio message SID: {msg.sid}")
-     except Exception as e:
-         print(f"WhatsApp error: {e}")
- 
- 
- def notify_booking_created(
-     customer: Optional[models.User],
-     provider_user: Optional[models.User],
-     service: models.Service,
-     booking: models.Booking,
- ) -> None:
-     """Send all notifications for a newly confirmed booking.
- 
-     - WhatsApp to customer (if configured)
-     - WhatsApp to provider (if configured)
-     - Push to customer (if configured)
-     - Push to provider (if configured)
-     """
-     if not (customer and provider_user):
-         return
- 
-     # Customer: one confirmation message
-     if customer.whatsapp:
-         send_whatsapp(
-             customer.whatsapp,
+ function AdminLayout() {
+   return (
+     <div style={{ display: 'grid', gridTemplateColumns: '260px 1fr', minHeight: '100vh', background: '#e5e7eb' }}>
+       <aside
+         style={{
+           background: '#111827',
+           color: '#f9fafb',
+           padding: '24px 18px',
+           display: 'flex',
+           flexDirection: 'column',
+           gap: '16px',
+           boxShadow: '4px 0 16px rgba(0,0,0,0.15)',
+         }}
+       >
+         <div style={{ fontWeight: 800, fontSize: '20px', letterSpacing: '0.02em' }}>Admin Panel</div>
+         <nav style={{ display: 'grid', gap: '8px' }}>
+           <NavLink
+             to="/admin"
  
 EOF
 )

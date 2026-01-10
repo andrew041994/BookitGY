@@ -26,6 +26,7 @@ class User(UserBase):
     id: int
     is_provider: bool
     is_email_verified: bool
+    is_suspended: bool
     expo_push_token: Optional[str] = None
 
     class Config:
@@ -84,7 +85,16 @@ class UserOut(UserBase):
     is_provider: bool
     is_email_verified: bool
     is_admin: bool           # 👈 add this
+    is_suspended: bool
 
+
+    class Config:
+        from_attributes = True
+
+
+class UserSuspensionOut(BaseModel):
+    id: int
+    is_suspended: bool
 
     class Config:
         from_attributes = True
@@ -329,4 +339,3 @@ class ServiceChargeUpdate(BaseModel):
 
 class ServiceChargeOut(BaseModel):
     service_charge_percentage: float
-

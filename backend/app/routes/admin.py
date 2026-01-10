@@ -35,6 +35,30 @@ def update_service_charge(
     return {"service_charge_percentage": float(pct)}
 
 
+@router.post("/users/{user_id}/suspend", response_model=schemas.UserSuspensionOut)
+def suspend_user(
+    user_id: int,
+    db: Session = Depends(get_db),
+    _: models.User = Depends(_require_admin),
+):
+    user = crud.set_user_suspension(db, user_id, True)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    return user
+
+
+@router.post("/users/{user_id}/unsuspend", response_model=schemas.UserSuspensionOut)
+def unsuspend_user(
+    user_id: int,
+    db: Session = Depends(get_db),
+    _: models.User = Depends(_require_admin),
+):
+    user = crud.set_user_suspension(db, user_id, False)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    return user
+
+
 @router.put(
     "/promotions/{account_number}",
     response_model=schemas.BillCreditOut,

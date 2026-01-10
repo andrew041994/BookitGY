@@ -47,6 +47,8 @@ def create_booking_for_me(
         )
         if not booking:
             raise ValueError("Could not create booking")
+    except PermissionError as e:
+        raise HTTPException(status_code=403, detail=str(e))
     except ValueError as e:
         # bad time, slot already taken, etc.
         raise HTTPException(status_code=400, detail=str(e))
@@ -94,9 +96,12 @@ def confirm_booking_as_provider(
     db: Session = Depends(get_db),
     provider: models.Provider = Depends(_require_current_provider),
  ):
-    ok = crud.confirm_booking_for_provider(
-        db, booking_id=booking_id, provider_id=provider.id
-    )
+    try:
+        ok = crud.confirm_booking_for_provider(
+            db, booking_id=booking_id, provider_id=provider.id
+        )
+    except PermissionError as e:
+        raise HTTPException(status_code=403, detail=str(e))
     if not ok:
         raise HTTPException(status_code=404, detail="Booking not found")
     return {"status": "confirmed"}
@@ -173,4 +178,3 @@ def list_my_upcoming_bookings(
     provider: models.Provider = Depends(_require_current_provider),
 ):
     return crud.list_upcoming_bookings_for_provider(db, provider.id)
-
