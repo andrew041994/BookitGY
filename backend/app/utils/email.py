@@ -96,7 +96,7 @@ def send_billing_paid_email(
     to_email: str, *, account_number: str, cycle_month: date
 ) -> None:
     _ensure_email_configured()
-    support_contact = settings.SENDGRID_FROM_EMAIL or "support@bookitgy.com"
+    support_contact = "bookitgy.service@gmail.com"
     month_label = cycle_month.strftime("%B %Y")
     subject = "Payment received — thank you"
     content = (
