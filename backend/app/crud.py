@@ -665,6 +665,43 @@ def create_bill_credit(db: Session, provider_id: int, amount_gyd: float):
     return credit
 
 
+def apply_bill_credit_to_current_cycle(
+    db: Session, provider: models.Provider, amount_gyd: float
+) -> tuple[models.BillCredit, Decimal]:
+    cycle_month = current_billing_cycle_month()
+    billing_cycle = get_billing_cycle_for_account(db, provider.account_number, cycle_month)
+    if not billing_cycle:
+        billing_cycle = models.BillingCycle(
+            account_number=provider.account_number,
+            cycle_month=cycle_month,
+            is_paid=False,
+        )
+        db.add(billing_cycle)
+
+    previous_balance = Decimal(str(get_provider_credit_balance(db, provider.id) or 0))
+    platform_fee = Decimal(str(get_provider_platform_fee_for_cycle(db, provider.id, cycle_month)))
+    previous_applied = min(previous_balance, platform_fee)
+    current_applied = Decimal(str(billing_cycle.credits_applied_gyd or 0))
+    credit_amount = Decimal(str(amount_gyd or 0))
+    remaining_apply = platform_fee - max(previous_applied, current_applied)
+    if remaining_apply < 0:
+        remaining_apply = Decimal("0")
+    applied_amount = min(credit_amount, remaining_apply)
+
+    credit = models.BillCredit(
+        provider_id=provider.id,
+        amount_gyd=credit_amount,
+    )
+    db.add(credit)
+    billing_cycle.credits_applied_gyd = (
+        Decimal(str(billing_cycle.credits_applied_gyd or 0)) + applied_amount
+    )
+
+    db.commit()
+    db.refresh(credit)
+    return credit, applied_amount
+
+
 def get_provider_credit_balance(db: Session, provider_id: int) -> float:
     total = (
         db.query(func.coalesce(func.sum(models.BillCredit.amount_gyd), 0))
@@ -1232,6 +1269,64 @@ def get_provider_fees_due_for_cycle(
     return float(total_due)
 
 
+def get_provider_platform_fee_for_cycle(
+    db: Session, provider_id: int, cycle_month: date
+) -> float:
+    """
+    Compute the provider's platform fee for a given billing cycle month
+    without applying bill credits.
+    """
+    period_start = datetime(cycle_month.year, cycle_month.month, 1)
+    if cycle_month.month == 12:
+        period_end = datetime(cycle_month.year + 1, 1, 1)
+    else:
+        period_end = datetime(cycle_month.year, cycle_month.month + 1, 1)
+
+    now = now_guyana()
+    if cycle_month.year == now.year and cycle_month.month == now.month:
+        cutoff = min(period_end, now)
+    else:
+        cutoff = period_end
+
+    rows = (
+        _billable_bookings_base_query(db, provider_id, as_of=cutoff)
+        .filter(
+            models.Booking.end_time >= period_start,
+            models.Booking.end_time < cutoff,
+        )
+        .with_entities(
+            models.Booking.end_time,
+            models.Booking.status,
+            models.Service.price_gyd.label("service_price_gyd"),
+        )
+        .order_by(models.Booking.end_time.asc())
+        .all()
+    )
+
+    services_total = Decimal("0")
+    for r in rows:
+        if _is_cancelled_status(r.status):
+            continue
+        if normalized_booking_status_value(r.status) != "completed":
+            continue
+
+        price = r.service_price_gyd or 0
+        services_total += Decimal(str(price))
+
+    if services_total <= 0:
+        return 0.0
+
+    service_charge_pct = get_platform_service_charge_percentage(db)
+    fee_rate = Decimal(str(max(service_charge_pct, 0))) / Decimal("100")
+    platform_fee = services_total * fee_rate
+
+    platform_fee = platform_fee.quantize(Decimal("1"))
+    if platform_fee <= 0:
+        return 0.0
+
+    return float(platform_fee)
+
+
 
 
 def _provider_billing_row(
@@ -1250,6 +1345,11 @@ def _provider_billing_row(
     amount_due = get_provider_fees_due_for_cycle(db, provider.id, cycle_month)
     is_paid = bool(billing_cycle.is_paid) if billing_cycle else False
     paid_at = billing_cycle.paid_at if billing_cycle else None
+    credits_applied = (
+        Decimal(str(billing_cycle.credits_applied_gyd or 0))
+        if billing_cycle
+        else Decimal("0")
+    )
     if bill and bill.due_date:
         last_due_date = bill.due_date
     else:
@@ -1268,6 +1368,7 @@ def _provider_billing_row(
         "account_number": provider.account_number or "",
         "phone": user.phone or "",
         "amount_due_gyd": float(amount_due or 0.0),
+        "bill_credits_gyd": float(credits_applied),
         "cycle_month": cycle_month,
         "is_paid": is_paid,
         "is_locked": bool(getattr(provider, "is_locked", False)),

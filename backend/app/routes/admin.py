@@ -132,7 +132,9 @@ def apply_bill_credit(
     if not provider:
         raise HTTPException(status_code=404, detail="Provider not found")
 
-    credit = crud.create_bill_credit(db, provider.id, payload.credit_gyd)
+    credit, _applied_amount = crud.apply_bill_credit_to_current_cycle(
+        db, provider, payload.credit_gyd
+    )
     balance = crud.get_provider_credit_balance(db, provider.id)
 
     return {

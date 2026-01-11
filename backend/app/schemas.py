@@ -194,6 +194,7 @@ class ProviderBillingRow(BaseModel):
     account_number: str
     phone: Optional[str] = None
     amount_due_gyd: float
+    bill_credits_gyd: float = 0
     cycle_month: date
     is_paid: bool
     is_locked: bool = False

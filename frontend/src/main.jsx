@@ -822,6 +822,7 @@ function App() {
               <span>Account number</span>
               <span>Phone number</span>
               <span>Amount due (platform fees)</span>
+              <span>Bill credits</span>
               <span>Last due date</span>
               <span>Status</span>
               <span>Account status</span>
@@ -845,6 +846,7 @@ function App() {
                 <strong>{row.account_number || 'N/A'}</strong>
                 <span>{row.phone || 'No phone added'}</span>
                 <strong>{formatAmount(row.amount_due_gyd)} GYD</strong>
+                <strong>{formatAmount(row.bill_credits_gyd)} GYD</strong>
                 <span>{formatDueDate(row.last_due_date)}</span>
                 <span className={row.is_paid ? 'status-pill paid' : 'status-pill unpaid'}>
                   {row.is_paid ? 'Paid' : 'Unpaid'}

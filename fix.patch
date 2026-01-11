@@ -1,229 +1,84 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
-diff --git a/backend/tests/test_admin_provider_suspension_email.py b/backend/tests/test_admin_provider_suspension_email.py
-new file mode 100644
-index 0000000000000000000000000000000000000000..9d266ac4cb0964c6a67f366891cca3731f1f0ffb
---- /dev/null
-+++ b/backend/tests/test_admin_provider_suspension_email.py
-@@ -0,0 +1,219 @@
-+from app import schemas
-+
-+
-+def _create_user(
-+    session,
-+    crud,
-+    *,
-+    email,
-+    username,
-+    password,
-+    is_provider=False,
-+    is_admin=False,
-+    is_suspended=False,
-+):
-+    user = crud.create_user(
-+        session,
-+        schemas.UserCreate(
-+            username=username,
-+            email=email,
-+            password=password,
-+            phone="000000",
-+            location="Georgetown",
-+        ),
-+    )
-+    user.is_email_verified = True
-+    user.is_provider = is_provider
-+    user.is_admin = is_admin
-+    user.is_suspended = is_suspended
-+    session.commit()
-+    session.refresh(user)
-+    return user
-+
-+
-+def test_suspend_active_provider_sends_email(db_session, monkeypatch):
-+    session, models, crud = db_session
-+    from app.routes import admin as admin_routes
-+    admin_user = _create_user(
-+        session,
-+        crud,
-+        email="admin@example.com",
-+        username="admin_user",
-+        password="password123",
-+        is_admin=True,
-+    )
-+    provider_user = _create_user(
-+        session,
-+        crud,
-+        email="provider@example.com",
-+        username="provider_user",
-+        password="password123",
-+        is_provider=True,
-+        is_suspended=False,
-+    )
-+    provider = crud.get_or_create_provider_for_user(session, provider_user.id)
-+
-+    sent = []
-+
-+    def fake_send(to_email, *, account_number, provider_name, is_suspended):
-+        sent.append(
-+            {
-+                "to_email": to_email,
-+                "account_number": account_number,
-+                "provider_name": provider_name,
-+                "is_suspended": is_suspended,
-+            }
-+        )
-+
-+    monkeypatch.setattr(admin_routes, "send_provider_suspension_email", fake_send)
-+
-+    payload = schemas.ProviderSuspensionUpdate(
-+        account_number=provider.account_number,
-+        is_suspended=True,
-+    )
-+    result = admin_routes.update_provider_suspension(
-+        payload,
-+        db=session,
-+        _=admin_user,
-+    )
-+
-+    assert result["is_suspended"] is True
-+    assert len(sent) == 1
-+    assert sent[0]["is_suspended"] is True
-+
-+
-+def test_suspend_already_suspended_sends_no_email(db_session, monkeypatch):
-+    session, models, crud = db_session
-+    from app.routes import admin as admin_routes
-+    admin_user = _create_user(
-+        session,
-+        crud,
-+        email="admin2@example.com",
-+        username="admin_user2",
-+        password="password123",
-+        is_admin=True,
-+    )
-+    provider_user = _create_user(
-+        session,
-+        crud,
-+        email="provider2@example.com",
-+        username="provider_user2",
-+        password="password123",
-+        is_provider=True,
-+        is_suspended=True,
-+    )
-+    provider = crud.get_or_create_provider_for_user(session, provider_user.id)
-+
-+    sent = []
-+
-+    def fake_send(*args, **kwargs):
-+        sent.append(True)
-+
-+    monkeypatch.setattr(admin_routes, "send_provider_suspension_email", fake_send)
-+
-+    payload = schemas.ProviderSuspensionUpdate(
-+        account_number=provider.account_number,
-+        is_suspended=True,
-+    )
-+    result = admin_routes.update_provider_suspension(
-+        payload,
-+        db=session,
-+        _=admin_user,
-+    )
-+
-+    assert result["is_suspended"] is True
-+    assert sent == []
-+
-+
-+def test_restore_suspended_provider_sends_email(db_session, monkeypatch):
-+    session, models, crud = db_session
-+    from app.routes import admin as admin_routes
-+    admin_user = _create_user(
-+        session,
-+        crud,
-+        email="admin3@example.com",
-+        username="admin_user3",
-+        password="password123",
-+        is_admin=True,
-+    )
-+    provider_user = _create_user(
-+        session,
-+        crud,
-+        email="provider3@example.com",
-+        username="provider_user3",
-+        password="password123",
-+        is_provider=True,
-+        is_suspended=True,
-+    )
-+    provider = crud.get_or_create_provider_for_user(session, provider_user.id)
-+
-+    sent = []
-+
-+    def fake_send(to_email, *, account_number, provider_name, is_suspended):
-+        sent.append(
-+            {
-+                "to_email": to_email,
-+                "account_number": account_number,
-+                "provider_name": provider_name,
-+                "is_suspended": is_suspended,
-+            }
-+        )
-+
-+    monkeypatch.setattr(admin_routes, "send_provider_suspension_email", fake_send)
-+
-+    payload = schemas.ProviderSuspensionUpdate(
-+        account_number=provider.account_number,
-+        is_suspended=False,
-+    )
-+    result = admin_routes.update_provider_suspension(
-+        payload,
-+        db=session,
-+        _=admin_user,
-+    )
-+
-+    assert result["is_suspended"] is False
-+    assert len(sent) == 1
-+    assert sent[0]["is_suspended"] is False
-+
-+
-+def test_restore_active_provider_sends_no_email(db_session, monkeypatch):
-+    session, models, crud = db_session
-+    from app.routes import admin as admin_routes
-+    admin_user = _create_user(
-+        session,
-+        crud,
-+        email="admin4@example.com",
-+        username="admin_user4",
-+        password="password123",
-+        is_admin=True,
-+    )
-+    provider_user = _create_user(
-+        session,
-+        crud,
-+        email="provider4@example.com",
-+        username="provider_user4",
-+        password="password123",
-+        is_provider=True,
-+        is_suspended=False,
-+    )
-+    provider = crud.get_or_create_provider_for_user(session, provider_user.id)
-+
-+    sent = []
-+
-+    def fake_send(*args, **kwargs):
-+        sent.append(True)
-+
-+    monkeypatch.setattr(admin_routes, "send_provider_suspension_email", fake_send)
-+
-+    payload = schemas.ProviderSuspensionUpdate(
-+        account_number=provider.account_number,
-+        is_suspended=False,
-+    )
-+    result = admin_routes.update_provider_suspension(
-+        payload,
-+        db=session,
-+        _=admin_user,
-+    )
-+
-+    assert result["is_suspended"] is False
-+    assert sent == []
+diff --git a/frontend/src/main.jsx b/frontend/src/main.jsx
+index c7bf439d08005db7e315bc307a8c96b5e83dff10..696aa9f389a71c0728b67ad27aa4b3a8dcd8adbb 100644
+--- a/frontend/src/main.jsx
++++ b/frontend/src/main.jsx
+@@ -800,73 +800,75 @@ function App() {
+               </div>
+             </div>
+             <div className="billing-date-range">
+               <label>&nbsp;</label>
+               <div className="billing-date-range__inputs">
+                 <button
+                   className="primary-btn"
+                   onClick={markAllPaid}
+                   disabled={loading || markAllLoading}
+                 >
+                   {markAllLoading ? 'Marking all…' : 'Mark all paid'}
+                 </button>
+               </div>
+             </div>
+             {loading && <span className="muted">Loading providers…</span>}
+           </div>
+ 
+           {error && <p className="form-error">{error}</p>}
+ 
+           <div className="billing-table">
+             <div className="billing-table__head">
+               <span>Name</span>
+               <span>Account number</span>
+               <span>Phone number</span>
+               <span>Amount due (platform fees)</span>
++              <span>Bill credits</span>
+               <span>Last due date</span>
+               <span>Status</span>
+               <span>Account status</span>
+               <span className="sr-only">Actions</span>
+             </div>
+             {filteredRows.map((row) => {
+               const isSuspended = row.is_suspended ?? row.isSuspended ?? row.is_locked ?? false
+               const accountNumber = row.account_number
+               const isSuspensionLoading = Boolean(
+                 accountNumber && suspendingByAccountNumber[accountNumber]
+               )
+               const isPaying = Boolean(
+                 accountNumber && payingByAccountNumber[accountNumber]
+               )
+               return (
+               <div key={row.provider_id} className="billing-table__row">
+                 <div>
+                   <p className="billing-provider">{row.name || 'Unnamed provider'}</p>
+                   <p className="muted">ID #{row.provider_id}</p>
+                 </div>
+                 <strong>{row.account_number || 'N/A'}</strong>
+                 <span>{row.phone || 'No phone added'}</span>
+                 <strong>{formatAmount(row.amount_due_gyd)} GYD</strong>
++                <strong>{formatAmount(row.bill_credits_gyd)} GYD</strong>
+                 <span>{formatDueDate(row.last_due_date)}</span>
+                 <span className={row.is_paid ? 'status-pill paid' : 'status-pill unpaid'}>
+                   {row.is_paid ? 'Paid' : 'Unpaid'}
+                 </span>
+                 <span className={isSuspended ? 'status-pill unpaid' : 'status-pill paid'}>
+                   {isSuspended ? 'Suspended' : 'Active'}
+                 </span>
+                 <div className="billing-actions">
+                   <button
+                     className={row.is_paid ? 'ghost-btn' : 'primary-btn'}
+                     onClick={() => markProviderPaid(accountNumber)}
+                     disabled={loading || isPaying || row.is_paid}
+                   >
+                     {row.is_paid ? 'Paid' : 'Mark as paid'}
+                   </button>
+                   <button
+                     className={isSuspended ? 'primary-btn' : 'ghost-btn'}
+                     onClick={() => toggleProviderSuspension(accountNumber, !isSuspended)}
+                     disabled={isSuspensionLoading}
+                   >
+                     {isSuspended ? 'Reactivate account' : 'Suspend account'}
+                   </button>
+                 </div>
+               </div>
+             )})}
  
 EOF
 )

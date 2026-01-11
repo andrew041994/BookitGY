@@ -131,6 +131,7 @@ class BillingCycle(Base):
     cycle_month = Column(Date, primary_key=True)
     is_paid = Column(Boolean, default=False)
     paid_at = Column(DateTime(timezone=True), nullable=True)
+    credits_applied_gyd = Column(Numeric(10, 2), default=0)
 
 class Promotion(Base):
     __tablename__ = "promotions"
