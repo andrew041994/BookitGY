@@ -6,7 +6,7 @@ from fastapi import APIRouter, Body, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app import crud, schemas, models
-from app.utils.email import send_billing_paid_email
+from app.utils.email import send_billing_paid_email, send_provider_suspension_email
 from app.database import get_db
 from app.security import get_current_user_from_header
 
@@ -81,12 +81,34 @@ def update_provider_suspension(
             detail="Provider not found for account number",
         )
 
-    user = crud.set_user_suspension(db, provider.user_id, payload.is_suspended)
+    user = db.query(models.User).filter(models.User.id == provider.user_id).first()
     if not user:
         raise HTTPException(
             status_code=404,
             detail="User not found for provider account number",
         )
+
+    if user.is_suspended == payload.is_suspended:
+        return {"account_number": provider.account_number, "is_suspended": user.is_suspended}
+
+    user = crud.set_user_suspension(db, provider.user_id, payload.is_suspended)
+
+    if user and user.email:
+        provider_name = crud.get_display_name(user).strip() or None
+        try:
+            send_provider_suspension_email(
+                user.email,
+                account_number=provider.account_number,
+                provider_name=provider_name,
+                is_suspended=payload.is_suspended,
+            )
+        except Exception:
+            action = "suspend" if payload.is_suspended else "reactivate"
+            logger.exception(
+                "Failed to send provider suspension email account=%s action=%s",
+                provider.account_number,
+                action,
+            )
 
     return {"account_number": provider.account_number, "is_suspended": user.is_suspended}
 

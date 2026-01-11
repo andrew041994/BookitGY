@@ -114,3 +114,42 @@ def send_billing_paid_email(
     )
 
     _send_email(message, "Failed to send billing payment confirmation email.")
+
+
+def send_provider_suspension_email(
+    to_email: str,
+    *,
+    account_number: str,
+    provider_name: str | None,
+    is_suspended: bool,
+) -> None:
+    _ensure_email_configured()
+    support_contact = "bookitgy.service@gmail.com"
+    provider_line = f"Provider: {provider_name}\n" if provider_name else ""
+
+    if is_suspended:
+        subject = "Your BookitGY account has been suspended"
+        content = (
+            "Your provider account has been suspended by BookitGY admin.\n\n"
+            "You can still log in, but you will not be able to accept new bookings "
+            "until the account is restored.\n\n"
+            f"{provider_line}"
+            f"Account: {account_number}\n\n"
+            f"If you believe this is an error, send inquiry to {support_contact}."
+        )
+    else:
+        subject = "Your BookitGY account has been reactivated"
+        content = (
+            "Your provider account has been restored and can now accept bookings again.\n\n"
+            f"{provider_line}"
+            f"Account: {account_number}"
+        )
+
+    message = Mail(
+        from_email=settings.SENDGRID_FROM_EMAIL,
+        to_emails=to_email,
+        subject=subject,
+        plain_text_content=content,
+    )
+
+    _send_email(message, "Failed to send provider suspension email.")
