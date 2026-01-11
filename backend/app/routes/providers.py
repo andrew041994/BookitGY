@@ -375,10 +375,13 @@ def get_my_provider_summary(
 )
 def get_provider_billing_cycles(
     limit: int = Query(6, ge=1, le=24),
+    include_future: bool = Query(False),
     db: Session = Depends(get_db),
     provider: models.Provider = Depends(_require_current_provider),
 ):
-    return crud.list_provider_billing_cycles(db, provider, limit=limit)
+    return crud.list_provider_billing_cycles(
+        db, provider, limit=limit, include_future=include_future
+    )
 
 
 # -------------------------------------------------------------------

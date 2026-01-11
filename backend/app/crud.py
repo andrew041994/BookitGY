@@ -1420,7 +1420,10 @@ def get_provider_billing_row(db: Session, provider_id: int):
 
 
 def list_provider_billing_cycles(
-    db: Session, provider: models.Provider, limit: int = 6
+    db: Session,
+    provider: models.Provider,
+    limit: int = 6,
+    include_future: bool = False,
 ):
     account_number = provider.account_number or ""
     outstanding_fees = float(get_provider_fees_due(db, provider.id) or 0.0)
@@ -1435,10 +1438,16 @@ def list_provider_billing_cycles(
         db, [account_number], current_billing_cycle_month()
     )
 
+    billing_cycles_query = db.query(models.BillingCycle).filter(
+        models.BillingCycle.account_number == account_number
+    )
+    if not include_future:
+        billing_cycles_query = billing_cycles_query.filter(
+            models.BillingCycle.cycle_month <= current_billing_cycle_month()
+        )
+
     billing_cycles = (
-        db.query(models.BillingCycle)
-        .filter(models.BillingCycle.account_number == account_number)
-        .order_by(models.BillingCycle.cycle_month.desc())
+        billing_cycles_query.order_by(models.BillingCycle.cycle_month.desc())
         .limit(limit)
         .all()
     )
@@ -1447,15 +1456,21 @@ def list_provider_billing_cycles(
     fee_rate = Decimal(str(max(service_charge_pct, 0))) / Decimal("100")
     now = now_guyana()
     now_date = now.date()
+    current_cycle_month = current_billing_cycle_month(now_date)
     cycles = []
 
     for billing_cycle in billing_cycles:
-        cycle_month = billing_cycle.cycle_month
-        period_start = datetime(cycle_month.year, cycle_month.month, 1)
+        cycle_month = date(
+            billing_cycle.cycle_month.year,
+            billing_cycle.cycle_month.month,
+            1,
+        )
         if cycle_month.month == 12:
-            period_end = datetime(cycle_month.year + 1, 1, 1)
+            next_month = date(cycle_month.year + 1, 1, 1)
         else:
-            period_end = datetime(cycle_month.year, cycle_month.month + 1, 1)
+            next_month = date(cycle_month.year, cycle_month.month + 1, 1)
+        period_start = datetime.combine(cycle_month, datetime.min.time())
+        period_end = datetime.combine(next_month, datetime.min.time())
 
         if cycle_month.year == now.year and cycle_month.month == now.month:
             cutoff = min(period_end, now)
@@ -1527,11 +1542,11 @@ def list_provider_billing_cycles(
 
         items.sort(key=lambda entry: entry["service_name"].lower())
 
-        invoice_date = period_end.date()
-        coverage_end = (period_end - timedelta(days=1)).date()
+        invoice_date = next_month
+        coverage_end = next_month - timedelta(days=1)
         if billing_cycle.is_paid:
             status = "Paid"
-        elif invoice_date > now_date:
+        elif cycle_month == current_cycle_month and invoice_date > now_date:
             status = "Scheduled"
         else:
             status = "Generated"

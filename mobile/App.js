@@ -5087,10 +5087,26 @@ function ProviderBillingScreen({ token, showFlash }) {
     return `GYD ${Math.round(amount).toLocaleString()}`;
   };
 
+  const parseDateOnly = (value) => {
+    if (!value) return null;
+    if (value instanceof Date) return value;
+    if (typeof value === "string") {
+      const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+      if (match) {
+        const year = Number(match[1]);
+        const month = Number(match[2]) - 1;
+        const day = Number(match[3]);
+        return new Date(year, month, day);
+      }
+    }
+    const dateObj = new Date(value);
+    if (Number.isNaN(dateObj.getTime())) return null;
+    return dateObj;
+  };
+
   const formatDate = (value) => {
-    if (!value) return "-";
-    const dateObj = value instanceof Date ? value : new Date(value);
-    if (Number.isNaN(dateObj.getTime())) return "-";
+    const dateObj = parseDateOnly(value);
+    if (!dateObj) return "-";
     return dateObj.toLocaleDateString("en-US", {
       month: "short",
       day: "numeric",
@@ -5204,12 +5220,10 @@ function ProviderBillingScreen({ token, showFlash }) {
       {!billingLoading &&
         !billingError &&
         billingCycles.map((bill) => {
-          const cycleDate = bill?.cycle_month ? new Date(bill.cycle_month) : null;
-          const coverageStart = bill?.coverage_start
-            ? new Date(bill.coverage_start)
-            : cycleDate;
-          const coverageEnd = bill?.coverage_end ? new Date(bill.coverage_end) : null;
-          const invoiceDate = bill?.invoice_date ? new Date(bill.invoice_date) : null;
+          const cycleDate = parseDateOnly(bill?.cycle_month);
+          const coverageStart = parseDateOnly(bill?.coverage_start) || cycleDate;
+          const coverageEnd = parseDateOnly(bill?.coverage_end);
+          const invoiceDate = parseDateOnly(bill?.invoice_date);
           const status = bill?.status || "Generated";
           let statusStyle = styles.billingStatusUpcoming;
           if (status === "Generated") statusStyle = styles.billingStatusReady;
@@ -5220,7 +5234,7 @@ function ProviderBillingScreen({ token, showFlash }) {
             <View style={styles.billingHeaderRow}>
               <View>
                 <Text style={styles.billingMonth}>
-                  {(coverageStart || cycleDate || new Date()).toLocaleDateString("en-US", {
+                  {(cycleDate || new Date()).toLocaleDateString("en-US", {
                     month: "long",
                     year: "numeric",
                   })}

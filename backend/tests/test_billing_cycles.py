@@ -148,3 +148,47 @@ def test_ensure_billing_cycles_for_new_month(db_session):
 
     assert [row.account_number for row in rows] == ["ACC-4001", "ACC-4002"]
     assert all(row.is_paid is False for row in rows)
+
+
+def test_provider_billing_cycles_hide_future_by_default(db_session, monkeypatch):
+    session, models, crud = db_session
+    _user, provider = _create_provider(
+        session, models, account_number="ACC-5001", email="future@example.com"
+    )
+    current_month = date(2024, 1, 1)
+    future_month = date(2024, 2, 1)
+
+    session.add_all(
+        [
+            models.BillingCycle(
+                account_number=provider.account_number,
+                cycle_month=current_month,
+                is_paid=False,
+                paid_at=None,
+            ),
+            models.BillingCycle(
+                account_number=provider.account_number,
+                cycle_month=future_month,
+                is_paid=False,
+                paid_at=None,
+            ),
+        ]
+    )
+    session.commit()
+
+    monkeypatch.setattr(
+        crud, "current_billing_cycle_month", lambda reference=None: current_month
+    )
+
+    response = crud.list_provider_billing_cycles(session, provider, limit=6)
+    cycle_months = [cycle["cycle_month"] for cycle in response["cycles"]]
+    assert future_month not in cycle_months
+    assert current_month in cycle_months
+
+    response_with_future = crud.list_provider_billing_cycles(
+        session, provider, limit=6, include_future=True
+    )
+    cycle_months_with_future = [
+        cycle["cycle_month"] for cycle in response_with_future["cycles"]
+    ]
+    assert future_month in cycle_months_with_future
