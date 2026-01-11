@@ -451,41 +451,98 @@ function App() {
   }
 
   const AdminBilling = () => {
+    const location = useLocation()
+    const navigate = useNavigate()
     const [billingRows, setBillingRows] = React.useState([])
     const [loading, setLoading] = React.useState(false)
     const [error, setError] = React.useState('')
     const [hasLoaded, setHasLoaded] = React.useState(false)
     const [searchTerm, setSearchTerm] = React.useState('')
-    const [cycleMonth, setCycleMonth] = React.useState(() => {
+    const parseMonthYearFromSearch = React.useCallback((search) => {
+      const params = new URLSearchParams(search)
+      const cycleParam = params.get('cycle_month')
+      if (cycleParam) {
+        const match = cycleParam.match(/^(\d{4})-(\d{2})-01$/)
+        if (match) {
+          const month = Number(match[2])
+          const year = Number(match[1])
+          if (month >= 1 && month <= 12) {
+            return { month, year }
+          }
+        }
+      }
+      const rawYear = params.get('year')
+      const rawMonth = params.get('month')
+      if (rawYear && rawMonth) {
+        const month = Number(rawMonth)
+        const year = Number(rawYear)
+        if (month >= 1 && month <= 12 && Number.isFinite(year)) {
+          return { month, year }
+        }
+      }
+      return null
+    }, [])
+    const initialMonthYear = React.useMemo(() => {
+      const parsed = parseMonthYearFromSearch(location.search)
+      if (parsed) return parsed
       const now = new Date()
-      const month = String(now.getMonth() + 1).padStart(2, '0')
-      return `${now.getFullYear()}-${month}-01`
-    })
+      return { month: now.getMonth() + 1, year: now.getFullYear() }
+    }, [location.search, parseMonthYearFromSearch])
+    const [selectedMonth, setSelectedMonth] = React.useState(initialMonthYear.month)
+    const [selectedYear, setSelectedYear] = React.useState(initialMonthYear.year)
     const [suspendingByAccountNumber, setSuspendingByAccountNumber] = React.useState({})
     const [payingByAccountNumber, setPayingByAccountNumber] = React.useState({})
     const [markAllLoading, setMarkAllLoading] = React.useState(false)
 
     const monthOptions = React.useMemo(() => {
-      const options = []
-      const base = new Date()
-      base.setDate(1)
-      base.setHours(0, 0, 0, 0)
-      for (let i = 0; i < 13; i += 1) {
-        const date = new Date(base.getFullYear(), base.getMonth() - i, 1)
-        const value = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-01`
-        const label = date.toLocaleDateString(undefined, { month: 'long', year: 'numeric' })
-        options.push({ value, label })
-      }
-      return options
+      return Array.from({ length: 12 }, (_, index) => {
+        const month = index + 1
+        const label = new Date(2000, index, 1).toLocaleDateString(undefined, { month: 'long' })
+        return { value: month, label }
+      })
     }, [])
 
+    const yearOptions = React.useMemo(() => {
+      const now = new Date()
+      const baseYear = now.getFullYear()
+      const years = new Set()
+      for (let offset = -3; offset <= 3; offset += 1) {
+        years.add(baseYear + offset)
+      }
+      years.add(selectedYear)
+      return Array.from(years).sort((a, b) => a - b)
+    }, [selectedYear])
+
     const selectedMonthLabel = React.useMemo(() => {
-      const match = monthOptions.find((option) => option.value === cycleMonth)
+      const match = monthOptions.find((option) => option.value === selectedMonth)
       if (match) return match.label
-      const parsed = new Date(`${cycleMonth}T00:00:00`)
-      if (Number.isNaN(parsed.getTime())) return cycleMonth
-      return parsed.toLocaleDateString(undefined, { month: 'long', year: 'numeric' })
-    }, [cycleMonth, monthOptions])
+      const parsed = new Date(2000, selectedMonth - 1, 1)
+      if (Number.isNaN(parsed.getTime())) return String(selectedMonth)
+      return parsed.toLocaleDateString(undefined, { month: 'long' })
+    }, [selectedMonth, monthOptions])
+
+    const cycleMonth = React.useMemo(() => {
+      const monthValue = String(selectedMonth).padStart(2, '0')
+      return `${selectedYear}-${monthValue}-01`
+    }, [selectedMonth, selectedYear])
+
+    React.useEffect(() => {
+      const parsed = parseMonthYearFromSearch(location.search)
+      if (!parsed) return
+      setSelectedMonth((prev) => (prev === parsed.month ? prev : parsed.month))
+      setSelectedYear((prev) => (prev === parsed.year ? prev : parsed.year))
+    }, [location.search, parseMonthYearFromSearch])
+
+    React.useEffect(() => {
+      const params = new URLSearchParams(location.search)
+      params.set('month', String(selectedMonth))
+      params.set('year', String(selectedYear))
+      params.delete('cycle_month')
+      const nextSearch = params.toString()
+      const currentSearch = location.search.replace(/^\?/, '')
+      if (nextSearch === currentSearch) return
+      navigate({ pathname: location.pathname, search: `?${nextSearch}` }, { replace: true })
+    }, [location.pathname, location.search, navigate, selectedMonth, selectedYear])
 
     const fetchBillingRows = React.useCallback(async () => {
       setLoading(true)
@@ -686,7 +743,7 @@ function App() {
         <div className="admin-header">
           <div>
             <p className="eyebrow">Billing</p>
-            <h1>{`Provider Billing — ${selectedMonthLabel}`}</h1>
+            <h1>{`Provider Billing — ${selectedMonthLabel} ${selectedYear}`}</h1>
             <p className="header-subtitle">Monitor outstanding balances, search by account or phone, and mark charges as paid.</p>
           </div>
         </div>
@@ -708,12 +765,28 @@ function App() {
               <div className="billing-date-range__inputs">
                 <select
                   id="billing-cycle-month"
-                  value={cycleMonth}
-                  onChange={(e) => setCycleMonth(e.target.value)}
+                  value={selectedMonth}
+                  onChange={(e) => setSelectedMonth(Number(e.target.value))}
                 >
                   {monthOptions.map((option) => (
                     <option key={option.value} value={option.value}>
                       {option.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            <div className="billing-date-range">
+              <label htmlFor="billing-cycle-year">Year</label>
+              <div className="billing-date-range__inputs">
+                <select
+                  id="billing-cycle-year"
+                  value={selectedYear}
+                  onChange={(e) => setSelectedYear(Number(e.target.value))}
+                >
+                  {yearOptions.map((yearOption) => (
+                    <option key={yearOption} value={yearOption}>
+                      {yearOption}
                     </option>
                   ))}
                 </select>
