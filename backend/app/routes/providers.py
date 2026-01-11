@@ -3,7 +3,16 @@ import os
 from io import BytesIO
 import cloudinary
 import cloudinary.uploader
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, status, Form
+from fastapi import (
+    APIRouter,
+    Depends,
+    HTTPException,
+    UploadFile,
+    File,
+    status,
+    Form,
+    Query,
+)
 from sqlalchemy.orm import Session
 from tempfile import NamedTemporaryFile
 
@@ -358,6 +367,18 @@ def get_my_provider_summary(
         "service_charge_percent": float(service_charge_pct),
         "service_charge_rate": float(service_charge_pct) / 100,
     }
+
+
+@router.get(
+    "/providers/me/billing/cycles",
+    response_model=schemas.ProviderBillingCyclesResponse,
+)
+def get_provider_billing_cycles(
+    limit: int = Query(6, ge=1, le=24),
+    db: Session = Depends(get_db),
+    provider: models.Provider = Depends(_require_current_provider),
+):
+    return crud.list_provider_billing_cycles(db, provider, limit=limit)
 
 
 # -------------------------------------------------------------------

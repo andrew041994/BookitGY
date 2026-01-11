@@ -203,6 +203,33 @@ class ProviderBillingRow(BaseModel):
     paid_at: Optional[datetime] = None
 
 
+class ProviderBillingCycleItem(BaseModel):
+    service_id: int
+    service_name: str
+    qty: int
+    services_total_gyd: float
+    platform_fee_gyd: float
+
+
+class ProviderBillingCycleOut(BaseModel):
+    cycle_month: date
+    coverage_start: date
+    coverage_end: date
+    invoice_date: date
+    status: str
+    services_total_gyd: float
+    platform_fee_gyd: float
+    bill_credits_gyd: float
+    total_due_gyd: float
+    items: List[ProviderBillingCycleItem] = []
+
+
+class ProviderBillingCyclesResponse(BaseModel):
+    account_number: str
+    outstanding_fees_gyd: float
+    cycles: List[ProviderBillingCycleOut] = []
+
+
 class BillingStatusUpdate(BaseModel):
     is_paid: bool
 

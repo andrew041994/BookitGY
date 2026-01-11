@@ -5069,27 +5069,11 @@ const loadProviderSummary = async () => {
 
 function ProviderBillingScreen({ token, showFlash }) {
   const [billingSummary, setBillingSummary] = useState(null);
-  const [bills, setBills] = useState([]);
+  const [billingCycles, setBillingCycles] = useState([]);
   const [billingLoading, setBillingLoading] = useState(false);
   const [billingError, setBillingError] = useState("");
   const [expandedBills, setExpandedBills] = useState({});
-  const [serviceChargePct, setServiceChargePct] = useState(10);
   const [refreshing, setRefreshing] = useState(false);
-
-  const resolveServiceChargePct = (summaryData) => {
-    const rawValue =
-      summaryData?.service_charge_percentage ??
-      summaryData?.service_charge_percent ??
-      summaryData?.service_charge_rate ??
-      summaryData?.service_charge;
-
-    const numeric = Number(rawValue);
-    if (!Number.isFinite(numeric)) return 10;
-
-    // Allow either fractional (0.1) or whole-number (10) representations.
-    const pctValue = numeric <= 1 ? numeric * 100 : numeric;
-    return Math.max(pctValue, 0);
-  };
 
   const toggleBillExpanded = (billId) => {
     setExpandedBills((prev) => ({
@@ -5114,110 +5098,6 @@ function ProviderBillingScreen({ token, showFlash }) {
     });
   };
 
-  const normalizeStart = (booking) => {
-    const raw = booking?.start_time || booking?.start;
-    if (!raw) return null;
-    const dateObj = new Date(raw);
-    return Number.isNaN(dateObj.getTime()) ? null : dateObj;
-  };
-
-  const buildBills = useCallback(
-    (
-      bookingList,
-      chargePct = 10,
-      creditBalance = 0
-    ) => {
-    const now = new Date();
-    const statements = [];
-    const monthsToShow = 6;
-
-    const feeRate = Math.max(chargePct, 0) / 100;
-    let remainingCredits = Math.max(Number(creditBalance) || 0, 0);
-
-    for (let i = 0; i < monthsToShow; i += 1) {
-      const coverageStart = new Date(now.getFullYear(), now.getMonth() - i, 1);
-      const coverageEnd = new Date(now.getFullYear(), now.getMonth() - i + 1, 0);
-      const invoiceDate = new Date(
-        coverageStart.getFullYear(),
-        coverageStart.getMonth() + 1,
-        1
-      );
-
-      const monthBookings = bookingList.filter((booking) => {
-        const normalizedStatus = (booking?.status || "")
-          .toString()
-          .trim()
-          .toLowerCase();
-
-        if (["cancelled", "canceled"].includes(normalizedStatus)) {
-          return false;
-        }
-
-        const start = normalizeStart(booking);
-        if (!start) return false;
-        return start >= coverageStart && start <= coverageEnd;
-      });
-
-      const lineItems = monthBookings.length
-        ? monthBookings.map((booking) => ({
-            bookingId: booking.id || booking.booking_id,
-            description: booking.service_name || "Service booking",
-            client:
-              booking.client_name ||
-              booking.customer_name ||
-              booking.user_name ||
-              booking.client ||
-              booking.user,
-            date: normalizeStart(booking),
-            amount:
-              Number(
-                booking.service_price_gyd ??
-                  booking.price_gyd ??
-                  booking.total_price_gyd ??
-                  booking.price
-              ) || 0,
-          }))
-        : [
-            {
-              bookingId: `empty-${coverageStart.toISOString()}`,
-              description: "No completed bookings recorded",
-              client: "",
-              date: null,
-              amount: 0,
-            },
-          ];
-
-      const servicesTotal = lineItems.reduce(
-        (sum, item) => sum + (Number.isFinite(item.amount) ? item.amount : 0),
-        0
-      );
-
-      const platformFee = Math.max(Math.round(servicesTotal * feeRate), 0);
-      const statementId = `${coverageStart.getFullYear()}-${coverageStart.getMonth() + 1}`;
-
-      let billCreditsApplied = Math.min(remainingCredits, platformFee);
-      remainingCredits -= billCreditsApplied;
-
-      let totalDue = Math.max(platformFee - billCreditsApplied, 0);
-
-      statements.push({
-        id: statementId,
-        coverageStart,
-        coverageEnd,
-        invoiceDate,
-        status: invoiceDate <= now ? "Generated" : "Scheduled",
-        servicesTotal,
-        platformFee,
-        billCreditsApplied,
-        totalDue,
-        lineItems,
-      });
-    }
-
-    statements.sort((a, b) => b.invoiceDate - a.invoiceDate);
-    setBills(statements);
-  }, []);
-
   const fetchBilling = useCallback(async () => {
     try {
       setBillingLoading(true);
@@ -5230,35 +5110,19 @@ function ProviderBillingScreen({ token, showFlash }) {
         return;
       }
 
-      const billingEndpoint = `${API}/providers/me/billing/bookings`;
+      const billingEndpoint = `${API}/providers/me/billing/cycles?limit=6`;
 
-      const [bookingsRes, summaryRes] = await Promise.all([
-        axios.get(billingEndpoint, {
-          headers: { Authorization: `Bearer ${authToken}` },
-        }),
-        axios
-          .get(`${API}/providers/me/summary`, {
-            headers: { Authorization: `Bearer ${authToken}` },
-          })
-          .catch(() => null),
-      ]);
+      const response = await axios.get(billingEndpoint, {
+        headers: { Authorization: `Bearer ${authToken}` },
+      });
 
-      const bookingList = Array.isArray(bookingsRes.data)
-        ? bookingsRes.data
-        : bookingsRes.data?.bookings || bookingsRes.data?.results || [];
-
-      const summaryData = summaryRes?.data || null;
+      const summaryData = response?.data || null;
       setBillingSummary(summaryData);
 
-      const creditBalance = Math.max(
-        Number(summaryData?.total_credit_balance_gyd) || 0,
-        0
-      );
-
-      const resolvedChargePct = resolveServiceChargePct(summaryData);
-      setServiceChargePct(resolvedChargePct);
-
-      buildBills(bookingList, resolvedChargePct, creditBalance);
+      const cycles = Array.isArray(summaryData?.cycles)
+        ? summaryData.cycles
+        : [];
+      setBillingCycles(cycles);
     } catch (err) {
       console.log("Error loading billing", err.response?.data || err.message);
       setBillingError("Could not load billing statements.");
@@ -5268,7 +5132,7 @@ function ProviderBillingScreen({ token, showFlash }) {
     } finally {
       setBillingLoading(false);
     }
-  }, [buildBills, showFlash, token?.token]);
+  }, [showFlash, token?.token]);
 
   useEffect(() => {
     fetchBilling();
@@ -5287,10 +5151,7 @@ function ProviderBillingScreen({ token, showFlash }) {
     setRefreshing(false);
   }, [fetchBilling]);
 
-  const now = new Date();
-  const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-  const outstandingFees =
-    now >= endOfMonth ? billingSummary?.total_fees_due_gyd || 0 : 0;
+  const outstandingFees = billingSummary?.outstanding_fees_gyd || 0;
 
   return (
     <ScrollView
@@ -5334,110 +5195,124 @@ function ProviderBillingScreen({ token, showFlash }) {
         </View>
       ) : null}
 
-      {!billingLoading && !billingError && bills.length === 0 && (
+      {!billingLoading && !billingError && billingCycles.length === 0 && (
         <View style={styles.card}>
-          <Text style={styles.serviceMeta}>No billing statements yet.</Text>
+          <Text style={styles.serviceMeta}>No billing history yet.</Text>
         </View>
       )}
 
       {!billingLoading &&
         !billingError &&
-        bills.map((bill) => (
-          <View key={bill.id} style={styles.billingCard}>
+        billingCycles.map((bill) => {
+          const cycleDate = bill?.cycle_month ? new Date(bill.cycle_month) : null;
+          const coverageStart = bill?.coverage_start
+            ? new Date(bill.coverage_start)
+            : cycleDate;
+          const coverageEnd = bill?.coverage_end ? new Date(bill.coverage_end) : null;
+          const invoiceDate = bill?.invoice_date ? new Date(bill.invoice_date) : null;
+          const status = bill?.status || "Generated";
+          let statusStyle = styles.billingStatusUpcoming;
+          if (status === "Generated") statusStyle = styles.billingStatusReady;
+          if (status === "Paid") statusStyle = styles.billingStatusPaid;
+          if (status === "Unpaid") statusStyle = styles.billingStatusUnpaid;
+          return (
+          <View key={bill.cycle_month} style={styles.billingCard}>
             <View style={styles.billingHeaderRow}>
               <View>
                 <Text style={styles.billingMonth}>
-                  {bill.coverageStart.toLocaleDateString("en-US", {
+                  {(coverageStart || cycleDate || new Date()).toLocaleDateString("en-US", {
                     month: "long",
                     year: "numeric",
                   })}
                 </Text>
                 <Text style={styles.billingMeta}>
-                  Coverage {formatDate(bill.coverageStart)} – {formatDate(bill.coverageEnd)}
+                  Coverage {formatDate(coverageStart)} – {formatDate(coverageEnd)}
                 </Text>
               </View>
 
               <Text
                 style={[
                   styles.billingStatus,
-                  bill.status === "Generated"
-                    ? styles.billingStatusReady
-                    : styles.billingStatusUpcoming,
+                  statusStyle,
                 ]}
               >
-                {bill.status}
+                {status}
               </Text>
             </View>
 
             <Text style={styles.billingMeta}>
-              Invoice date (auto on the 1st): {formatDate(bill.invoiceDate)}
+              Invoice date (auto on the 1st): {formatDate(invoiceDate)}
             </Text>
 
            <TouchableOpacity
               style={styles.billingToggleRow}
-              onPress={() => toggleBillExpanded(bill.id)}
+              onPress={() => toggleBillExpanded(bill.cycle_month)}
             >
               <Text style={styles.billingToggleText}>
-                {expandedBills[bill.id] ? "Hide services" : "Show services"}
+                {expandedBills[bill.cycle_month] ? "Hide services" : "Show services"}
               </Text>
               <Ionicons
-                name={expandedBills[bill.id] ? "chevron-up" : "chevron-down"}
+                name={expandedBills[bill.cycle_month] ? "chevron-up" : "chevron-down"}
                 size={18}
                 color="#0B6BF2"
               />
             </TouchableOpacity>
 
-            {expandedBills[bill.id] ? (
+            {expandedBills[bill.cycle_month] ? (
               <View style={styles.billingLineItems}>
-                {bill.lineItems.map((item) => (
+                {bill.items && bill.items.length > 0 ? (
+                  bill.items.map((item) => (
                   <View
-                    key={item.bookingId || item.description}
+                    key={`${bill.cycle_month}-${item.service_id}`}
                     style={styles.billingLineItem}
                   >
                     <View style={{ flex: 1 }}>
-                      <Text style={styles.billingLineLabel}>{item.description}</Text>
-                      {item.client ? (
-                        <Text style={styles.billingMeta}>Client: {item.client}</Text>
-                      ) : null}
-                      {item.date ? (
-                        <Text style={styles.billingMeta}>
-                          Service date: {formatDate(item.date)}
-                        </Text>
-                      ) : null}
+                      <Text style={styles.billingLineLabel}>{item.service_name}</Text>
+                      <Text style={styles.billingMeta}>Qty: {item.qty}</Text>
                     </View>
-                    <Text style={styles.billingAmount}>{formatMoney(item.amount)}</Text>
+                    <View style={{ alignItems: "flex-end" }}>
+                      <Text style={styles.billingAmount}>
+                        {formatMoney(item.services_total_gyd)}
+                      </Text>
+                      <Text style={styles.billingMeta}>
+                        Fee: {formatMoney(item.platform_fee_gyd)}
+                      </Text>
+                    </View>
 
                   </View>
-                   ))}
+                   ))
+                ) : (
+                  <Text style={styles.billingMeta}>No completed services.</Text>
+                )}
               </View>
             ) : null}
 
             <View style={styles.billingTotalsRow}>
               <Text style={styles.billingTotalsLabel}>Services total</Text>
               <Text style={styles.billingTotalsValue}>
-                {formatMoney(bill.servicesTotal)}
+                {formatMoney(bill.services_total_gyd)}
               </Text>
             </View>
             <View style={styles.billingTotalsRow}>
-              <Text style={styles.billingTotalsLabel}>
-                Platform fee ({serviceChargePct}%)
-              </Text>
+              <Text style={styles.billingTotalsLabel}>Platform fee</Text>
               <Text style={styles.billingTotalsValue}>
-                {formatMoney(bill.platformFee)}
+                {formatMoney(bill.platform_fee_gyd)}
               </Text>
             </View>
               <View style={styles.billingTotalsRow}>
                 <Text style={styles.billingTotalsLabel}>Bill credits</Text>
                 <Text style={styles.billingTotalsValue}>
-                  -{formatMoney(bill.billCreditsApplied)}
+                  -{formatMoney(bill.bill_credits_gyd)}
                 </Text>
               </View>
             <View style={styles.billingTotalsRow}>
               <Text style={styles.billingTotalsLabel}>Total due</Text>
-              <Text style={styles.billingTotalsValue}>{formatMoney(bill.totalDue)}</Text>
+              <Text style={styles.billingTotalsValue}>
+                {formatMoney(bill.total_due_gyd)}
+              </Text>
             </View>
           </View>
-        ))}
+        )})}
     </ScrollView>
   );
 }
@@ -6882,6 +6757,20 @@ billingStatusReady: {
   backgroundColor: "#ecfdf3",
   color: "#166534",
   borderColor: "#bbf7d0",
+  borderWidth: 1,
+},
+
+billingStatusPaid: {
+  backgroundColor: "#ecfdf3",
+  color: "#166534",
+  borderColor: "#bbf7d0",
+  borderWidth: 1,
+},
+
+billingStatusUnpaid: {
+  backgroundColor: "#fef2f2",
+  color: "#b91c1c",
+  borderColor: "#fecaca",
   borderWidth: 1,
 },
 

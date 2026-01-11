@@ -1419,6 +1419,145 @@ def get_provider_billing_row(db: Session, provider_id: int):
     )
 
 
+def list_provider_billing_cycles(
+    db: Session, provider: models.Provider, limit: int = 6
+):
+    account_number = provider.account_number or ""
+    outstanding_fees = float(get_provider_fees_due(db, provider.id) or 0.0)
+    if not account_number:
+        return {
+            "account_number": "",
+            "outstanding_fees_gyd": outstanding_fees,
+            "cycles": [],
+        }
+
+    ensure_billing_cycles_for_accounts(
+        db, [account_number], current_billing_cycle_month()
+    )
+
+    billing_cycles = (
+        db.query(models.BillingCycle)
+        .filter(models.BillingCycle.account_number == account_number)
+        .order_by(models.BillingCycle.cycle_month.desc())
+        .limit(limit)
+        .all()
+    )
+
+    service_charge_pct = get_platform_service_charge_percentage(db)
+    fee_rate = Decimal(str(max(service_charge_pct, 0))) / Decimal("100")
+    now = now_guyana()
+    now_date = now.date()
+    cycles = []
+
+    for billing_cycle in billing_cycles:
+        cycle_month = billing_cycle.cycle_month
+        period_start = datetime(cycle_month.year, cycle_month.month, 1)
+        if cycle_month.month == 12:
+            period_end = datetime(cycle_month.year + 1, 1, 1)
+        else:
+            period_end = datetime(cycle_month.year, cycle_month.month + 1, 1)
+
+        if cycle_month.year == now.year and cycle_month.month == now.month:
+            cutoff = min(period_end, now)
+        else:
+            cutoff = period_end
+
+        rows = (
+            _billable_bookings_base_query(db, provider.id, as_of=cutoff)
+            .filter(
+                models.Booking.end_time >= period_start,
+                models.Booking.end_time < cutoff,
+            )
+            .with_entities(
+                models.Booking.status,
+                models.Service.id.label("service_id"),
+                models.Service.name.label("service_name"),
+                models.Service.price_gyd.label("service_price_gyd"),
+            )
+            .order_by(models.Booking.end_time.asc())
+            .all()
+        )
+
+        services_total = Decimal("0")
+        items_map: dict[int, dict[str, object]] = {}
+        for row in rows:
+            if _is_cancelled_status(row.status):
+                continue
+            if normalized_booking_status_value(row.status) != "completed":
+                continue
+
+            price = Decimal(str(row.service_price_gyd or 0))
+            services_total += price
+            service_id = row.service_id
+            item = items_map.setdefault(
+                service_id,
+                {
+                    "service_id": service_id,
+                    "service_name": row.service_name or "",
+                    "qty": 0,
+                    "services_total_gyd": Decimal("0"),
+                },
+            )
+            item["qty"] = int(item["qty"]) + 1
+            item["services_total_gyd"] = (
+                Decimal(str(item["services_total_gyd"])) + price
+            )
+
+        platform_fee = Decimal(
+            str(get_provider_platform_fee_for_cycle(db, provider.id, cycle_month) or 0)
+        )
+        bill_credits = Decimal(str(billing_cycle.credits_applied_gyd or 0))
+        total_due = Decimal(
+            str(get_provider_fees_due_for_cycle(db, provider.id, cycle_month) or 0)
+        )
+
+        items = []
+        for item in items_map.values():
+            item_services_total = Decimal(str(item["services_total_gyd"]))
+            item_platform_fee = (item_services_total * fee_rate).quantize(Decimal("1"))
+            items.append(
+                {
+                    "service_id": int(item["service_id"]),
+                    "service_name": str(item["service_name"]),
+                    "qty": int(item["qty"]),
+                    "services_total_gyd": float(item_services_total),
+                    "platform_fee_gyd": float(item_platform_fee),
+                }
+            )
+
+        items.sort(key=lambda entry: entry["service_name"].lower())
+
+        invoice_date = period_end.date()
+        coverage_end = (period_end - timedelta(days=1)).date()
+        if billing_cycle.is_paid:
+            status = "Paid"
+        elif invoice_date > now_date:
+            status = "Scheduled"
+        else:
+            status = "Generated"
+
+        cycles.append(
+            {
+                "cycle_month": cycle_month,
+                "coverage_start": cycle_month,
+                "coverage_end": coverage_end,
+                "invoice_date": invoice_date,
+                "status": status,
+                "services_total_gyd": float(services_total),
+                "platform_fee_gyd": float(platform_fee),
+                "bill_credits_gyd": float(bill_credits),
+                "total_due_gyd": float(total_due),
+                "items": items,
+            }
+        )
+
+    return {
+        "account_number": account_number,
+        "outstanding_fees_gyd": outstanding_fees,
+        "cycles": cycles,
+    }
+
+
 def set_provider_bills_paid_state(db: Session, provider_id: int, is_paid: bool) -> int:
     provider = (
         db.query(models.Provider)
