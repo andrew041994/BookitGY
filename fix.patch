@@ -1,203 +1,174 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
-diff --git a/frontend/src/main.jsx b/frontend/src/main.jsx
-index 8a1a450f56227a17c98c04a5ed8924006c7cb411..c7bf439d08005db7e315bc307a8c96b5e83dff10 100644
---- a/frontend/src/main.jsx
-+++ b/frontend/src/main.jsx
-@@ -428,50 +428,55 @@ function App() {
-           Modern tools for managing providers, bookings, and promotions—protected behind a secure login.
-         </p>
+diff --git a/backend/app/crud.py b/backend/app/crud.py
+index d895bdbfd55d5d2b38ff6b7f9704814eafad854e..17676467c18966e047c52df5c6e8a1ea4052a927 100644
+--- a/backend/app/crud.py
++++ b/backend/app/crud.py
+@@ -1143,81 +1143,158 @@ def get_provider_current_month_due_from_completed_bookings(
  
-         <div className="landing-actions">
-           <Link className="primary-btn" to={token ? '/admin/promotions' : '/login'}>
-             {token ? 'Go to dashboard' : 'Login'}
-           </Link>
-           {!token && (
-             <p className="credentials-hint">
-               Demo login: <strong>customer@guyana.com</strong> / <strong>pass</strong>
-             </p>
-           )}
-         </div>
-       </div>
-     </div>
-   )
+         price = r.service_price_gyd or 0
+         services_total += Decimal(str(price))
  
-   const ProtectedRoute = ({ children }) => {
-     const location = useLocation()
-     if (!token) {
-       return <Navigate to="/login" replace state={{ from: location }} />
-     }
-     return children
-   }
+     if services_total <= 0:
+         return 0.0
  
-+  const toCycleMonth = (year, monthNumber) => {
-+    const monthValue = String(monthNumber).padStart(2, '0')
-+    return `${year}-${monthValue}-01`
-+  }
+     service_charge_pct = get_platform_service_charge_percentage(db)
+     fee_rate = Decimal(str(max(service_charge_pct, 0))) / Decimal("100")
+     platform_fee = services_total * fee_rate
+ 
+     platform_fee = platform_fee.quantize(Decimal("1"))
+     if platform_fee <= 0:
+         return 0.0
+ 
+     credits = Decimal(str(get_provider_credit_balance(db, provider_id) or 0))
+     applied_credits = min(credits, platform_fee)
+     total_due = platform_fee - applied_credits
+ 
+     if total_due < 0:
+         total_due = Decimal("0")
+ 
+     return float(total_due)
+ 
+ 
++def get_provider_fees_due_for_cycle(
++    db: Session, provider_id: int, cycle_month: date
++) -> float:
++    """
++    Compute the provider's amount due for a given billing cycle month using
++    only completed (ended) and non-cancelled bookings.
 +
-   const AdminBilling = () => {
-     const location = useLocation()
-     const navigate = useNavigate()
-     const [billingRows, setBillingRows] = React.useState([])
-     const [loading, setLoading] = React.useState(false)
-     const [error, setError] = React.useState('')
-     const [hasLoaded, setHasLoaded] = React.useState(false)
-     const [searchTerm, setSearchTerm] = React.useState('')
-     const parseMonthYearFromSearch = React.useCallback((search) => {
-       const params = new URLSearchParams(search)
-       const cycleParam = params.get('cycle_month')
-       if (cycleParam) {
-         const match = cycleParam.match(/^(\d{4})-(\d{2})-01$/)
-         if (match) {
-           const month = Number(match[2])
-           const year = Number(match[1])
-           if (month >= 1 && month <= 12) {
-             return { month, year }
-           }
-         }
-       }
-       const rawYear = params.get('year')
-       const rawMonth = params.get('month')
-       if (rawYear && rawMonth) {
-         const month = Number(rawMonth)
-@@ -499,79 +504,80 @@ function App() {
-         const month = index + 1
-         const label = new Date(2000, index, 1).toLocaleDateString(undefined, { month: 'long' })
-         return { value: month, label }
-       })
-     }, [])
- 
-     const yearOptions = React.useMemo(() => {
-       const now = new Date()
-       const baseYear = now.getFullYear()
-       const years = new Set()
-       for (let offset = -3; offset <= 3; offset += 1) {
-         years.add(baseYear + offset)
-       }
-       years.add(selectedYear)
-       return Array.from(years).sort((a, b) => a - b)
-     }, [selectedYear])
- 
-     const selectedMonthLabel = React.useMemo(() => {
-       const match = monthOptions.find((option) => option.value === selectedMonth)
-       if (match) return match.label
-       const parsed = new Date(2000, selectedMonth - 1, 1)
-       if (Number.isNaN(parsed.getTime())) return String(selectedMonth)
-       return parsed.toLocaleDateString(undefined, { month: 'long' })
-     }, [selectedMonth, monthOptions])
- 
--    const cycleMonth = React.useMemo(() => {
--      const monthValue = String(selectedMonth).padStart(2, '0')
--      return `${selectedYear}-${monthValue}-01`
--    }, [selectedMonth, selectedYear])
-+    const cycleMonth = React.useMemo(
-+      () => toCycleMonth(selectedYear, selectedMonth),
-+      [selectedMonth, selectedYear]
++    The cycle month is expected to be the first day of the target month.
++    """
++    period_start = datetime(cycle_month.year, cycle_month.month, 1)
++    if cycle_month.month == 12:
++        period_end = datetime(cycle_month.year + 1, 1, 1)
++    else:
++        period_end = datetime(cycle_month.year, cycle_month.month + 1, 1)
++
++    now = now_guyana()
++    if cycle_month.year == now.year and cycle_month.month == now.month:
++        cutoff = min(period_end, now)
++    else:
++        cutoff = period_end
++
++    rows = (
++        _billable_bookings_base_query(db, provider_id, as_of=cutoff)
++        .filter(
++            models.Booking.end_time >= period_start,
++            models.Booking.end_time < cutoff,
++        )
++        .with_entities(
++            models.Booking.end_time,
++            models.Booking.status,
++            models.Service.price_gyd.label("service_price_gyd"),
++        )
++        .order_by(models.Booking.end_time.asc())
++        .all()
 +    )
++
++    services_total = Decimal("0")
++    for r in rows:
++        if _is_cancelled_status(r.status):
++            continue
++        if normalized_booking_status_value(r.status) != "completed":
++            continue
++
++        price = r.service_price_gyd or 0
++        services_total += Decimal(str(price))
++
++    if services_total <= 0:
++        return 0.0
++
++    service_charge_pct = get_platform_service_charge_percentage(db)
++    fee_rate = Decimal(str(max(service_charge_pct, 0))) / Decimal("100")
++    platform_fee = services_total * fee_rate
++
++    platform_fee = platform_fee.quantize(Decimal("1"))
++    if platform_fee <= 0:
++        return 0.0
++
++    credits = Decimal(str(get_provider_credit_balance(db, provider_id) or 0))
++    applied_credits = min(credits, platform_fee)
++    total_due = platform_fee - applied_credits
++
++    if total_due < 0:
++        total_due = Decimal("0")
++
++    return float(total_due)
++
++
  
-     React.useEffect(() => {
-       const parsed = parseMonthYearFromSearch(location.search)
-       if (!parsed) return
-       setSelectedMonth((prev) => (prev === parsed.month ? prev : parsed.month))
-       setSelectedYear((prev) => (prev === parsed.year ? prev : parsed.year))
-     }, [location.search, parseMonthYearFromSearch])
  
-     React.useEffect(() => {
-       const params = new URLSearchParams(location.search)
-       params.set('month', String(selectedMonth))
-       params.set('year', String(selectedYear))
-       params.delete('cycle_month')
-       const nextSearch = params.toString()
-       const currentSearch = location.search.replace(/^\?/, '')
-       if (nextSearch === currentSearch) return
-       navigate({ pathname: location.pathname, search: `?${nextSearch}` }, { replace: true })
-     }, [location.pathname, location.search, navigate, selectedMonth, selectedYear])
+ def _provider_billing_row(
+     db: Session, provider: models.Provider, user: models.User, cycle_month: date
+ ):
+     billing_cycle = get_billing_cycle_for_account(db, provider.account_number, cycle_month)
+-    latest_bill = (
++    bill = (
+         db.query(models.Bill)
+-        .filter(models.Bill.provider_id == provider.id)
+-        .order_by(models.Bill.due_date.desc())
++        .filter(
++            models.Bill.provider_id == provider.id,
++            models.Bill.month == cycle_month,
++        )
+         .first()
+     )
  
--    const fetchBillingRows = React.useCallback(async () => {
-+    const fetchBillingRows = React.useCallback(async (cycleMonthOverride) => {
-+      const requestedCycleMonth = cycleMonthOverride ?? cycleMonth
-       setLoading(true)
-       setError('')
-       try {
-         const res = await apiClient.get('/admin/billing', {
--          params: { cycle_month: cycleMonth },
-+          params: { cycle_month: requestedCycleMonth },
-         })
-         const responseData = res.data
-         const hasValidRows =
-           Array.isArray(responseData) ||
-           Array.isArray(responseData?.providers) ||
-           Array.isArray(responseData?.data)
-         const responseRows = Array.isArray(responseData)
-           ? responseData
-           : Array.isArray(responseData?.providers)
-             ? responseData.providers
-             : Array.isArray(responseData?.data)
-               ? responseData.data
-               : []
+-    amount_due = get_provider_current_month_due_from_completed_bookings(
+-        db, provider.id
+-    )
++    amount_due = get_provider_fees_due_for_cycle(db, provider.id, cycle_month)
+     is_paid = bool(billing_cycle.is_paid) if billing_cycle else False
+     paid_at = billing_cycle.paid_at if billing_cycle else None
++    if bill and bill.due_date:
++        last_due_date = bill.due_date
++    else:
++        if cycle_month.month == 12:
++            due_year = cycle_month.year + 1
++            due_month = 1
++        else:
++            due_year = cycle_month.year
++            due_month = cycle_month.month + 1
++        last_due_date = datetime(due_year, due_month, 15, 23, 59)
  
-         if (!hasValidRows) {
-           setError('Unable to load provider billing details. Please refresh and try again.')
-           setBillingRows([])
-           return
-         }
-         setBillingRows(responseRows)
-       } catch (err) {
-         logApiError(err)
-         setError('Unable to load provider billing details. Please refresh and try again.')
-         setBillingRows([])
-       } finally {
-@@ -590,50 +596,51 @@ function App() {
-         return
-       }
- 
-       if (payingByAccountNumber[accountNumber]) return
- 
-       setPayingByAccountNumber((prev) => ({ ...prev, [accountNumber]: true }))
-       setError('')
- 
-       try {
-         const res = await apiClient.post(
-           `/admin/billing/${accountNumber}/mark-paid`,
-           { cycle_month: cycleMonth }
-         )
-         const payload = res?.data
-         setBillingRows((prev) =>
-           prev.map((row) =>
-             row.account_number === accountNumber
-               ? {
-                 ...row,
-                 is_paid: payload?.is_paid ?? true,
-                 paid_at: payload?.paid_at ?? row.paid_at,
-               }
-               : row
-           )
-         )
-+        await fetchBillingRows()
-       } catch (err) {
-         logApiError(err)
-         setError("Failed to update provider billing status.")
-       } finally {
-         setPayingByAccountNumber((prev) => {
-           const next = { ...prev }
-           delete next[accountNumber]
-           return next
-         })
-       }
+     return {
+         "provider_id": provider.id,
+         "user_id": user.id,
+         "name": get_display_name(user),
+         "account_number": provider.account_number or "",
+         "phone": user.phone or "",
+         "amount_due_gyd": float(amount_due or 0.0),
+         "cycle_month": cycle_month,
+         "is_paid": is_paid,
+         "is_locked": bool(getattr(provider, "is_locked", False)),
+         "is_suspended": bool(getattr(user, "is_suspended", False)),
+-        "last_due_date": latest_bill.due_date if latest_bill else None,
++        "last_due_date": last_due_date,
+         "paid_at": paid_at,
      }
  
-     const markAllPaid = async () => {
-       if (markAllLoading) return
-       setMarkAllLoading(true)
-       setError('')
-       try {
-         await apiClient.post('/admin/billing/mark-all-paid', {
-           cycle_month: cycleMonth,
-         })
-         await fetchBillingRows()
-       } catch (err) {
-         logApiError(err)
-         setError('Failed to update provider billing status.')
-       } finally {
+ 
+ def list_provider_billing_rows(db: Session, cycle_month: date):
+     rows = (
+         db.query(models.Provider, models.User)
+         .join(models.User, models.Provider.user_id == models.User.id)
+         .all()
+     )
+ 
+     account_numbers = [
+         provider.account_number
+         for provider, _user in rows
+         if provider.account_number
+     ]
+     ensure_billing_cycles_for_accounts(db, account_numbers, cycle_month)
+ 
+     return [
+         _provider_billing_row(db, provider, user, cycle_month)
+         for provider, user in rows
+     ]
+ 
+ 
+ def get_provider_billing_row(db: Session, provider_id: int):
  
 EOF
 )

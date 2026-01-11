@@ -1165,24 +1165,101 @@ def get_provider_current_month_due_from_completed_bookings(
     return float(total_due)
 
 
+def get_provider_fees_due_for_cycle(
+    db: Session, provider_id: int, cycle_month: date
+) -> float:
+    """
+    Compute the provider's amount due for a given billing cycle month using
+    only completed (ended) and non-cancelled bookings.
+
+    The cycle month is expected to be the first day of the target month.
+    """
+    period_start = datetime(cycle_month.year, cycle_month.month, 1)
+    if cycle_month.month == 12:
+        period_end = datetime(cycle_month.year + 1, 1, 1)
+    else:
+        period_end = datetime(cycle_month.year, cycle_month.month + 1, 1)
+
+    now = now_guyana()
+    if cycle_month.year == now.year and cycle_month.month == now.month:
+        cutoff = min(period_end, now)
+    else:
+        cutoff = period_end
+
+    rows = (
+        _billable_bookings_base_query(db, provider_id, as_of=cutoff)
+        .filter(
+            models.Booking.end_time >= period_start,
+            models.Booking.end_time < cutoff,
+        )
+        .with_entities(
+            models.Booking.end_time,
+            models.Booking.status,
+            models.Service.price_gyd.label("service_price_gyd"),
+        )
+        .order_by(models.Booking.end_time.asc())
+        .all()
+    )
+
+    services_total = Decimal("0")
+    for r in rows:
+        if _is_cancelled_status(r.status):
+            continue
+        if normalized_booking_status_value(r.status) != "completed":
+            continue
+
+        price = r.service_price_gyd or 0
+        services_total += Decimal(str(price))
+
+    if services_total <= 0:
+        return 0.0
+
+    service_charge_pct = get_platform_service_charge_percentage(db)
+    fee_rate = Decimal(str(max(service_charge_pct, 0))) / Decimal("100")
+    platform_fee = services_total * fee_rate
+
+    platform_fee = platform_fee.quantize(Decimal("1"))
+    if platform_fee <= 0:
+        return 0.0
+
+    credits = Decimal(str(get_provider_credit_balance(db, provider_id) or 0))
+    applied_credits = min(credits, platform_fee)
+    total_due = platform_fee - applied_credits
+
+    if total_due < 0:
+        total_due = Decimal("0")
+
+    return float(total_due)
+
+
 
 
 def _provider_billing_row(
     db: Session, provider: models.Provider, user: models.User, cycle_month: date
 ):
     billing_cycle = get_billing_cycle_for_account(db, provider.account_number, cycle_month)
-    latest_bill = (
+    bill = (
         db.query(models.Bill)
-        .filter(models.Bill.provider_id == provider.id)
-        .order_by(models.Bill.due_date.desc())
+        .filter(
+            models.Bill.provider_id == provider.id,
+            models.Bill.month == cycle_month,
+        )
         .first()
     )
 
-    amount_due = get_provider_current_month_due_from_completed_bookings(
-        db, provider.id
-    )
+    amount_due = get_provider_fees_due_for_cycle(db, provider.id, cycle_month)
     is_paid = bool(billing_cycle.is_paid) if billing_cycle else False
     paid_at = billing_cycle.paid_at if billing_cycle else None
+    if bill and bill.due_date:
+        last_due_date = bill.due_date
+    else:
+        if cycle_month.month == 12:
+            due_year = cycle_month.year + 1
+            due_month = 1
+        else:
+            due_year = cycle_month.year
+            due_month = cycle_month.month + 1
+        last_due_date = datetime(due_year, due_month, 15, 23, 59)
 
     return {
         "provider_id": provider.id,
@@ -1195,7 +1272,7 @@ def _provider_billing_row(
         "is_paid": is_paid,
         "is_locked": bool(getattr(provider, "is_locked", False)),
         "is_suspended": bool(getattr(user, "is_suspended", False)),
-        "last_due_date": latest_bill.due_date if latest_bill else None,
+        "last_due_date": last_due_date,
         "paid_at": paid_at,
     }
 
