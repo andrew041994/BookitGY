@@ -1,6 +1,8 @@
+import logging
+from datetime import date
 from typing import List
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Body, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app import crud, schemas, models
@@ -9,6 +11,7 @@ from app.database import get_db
 from app.security import get_current_user_from_header
 
 router = APIRouter(prefix="/admin", tags=["admin"])
+logger = logging.getLogger(__name__)
 
 
 def _require_admin(current_user: models.User = Depends(get_current_user_from_header)) -> models.User:
@@ -120,10 +123,12 @@ def apply_bill_credit(
 
 @router.get("/billing", response_model=List[schemas.ProviderBillingRow])
 def list_provider_billing(
+    cycle_month: date | None = Query(None),
     db: Session = Depends(get_db),
     _: models.User = Depends(_require_admin),
 ):
-    return crud.list_provider_billing_rows(db)
+    resolved_month = cycle_month or crud.current_billing_cycle_month()
+    return crud.list_provider_billing_rows(db, resolved_month)
 
 
 @router.post(
@@ -132,6 +137,7 @@ def list_provider_billing(
 )
 def mark_billing_cycle_paid(
     account_number: str,
+    payload: schemas.BillingCycleMarkPaidIn = Body(...),
     db: Session = Depends(get_db),
     _: models.User = Depends(_require_admin),
 ):
@@ -146,7 +152,7 @@ def mark_billing_cycle_paid(
         raise HTTPException(status_code=404, detail="Provider not found")
 
     provider, user = row
-    cycle_month = crud.current_billing_cycle_month()
+    cycle_month = payload.cycle_month or crud.current_billing_cycle_month()
     billing_cycle = crud.mark_billing_cycle_paid(
         db,
         account_number=provider.account_number,
@@ -160,6 +166,55 @@ def mark_billing_cycle_paid(
         "cycle_month": billing_cycle.cycle_month,
         "is_paid": billing_cycle.is_paid,
         "paid_at": billing_cycle.paid_at,
+    }
+
+
+@router.post(
+    "/billing/mark-all-paid",
+    response_model=schemas.BillingCycleMarkAllPaidOut,
+)
+def mark_all_billing_cycles_paid(
+    payload: schemas.BillingCycleMarkAllPaidIn,
+    db: Session = Depends(get_db),
+    _: models.User = Depends(_require_admin),
+):
+    rows = (
+        db.query(models.Provider, models.User)
+        .join(models.User, models.Provider.user_id == models.User.id)
+        .filter(models.Provider.account_number.isnot(None))
+        .all()
+    )
+    account_numbers = [provider.account_number for provider, _user in rows if provider.account_number]
+    crud.ensure_billing_cycles_for_accounts(db, account_numbers, payload.cycle_month)
+
+    updated_count = 0
+    for provider, user in rows:
+        account_number = provider.account_number
+        if not account_number:
+            continue
+        try:
+            billing_cycle = crud.get_or_create_billing_cycle(
+                db, account_number, payload.cycle_month
+            )
+            if not billing_cycle or billing_cycle.is_paid:
+                continue
+            crud.mark_billing_cycle_paid(
+                db,
+                account_number=account_number,
+                cycle_month=payload.cycle_month,
+                provider_user=user,
+                send_email=send_billing_paid_email,
+            )
+            updated_count += 1
+        except Exception:
+            logger.exception(
+                "Failed to mark billing cycle paid for account=%s",
+                account_number,
+            )
+
+    return {
+        "cycle_month": payload.cycle_month,
+        "updated_count": updated_count,
     }
 
 

@@ -1167,8 +1167,9 @@ def get_provider_current_month_due_from_completed_bookings(
 
 
 
-def _provider_billing_row(db: Session, provider: models.Provider, user: models.User):
-    cycle_month = current_billing_cycle_month()
+def _provider_billing_row(
+    db: Session, provider: models.Provider, user: models.User, cycle_month: date
+):
     billing_cycle = get_billing_cycle_for_account(db, provider.account_number, cycle_month)
     latest_bill = (
         db.query(models.Bill)
@@ -1190,6 +1191,7 @@ def _provider_billing_row(db: Session, provider: models.Provider, user: models.U
         "account_number": provider.account_number or "",
         "phone": user.phone or "",
         "amount_due_gyd": float(amount_due or 0.0),
+        "cycle_month": cycle_month,
         "is_paid": is_paid,
         "is_locked": bool(getattr(provider, "is_locked", False)),
         "is_suspended": bool(getattr(user, "is_suspended", False)),
@@ -1198,14 +1200,13 @@ def _provider_billing_row(db: Session, provider: models.Provider, user: models.U
     }
 
 
-def list_provider_billing_rows(db: Session):
+def list_provider_billing_rows(db: Session, cycle_month: date):
     rows = (
         db.query(models.Provider, models.User)
         .join(models.User, models.Provider.user_id == models.User.id)
         .all()
     )
 
-    cycle_month = current_billing_cycle_month()
     account_numbers = [
         provider.account_number
         for provider, _user in rows
@@ -1213,7 +1214,10 @@ def list_provider_billing_rows(db: Session):
     ]
     ensure_billing_cycles_for_accounts(db, account_numbers, cycle_month)
 
-    return [_provider_billing_row(db, provider, user) for provider, user in rows]
+    return [
+        _provider_billing_row(db, provider, user, cycle_month)
+        for provider, user in rows
+    ]
 
 
 def get_provider_billing_row(db: Session, provider_id: int):
@@ -1232,7 +1236,9 @@ def get_provider_billing_row(db: Session, provider_id: int):
         ensure_billing_cycles_for_accounts(
             db, [provider.account_number], current_billing_cycle_month()
         )
-    return _provider_billing_row(db, provider, user)
+    return _provider_billing_row(
+        db, provider, user, current_billing_cycle_month()
+    )
 
 
 def set_provider_bills_paid_state(db: Session, provider_id: int, is_paid: bool) -> int:

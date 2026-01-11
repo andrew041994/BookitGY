@@ -456,16 +456,44 @@ function App() {
     const [error, setError] = React.useState('')
     const [hasLoaded, setHasLoaded] = React.useState(false)
     const [searchTerm, setSearchTerm] = React.useState('')
-    const [startDate, setStartDate] = React.useState('')
-    const [endDate, setEndDate] = React.useState('')
+    const [cycleMonth, setCycleMonth] = React.useState(() => {
+      const now = new Date()
+      const month = String(now.getMonth() + 1).padStart(2, '0')
+      return `${now.getFullYear()}-${month}-01`
+    })
     const [suspendingByAccountNumber, setSuspendingByAccountNumber] = React.useState({})
     const [payingByAccountNumber, setPayingByAccountNumber] = React.useState({})
+    const [markAllLoading, setMarkAllLoading] = React.useState(false)
+
+    const monthOptions = React.useMemo(() => {
+      const options = []
+      const base = new Date()
+      base.setDate(1)
+      base.setHours(0, 0, 0, 0)
+      for (let i = 0; i < 13; i += 1) {
+        const date = new Date(base.getFullYear(), base.getMonth() - i, 1)
+        const value = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-01`
+        const label = date.toLocaleDateString(undefined, { month: 'long', year: 'numeric' })
+        options.push({ value, label })
+      }
+      return options
+    }, [])
+
+    const selectedMonthLabel = React.useMemo(() => {
+      const match = monthOptions.find((option) => option.value === cycleMonth)
+      if (match) return match.label
+      const parsed = new Date(`${cycleMonth}T00:00:00`)
+      if (Number.isNaN(parsed.getTime())) return cycleMonth
+      return parsed.toLocaleDateString(undefined, { month: 'long', year: 'numeric' })
+    }, [cycleMonth, monthOptions])
 
     const fetchBillingRows = React.useCallback(async () => {
       setLoading(true)
       setError('')
       try {
-        const res = await apiClient.get('/admin/billing')
+        const res = await apiClient.get('/admin/billing', {
+          params: { cycle_month: cycleMonth },
+        })
         const responseData = res.data
         const hasValidRows =
           Array.isArray(responseData) ||
@@ -493,7 +521,7 @@ function App() {
         setLoading(false)
         setHasLoaded(true)
       }
-    }, [])
+    }, [cycleMonth])
 
     React.useEffect(() => {
       fetchBillingRows()
@@ -512,7 +540,8 @@ function App() {
 
       try {
         const res = await apiClient.post(
-          `/admin/billing/${accountNumber}/mark-paid`
+          `/admin/billing/${accountNumber}/mark-paid`,
+          { cycle_month: cycleMonth }
         )
         const payload = res?.data
         setBillingRows((prev) =>
@@ -538,6 +567,22 @@ function App() {
       }
     }
 
+    const markAllPaid = async () => {
+      if (markAllLoading) return
+      setMarkAllLoading(true)
+      setError('')
+      try {
+        await apiClient.post('/admin/billing/mark-all-paid', {
+          cycle_month: cycleMonth,
+        })
+        await fetchBillingRows()
+      } catch (err) {
+        logApiError(err)
+        setError('Failed to update provider billing status.')
+      } finally {
+        setMarkAllLoading(false)
+      }
+    }
 
     const toggleProviderSuspension = async (accountNumber, shouldSuspend) => {
       if (!accountNumber) {
@@ -607,29 +652,8 @@ function App() {
         minimumFractionDigits: 0,
         maximumFractionDigits: 2,
       })
-    const isWithinDateRange = (row) => {
-      if (!startDate && !endDate) return true
-      if (!row.last_due_date) return false
 
-      const dueDate = new Date(row.last_due_date)
-      if (Number.isNaN(dueDate.getTime())) return false
-
-      if (startDate) {
-        const start = new Date(startDate)
-        start.setHours(0, 0, 0, 0)
-        if (dueDate < start) return false
-      }
-
-      if (endDate) {
-        const end = new Date(endDate)
-        end.setHours(23, 59, 59, 999)
-        if (dueDate > end) return false
-      }
-
-      return true
-    }
-
-    const hasActiveFilters = Boolean(normalizedSearch || startDate || endDate)
+    const hasActiveFilters = Boolean(normalizedSearch)
     const filteredRows = hasActiveFilters
       ? billingRows.filter((row) => {
         const accountNumber = (row.account_number || '').toLowerCase()
@@ -639,7 +663,7 @@ function App() {
           accountNumber.includes(normalizedSearch) ||
           phone.includes(normalizedSearch)
 
-        return matchesSearch && isWithinDateRange(row)
+        return matchesSearch
       })
       : billingRows
 
@@ -662,7 +686,7 @@ function App() {
         <div className="admin-header">
           <div>
             <p className="eyebrow">Billing</p>
-            <h1>Provider Billing</h1>
+            <h1>{`Provider Billing — ${selectedMonthLabel}`}</h1>
             <p className="header-subtitle">Monitor outstanding balances, search by account or phone, and mark charges as paid.</p>
           </div>
         </div>
@@ -680,21 +704,31 @@ function App() {
               />
             </div>
             <div className="billing-date-range">
-              <label>Date range (last due date)</label>
+              <label htmlFor="billing-cycle-month">Billing month</label>
               <div className="billing-date-range__inputs">
-                <input
-                  type="date"
-                  value={startDate}
-                  onChange={(e) => setStartDate(e.target.value)}
-                  aria-label="Start date"
-                />
-                <span aria-hidden="true">—</span>
-                <input
-                  type="date"
-                  value={endDate}
-                  onChange={(e) => setEndDate(e.target.value)}
-                  aria-label="End date"
-                />
+                <select
+                  id="billing-cycle-month"
+                  value={cycleMonth}
+                  onChange={(e) => setCycleMonth(e.target.value)}
+                >
+                  {monthOptions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            <div className="billing-date-range">
+              <label>&nbsp;</label>
+              <div className="billing-date-range__inputs">
+                <button
+                  className="primary-btn"
+                  onClick={markAllPaid}
+                  disabled={loading || markAllLoading}
+                >
+                  {markAllLoading ? 'Marking all…' : 'Mark all paid'}
+                </button>
               </div>
             </div>
             {loading && <span className="muted">Loading providers…</span>}
@@ -762,7 +796,7 @@ function App() {
             )}
 
             {showEmptyState && (
-              <p className="muted">No providers match that account, phone, or date range.</p>
+              <p className="muted">No providers match that account or phone.</p>
             )}
           </div>
         </div>

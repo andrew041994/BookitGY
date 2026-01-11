@@ -194,6 +194,7 @@ class ProviderBillingRow(BaseModel):
     account_number: str
     phone: Optional[str] = None
     amount_due_gyd: float
+    cycle_month: date
     is_paid: bool
     is_locked: bool = False
     is_suspended: bool = False
@@ -210,6 +211,19 @@ class BillingCycleStatusOut(BaseModel):
     cycle_month: date
     is_paid: bool
     paid_at: Optional[datetime] = None
+
+
+class BillingCycleMarkPaidIn(BaseModel):
+    cycle_month: Optional[date] = None
+
+
+class BillingCycleMarkAllPaidIn(BaseModel):
+    cycle_month: date
+
+
+class BillingCycleMarkAllPaidOut(BaseModel):
+    cycle_month: date
+    updated_count: int
 
 
 class BillOut(BaseModel):
