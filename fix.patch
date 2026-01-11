@@ -1,9 +1,10 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
 diff --git a/frontend/src/main.jsx b/frontend/src/main.jsx
-index 0959377374e47fb1c4d1ab14d272a1a62b9e3ae3..8a1a450f56227a17c98c04a5ed8924006c7cb411 100644
+index 8a1a450f56227a17c98c04a5ed8924006c7cb411..c7bf439d08005db7e315bc307a8c96b5e83dff10 100644
 --- a/frontend/src/main.jsx
 +++ b/frontend/src/main.jsx
-@@ -429,85 +429,142 @@ function App() {
+@@ -428,50 +428,55 @@ function App() {
+           Modern tools for managing providers, bookings, and promotions—protected behind a secure login.
          </p>
  
          <div className="landing-actions">
@@ -28,126 +29,98 @@ index 0959377374e47fb1c4d1ab14d272a1a62b9e3ae3..8a1a450f56227a17c98c04a5ed892400
      return children
    }
  
++  const toCycleMonth = (year, monthNumber) => {
++    const monthValue = String(monthNumber).padStart(2, '0')
++    return `${year}-${monthValue}-01`
++  }
++
    const AdminBilling = () => {
-+    const location = useLocation()
-+    const navigate = useNavigate()
+     const location = useLocation()
+     const navigate = useNavigate()
      const [billingRows, setBillingRows] = React.useState([])
      const [loading, setLoading] = React.useState(false)
      const [error, setError] = React.useState('')
      const [hasLoaded, setHasLoaded] = React.useState(false)
      const [searchTerm, setSearchTerm] = React.useState('')
--    const [cycleMonth, setCycleMonth] = React.useState(() => {
-+    const parseMonthYearFromSearch = React.useCallback((search) => {
-+      const params = new URLSearchParams(search)
-+      const cycleParam = params.get('cycle_month')
-+      if (cycleParam) {
-+        const match = cycleParam.match(/^(\d{4})-(\d{2})-01$/)
-+        if (match) {
-+          const month = Number(match[2])
-+          const year = Number(match[1])
-+          if (month >= 1 && month <= 12) {
-+            return { month, year }
-+          }
-+        }
-+      }
-+      const rawYear = params.get('year')
-+      const rawMonth = params.get('month')
-+      if (rawYear && rawMonth) {
-+        const month = Number(rawMonth)
-+        const year = Number(rawYear)
-+        if (month >= 1 && month <= 12 && Number.isFinite(year)) {
-+          return { month, year }
-+        }
-+      }
-+      return null
-+    }, [])
-+    const initialMonthYear = React.useMemo(() => {
-+      const parsed = parseMonthYearFromSearch(location.search)
-+      if (parsed) return parsed
-       const now = new Date()
--      const month = String(now.getMonth() + 1).padStart(2, '0')
--      return `${now.getFullYear()}-${month}-01`
--    })
-+      return { month: now.getMonth() + 1, year: now.getFullYear() }
-+    }, [location.search, parseMonthYearFromSearch])
-+    const [selectedMonth, setSelectedMonth] = React.useState(initialMonthYear.month)
-+    const [selectedYear, setSelectedYear] = React.useState(initialMonthYear.year)
-     const [suspendingByAccountNumber, setSuspendingByAccountNumber] = React.useState({})
-     const [payingByAccountNumber, setPayingByAccountNumber] = React.useState({})
-     const [markAllLoading, setMarkAllLoading] = React.useState(false)
- 
-     const monthOptions = React.useMemo(() => {
--      const options = []
--      const base = new Date()
--      base.setDate(1)
--      base.setHours(0, 0, 0, 0)
--      for (let i = 0; i < 13; i += 1) {
--        const date = new Date(base.getFullYear(), base.getMonth() - i, 1)
--        const value = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-01`
--        const label = date.toLocaleDateString(undefined, { month: 'long', year: 'numeric' })
--        options.push({ value, label })
--      }
--      return options
-+      return Array.from({ length: 12 }, (_, index) => {
-+        const month = index + 1
-+        const label = new Date(2000, index, 1).toLocaleDateString(undefined, { month: 'long' })
-+        return { value: month, label }
-+      })
+     const parseMonthYearFromSearch = React.useCallback((search) => {
+       const params = new URLSearchParams(search)
+       const cycleParam = params.get('cycle_month')
+       if (cycleParam) {
+         const match = cycleParam.match(/^(\d{4})-(\d{2})-01$/)
+         if (match) {
+           const month = Number(match[2])
+           const year = Number(match[1])
+           if (month >= 1 && month <= 12) {
+             return { month, year }
+           }
+         }
+       }
+       const rawYear = params.get('year')
+       const rawMonth = params.get('month')
+       if (rawYear && rawMonth) {
+         const month = Number(rawMonth)
+@@ -499,79 +504,80 @@ function App() {
+         const month = index + 1
+         const label = new Date(2000, index, 1).toLocaleDateString(undefined, { month: 'long' })
+         return { value: month, label }
+       })
      }, [])
  
-+    const yearOptions = React.useMemo(() => {
-+      const now = new Date()
-+      const baseYear = now.getFullYear()
-+      const years = new Set()
-+      for (let offset = -3; offset <= 3; offset += 1) {
-+        years.add(baseYear + offset)
-+      }
-+      years.add(selectedYear)
-+      return Array.from(years).sort((a, b) => a - b)
-+    }, [selectedYear])
-+
-     const selectedMonthLabel = React.useMemo(() => {
--      const match = monthOptions.find((option) => option.value === cycleMonth)
-+      const match = monthOptions.find((option) => option.value === selectedMonth)
-       if (match) return match.label
--      const parsed = new Date(`${cycleMonth}T00:00:00`)
--      if (Number.isNaN(parsed.getTime())) return cycleMonth
--      return parsed.toLocaleDateString(undefined, { month: 'long', year: 'numeric' })
--    }, [cycleMonth, monthOptions])
-+      const parsed = new Date(2000, selectedMonth - 1, 1)
-+      if (Number.isNaN(parsed.getTime())) return String(selectedMonth)
-+      return parsed.toLocaleDateString(undefined, { month: 'long' })
-+    }, [selectedMonth, monthOptions])
-+
-+    const cycleMonth = React.useMemo(() => {
-+      const monthValue = String(selectedMonth).padStart(2, '0')
-+      return `${selectedYear}-${monthValue}-01`
-+    }, [selectedMonth, selectedYear])
-+
-+    React.useEffect(() => {
-+      const parsed = parseMonthYearFromSearch(location.search)
-+      if (!parsed) return
-+      setSelectedMonth((prev) => (prev === parsed.month ? prev : parsed.month))
-+      setSelectedYear((prev) => (prev === parsed.year ? prev : parsed.year))
-+    }, [location.search, parseMonthYearFromSearch])
-+
-+    React.useEffect(() => {
-+      const params = new URLSearchParams(location.search)
-+      params.set('month', String(selectedMonth))
-+      params.set('year', String(selectedYear))
-+      params.delete('cycle_month')
-+      const nextSearch = params.toString()
-+      const currentSearch = location.search.replace(/^\?/, '')
-+      if (nextSearch === currentSearch) return
-+      navigate({ pathname: location.pathname, search: `?${nextSearch}` }, { replace: true })
-+    }, [location.pathname, location.search, navigate, selectedMonth, selectedYear])
+     const yearOptions = React.useMemo(() => {
+       const now = new Date()
+       const baseYear = now.getFullYear()
+       const years = new Set()
+       for (let offset = -3; offset <= 3; offset += 1) {
+         years.add(baseYear + offset)
+       }
+       years.add(selectedYear)
+       return Array.from(years).sort((a, b) => a - b)
+     }, [selectedYear])
  
-     const fetchBillingRows = React.useCallback(async () => {
+     const selectedMonthLabel = React.useMemo(() => {
+       const match = monthOptions.find((option) => option.value === selectedMonth)
+       if (match) return match.label
+       const parsed = new Date(2000, selectedMonth - 1, 1)
+       if (Number.isNaN(parsed.getTime())) return String(selectedMonth)
+       return parsed.toLocaleDateString(undefined, { month: 'long' })
+     }, [selectedMonth, monthOptions])
+ 
+-    const cycleMonth = React.useMemo(() => {
+-      const monthValue = String(selectedMonth).padStart(2, '0')
+-      return `${selectedYear}-${monthValue}-01`
+-    }, [selectedMonth, selectedYear])
++    const cycleMonth = React.useMemo(
++      () => toCycleMonth(selectedYear, selectedMonth),
++      [selectedMonth, selectedYear]
++    )
+ 
+     React.useEffect(() => {
+       const parsed = parseMonthYearFromSearch(location.search)
+       if (!parsed) return
+       setSelectedMonth((prev) => (prev === parsed.month ? prev : parsed.month))
+       setSelectedYear((prev) => (prev === parsed.year ? prev : parsed.year))
+     }, [location.search, parseMonthYearFromSearch])
+ 
+     React.useEffect(() => {
+       const params = new URLSearchParams(location.search)
+       params.set('month', String(selectedMonth))
+       params.set('year', String(selectedYear))
+       params.delete('cycle_month')
+       const nextSearch = params.toString()
+       const currentSearch = location.search.replace(/^\?/, '')
+       if (nextSearch === currentSearch) return
+       navigate({ pathname: location.pathname, search: `?${nextSearch}` }, { replace: true })
+     }, [location.pathname, location.search, navigate, selectedMonth, selectedYear])
+ 
+-    const fetchBillingRows = React.useCallback(async () => {
++    const fetchBillingRows = React.useCallback(async (cycleMonthOverride) => {
++      const requestedCycleMonth = cycleMonthOverride ?? cycleMonth
        setLoading(true)
        setError('')
        try {
          const res = await apiClient.get('/admin/billing', {
-           params: { cycle_month: cycleMonth },
+-          params: { cycle_month: cycleMonth },
++          params: { cycle_month: requestedCycleMonth },
          })
          const responseData = res.data
          const hasValidRows =
@@ -166,109 +139,65 @@ index 0959377374e47fb1c4d1ab14d272a1a62b9e3ae3..8a1a450f56227a17c98c04a5ed892400
            setError('Unable to load provider billing details. Please refresh and try again.')
            setBillingRows([])
            return
-@@ -664,83 +721,99 @@ function App() {
-           phone.includes(normalizedSearch)
+         }
+         setBillingRows(responseRows)
+       } catch (err) {
+         logApiError(err)
+         setError('Unable to load provider billing details. Please refresh and try again.')
+         setBillingRows([])
+       } finally {
+@@ -590,50 +596,51 @@ function App() {
+         return
+       }
  
-         return matchesSearch
-       })
-       : billingRows
+       if (payingByAccountNumber[accountNumber]) return
  
-     const showEmptyState = hasLoaded && !loading && !error && billingRows.length === 0
-     const showNoMatches = hasLoaded && !loading && !error && billingRows.length > 0 && filteredRows.length === 0
+       setPayingByAccountNumber((prev) => ({ ...prev, [accountNumber]: true }))
+       setError('')
  
-     const formatDueDate = (value) => {
-       if (!value) return 'No bill yet'
-       const parsed = new Date(value)
-       if (Number.isNaN(parsed.getTime())) return 'Unknown date'
-       return parsed.toLocaleDateString(undefined, {
-         year: 'numeric',
-         month: 'short',
-         day: 'numeric',
-       })
+       try {
+         const res = await apiClient.post(
+           `/admin/billing/${accountNumber}/mark-paid`,
+           { cycle_month: cycleMonth }
+         )
+         const payload = res?.data
+         setBillingRows((prev) =>
+           prev.map((row) =>
+             row.account_number === accountNumber
+               ? {
+                 ...row,
+                 is_paid: payload?.is_paid ?? true,
+                 paid_at: payload?.paid_at ?? row.paid_at,
+               }
+               : row
+           )
+         )
++        await fetchBillingRows()
+       } catch (err) {
+         logApiError(err)
+         setError("Failed to update provider billing status.")
+       } finally {
+         setPayingByAccountNumber((prev) => {
+           const next = { ...prev }
+           delete next[accountNumber]
+           return next
+         })
+       }
      }
  
-     return (
-       <div className="admin-page">
-         <div className="admin-header">
-           <div>
-             <p className="eyebrow">Billing</p>
--            <h1>{`Provider Billing — ${selectedMonthLabel}`}</h1>
-+            <h1>{`Provider Billing — ${selectedMonthLabel} ${selectedYear}`}</h1>
-             <p className="header-subtitle">Monitor outstanding balances, search by account or phone, and mark charges as paid.</p>
-           </div>
-         </div>
- 
-         <div className="admin-card">
-           <div className="billing-toolbar">
-             <div className="billing-search">
-               <label htmlFor="billing-search-input">Filter by account or phone</label>
-               <input
-                 id="billing-search-input"
-                 type="search"
-                 placeholder="e.g. ACC-1234 or +592..."
-                 value={searchTerm}
-                 onChange={(e) => setSearchTerm(e.target.value)}
-               />
-             </div>
-             <div className="billing-date-range">
-               <label htmlFor="billing-cycle-month">Billing month</label>
-               <div className="billing-date-range__inputs">
-                 <select
-                   id="billing-cycle-month"
--                  value={cycleMonth}
--                  onChange={(e) => setCycleMonth(e.target.value)}
-+                  value={selectedMonth}
-+                  onChange={(e) => setSelectedMonth(Number(e.target.value))}
-                 >
-                   {monthOptions.map((option) => (
-                     <option key={option.value} value={option.value}>
-                       {option.label}
-                     </option>
-                   ))}
-                 </select>
-               </div>
-             </div>
-+            <div className="billing-date-range">
-+              <label htmlFor="billing-cycle-year">Year</label>
-+              <div className="billing-date-range__inputs">
-+                <select
-+                  id="billing-cycle-year"
-+                  value={selectedYear}
-+                  onChange={(e) => setSelectedYear(Number(e.target.value))}
-+                >
-+                  {yearOptions.map((yearOption) => (
-+                    <option key={yearOption} value={yearOption}>
-+                      {yearOption}
-+                    </option>
-+                  ))}
-+                </select>
-+              </div>
-+            </div>
-             <div className="billing-date-range">
-               <label>&nbsp;</label>
-               <div className="billing-date-range__inputs">
-                 <button
-                   className="primary-btn"
-                   onClick={markAllPaid}
-                   disabled={loading || markAllLoading}
-                 >
-                   {markAllLoading ? 'Marking all…' : 'Mark all paid'}
-                 </button>
-               </div>
-             </div>
-             {loading && <span className="muted">Loading providers…</span>}
-           </div>
- 
-           {error && <p className="form-error">{error}</p>}
- 
-           <div className="billing-table">
-             <div className="billing-table__head">
-               <span>Name</span>
-               <span>Account number</span>
-               <span>Phone number</span>
-               <span>Amount due (platform fees)</span>
-               <span>Last due date</span>
-               <span>Status</span>
+     const markAllPaid = async () => {
+       if (markAllLoading) return
+       setMarkAllLoading(true)
+       setError('')
+       try {
+         await apiClient.post('/admin/billing/mark-all-paid', {
+           cycle_month: cycleMonth,
+         })
+         await fetchBillingRows()
+       } catch (err) {
+         logApiError(err)
+         setError('Failed to update provider billing status.')
+       } finally {
  
 EOF
 )

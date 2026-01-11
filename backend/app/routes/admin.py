@@ -121,13 +121,36 @@ def apply_bill_credit(
     }
 
 
+def _resolve_cycle_month(
+    cycle_month: date | None,
+    month: int | None,
+    year: int | None,
+) -> date:
+    if cycle_month:
+        return cycle_month
+    if month is not None and year is not None:
+        try:
+            return date(year, month, 1)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail="Invalid billing month/year") from exc
+    return crud.current_billing_cycle_month()
+
+
 @router.get("/billing", response_model=List[schemas.ProviderBillingRow])
 def list_provider_billing(
     cycle_month: date | None = Query(None),
+    month: int | None = Query(None, ge=1, le=12),
+    year: int | None = Query(None, ge=2000),
     db: Session = Depends(get_db),
     _: models.User = Depends(_require_admin),
 ):
-    resolved_month = cycle_month or crud.current_billing_cycle_month()
+    logger.info(
+        "admin billing list cycle_month=%s month=%s year=%s",
+        cycle_month,
+        month,
+        year,
+    )
+    resolved_month = _resolve_cycle_month(cycle_month, month, year)
     return crud.list_provider_billing_rows(db, resolved_month)
 
 
@@ -141,6 +164,11 @@ def mark_billing_cycle_paid(
     db: Session = Depends(get_db),
     _: models.User = Depends(_require_admin),
 ):
+    logger.info(
+        "admin billing mark-paid cycle_month=%s account=%s",
+        payload.cycle_month,
+        account_number,
+    )
     row = (
         db.query(models.Provider, models.User)
         .join(models.User, models.Provider.user_id == models.User.id)
@@ -178,6 +206,7 @@ def mark_all_billing_cycles_paid(
     db: Session = Depends(get_db),
     _: models.User = Depends(_require_admin),
 ):
+    logger.info("admin billing mark-all-paid cycle_month=%s", payload.cycle_month)
     rows = (
         db.query(models.Provider, models.User)
         .join(models.User, models.Provider.user_id == models.User.id)

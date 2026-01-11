@@ -450,6 +450,11 @@ function App() {
     return children
   }
 
+  const toCycleMonth = (year, monthNumber) => {
+    const monthValue = String(monthNumber).padStart(2, '0')
+    return `${year}-${monthValue}-01`
+  }
+
   const AdminBilling = () => {
     const location = useLocation()
     const navigate = useNavigate()
@@ -521,10 +526,10 @@ function App() {
       return parsed.toLocaleDateString(undefined, { month: 'long' })
     }, [selectedMonth, monthOptions])
 
-    const cycleMonth = React.useMemo(() => {
-      const monthValue = String(selectedMonth).padStart(2, '0')
-      return `${selectedYear}-${monthValue}-01`
-    }, [selectedMonth, selectedYear])
+    const cycleMonth = React.useMemo(
+      () => toCycleMonth(selectedYear, selectedMonth),
+      [selectedMonth, selectedYear]
+    )
 
     React.useEffect(() => {
       const parsed = parseMonthYearFromSearch(location.search)
@@ -544,12 +549,13 @@ function App() {
       navigate({ pathname: location.pathname, search: `?${nextSearch}` }, { replace: true })
     }, [location.pathname, location.search, navigate, selectedMonth, selectedYear])
 
-    const fetchBillingRows = React.useCallback(async () => {
+    const fetchBillingRows = React.useCallback(async (cycleMonthOverride) => {
+      const requestedCycleMonth = cycleMonthOverride ?? cycleMonth
       setLoading(true)
       setError('')
       try {
         const res = await apiClient.get('/admin/billing', {
-          params: { cycle_month: cycleMonth },
+          params: { cycle_month: requestedCycleMonth },
         })
         const responseData = res.data
         const hasValidRows =
@@ -612,6 +618,7 @@ function App() {
               : row
           )
         )
+        await fetchBillingRows()
       } catch (err) {
         logApiError(err)
         setError("Failed to update provider billing status.")
