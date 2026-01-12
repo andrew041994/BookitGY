@@ -967,6 +967,8 @@ function App() {
       return {
         provider_id: provider?.provider_id ?? provider?.id ?? provider?.providerId ?? provider?.providerID ?? null,
         name: provider?.name ?? provider?.provider_name ?? provider?.business_name ?? provider?.businessName ?? '',
+        username: provider?.username ?? provider?.user_name ?? provider?.handle ?? provider?.profile_username ?? '',
+        email: provider?.email ?? provider?.email_address ?? provider?.contact_email ?? '',
         account_number: provider?.account_number ?? provider?.accountNumber ?? provider?.account ?? '',
         phone: provider?.phone ?? provider?.phone_number ?? provider?.phoneNumber ?? '',
         lat: Number.isFinite(latValue) ? latValue : null,
@@ -1015,6 +1017,16 @@ function App() {
     React.useEffect(() => {
       fetchProviderLocations()
     }, [fetchProviderLocations])
+
+    const hasValidCoords = (provider) => Number.isFinite(provider.lat) && Number.isFinite(provider.long)
+    const providersWithCoords = React.useMemo(
+      () => providers.filter((provider) => hasValidCoords(provider)),
+      [providers]
+    )
+    const providersWithoutCoords = React.useMemo(
+      () => providers.filter((provider) => !hasValidCoords(provider)),
+      [providers]
+    )
 
     React.useEffect(() => {
       let isActive = true
@@ -1065,12 +1077,8 @@ function App() {
 
       markersLayerRef.current.clearLayers()
 
-      const validProviders = providers.filter((provider) =>
-        Number.isFinite(provider.lat) && Number.isFinite(provider.long)
-      )
-
       const bounds = []
-      validProviders.forEach((provider) => {
+      providersWithCoords.forEach((provider) => {
         const marker = L.marker([provider.lat, provider.long])
         const popupLines = [
           `<strong>${provider.name || 'Unnamed provider'}</strong>`,
@@ -1088,13 +1096,11 @@ function App() {
       } else {
         mapRef.current.setView(DEFAULT_MAP_CENTER, DEFAULT_MAP_ZOOM)
       }
-    }, [mapReady, providers])
+    }, [mapReady, providersWithCoords])
 
     const totalProviders = providers.length
-    const providersWithPins = providers.filter((provider) =>
-      Number.isFinite(provider.lat) && Number.isFinite(provider.long)
-    ).length
-    const providersMissingCoords = totalProviders - providersWithPins
+    const providersWithPins = providersWithCoords.length
+    const providersMissingCoords = providersWithoutCoords.length
 
     return (
       <div className="admin-page">
@@ -1130,6 +1136,43 @@ function App() {
           <div className="provider-map-wrapper">
             <div ref={mapContainerRef} className="provider-map" aria-label="Provider map" />
           </div>
+
+          {providersWithoutCoords.length > 0 && (
+            <div className="provider-missing-section">
+              <div className="provider-missing-header">
+                <h2>Providers missing pinned locations</h2>
+                <p className="muted">
+                  Contact these providers to add their map location.
+                </p>
+              </div>
+              <div className="provider-missing-table">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Username</th>
+                      <th>Email</th>
+                      <th>Phone</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {providersWithoutCoords.map((provider) => {
+                      const displayUsername = provider.username || provider.name || '—'
+                      const displayEmail = provider.email || '—'
+                      const displayPhone = provider.phone || '—'
+
+                      return (
+                        <tr key={provider.provider_id ?? `${displayUsername}-${displayEmail}-${displayPhone}`}>
+                          <td>{displayUsername}</td>
+                          <td>{displayEmail}</td>
+                          <td>{displayPhone}</td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     )
