@@ -1,149 +1,158 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
 diff --git a/mobile/App.js b/mobile/App.js
-index 89f4b0b0d443802bfdcf986f3f38733f83cc46ee..55d26c072f69760d6df7e44dbcada9b311e09ec7 100644
+index 2d7f8a09aafaaaae7f16eb50019559cd4c0710c3..8dc2b9db2d8962631ef6374fd47cc3f803ff0502 100644
 --- a/mobile/App.js
 +++ b/mobile/App.js
-@@ -3554,130 +3554,130 @@ const loadServices = async () => {
-         // 🔒 Always normalize to an array
-     const rawServices = res.data;
-     const list = Array.isArray(rawServices)
-       ? rawServices
-       : rawServices?.services || rawServices?.results || [];
+@@ -3290,50 +3290,79 @@ function ProviderDashboardScreen({ apiClient, token, showFlash }) {
  
-     setServices(list || []);
  
-     } catch (err) {
-       console.log("Error loading services", err.response?.data || err.message);
-       setServicesError("Could not load services.");
-       if (showFlash) {
-         showFlash("error", "Could not load services.");
+ const providerLabel =
+   (profile?.full_name && profile.full_name.trim()) ||
+   token?.email ||
+   "Provider";
+ 
+ 
+ const [customProfession, setCustomProfession] = useState("");
+ const [providerSummary, setProviderSummary] = useState(null);
+ const [todayBookings, setTodayBookings] = useState([]);
+ const [todayLoading, setTodayLoading] = useState(false);
+ const [todayError, setTodayError] = useState("");
+ const [upcomingBookings, setUpcomingBookings] = useState([]);
+ const [upcomingLoading, setUpcomingLoading] = useState(false);
+ const [upcomingError, setUpcomingError] = useState("");
+ const [providerLocation, setProviderLocation] = useState(null);
+ const [focusedHoursField, setFocusedHoursField] = useState(null);
+ const [avatarUrl, setAvatarUrl] = useState(null);
+ // Catalog (portfolio images)
+ const [catalog, setCatalog] = useState([]);
+ const [catalogLoading, setCatalogLoading] = useState(false);
+ const [catalogError, setCatalogError] = useState("");
+ const [catalogUploading, setCatalogUploading] = useState(false);
+ 
++const validateServiceFields = useCallback((name, price, duration) => {
++  const errors = { name: "", price: "", duration: "" };
++  const trimmedName = name.trim();
++  const priceNumber = Number(price);
++  const durationNumber = Number(duration);
++
++  if (!trimmedName) {
++    errors.name = "Service name is required.";
++  }
++
++  if (!price || Number.isNaN(priceNumber) || priceNumber <= 0) {
++    errors.price = "Enter a price greater than 0.";
++  }
++
++  if (!duration || Number.isNaN(durationNumber) || durationNumber <= 0) {
++    errors.duration = "Enter a duration greater than 0.";
++  }
++
++  return errors;
++}, []);
++
++const serviceErrors = useMemo(
++  () => validateServiceFields(newName, newPrice, newDuration),
++  [newName, newPrice, newDuration, validateServiceFields]
++);
++
++const isServiceFormValid =
++  !serviceErrors.name && !serviceErrors.price && !serviceErrors.duration;
++
+ 
+ 
+ 
+   useEffect(() => {
+     loadServices();
+     loadBookings();
+     loadWorkingHours();
+     loadTodayBookings();
+     loadUpcomingBookings(); 
+     loadProviderLocation(); 
+     loadProviderSummary();
+     loadProviderProfile();
+     loadCatalog();
+ 
+ 
+ 
+   }, []);
+ 
+   useFocusEffect(
+   useCallback(() => {
+     // Re-fetch profile (and anything else you want live-updated)
+     loadProviderProfile();
+     // optional: also refresh bookings, summary, etc.
+     // loadTodayBookings();
+     // loadUpcomingBookings();
+@@ -3733,57 +3762,72 @@ const to24Hour = (time12) => {
+       if (
+         isNaN(h) ||
+         isNaN(m) ||
+         h < 0 ||
+         h > 23 ||
+         m < 0 ||
+         m > 59
+       ) {
+         return "";
        }
-     } finally {
-       setLoading(false);
-     }
-   };
  
- const saveWorkingHours = async () => {
+       // 4) Default to AM if no suffix provided
+       if (!suffix) suffix = "AM";
+ 
+       // 5) Convert to 24h
+       if (suffix === "PM" && h !== 12) h += 12;
+       if (suffix === "AM" && h === 12) h = 0;
+ 
+       // 6) Return "HH:MM"
+       return `${h.toString().padStart(2, "0")}:${m.toString().padStart(2, "0")}`;
+ };
+ 
+ 
+ 
+   const handleAddService = async () => {
+-  if (!newName.trim()) {
+-    if (showFlash) showFlash("error", "Service name is required");
++  const currentErrors = validateServiceFields(
++    newName,
++    newPrice,
++    newDuration
++  );
++  const isValid =
++    !currentErrors.name &&
++    !currentErrors.price &&
++    !currentErrors.duration;
++
++  if (!isValid) {
++    if (showFlash) {
++      showFlash(
++        "error",
++        currentErrors.name || currentErrors.price || currentErrors.duration
++      );
++    }
+     return;
+   }
+ 
+-  const priceNumber = newPrice ? Number(newPrice) : 0;
+-  const durationNumber = newDuration ? Number(newDuration) : 30;
++  const priceNumber = Number(newPrice);
++  const durationNumber = Number(newDuration);
+ 
    try {
      const authToken = await getAuthToken(token);
      if (!authToken) {
        if (showFlash) showFlash("error", "No access token found.");
-       setHoursFlash({ type: "error", message: "No access token found." });
--      setTimeout(() => setHoursFlash(null), 2000);
-+      setTimeout(() => setHoursFlash(null), 3500);
        return;
      }
  
-     // Validate and build payload
-     const payload = [];
-     for (const h of workingHours) {
-       const start24 = to24Hour(h.startLocal);
-       const end24 = to24Hour(h.endLocal);
+     const payload = {
+       name: newName.trim(),
+       description: newDescription.trim(),
+       duration_minutes: durationNumber,
+       price_gyd: priceNumber,
+     };
  
-       if (!h.is_closed) {
-         // For open days, both times must be valid
-         if (!start24 || !end24) {
-           const dayNames = [
-             "Monday",
-             "Tuesday",
-             "Wednesday",
-             "Thursday",
-             "Friday",
-             "Saturday",
-             "Sunday",
-           ];
-           const label = dayNames[h.weekday] || `Day ${h.weekday}`;
-           const msg = `Please enter valid start and end times for ${label}.`;
-           if (showFlash) showFlash("error", msg);
-           setHoursFlash({ type: "error", message: msg });
--          setTimeout(() => setHoursFlash(null), 2000);
-+          setTimeout(() => setHoursFlash(null), 3500);
-           return;
-         }
- 
-         // And end must be after start
-         const [sh, sm] = start24.split(":").map((n) => parseInt(n, 10));
-         const [eh, em] = end24.split(":").map((n) => parseInt(n, 10));
-         const startMinutes = sh * 60 + sm;
-         const endMinutes = eh * 60 + em;
- 
-         if (endMinutes <= startMinutes) {
-           const dayNames = [
-             "Monday",
-             "Tuesday",
-             "Wednesday",
-             "Thursday",
-             "Friday",
-             "Saturday",
-             "Sunday",
-           ];
-           const label = dayNames[h.weekday] || `Day ${h.weekday}`;
-           const msg = `End time must be after start time for ${label}.`;
-           if (showFlash) showFlash("error", msg);
-           setHoursFlash({ type: "error", message: msg });
--          setTimeout(() => setHoursFlash(null), 2000);
-+          setTimeout(() => setHoursFlash(null), 3500);
-           return;
-         }
-       }
- 
-       payload.push({
-         weekday: h.weekday,
-         is_closed: h.is_closed,
-         start_time: h.is_closed ? null : start24,
-         end_time: h.is_closed ? null : end24,
-       });
-     }
- 
-     
-     await axios.put(`${API}/providers/me/working-hours`, payload, {
-       headers: { Authorization: `Bearer ${authToken}` },
-     });
- 
- 
-     // if (showFlash) showFlash("success", "Working hours saved");
-     setHoursFlash({ type: "success", message: "Working hours saved" });
--    setTimeout(() => setHoursFlash(null), 2000);
-+    setTimeout(() => setHoursFlash(null), 3500);
-   } catch (err) {
-     console.log(
-       "Error saving working hours",
-       err.response?.data || err.message
-     );
-     if (showFlash) showFlash("error", "Could not save working hours.");
-     setHoursFlash({ type: "error", message: "Could not save working hours." });
--    setTimeout(() => setHoursFlash(null), 2000);
-+    setTimeout(() => setHoursFlash(null), 3500);
-   }
- };
- 
- // Convert "HH:MM" → "h:MM AM/PM" (safe)
- const to12Hour = (time24) => {
-   if (!time24 || typeof time24 !== "string") return "";
- 
-   if (!time24.includes(":")) return "";
- 
-   let [h, m] = time24.split(":");
- 
-   h = parseInt(h, 10);
-   m = parseInt(m, 10);
- 
-   if (isNaN(h) || isNaN(m)) return "";
- 
-   const suffix = h >= 12 ? "PM" : "AM";
-   h = h % 12 || 12;
- 
-   return `${h}:${m.toString().padStart(2, "0")} ${suffix}`;
- };
- 
- 
- // Convert "h:MM AM/PM" → "HH:MM" safely
- // "h:MM AM/PM" or "1000am" / "930 PM" / "10" -> "HH:MM"
-@@ -4070,58 +4070,58 @@ const saveProviderProfile = async () => {
- 
-     // ✅ Save provider profile to backend
-     const res = await axios.put(
-       `${API}/providers/me/profile`,
+     // ✅ Create service on backend and get the created record back
+     const res = await axios.post(
+       `${API}/providers/me/services`,
        payload,
        {
          headers: {
@@ -151,218 +160,178 @@ index 89f4b0b0d443802bfdcf986f3f38733f83cc46ee..55d26c072f69760d6df7e44dbcada9b3
          },
        }
      );
+@@ -4529,82 +4573,107 @@ const loadProviderSummary = async () => {
+               </>
+             )}
+         </View>
  
-     // ✅ Update local state from server response so UI reflects what’s saved
-     setProfile({
-       full_name: res.data.full_name || "",
-       phone: res.data.phone || "",
-       whatsapp: res.data.whatsapp || "",
-       location: res.data.location || "",
-       bio: res.data.bio || "",
-       professions: res.data.professions || [],
-       username: res.data.username || "",
-     });
+         {/* Services */}
+         <View style={styles.card}>
+           <View
+             style={{
+               flexDirection: "row",
+               justifyContent: "space-between",
+               alignItems: "center",
+               marginBottom: 8,
+             }}
+           >
+             <Text style={styles.sectionTitle}>Your services</Text>
+             <TouchableOpacity onPress={() => setAdding((prev) => !prev)}>
+               <Text style={{ color: "#16a34a", fontWeight: "600" }}>
+                 {adding ? "Cancel" : "+ Add"}
+               </Text>
+             </TouchableOpacity>
+           </View>
  
-     // ✅ Show success flash in the green bar
-     setHoursFlash({ type: "success", message: "Provider profile saved" });
--    setTimeout(() => setHoursFlash(null), 2000);
-+    setTimeout(() => setHoursFlash(null), 3500);
+           {adding && (
+             <View style={{ marginBottom: 12 }}>
+               <TextInput
+-                style={styles.input}
++                style={[
++                  styles.input,
++                  serviceErrors.name ? styles.inputError : null,
++                ]}
+                 placeholder="Service name"
+                 value={newName}
+                 onChangeText={setNewName}
+               />
++              {serviceErrors.name ? (
++                <Text style={styles.inputErrorText}>
++                  {serviceErrors.name}
++                </Text>
++              ) : null}
+               <TextInput
+-                style={styles.input}
++                style={[
++                  styles.input,
++                  serviceErrors.price ? styles.inputError : null,
++                ]}
+                 placeholder="Price (GYD)"
+                 value={newPrice}
+                 onChangeText={setNewPrice}
+                 keyboardType="numeric"
+               />
++              {serviceErrors.price ? (
++                <Text style={styles.inputErrorText}>
++                  {serviceErrors.price}
++                </Text>
++              ) : null}
+               <TextInput
+-                style={styles.input}
++                style={[
++                  styles.input,
++                  serviceErrors.duration ? styles.inputError : null,
++                ]}
+                 placeholder="Duration (minutes)"
+                 value={newDuration}
+                 onChangeText={setNewDuration}
+                 keyboardType="numeric"
+               />
++              {serviceErrors.duration ? (
++                <Text style={styles.inputErrorText}>
++                  {serviceErrors.duration}
++                </Text>
++              ) : null}
+               <TextInput
+                 style={[styles.input, { height: 80 }]}
+                 placeholder="Description"
+                 value={newDescription}
+                 onChangeText={setNewDescription}
+                 multiline
+               />
  
-     if (showFlash) showFlash("success", "Provider profile saved");
-   } catch (err) {
-     console.log("Error saving provider profile", err.response?.data || err.message);
- 
-     setHoursFlash({ type: "error", message: "Provider profile not saved" });
--    setTimeout(() => setHoursFlash(null), 2000);
-+    setTimeout(() => setHoursFlash(null), 3500);
- 
-     if (showFlash) {
-       const detail =
-         err.response?.data?.detail || "Could not save provider profile.";
-       showFlash("error", detail);
-     }
-   }
- };
- 
- const pickAvatar = async () => {
-   try {
-     const result = await ImagePicker.launchImageLibraryAsync({
-       mediaTypes: ImagePicker.MediaTypeOptions.Images,
-       allowsEditing: true,
-       aspect: [1, 1],
-       quality: 1,
-     });
- 
-     if (result.canceled) return;
- 
-     const asset = result.assets && result.assets[0];
-     if (!asset || !asset.uri) return;
- 
-     await uploadAvatar(asset.uri);
-   } catch (err) {
-@@ -5490,53 +5490,53 @@ function MainApp({ apiClient, authLoading, token, setToken, showFlash, navigatio
-                   authLoading={authLoading}
-                   token={token}
-                   setToken={setToken}
-                   showFlash={showFlash}
+               <View style={{ width: "100%", marginTop: 4 }}>
+                 <Button
+                   title="Save service"
+                   onPress={handleAddService}
+                   color="#16a34a"
++                  disabled={!isServiceFormValid}
                  />
-               )}
-             </Tab.Screen>
-           </Tab.Navigator>
+               </View>
+             </View>
+           )}
  
+           {loading && (
+             <View style={{ paddingVertical: 10 }}>
+               <ActivityIndicator />
+               <Text style={styles.serviceMeta}>Loading services…</Text>
+             </View>
+           )}
  
-       )}
-     </NavigationContainer>
-   );
- }
+           {!loading && servicesError ? (
+             <Text style={styles.errorText}>{servicesError}</Text>
+           ) : null}
  
+           {!loading && !servicesError && services.length === 0 && !adding && (
+             <Text style={styles.serviceHint}>
+               You have no services yet. Tap “+ Add” to create your first
+               service.
+             </Text>
+           )}
  
- 
- 
- //Flash message component
- 
- function FlashMessage({ flash }) {
-   if (!flash || !flash.text) return null;
- 
-   const isError = flash.type === "error";
- 
--  const backgroundColor = isError ? "#fee2e2" : "#dcfce7"; // red / green
--  const borderColor = isError ? "#b91c1c" : "#16a34a";
--  const textColor = isError ? "#7f1d1d" : "#166534";
-+  const backgroundColor = isError ? "#fee2e2" : "#16a34a"; // red / green
-+  const borderColor = isError ? "#b91c1c" : "#15803d";
-+  const textColor = isError ? "#7f1d1d" : "#ffffff";
- 
-   return (
- 
-     <View
-       style={[
-         styles.flashContainer,
-         { backgroundColor, borderColor },
-       ]}
-     >
-       <Text style={[styles.flashText, { color: textColor }]}>
-         {flash.text}
-       </Text>
-     </View>
-   );
- }
- 
- 
- // 🔹 App orchestrates landing/login/signup/forgot-password vs main app
- 
- function App() {
- 
-   const mountIdRef = useRef(Math.random().toString(16).slice(2));
-   console.log("APP MOUNT ID:", mountIdRef.current);
-   useEffect(() => console.log("APP useEffect ran for mount", mountIdRef.current), []);
- 
-@@ -5587,51 +5587,51 @@ function App() {
-       if (message) return message;
-       return JSON.stringify(item);
-     };
- 
-     if (Array.isArray(text)) {
-       return text.map(formatErrorItem).filter(Boolean).join("\n");
-     }
- 
-     if (typeof text === "object") {
-       if (Array.isArray(text.detail)) {
-         return formatFlashText(text.detail);
-       }
-       if (typeof text.detail === "string") return text.detail;
-       if (typeof text.message === "string") return text.message;
-       if (typeof text.msg === "string") return text.msg;
-       return JSON.stringify(text);
-     }
- 
-     return String(text);
-   };
- 
-   const showFlash = (type, text) => {
-     setFlash({ type, text: formatFlashText(text) });
-     setTimeout(() => {
-       setFlash(null);
--    }, 3000);
-+    }, 4500);
-   };
- 
-   useEffect(() => {
-     let isActive = true;
-     const restoreSession = async () => {
-       if (authBootstrapRef.current.inFlight || authBootstrapRef.current.completed) {
-         return;
-       }
-       authBootstrapRef.current.inFlight = true;
-       const bootstrapStartedAt = Date.now();
-       console.log("[auth] bootstrap start");
-       try {
-         const restoredToken = await withTimeout(
-           getAuthToken(),
-           AUTH_TOKEN_TIMEOUT_MS,
-           "getAuthToken"
-         );
-         console.log("[auth] token loaded:", Boolean(restoredToken));
- 
-         if (!restoredToken) {
-           if (isActive) setToken(null);
-         } else {
-           try {
-             const meRes = await withTimeout(
-               apiClient.get("/users/me", {
-@@ -6275,51 +6275,51 @@ favoriteToggleButton: {
+            {!loading &&
+             !servicesError &&
+@@ -5823,50 +5892,60 @@ const styles = StyleSheet.create({
    },
-   hoursInput: {
-     borderWidth: 1,
-     borderColor: "#d1d5db",
-     borderRadius: 6,
-     paddingHorizontal: 8,
-     paddingVertical: 4,
-     minWidth: 60,
-     textAlign: "center",
-     marginHorizontal: 4,
+   title: {
+     fontSize: 36,
+     fontWeight: "bold",
+     color: "#16a34a",
+     marginBottom: 20,
+   },
+   input: {
+     width: "100%",
      backgroundColor: "white",
+     borderRadius: 8,
+     paddingHorizontal: 12,
+     paddingVertical: 12,
+     marginBottom: 12,
+     borderWidth: 1,
+     borderColor: "#bbf7d0",
+     color: "#0f172a",
+     minHeight: 48,
+     textAlignVertical: "center",
+     ...Platform.select({
+       android: {
+         includeFontPadding: false,
+       },
+     }),
    },
++  inputError: {
++    borderColor: "#ef4444",
++    borderWidth: 2,
++  },
++  inputErrorText: {
++    color: "#ef4444",
++    fontSize: 12,
++    marginTop: -6,
++    marginBottom: 12,
++  },
+   inputPlaceholder: {
+     color: "#64748b",
+   },
+   forgotLink: {
+     marginBottom: 6,
+     alignSelf: "center",
+     paddingVertical: 4,
+   },
+   forgotLinkText: {
+     color: "#0f172a",
+     textDecorationLine: "underline",
+     textAlign: "center",
+   },
+   subtitle: { fontSize: 22, color: "#166534", marginTop: 20, textAlign: "center" },
+   text: { fontSize: 18, color: "#166534", marginTop: 15, textAlign: "center" },
  
-   hoursFlashGlobal: {
+     flashContainer: {
      position: "absolute",
-     top: 50,
+     top: 40,
      left: 20,
      right: 20,
-     paddingVertical: 8,
+     paddingVertical: 10,
      paddingHorizontal: 12,
      borderRadius: 8,
-     zIndex: 9999,
-     elevation: 10,
-   },
-   hoursFlashSuccess: {
--    backgroundColor: "#22c55e",
-+    backgroundColor: "#16a34a",
-   },
-   hoursFlashError: {
-     backgroundColor: "#ef4444",
-   },
-   hoursFlashText: {
-     color: "white",
-     fontSize: 13,
-     textAlign: "center",
-   },
- 
-   hoursHelp: {
-   fontSize: 12,
-   color: "#6b7280",
-   marginTop: 4,
-   marginBottom: 8,
- },
- 
- appointmentScroll: {
-     padding: 24,
-     backgroundColor: "#EAFDF4",
-     flexGrow: 1,
-   },
-   appointmentHeader: {
-     flexDirection: "row",
-     alignItems: "center",
+     borderWidth: 1,
  
 EOF
 )

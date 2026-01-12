@@ -3576,7 +3576,7 @@ const saveWorkingHours = async () => {
     if (!authToken) {
       if (showFlash) showFlash("error", "No access token found.");
       setHoursFlash({ type: "error", message: "No access token found." });
-      setTimeout(() => setHoursFlash(null), 2000);
+      setTimeout(() => setHoursFlash(null), 4000);
       return;
     }
 
@@ -3602,7 +3602,7 @@ const saveWorkingHours = async () => {
           const msg = `Please enter valid start and end times for ${label}.`;
           if (showFlash) showFlash("error", msg);
           setHoursFlash({ type: "error", message: msg });
-          setTimeout(() => setHoursFlash(null), 2000);
+          setTimeout(() => setHoursFlash(null), 4000);
           return;
         }
 
@@ -3626,7 +3626,7 @@ const saveWorkingHours = async () => {
           const msg = `End time must be after start time for ${label}.`;
           if (showFlash) showFlash("error", msg);
           setHoursFlash({ type: "error", message: msg });
-          setTimeout(() => setHoursFlash(null), 2000);
+          setTimeout(() => setHoursFlash(null), 4000);
           return;
         }
       }
@@ -3647,7 +3647,7 @@ const saveWorkingHours = async () => {
 
     // if (showFlash) showFlash("success", "Working hours saved");
     setHoursFlash({ type: "success", message: "Working hours saved" });
-    setTimeout(() => setHoursFlash(null), 2000);
+    setTimeout(() => setHoursFlash(null), 4000);
   } catch (err) {
     console.log(
       "Error saving working hours",
@@ -3655,7 +3655,7 @@ const saveWorkingHours = async () => {
     );
     if (showFlash) showFlash("error", "Could not save working hours.");
     setHoursFlash({ type: "error", message: "Could not save working hours." });
-    setTimeout(() => setHoursFlash(null), 2000);
+    setTimeout(() => setHoursFlash(null), 4000);
   }
 };
 
@@ -4092,14 +4092,14 @@ const saveProviderProfile = async () => {
 
     // ✅ Show success flash in the green bar
     setHoursFlash({ type: "success", message: "Provider profile saved" });
-    setTimeout(() => setHoursFlash(null), 2000);
+    setTimeout(() => setHoursFlash(null), 4000);
 
     if (showFlash) showFlash("success", "Provider profile saved");
   } catch (err) {
     console.log("Error saving provider profile", err.response?.data || err.message);
 
     setHoursFlash({ type: "error", message: "Provider profile not saved" });
-    setTimeout(() => setHoursFlash(null), 2000);
+    setTimeout(() => setHoursFlash(null), 4000);
 
     if (showFlash) {
       const detail =
@@ -5512,9 +5512,9 @@ function FlashMessage({ flash }) {
 
   const isError = flash.type === "error";
 
-  const backgroundColor = isError ? "#fee2e2" : "#dcfce7"; // red / green
-  const borderColor = isError ? "#b91c1c" : "#16a34a";
-  const textColor = isError ? "#7f1d1d" : "#166534";
+  const backgroundColor = isError ? "#fee2e2" : "#16a34a"; // red / green
+  const borderColor = isError ? "#b91c1c" : "#15803d";
+  const textColor = isError ? "#7f1d1d" : "#ffffff";
 
   return (
 
@@ -5609,7 +5609,7 @@ function App() {
     setFlash({ type, text: formatFlashText(text) });
     setTimeout(() => {
       setFlash(null);
-    }, 3000);
+    }, 4500);
   };
 
   useEffect(() => {
@@ -6297,7 +6297,7 @@ favoriteToggleButton: {
     elevation: 10,
   },
   hoursFlashSuccess: {
-    backgroundColor: "#22c55e",
+    backgroundColor: "#16a34a",
   },
   hoursFlashError: {
     backgroundColor: "#ef4444",

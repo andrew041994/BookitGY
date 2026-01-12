@@ -14,6 +14,7 @@ from fastapi import (
     Query,
 )
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import IntegrityError
 from tempfile import NamedTemporaryFile
 
 from app.services.cloudinary_service import upload_avatar
@@ -290,7 +291,14 @@ def create_my_service(
     db: Session = Depends(get_db),
     provider: models.Provider = Depends(_require_current_provider),
 ):
-    return crud.create_service_for_provider(db, provider.id, service_in)
+    try:
+        return crud.create_service_for_provider(db, provider.id, service_in)
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Service name, price, and duration are required.",
+        )
 
 
 @router.put("/providers/me/services/{service_id}")
@@ -300,7 +308,14 @@ def update_my_service(
     db: Session = Depends(get_db),
     provider: models.Provider = Depends(_require_current_provider),
 ):
-    return crud.update_service(db, provider.id, service_id, service_update)
+    try:
+        return crud.update_service(db, provider.id, service_id, service_update)
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Service name, price, and duration are required.",
+        )
 
 
 @router.delete("/providers/me/services/{service_id}")

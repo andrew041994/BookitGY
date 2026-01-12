@@ -1,4 +1,4 @@
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, Field, validator
 
 from datetime import datetime, date
 from typing import Optional, List
@@ -113,16 +113,32 @@ class ProviderSuspensionOut(BaseModel):
         from_attributes = True
 
 class ServiceCreate(BaseModel):
-    name: str
+    name: str = Field(..., min_length=1)
     description: str
-    price_gyd: float
-    duration_minutes: int
+    price_gyd: float = Field(..., gt=0)
+    duration_minutes: int = Field(..., gt=0)
+
+    @validator("name")
+    def name_must_not_be_blank(cls, value: str) -> str:
+        trimmed = value.strip()
+        if not trimmed:
+            raise ValueError("Service name is required")
+        return trimmed
 
 class ServiceUpdate(BaseModel):
-    name: Optional[str] = None
+    name: Optional[str] = Field(None, min_length=1)
     description: Optional[str] = None
-    price_gyd: Optional[float] = None
-    duration_minutes: Optional[int] = None
+    price_gyd: Optional[float] = Field(None, gt=0)
+    duration_minutes: Optional[int] = Field(None, gt=0)
+
+    @validator("name")
+    def name_must_not_be_blank(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return value
+        trimmed = value.strip()
+        if not trimmed:
+            raise ValueError("Service name is required")
+        return trimmed
 
 
 class ServiceOut(BaseModel):
