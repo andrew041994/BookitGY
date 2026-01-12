@@ -214,6 +214,16 @@ class AdminProviderLocationOut(BaseModel):
     location: Optional[str] = None
 
 
+class AdminProviderCancellationOut(BaseModel):
+    provider_id: int
+    username: Optional[str] = None
+    email: Optional[EmailStr] = None
+    phone: Optional[str] = None
+    provider_cancelled_count: int
+    customer_cancelled_count: int
+    total_cancellations: int
+
+
 class ProviderBillingCycleItem(BaseModel):
     service_id: int
     service_name: str

@@ -1,150 +1,335 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
 diff --git a/frontend/src/main.jsx b/frontend/src/main.jsx
-index 43a8bf6757df3371446d4a945009e0bb5d466272..c94f25a41cce2de6ba2bbe98b056a9c713243c9d 100644
+index c94f25a41cce2de6ba2bbe98b056a9c713243c9d..92de01d4b424cd67e180b70fe98372895c613a67 100644
 --- a/frontend/src/main.jsx
 +++ b/frontend/src/main.jsx
-@@ -932,100 +932,123 @@ function App() {
-             )}
+@@ -1179,71 +1179,292 @@ function App() {
+                   </thead>
+                   <tbody>
+                     {providersWithoutCoords.map((provider) => {
+                       const displayUsername = provider.username || provider.name || '—'
+                       const displayEmail = provider.email || '—'
+                       const displayPhone = provider.phone || '—'
  
-             {showEmptyState && (
-               <p className="muted">No providers match that account or phone.</p>
-             )}
-           </div>
+                       return (
+                         <tr key={provider.provider_id ?? `${displayUsername}-${displayEmail}-${displayPhone}`}>
+                           <td>{displayUsername}</td>
+                           <td>{displayEmail}</td>
+                           <td>{displayPhone}</td>
+                         </tr>
+                       )
+                     })}
+                   </tbody>
+                 </table>
+               </div>
+             </div>
+           )}
          </div>
        </div>
      )
    }
  
-   const AdminProviderLocations = () => {
-     const mapRef = React.useRef(null)
-     const mapContainerRef = React.useRef(null)
-     const markersLayerRef = React.useRef(null)
-     const [providers, setProviders] = React.useState([])
-     const [loading, setLoading] = React.useState(false)
-     const [error, setError] = React.useState('')
-     const [mapReady, setMapReady] = React.useState(false)
- 
-     const normalizeProvider = (provider) => {
-       const latitude =
-         provider?.lat ??
-         provider?.latitude ??
-         provider?.location_lat ??
--        provider?.location_latitude
-+        provider?.location_latitude ??
-+        provider?.user?.lat ??
-+        provider?.profile?.lat
-       const longitude =
-         provider?.long ??
-         provider?.lng ??
-         provider?.longitude ??
-         provider?.location_long ??
--        provider?.location_longitude
-+        provider?.location_longitude ??
-+        provider?.user?.long ??
-+        provider?.profile?.long
-       const latValue = latitude === null || latitude === undefined ? null : Number(latitude)
-       const longValue = longitude === null || longitude === undefined ? null : Number(longitude)
- 
-       return {
-         provider_id: provider?.provider_id ?? provider?.id ?? provider?.providerId ?? provider?.providerID ?? null,
-         name: provider?.name ?? provider?.provider_name ?? provider?.business_name ?? provider?.businessName ?? '',
--        username: provider?.username ?? provider?.user_name ?? provider?.handle ?? provider?.profile_username ?? '',
--        email: provider?.email ?? provider?.email_address ?? provider?.contact_email ?? '',
--        account_number: provider?.account_number ?? provider?.accountNumber ?? provider?.account ?? '',
--        phone: provider?.phone ?? provider?.phone_number ?? provider?.phoneNumber ?? '',
-+        username:
-+          provider?.username ??
-+          provider?.user_name ??
-+          provider?.handle ??
-+          provider?.profile_username ??
-+          provider?.user?.username ??
-+          provider?.owner?.username ??
-+          provider?.profile?.username ??
-+          '',
-+        email:
-+          provider?.email ??
-+          provider?.email_address ??
-+          provider?.contact_email ??
-+          provider?.user?.email ??
-+          provider?.owner?.email ??
-+          provider?.profile?.email ??
-+          '',
-+        account_number:
-+          provider?.account_number ??
-+          provider?.accountNumber ??
-+          provider?.account ??
-+          provider?.provider?.account_number ??
-+          provider?.provider?.accountNumber ??
-+          '',
-+        phone:
-+          provider?.phone ??
-+          provider?.phone_number ??
-+          provider?.phoneNumber ??
-+          provider?.user?.phone ??
-+          provider?.owner?.phone ??
-+          provider?.profile?.phone ??
-+          provider?.profile?.phone_number ??
-+          '',
-         lat: Number.isFinite(latValue) ? latValue : null,
-         long: Number.isFinite(longValue) ? longValue : null,
-         location: provider?.location ?? provider?.address ?? provider?.location_name ?? '',
-       }
-     }
- 
-     const extractProviderList = (payload) => {
-       if (Array.isArray(payload)) return payload
-       if (Array.isArray(payload?.providers)) return payload.providers
-       if (Array.isArray(payload?.data)) return payload.data
-       return []
-     }
- 
-     const fetchProviderLocations = React.useCallback(async () => {
-       setLoading(true)
-       setError('')
- 
-       try {
-         const res = await apiClient.get('/admin/providers/locations')
-         const list = extractProviderList(res.data)
--        setProviders(list.map(normalizeProvider))
--        setLoading(false)
--        return
--      } catch (err) {
--        if (import.meta.env?.DEV) {
--          console.warn('[provider-locations] fallback to /providers')
-+        if (import.meta.env?.DEV && list?.length) {
-+          console.log('[provider-locations] sample provider', list[0])
-         }
--        logApiError(err)
--      }
--
--      try {
--        const res = await apiClient.get('/providers')
--        const list = extractProviderList(res.data)
-         setProviders(list.map(normalizeProvider))
-       } catch (err) {
-         logApiError(err)
-         setError('Unable to load provider locations. Please try again.')
-         setProviders([])
-       } finally {
-         setLoading(false)
-       }
-     }, [])
- 
-     React.useEffect(() => {
-       fetchProviderLocations()
-     }, [fetchProviderLocations])
- 
-     const hasValidCoords = (provider) => Number.isFinite(provider.lat) && Number.isFinite(provider.long)
-     const providersWithCoords = React.useMemo(
-       () => providers.filter((provider) => hasValidCoords(provider)),
-       [providers]
++  const AdminCancellations = () => {
++    const location = useLocation()
++    const navigate = useNavigate()
++    const [rows, setRows] = React.useState([])
++    const [loading, setLoading] = React.useState(false)
++    const [error, setError] = React.useState('')
++    const [hasLoaded, setHasLoaded] = React.useState(false)
++
++    const parseMonthYearFromSearch = React.useCallback((search) => {
++      const params = new URLSearchParams(search)
++      const rawMonth = params.get('month')
++      const rawYear = params.get('year')
++      if (!rawMonth || !rawYear) return null
++      const month = Number(rawMonth)
++      const year = Number(rawYear)
++      if (month >= 1 && month <= 12 && Number.isFinite(year)) {
++        return { month, year }
++      }
++      return null
++    }, [])
++
++    const initialMonthYear = React.useMemo(() => {
++      const parsed = parseMonthYearFromSearch(location.search)
++      if (parsed) return parsed
++      const now = new Date()
++      return { month: now.getMonth() + 1, year: now.getFullYear() }
++    }, [location.search, parseMonthYearFromSearch])
++
++    const [selectedMonth, setSelectedMonth] = React.useState(initialMonthYear.month)
++    const [selectedYear, setSelectedYear] = React.useState(initialMonthYear.year)
++
++    const monthOptions = React.useMemo(() => {
++      return Array.from({ length: 12 }, (_, index) => {
++        const month = index + 1
++        const label = new Date(2000, index, 1).toLocaleDateString(undefined, { month: 'long' })
++        return { value: month, label }
++      })
++    }, [])
++
++    const yearOptions = React.useMemo(() => {
++      const now = new Date()
++      const baseYear = now.getFullYear()
++      const years = new Set()
++      for (let offset = -3; offset <= 3; offset += 1) {
++        years.add(baseYear + offset)
++      }
++      years.add(selectedYear)
++      return Array.from(years).sort((a, b) => a - b)
++    }, [selectedYear])
++
++    const selectedMonthLabel = React.useMemo(() => {
++      const match = monthOptions.find((option) => option.value === selectedMonth)
++      if (match) return match.label
++      const parsed = new Date(2000, selectedMonth - 1, 1)
++      if (Number.isNaN(parsed.getTime())) return String(selectedMonth)
++      return parsed.toLocaleDateString(undefined, { month: 'long' })
++    }, [selectedMonth, monthOptions])
++
++    React.useEffect(() => {
++      const parsed = parseMonthYearFromSearch(location.search)
++      if (!parsed) return
++      setSelectedMonth((prev) => (prev === parsed.month ? prev : parsed.month))
++      setSelectedYear((prev) => (prev === parsed.year ? prev : parsed.year))
++    }, [location.search, parseMonthYearFromSearch])
++
++    React.useEffect(() => {
++      const params = new URLSearchParams(location.search)
++      params.set('month', String(selectedMonth))
++      params.set('year', String(selectedYear))
++      const nextSearch = params.toString()
++      const currentSearch = location.search.replace(/^\?/, '')
++      if (nextSearch === currentSearch) return
++      navigate({ pathname: location.pathname, search: `?${nextSearch}` }, { replace: true })
++    }, [location.pathname, location.search, navigate, selectedMonth, selectedYear])
++
++    const extractRows = (payload) => {
++      if (Array.isArray(payload)) return payload
++      if (Array.isArray(payload?.data)) return payload.data
++      if (Array.isArray(payload?.rows)) return payload.rows
++      return []
++    }
++
++    const normalizeRow = (row) => {
++      const providerCancelled = Number(row?.provider_cancelled_count ?? row?.provider_cancelled ?? 0)
++      const customerCancelled = Number(row?.customer_cancelled_count ?? row?.customer_cancelled ?? 0)
++      const total = Number(
++        row?.total_cancellations ?? row?.total ?? providerCancelled + customerCancelled
++      )
++      return {
++        provider_id: row?.provider_id ?? row?.providerId ?? row?.id ?? null,
++        username: row?.username ?? row?.provider_username ?? row?.provider_name ?? '',
++        email: row?.email ?? null,
++        phone: row?.phone ?? null,
++        provider_cancelled_count: Number.isFinite(providerCancelled) ? providerCancelled : 0,
++        customer_cancelled_count: Number.isFinite(customerCancelled) ? customerCancelled : 0,
++        total_cancellations: Number.isFinite(total) ? total : providerCancelled + customerCancelled,
++      }
++    }
++
++    const fetchCancellations = React.useCallback(async () => {
++      setLoading(true)
++      setError('')
++      try {
++        const res = await apiClient.get('/admin/cancellations', {
++          params: { month: selectedMonth, year: selectedYear },
++        })
++        const list = extractRows(res.data)
++        setRows(list.map(normalizeRow))
++      } catch (err) {
++        logApiError(err)
++        setError('Unable to load cancellation stats. Please try again.')
++        setRows([])
++      } finally {
++        setLoading(false)
++        setHasLoaded(true)
++      }
++    }, [selectedMonth, selectedYear])
++
++    React.useEffect(() => {
++      fetchCancellations()
++    }, [fetchCancellations])
++
++    const sortedRows = React.useMemo(() => {
++      return [...rows].sort((a, b) => (b.total_cancellations ?? 0) - (a.total_cancellations ?? 0))
++    }, [rows])
++
++    const showEmptyState = hasLoaded && !loading && !error && sortedRows.length === 0
++
++    return (
++      <div className="admin-page">
++        <div className="admin-header">
++          <div>
++            <p className="eyebrow">Provider Operations</p>
++            <h1>{`Cancellations — ${selectedMonthLabel} ${selectedYear}`}</h1>
++            <p className="header-subtitle">
++              Review monthly cancellations to spot providers canceling on customers.
++            </p>
++          </div>
++        </div>
++
++        <div className="admin-card">
++          <div className="billing-toolbar">
++            <div className="billing-date-range">
++              <label htmlFor="cancellations-month">Month</label>
++              <div className="billing-date-range__inputs">
++                <select
++                  id="cancellations-month"
++                  value={selectedMonth}
++                  onChange={(e) => setSelectedMonth(Number(e.target.value))}
++                >
++                  {monthOptions.map((option) => (
++                    <option key={option.value} value={option.value}>
++                      {option.label}
++                    </option>
++                  ))}
++                </select>
++              </div>
++            </div>
++            <div className="billing-date-range">
++              <label htmlFor="cancellations-year">Year</label>
++              <div className="billing-date-range__inputs">
++                <select
++                  id="cancellations-year"
++                  value={selectedYear}
++                  onChange={(e) => setSelectedYear(Number(e.target.value))}
++                >
++                  {yearOptions.map((yearOption) => (
++                    <option key={yearOption} value={yearOption}>
++                      {yearOption}
++                    </option>
++                  ))}
++                </select>
++              </div>
++            </div>
++            {loading && <span className="muted">Loading cancellations…</span>}
++          </div>
++
++          {error && <p className="form-error">{error}</p>}
++
++          <div className="cancellations-table">
++            <div className="cancellations-table__head">
++              <span>Provider</span>
++              <span>Email</span>
++              <span>Phone</span>
++              <span>Provider cancelled</span>
++              <span>Customer cancelled</span>
++              <span>Total</span>
++            </div>
++            {sortedRows.map((row) => {
++              const displayEmail = row.email || '—'
++              const displayPhone = row.phone || '—'
++              return (
++                <div
++                  key={row.provider_id ?? `${row.username}-${row.email}-${row.phone}`}
++                  className="cancellations-table__row"
++                >
++                  <strong>{row.username || '—'}</strong>
++                  <span>{displayEmail}</span>
++                  <span>{displayPhone}</span>
++                  <span>{row.provider_cancelled_count}</span>
++                  <span>{row.customer_cancelled_count}</span>
++                  <strong>{row.total_cancellations}</strong>
++                </div>
++              )
++            })}
++          </div>
++
++          {showEmptyState && (
++            <p className="muted">No cancellations found for this month.</p>
++          )}
++        </div>
++      </div>
++    )
++  }
++
+   const AdminLayout = () => {
+     const location = useLocation()
+     return (
+       <div className="admin-shell">
+         <aside className="admin-sidebar">
+           <nav className="sidebar-nav">
+             <NavLink to="/admin/promotions" className={({ isActive }) => isActive ? 'sidebar-link active' : 'sidebar-link'}>
+               Promotions
+             </NavLink>
+             <NavLink to="/admin/service-charge" className={({ isActive }) => isActive ? 'sidebar-link active' : 'sidebar-link'}>
+               Service Charge
+             </NavLink>
+             <NavLink to="/admin/billing" className={({ isActive }) => isActive ? 'sidebar-link active' : 'sidebar-link'}>
+               Billing
+             </NavLink>
+             <NavLink
+               to="/admin/provider-locations"
+               className={({ isActive }) => isActive ? 'sidebar-link active' : 'sidebar-link'}
+             >
+               Provider Locations
+             </NavLink>
++            <NavLink
++              to="/admin/cancellations"
++              className={({ isActive }) => isActive ? 'sidebar-link active' : 'sidebar-link'}
++            >
++              Cancellations
++            </NavLink>
+           </nav>
+           <div className="sidebar-footer">
+             Logged in · {token ? 'Authenticated' : 'Guest'}
+           </div>
+         </aside>
+         <main className="admin-main" key={location.pathname}>
+           <Outlet />
+         </main>
+       </div>
      )
-     const providersWithoutCoords = React.useMemo(
-       () => providers.filter((provider) => !hasValidCoords(provider)),
-       [providers]
-     )
+   }
  
-     React.useEffect(() => {
+   return (
+     <BrowserRouter>
+       <nav className="app-nav">
+         <div className="nav-inner">
+           <Link to="/" className="nav-brand" aria-label="BookitGY home">
+             <img src="/bookitgy-logo.png" alt="BookitGY" />
+             <div className="brand-text">
+               <span className="brand-name">BookitGY</span>
+               <span className="brand-subtitle">BookitGY</span>
+             </div>
+           </Link>
+           <div className="nav-actions">
+             {token ? (
+@@ -1260,32 +1481,33 @@ function App() {
+               <Link className="nav-button" to="/login">
+                 Login
+               </Link>
+             )}
+           </div>
+         </div>
+       </nav>
+       <Routes>
+         <Route path="/" element={<Home />} />
+         <Route path="/login" element={<Login />} />
+         <Route path="/reset-password" element={<ResetPassword />} />
+         <Route path="/p/:username" element={<ProviderLanding />} />
+         <Route
+           path="/admin"
+           element={(
+             <ProtectedRoute>
+               <AdminLayout />
+             </ProtectedRoute>
+           )}
+         >
+           <Route index element={<Navigate to="/admin/promotions" replace />} />
+           <Route path="promotions" element={<AdminPromotions />} />
+           <Route path="service-charge" element={<ServiceChargeSettings />} />
+           <Route path="billing" element={<AdminBilling />} />
+           <Route path="provider-locations" element={<AdminProviderLocations />} />
++          <Route path="cancellations" element={<AdminCancellations />} />
+         </Route>
+       </Routes>
+     </BrowserRouter>
+   )
+ }
+ 
+ ReactDOM.createRoot(document.getElementById('root')).render(<App />)
  
 EOF
 )

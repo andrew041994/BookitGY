@@ -3,8 +3,8 @@ from datetime import datetime, timedelta, date
 import logging
 from decimal import Decimal, ROUND_HALF_UP
 from typing import Optional, List
-from sqlalchemy import func, cast, String, case, select
-from sqlalchemy.orm import Session
+from sqlalchemy import func, cast, String, case, select, or_, desc
+from sqlalchemy.orm import Session, aliased
 from sqlalchemy.exc import IntegrityError
 from passlib.context import CryptContext
 from twilio.rest import Client
@@ -212,6 +212,106 @@ def list_admin_provider_locations(db: Session):
                 "long": user.long,
                 "account_number": provider.account_number,
                 "location": user.location or "",
+            }
+        )
+
+    return results
+
+
+def list_admin_cancellation_stats(
+    db: Session,
+    *,
+    month: int,
+    year: int,
+):
+    try:
+        start_dt = datetime(year, month, 1)
+    except ValueError as exc:
+        raise ValueError("Invalid cancellation month/year") from exc
+
+    if month == 12:
+        end_dt = datetime(year + 1, 1, 1)
+    else:
+        end_dt = datetime(year, month + 1, 1)
+
+    provider_alias = aliased(models.Provider)
+
+    cancellations_subquery = (
+        db.query(
+            provider_alias.id.label("provider_id"),
+            func.sum(
+                case(
+                    (
+                        or_(
+                            models.Booking.canceled_by_role == "provider",
+                            models.Booking.canceled_by_user_id == provider_alias.user_id,
+                        ),
+                        1,
+                    ),
+                    else_=0,
+                )
+            ).label("provider_cancelled_count"),
+            func.sum(
+                case(
+                    (
+                        or_(
+                            models.Booking.canceled_by_role == "client",
+                            models.Booking.canceled_by_user_id == models.Booking.customer_id,
+                        ),
+                        1,
+                    ),
+                    else_=0,
+                )
+            ).label("customer_cancelled_count"),
+        )
+        .join(models.Service, models.Booking.service_id == models.Service.id)
+        .join(provider_alias, models.Service.provider_id == provider_alias.id)
+        .filter(
+            models.Booking.start_time >= start_dt,
+            models.Booking.start_time < end_dt,
+            or_(
+                normalized_booking_status_expr() == "cancelled",
+                models.Booking.canceled_at.isnot(None),
+            ),
+        )
+        .group_by(provider_alias.id)
+        .subquery()
+    )
+
+    provider_cancelled = func.coalesce(cancellations_subquery.c.provider_cancelled_count, 0)
+    customer_cancelled = func.coalesce(cancellations_subquery.c.customer_cancelled_count, 0)
+    total_cancellations = (provider_cancelled + customer_cancelled).label("total_cancellations")
+
+    rows = (
+        db.query(
+            models.Provider.id.label("provider_id"),
+            models.User.username,
+            models.User.email,
+            models.User.phone,
+            provider_cancelled.label("provider_cancelled_count"),
+            customer_cancelled.label("customer_cancelled_count"),
+            total_cancellations,
+        )
+        .join(models.User, models.Provider.user_id == models.User.id)
+        .outerjoin(
+            cancellations_subquery,
+            cancellations_subquery.c.provider_id == models.Provider.id,
+        )
+        .order_by(desc(total_cancellations), models.Provider.id.asc())
+        .all()
+    )
+
+    results = []
+    for row in rows:
+        results.append(
+            {
+                "provider_id": row.provider_id,
+                "username": row.username,
+                "email": row.email,
+                "phone": row.phone,
+                "provider_cancelled_count": int(row.provider_cancelled_count or 0),
+                "customer_cancelled_count": int(row.customer_cancelled_count or 0),
+                "total_cancellations": int(row.total_cancellations or 0),
             }
         )
 
@@ -2050,6 +2150,9 @@ def cancel_booking_for_customer(
         return booking
 
     booking.status = "cancelled"
+    booking.canceled_at = now_guyana()
+    booking.canceled_by_user_id = customer_id
+    booking.canceled_by_role = "client"
     db.commit()
     db.refresh(booking)
 
@@ -2106,8 +2209,8 @@ def cancel_booking_for_provider(
     db: Session, booking_id: int, provider_id: int
 ) -> bool:
 
-    booking = (
-        db.query(models.Booking)
+    booking_row = (
+        db.query(models.Booking, models.Provider)
         .join(models.Service, models.Booking.service_id == models.Service.id)
         .join(models.Provider, models.Service.provider_id == models.Provider.id)
         .filter(
@@ -2117,8 +2220,10 @@ def cancel_booking_for_provider(
         .first()
     )
 
-    if not booking:
+    if not booking_row:
         return False
+
+    booking, provider = booking_row
 
     normalized_status = normalized_booking_status_value(booking.status)
 
@@ -2138,6 +2243,9 @@ def cancel_booking_for_provider(
     )
 
     booking.status = "cancelled"
+    booking.canceled_at = now_guyana()
+    booking.canceled_by_user_id = provider.user_id if provider else None
+    booking.canceled_by_role = "provider"
     db.commit()
     db.refresh(booking)
 

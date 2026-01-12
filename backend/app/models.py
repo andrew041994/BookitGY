@@ -10,14 +10,13 @@ from sqlalchemy import (
     Date,
     Numeric,
     Enum,
-    literal,
     UniqueConstraint,
 )
 
 from .database import Base
 from datetime import datetime
 from app.utils.time import now_guyana
-from sqlalchemy.orm import column_property, relationship
+from sqlalchemy.orm import relationship
 
 
 
@@ -94,8 +93,10 @@ class Booking(Base):
         nullable=False,
         default="confirmed",
     )
-    completed_at = column_property(literal(None))
-    canceled_at = column_property(literal(None))
+    completed_at = Column(DateTime, nullable=True)
+    canceled_at = Column(DateTime, nullable=True)
+    canceled_by_user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    canceled_by_role = Column(String, nullable=True)
 
 
 

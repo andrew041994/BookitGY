@@ -47,6 +47,19 @@ def list_provider_locations(
     return crud.list_admin_provider_locations(db)
 
 
+@router.get("/cancellations", response_model=List[schemas.AdminProviderCancellationOut])
+def list_provider_cancellations(
+    month: int = Query(..., ge=1, le=12),
+    year: int = Query(..., ge=2000),
+    db: Session = Depends(get_db),
+    _: models.User = Depends(_require_admin),
+):
+    try:
+        return crud.list_admin_cancellation_stats(db, month=month, year=year)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
 @router.post("/users/{user_id}/suspend", response_model=schemas.UserSuspensionOut)
 def suspend_user(
     user_id: int,

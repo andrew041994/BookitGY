@@ -1201,6 +1201,221 @@ function App() {
     )
   }
 
+  const AdminCancellations = () => {
+    const location = useLocation()
+    const navigate = useNavigate()
+    const [rows, setRows] = React.useState([])
+    const [loading, setLoading] = React.useState(false)
+    const [error, setError] = React.useState('')
+    const [hasLoaded, setHasLoaded] = React.useState(false)
+
+    const parseMonthYearFromSearch = React.useCallback((search) => {
+      const params = new URLSearchParams(search)
+      const rawMonth = params.get('month')
+      const rawYear = params.get('year')
+      if (!rawMonth || !rawYear) return null
+      const month = Number(rawMonth)
+      const year = Number(rawYear)
+      if (month >= 1 && month <= 12 && Number.isFinite(year)) {
+        return { month, year }
+      }
+      return null
+    }, [])
+
+    const initialMonthYear = React.useMemo(() => {
+      const parsed = parseMonthYearFromSearch(location.search)
+      if (parsed) return parsed
+      const now = new Date()
+      return { month: now.getMonth() + 1, year: now.getFullYear() }
+    }, [location.search, parseMonthYearFromSearch])
+
+    const [selectedMonth, setSelectedMonth] = React.useState(initialMonthYear.month)
+    const [selectedYear, setSelectedYear] = React.useState(initialMonthYear.year)
+
+    const monthOptions = React.useMemo(() => {
+      return Array.from({ length: 12 }, (_, index) => {
+        const month = index + 1
+        const label = new Date(2000, index, 1).toLocaleDateString(undefined, { month: 'long' })
+        return { value: month, label }
+      })
+    }, [])
+
+    const yearOptions = React.useMemo(() => {
+      const now = new Date()
+      const baseYear = now.getFullYear()
+      const years = new Set()
+      for (let offset = -3; offset <= 3; offset += 1) {
+        years.add(baseYear + offset)
+      }
+      years.add(selectedYear)
+      return Array.from(years).sort((a, b) => a - b)
+    }, [selectedYear])
+
+    const selectedMonthLabel = React.useMemo(() => {
+      const match = monthOptions.find((option) => option.value === selectedMonth)
+      if (match) return match.label
+      const parsed = new Date(2000, selectedMonth - 1, 1)
+      if (Number.isNaN(parsed.getTime())) return String(selectedMonth)
+      return parsed.toLocaleDateString(undefined, { month: 'long' })
+    }, [selectedMonth, monthOptions])
+
+    React.useEffect(() => {
+      const parsed = parseMonthYearFromSearch(location.search)
+      if (!parsed) return
+      setSelectedMonth((prev) => (prev === parsed.month ? prev : parsed.month))
+      setSelectedYear((prev) => (prev === parsed.year ? prev : parsed.year))
+    }, [location.search, parseMonthYearFromSearch])
+
+    React.useEffect(() => {
+      const params = new URLSearchParams(location.search)
+      params.set('month', String(selectedMonth))
+      params.set('year', String(selectedYear))
+      const nextSearch = params.toString()
+      const currentSearch = location.search.replace(/^\?/, '')
+      if (nextSearch === currentSearch) return
+      navigate({ pathname: location.pathname, search: `?${nextSearch}` }, { replace: true })
+    }, [location.pathname, location.search, navigate, selectedMonth, selectedYear])
+
+    const extractRows = (payload) => {
+      if (Array.isArray(payload)) return payload
+      if (Array.isArray(payload?.data)) return payload.data
+      if (Array.isArray(payload?.rows)) return payload.rows
+      return []
+    }
+
+    const normalizeRow = (row) => {
+      const providerCancelled = Number(row?.provider_cancelled_count ?? row?.provider_cancelled ?? 0)
+      const customerCancelled = Number(row?.customer_cancelled_count ?? row?.customer_cancelled ?? 0)
+      const total = Number(
+        row?.total_cancellations ?? row?.total ?? providerCancelled + customerCancelled
+      )
+      return {
+        provider_id: row?.provider_id ?? row?.providerId ?? row?.id ?? null,
+        username: row?.username ?? row?.provider_username ?? row?.provider_name ?? '',
+        email: row?.email ?? null,
+        phone: row?.phone ?? null,
+        provider_cancelled_count: Number.isFinite(providerCancelled) ? providerCancelled : 0,
+        customer_cancelled_count: Number.isFinite(customerCancelled) ? customerCancelled : 0,
+        total_cancellations: Number.isFinite(total) ? total : providerCancelled + customerCancelled,
+      }
+    }
+
+    const fetchCancellations = React.useCallback(async () => {
+      setLoading(true)
+      setError('')
+      try {
+        const res = await apiClient.get('/admin/cancellations', {
+          params: { month: selectedMonth, year: selectedYear },
+        })
+        const list = extractRows(res.data)
+        setRows(list.map(normalizeRow))
+      } catch (err) {
+        logApiError(err)
+        setError('Unable to load cancellation stats. Please try again.')
+        setRows([])
+      } finally {
+        setLoading(false)
+        setHasLoaded(true)
+      }
+    }, [selectedMonth, selectedYear])
+
+    React.useEffect(() => {
+      fetchCancellations()
+    }, [fetchCancellations])
+
+    const sortedRows = React.useMemo(() => {
+      return [...rows].sort((a, b) => (b.total_cancellations ?? 0) - (a.total_cancellations ?? 0))
+    }, [rows])
+
+    const showEmptyState = hasLoaded && !loading && !error && sortedRows.length === 0
+
+    return (
+      <div className="admin-page">
+        <div className="admin-header">
+          <div>
+            <p className="eyebrow">Provider Operations</p>
+            <h1>{`Cancellations — ${selectedMonthLabel} ${selectedYear}`}</h1>
+            <p className="header-subtitle">
+              Review monthly cancellations to spot providers canceling on customers.
+            </p>
+          </div>
+        </div>
+
+        <div className="admin-card">
+          <div className="billing-toolbar">
+            <div className="billing-date-range">
+              <label htmlFor="cancellations-month">Month</label>
+              <div className="billing-date-range__inputs">
+                <select
+                  id="cancellations-month"
+                  value={selectedMonth}
+                  onChange={(e) => setSelectedMonth(Number(e.target.value))}
+                >
+                  {monthOptions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            <div className="billing-date-range">
+              <label htmlFor="cancellations-year">Year</label>
+              <div className="billing-date-range__inputs">
+                <select
+                  id="cancellations-year"
+                  value={selectedYear}
+                  onChange={(e) => setSelectedYear(Number(e.target.value))}
+                >
+                  {yearOptions.map((yearOption) => (
+                    <option key={yearOption} value={yearOption}>
+                      {yearOption}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            {loading && <span className="muted">Loading cancellations…</span>}
+          </div>
+
+          {error && <p className="form-error">{error}</p>}
+
+          <div className="cancellations-table">
+            <div className="cancellations-table__head">
+              <span>Provider</span>
+              <span>Email</span>
+              <span>Phone</span>
+              <span>Provider cancelled</span>
+              <span>Customer cancelled</span>
+              <span>Total</span>
+            </div>
+            {sortedRows.map((row) => {
+              const displayEmail = row.email || '—'
+              const displayPhone = row.phone || '—'
+              return (
+                <div
+                  key={row.provider_id ?? `${row.username}-${row.email}-${row.phone}`}
+                  className="cancellations-table__row"
+                >
+                  <strong>{row.username || '—'}</strong>
+                  <span>{displayEmail}</span>
+                  <span>{displayPhone}</span>
+                  <span>{row.provider_cancelled_count}</span>
+                  <span>{row.customer_cancelled_count}</span>
+                  <strong>{row.total_cancellations}</strong>
+                </div>
+              )
+            })}
+          </div>
+
+          {showEmptyState && (
+            <p className="muted">No cancellations found for this month.</p>
+          )}
+        </div>
+      </div>
+    )
+  }
+
   const AdminLayout = () => {
     const location = useLocation()
     return (
@@ -1221,6 +1436,12 @@ function App() {
               className={({ isActive }) => isActive ? 'sidebar-link active' : 'sidebar-link'}
             >
               Provider Locations
+            </NavLink>
+            <NavLink
+              to="/admin/cancellations"
+              className={({ isActive }) => isActive ? 'sidebar-link active' : 'sidebar-link'}
+            >
+              Cancellations
             </NavLink>
           </nav>
           <div className="sidebar-footer">
@@ -1282,6 +1503,7 @@ function App() {
           <Route path="service-charge" element={<ServiceChargeSettings />} />
           <Route path="billing" element={<AdminBilling />} />
           <Route path="provider-locations" element={<AdminProviderLocations />} />
+          <Route path="cancellations" element={<AdminCancellations />} />
         </Route>
       </Routes>
     </BrowserRouter>
