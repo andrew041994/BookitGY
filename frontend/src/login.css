@@ -503,6 +503,31 @@ body {
   gap: 16px;
 }
 
+.provider-location-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 16px;
+}
+
+.provider-location-value {
+  margin: 6px 0 0;
+  font-size: 24px;
+  font-weight: 700;
+  color: #fff;
+}
+
+.provider-map-wrapper {
+  border-radius: 16px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(15, 23, 42, 0.6);
+}
+
+.provider-map {
+  height: 440px;
+  width: 100%;
+}
+
 .form-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));

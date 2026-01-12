@@ -7,6 +7,60 @@ import './login.css'
 
 const DEFAULT_SERVICE_CHARGE = 10
 const SERVICE_CHARGE_STORAGE_KEY = 'bookitgy.service_charge_rate'
+const LEAFLET_CSS_URL = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css'
+const LEAFLET_JS_URL = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js'
+const LEAFLET_CSS_ID = 'leaflet-css'
+const LEAFLET_JS_ID = 'leaflet-js'
+const DEFAULT_MAP_CENTER = [5.0, -58.95]
+const DEFAULT_MAP_ZOOM = 6
+let leafletLoaderPromise
+
+const loadLeaflet = () => {
+  if (typeof window === 'undefined') {
+    return Promise.reject(new Error('Leaflet requires a browser environment.'))
+  }
+
+  if (window.L) {
+    return Promise.resolve(window.L)
+  }
+
+  if (!leafletLoaderPromise) {
+    leafletLoaderPromise = new Promise((resolve, reject) => {
+      if (!document.getElementById(LEAFLET_CSS_ID)) {
+        const link = document.createElement('link')
+        link.id = LEAFLET_CSS_ID
+        link.rel = 'stylesheet'
+        link.href = LEAFLET_CSS_URL
+        link.integrity = 'sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY='
+        link.crossOrigin = ''
+        document.head.appendChild(link)
+      }
+
+      const existingScript = document.getElementById(LEAFLET_JS_ID)
+      if (existingScript) {
+        if (window.L) {
+          resolve(window.L)
+          return
+        }
+        existingScript.addEventListener('load', () => resolve(window.L))
+        existingScript.addEventListener('error', () => reject(new Error('Failed to load Leaflet script.')))
+        return
+      }
+
+      const script = document.createElement('script')
+      script.id = LEAFLET_JS_ID
+      script.src = LEAFLET_JS_URL
+      script.integrity = 'sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo='
+      script.crossOrigin = ''
+      script.async = true
+      script.onload = () => resolve(window.L)
+      script.onerror = () => reject(new Error('Failed to load Leaflet script.'))
+      document.body.appendChild(script)
+    })
+  }
+
+  return leafletLoaderPromise
+}
 
 const normalizeServiceCharge = (value) => Math.max(0, Math.min(100, Number(value) || 0))
 
@@ -886,6 +940,201 @@ function App() {
     )
   }
 
+  const AdminProviderLocations = () => {
+    const mapRef = React.useRef(null)
+    const mapContainerRef = React.useRef(null)
+    const markersLayerRef = React.useRef(null)
+    const [providers, setProviders] = React.useState([])
+    const [loading, setLoading] = React.useState(false)
+    const [error, setError] = React.useState('')
+    const [mapReady, setMapReady] = React.useState(false)
+
+    const normalizeProvider = (provider) => {
+      const latitude =
+        provider?.lat ??
+        provider?.latitude ??
+        provider?.location_lat ??
+        provider?.location_latitude
+      const longitude =
+        provider?.long ??
+        provider?.lng ??
+        provider?.longitude ??
+        provider?.location_long ??
+        provider?.location_longitude
+      const latValue = latitude === null || latitude === undefined ? null : Number(latitude)
+      const longValue = longitude === null || longitude === undefined ? null : Number(longitude)
+
+      return {
+        provider_id: provider?.provider_id ?? provider?.id ?? provider?.providerId ?? provider?.providerID ?? null,
+        name: provider?.name ?? provider?.provider_name ?? provider?.business_name ?? provider?.businessName ?? '',
+        account_number: provider?.account_number ?? provider?.accountNumber ?? provider?.account ?? '',
+        phone: provider?.phone ?? provider?.phone_number ?? provider?.phoneNumber ?? '',
+        lat: Number.isFinite(latValue) ? latValue : null,
+        long: Number.isFinite(longValue) ? longValue : null,
+        location: provider?.location ?? provider?.address ?? provider?.location_name ?? '',
+      }
+    }
+
+    const extractProviderList = (payload) => {
+      if (Array.isArray(payload)) return payload
+      if (Array.isArray(payload?.providers)) return payload.providers
+      if (Array.isArray(payload?.data)) return payload.data
+      return []
+    }
+
+    const fetchProviderLocations = React.useCallback(async () => {
+      setLoading(true)
+      setError('')
+
+      try {
+        const res = await apiClient.get('/admin/providers/locations')
+        const list = extractProviderList(res.data)
+        setProviders(list.map(normalizeProvider))
+        setLoading(false)
+        return
+      } catch (err) {
+        if (import.meta.env?.DEV) {
+          console.warn('[provider-locations] fallback to /providers')
+        }
+        logApiError(err)
+      }
+
+      try {
+        const res = await apiClient.get('/providers')
+        const list = extractProviderList(res.data)
+        setProviders(list.map(normalizeProvider))
+      } catch (err) {
+        logApiError(err)
+        setError('Unable to load provider locations. Please try again.')
+        setProviders([])
+      } finally {
+        setLoading(false)
+      }
+    }, [])
+
+    React.useEffect(() => {
+      fetchProviderLocations()
+    }, [fetchProviderLocations])
+
+    React.useEffect(() => {
+      let isActive = true
+
+      const initMap = async () => {
+        if (!mapContainerRef.current || mapRef.current) return
+
+        try {
+          const L = await loadLeaflet()
+          if (!isActive || mapRef.current) return
+          const map = L.map(mapContainerRef.current, {
+            zoomControl: true,
+          }).setView(DEFAULT_MAP_CENTER, DEFAULT_MAP_ZOOM)
+
+          L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+            maxZoom: 19,
+          }).addTo(map)
+
+          mapRef.current = map
+          markersLayerRef.current = L.layerGroup().addTo(map)
+          setMapReady(true)
+        } catch (err) {
+          if (import.meta.env?.DEV) {
+            console.error('[provider-locations] Leaflet load failed', err)
+          }
+          setError('Unable to load the map at this time.')
+        }
+      }
+
+      initMap()
+
+      return () => {
+        isActive = false
+        if (mapRef.current) {
+          mapRef.current.remove()
+          mapRef.current = null
+        }
+        markersLayerRef.current = null
+        setMapReady(false)
+      }
+    }, [])
+
+    React.useEffect(() => {
+      if (!mapReady || !mapRef.current || !markersLayerRef.current) return
+      const L = window.L
+      if (!L) return
+
+      markersLayerRef.current.clearLayers()
+
+      const validProviders = providers.filter((provider) =>
+        Number.isFinite(provider.lat) && Number.isFinite(provider.long)
+      )
+
+      const bounds = []
+      validProviders.forEach((provider) => {
+        const marker = L.marker([provider.lat, provider.long])
+        const popupLines = [
+          `<strong>${provider.name || 'Unnamed provider'}</strong>`,
+          provider.account_number ? `Account: ${provider.account_number}` : null,
+          provider.phone ? `Phone: ${provider.phone}` : null,
+          provider.location ? provider.location : null,
+        ].filter(Boolean)
+        marker.bindPopup(popupLines.join('<br/>'))
+        marker.addTo(markersLayerRef.current)
+        bounds.push([provider.lat, provider.long])
+      })
+
+      if (bounds.length > 0) {
+        mapRef.current.fitBounds(bounds, { padding: [40, 40] })
+      } else {
+        mapRef.current.setView(DEFAULT_MAP_CENTER, DEFAULT_MAP_ZOOM)
+      }
+    }, [mapReady, providers])
+
+    const totalProviders = providers.length
+    const providersWithPins = providers.filter((provider) =>
+      Number.isFinite(provider.lat) && Number.isFinite(provider.long)
+    ).length
+    const providersMissingCoords = totalProviders - providersWithPins
+
+    return (
+      <div className="admin-page">
+        <div className="admin-header">
+          <div>
+            <p className="eyebrow">Billing</p>
+            <h1>Provider Locations</h1>
+            <p className="header-subtitle">
+              View where providers are located and spot areas with limited coverage.
+            </p>
+          </div>
+        </div>
+
+        <div className="admin-card">
+          <div className="provider-location-summary">
+            <div>
+              <p className="muted">Providers with pins</p>
+              <p className="provider-location-value">{providersWithPins}</p>
+            </div>
+            <div>
+              <p className="muted">Total providers</p>
+              <p className="provider-location-value">{totalProviders}</p>
+            </div>
+            <div>
+              <p className="muted">Missing coordinates</p>
+              <p className="provider-location-value">{providersMissingCoords}</p>
+            </div>
+          </div>
+
+          {loading && <p className="muted">Loading provider coordinates…</p>}
+          {error && <p className="form-error">{error}</p>}
+
+          <div className="provider-map-wrapper">
+            <div ref={mapContainerRef} className="provider-map" aria-label="Provider map" />
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   const AdminLayout = () => {
     const location = useLocation()
     return (
@@ -900,6 +1149,12 @@ function App() {
             </NavLink>
             <NavLink to="/admin/billing" className={({ isActive }) => isActive ? 'sidebar-link active' : 'sidebar-link'}>
               Billing
+            </NavLink>
+            <NavLink
+              to="/admin/provider-locations"
+              className={({ isActive }) => isActive ? 'sidebar-link active' : 'sidebar-link'}
+            >
+              Provider Locations
             </NavLink>
           </nav>
           <div className="sidebar-footer">
@@ -960,6 +1215,7 @@ function App() {
           <Route path="promotions" element={<AdminPromotions />} />
           <Route path="service-charge" element={<ServiceChargeSettings />} />
           <Route path="billing" element={<AdminBilling />} />
+          <Route path="provider-locations" element={<AdminProviderLocations />} />
         </Route>
       </Routes>
     </BrowserRouter>
