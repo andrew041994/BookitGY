@@ -39,6 +39,14 @@ def update_service_charge(
     return {"service_charge_percentage": float(pct)}
 
 
+@router.get("/providers/locations", response_model=List[schemas.AdminProviderLocationOut])
+def list_provider_locations(
+    db: Session = Depends(get_db),
+    _: models.User = Depends(_require_admin),
+):
+    return crud.list_admin_provider_locations(db)
+
+
 @router.post("/users/{user_id}/suspend", response_model=schemas.UserSuspensionOut)
 def suspend_user(
     user_id: int,

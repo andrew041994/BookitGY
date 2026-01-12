@@ -954,23 +954,56 @@ function App() {
         provider?.lat ??
         provider?.latitude ??
         provider?.location_lat ??
-        provider?.location_latitude
+        provider?.location_latitude ??
+        provider?.user?.lat ??
+        provider?.profile?.lat
       const longitude =
         provider?.long ??
         provider?.lng ??
         provider?.longitude ??
         provider?.location_long ??
-        provider?.location_longitude
+        provider?.location_longitude ??
+        provider?.user?.long ??
+        provider?.profile?.long
       const latValue = latitude === null || latitude === undefined ? null : Number(latitude)
       const longValue = longitude === null || longitude === undefined ? null : Number(longitude)
 
       return {
         provider_id: provider?.provider_id ?? provider?.id ?? provider?.providerId ?? provider?.providerID ?? null,
         name: provider?.name ?? provider?.provider_name ?? provider?.business_name ?? provider?.businessName ?? '',
-        username: provider?.username ?? provider?.user_name ?? provider?.handle ?? provider?.profile_username ?? '',
-        email: provider?.email ?? provider?.email_address ?? provider?.contact_email ?? '',
-        account_number: provider?.account_number ?? provider?.accountNumber ?? provider?.account ?? '',
-        phone: provider?.phone ?? provider?.phone_number ?? provider?.phoneNumber ?? '',
+        username:
+          provider?.username ??
+          provider?.user_name ??
+          provider?.handle ??
+          provider?.profile_username ??
+          provider?.user?.username ??
+          provider?.owner?.username ??
+          provider?.profile?.username ??
+          '',
+        email:
+          provider?.email ??
+          provider?.email_address ??
+          provider?.contact_email ??
+          provider?.user?.email ??
+          provider?.owner?.email ??
+          provider?.profile?.email ??
+          '',
+        account_number:
+          provider?.account_number ??
+          provider?.accountNumber ??
+          provider?.account ??
+          provider?.provider?.account_number ??
+          provider?.provider?.accountNumber ??
+          '',
+        phone:
+          provider?.phone ??
+          provider?.phone_number ??
+          provider?.phoneNumber ??
+          provider?.user?.phone ??
+          provider?.owner?.phone ??
+          provider?.profile?.phone ??
+          provider?.profile?.phone_number ??
+          '',
         lat: Number.isFinite(latValue) ? latValue : null,
         long: Number.isFinite(longValue) ? longValue : null,
         location: provider?.location ?? provider?.address ?? provider?.location_name ?? '',
@@ -991,19 +1024,9 @@ function App() {
       try {
         const res = await apiClient.get('/admin/providers/locations')
         const list = extractProviderList(res.data)
-        setProviders(list.map(normalizeProvider))
-        setLoading(false)
-        return
-      } catch (err) {
-        if (import.meta.env?.DEV) {
-          console.warn('[provider-locations] fallback to /providers')
+        if (import.meta.env?.DEV && list?.length) {
+          console.log('[provider-locations] sample provider', list[0])
         }
-        logApiError(err)
-      }
-
-      try {
-        const res = await apiClient.get('/providers')
-        const list = extractProviderList(res.data)
         setProviders(list.map(normalizeProvider))
       } catch (err) {
         logApiError(err)

@@ -193,6 +193,31 @@ def list_providers(db: Session, profession: Optional[str] = None):
     return results
 
 
+def list_admin_provider_locations(db: Session):
+    rows = (
+        db.query(models.Provider, models.User)
+        .join(models.User, models.Provider.user_id == models.User.id)
+        .all()
+    )
+
+    results = []
+    for provider, user in rows:
+        results.append(
+            {
+                "provider_id": provider.id,
+                "username": user.username,
+                "email": user.email,
+                "phone": user.phone,
+                "lat": user.lat,
+                "long": user.long,
+                "account_number": provider.account_number,
+                "location": user.location or "",
+            }
+        )
+
+    return results
+
+
 def list_services_for_provider(db: Session, provider_id: int):
     return (
         db.query(models.Service)

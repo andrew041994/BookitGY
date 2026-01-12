@@ -203,6 +203,17 @@ class ProviderBillingRow(BaseModel):
     paid_at: Optional[datetime] = None
 
 
+class AdminProviderLocationOut(BaseModel):
+    provider_id: int
+    username: Optional[str] = None
+    email: Optional[EmailStr] = None
+    phone: Optional[str] = None
+    lat: Optional[float] = None
+    long: Optional[float] = None
+    account_number: Optional[str] = None
+    location: Optional[str] = None
+
+
 class ProviderBillingCycleItem(BaseModel):
     service_id: int
     service_name: str
