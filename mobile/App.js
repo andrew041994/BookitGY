@@ -447,13 +447,21 @@ return (
         <TextInput
           style={[
             styles.input,
-            Platform.OS === "android" && { includeFontPadding: true },
+            Platform.OS === "android" && { includeFontPadding: false },
           ]}
           placeholder="Password"
           placeholderTextColor={styles.inputPlaceholder.color}
           value={password}
           onChangeText={setPassword}
-          secureTextEntry
+          autoCapitalize="none"
+          autoCorrect={false}
+          autoComplete="password"
+          textContentType="password"
+          importantForAutofill="yes"
+          underlineColorAndroid="transparent"
+          selectionColor="#16a34a"
+          cursorColor="#16a34a"
+          secureTextEntry={true}
         />
 
           {goToSignup && (
@@ -766,25 +774,41 @@ function SignupScreen({ goToLogin, goBack, showFlash }) {
       <TextInput
         style={[
           styles.input,
-          Platform.OS === "android" && { includeFontPadding: true },
+          Platform.OS === "android" && { includeFontPadding: false },
         ]}
         placeholder="Password"
         placeholderTextColor={styles.inputPlaceholder.color}
         value={password}
         onChangeText={setPassword}
-        secureTextEntry
+        autoCapitalize="none"
+        autoCorrect={false}
+        autoComplete="password"
+        textContentType="password"
+        importantForAutofill="yes"
+        underlineColorAndroid="transparent"
+        selectionColor="#16a34a"
+        cursorColor="#16a34a"
+        secureTextEntry={true}
       />
 
       <TextInput
         style={[
           styles.input,
-          Platform.OS === "android" && { includeFontPadding: true },
+          Platform.OS === "android" && { includeFontPadding: false },
         ]}
         placeholder="Confirm Password"
         placeholderTextColor={styles.inputPlaceholder.color}
         value={confirmPassword}
         onChangeText={setConfirmPassword}
-        secureTextEntry
+        autoCapitalize="none"
+        autoCorrect={false}
+        autoComplete="password"
+        textContentType="password"
+        importantForAutofill="yes"
+        underlineColorAndroid="transparent"
+        selectionColor="#16a34a"
+        cursorColor="#16a34a"
+        secureTextEntry={true}
       />
 
       <View style={{ width: "100%", marginBottom: 10 }}>
