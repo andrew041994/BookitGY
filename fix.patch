@@ -1,166 +1,64 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
 diff --git a/mobile/App.js b/mobile/App.js
-index b58ac5ec005a6a585f88a9889fc355d8190a3e07..6efc0c90233b0381b4bc58f79c1121c2fefbb0e4 100644
+index 6efc0c90233b0381b4bc58f79c1121c2fefbb0e4..7198e1590dbcca48612c08da2d63e268a9513ee6 100644
 --- a/mobile/App.js
 +++ b/mobile/App.js
-@@ -425,57 +425,65 @@ return (
-         contentContainerStyle={styles.scrollContent}
-         keyboardShouldPersistTaps="handled"
-       >
-         <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-           <View style={styles.container}>
-             <View style={styles.logoWrapper}>
-               <Image
-                 source={BookitGYLogoTransparent}
-                 style={styles.logo}
-               />
-             </View>
-         <Text style={styles.title}>Login</Text>
- 
-         <TextInput
-           style={styles.input}
-           placeholder="Email"
-           placeholderTextColor={styles.inputPlaceholder.color}
-           value={email}
-           autoCapitalize="none"
-           onChangeText={setEmail}
-         />
- 
-         <TextInput
-           style={[
-             styles.input,
--            Platform.OS === "android" && { includeFontPadding: true },
-+            Platform.OS === "android" && { includeFontPadding: false },
-           ]}
-           placeholder="Password"
-           placeholderTextColor={styles.inputPlaceholder.color}
-           value={password}
-           onChangeText={setPassword}
--          secureTextEntry
-+          autoCapitalize="none"
-+          autoCorrect={false}
-+          autoComplete="password"
-+          textContentType="password"
-+          importantForAutofill="yes"
-+          underlineColorAndroid="transparent"
-+          selectionColor="#16a34a"
-+          cursorColor="#16a34a"
-+          secureTextEntry={true}
-         />
- 
-           {goToSignup && (
-             <View style={{ width: "100%", marginBottom: 10 }}>
-                {loading ? (
-                 <ActivityIndicator size="large" color="#16a34a" />
-               ) : (
-                 <Button title="Login" onPress={login} color="#16a34a" />
-               )}
-             </View>
-           )}
- 
-           {goToForgot && (
-             <TouchableOpacity onPress={goToForgot} style={styles.forgotLink}>
-               <Text style={styles.forgotLinkText}>Forgot password?</Text>
-             </TouchableOpacity>
-           )}
- 
-             {goToSignup && (
-               <View style={{ width: "100%", marginBottom: 10 }}>
-                 <Button
-                   title="Need an account? Sign Up"
-                   onPress={goToSignup}
-                   color="#166534"
-                 />
-@@ -744,69 +752,85 @@ function SignupScreen({ goToLogin, goBack, showFlash }) {
-         placeholderTextColor={styles.inputPlaceholder.color}
-         value={email}
-         onChangeText={setEmail}
-         keyboardType="email-address"
-         autoCapitalize="none"
-       />
- 
-       <TextInput
-         style={styles.input}
-         placeholder="Phone (592XXXXXXX)"
-         placeholderTextColor={styles.inputPlaceholder.color}
-         value={phone}
-         onChangeText={setPhone}
-         keyboardType="phone-pad"
-       />
- 
-       {/* Provider toggle */}
-       <View style={styles.toggleRow}>
-         <Text style={styles.toggleLabel}>Register as service provider</Text>
-         <Switch value={isProvider} onValueChange={setIsProvider} />
-       </View>
- 
-       <TextInput
-         style={[
-           styles.input,
--          Platform.OS === "android" && { includeFontPadding: true },
-+          Platform.OS === "android" && { includeFontPadding: false },
-         ]}
-         placeholder="Password"
-         placeholderTextColor={styles.inputPlaceholder.color}
-         value={password}
-         onChangeText={setPassword}
--        secureTextEntry
-+        autoCapitalize="none"
-+        autoCorrect={false}
-+        autoComplete="password"
-+        textContentType="password"
-+        importantForAutofill="yes"
-+        underlineColorAndroid="transparent"
-+        selectionColor="#16a34a"
-+        cursorColor="#16a34a"
-+        secureTextEntry={true}
-       />
- 
-       <TextInput
-         style={[
-           styles.input,
--          Platform.OS === "android" && { includeFontPadding: true },
-+          Platform.OS === "android" && { includeFontPadding: false },
-         ]}
-         placeholder="Confirm Password"
-         placeholderTextColor={styles.inputPlaceholder.color}
-         value={confirmPassword}
-         onChangeText={setConfirmPassword}
--        secureTextEntry
-+        autoCapitalize="none"
-+        autoCorrect={false}
-+        autoComplete="password"
-+        textContentType="password"
-+        importantForAutofill="yes"
-+        underlineColorAndroid="transparent"
-+        selectionColor="#16a34a"
-+        cursorColor="#16a34a"
-+        secureTextEntry={true}
-       />
- 
-       <View style={{ width: "100%", marginBottom: 10 }}>
-         <Button title="Sign Up" onPress={signup} color="#16a34a" />
-       </View>
- 
-       {goToLogin && (
-         <View style={{ width: "100%", marginBottom: 10 }}>
-           <Button
-             title="Already have an account? Login"
-             onPress={goToLogin}
-             color="#166534"
-           />
-         </View>
-       )}
- 
-       {goBack && (
-         <View style={{ width: "100%" }}>
-           <Button title="Back" onPress={goBack} color="#6b7280" />
-         </View>
-       )}
-     </View>
-     </KeyboardAvoidingView>
+@@ -173,50 +173,55 @@ function useFavoriteProviders(userKey) {
+     [favoriteIds]
    );
- }
+ 
+   const refreshFavoriteProviders = useCallback(async () => {
+     if (!favoriteIds.length) {
+       setFavoriteProviders([]);
+       return;
+     }
+ 
+     try {
+       const res = await axios.get(`${API}/providers`);
+       const list = Array.isArray(res.data)
+         ? res.data
+         : res.data?.providers || [];
+ 
+       const idSet = new Set(favoriteIds);
+       setFavoriteProviders(list.filter((p) => idSet.has(getProviderId(p))));
+     } catch (err) {
+       console.log(
+         "Error refreshing favorite providers",
+         err?.response?.data || err?.message
+       );
+     }
+   }, [favoriteIds]);
+ 
++  useEffect(() => {
++    if (favoritesLoading) return;
++    refreshFavoriteProviders();
++  }, [favoriteIds, favoritesLoading, refreshFavoriteProviders]);
++
+   const toggleFavorite = useCallback(
+     (provider) => {
+       const id = getProviderId(provider);
+       if (!id) return;
+ 
+       setFavoriteIds((prev) => {
+         const already = prev.includes(id);
+         const next = already ? prev.filter((x) => x !== id) : [...prev, id];
+         persistIds(next);
+         return next;
+       });
+ 
+       setFavoriteProviders((prev) => {
+         const exists = prev.some((p) => getProviderId(p) === id);
+         if (exists) {
+           return prev.filter((p) => getProviderId(p) !== id);
+         }
+         return [...prev, provider];
+       });
+     },
+     [persistIds]
+   );
+ 
+   const isFavorite = useCallback(
+     (provider) => {
  
 EOF
 )

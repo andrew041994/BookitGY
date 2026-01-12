@@ -195,6 +195,11 @@ function useFavoriteProviders(userKey) {
     }
   }, [favoriteIds]);
 
+  useEffect(() => {
+    if (favoritesLoading) return;
+    refreshFavoriteProviders();
+  }, [favoriteIds, favoritesLoading, refreshFavoriteProviders]);
+
   const toggleFavorite = useCallback(
     (provider) => {
       const id = getProviderId(provider);
