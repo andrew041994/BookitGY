@@ -445,7 +445,10 @@ return (
         />
 
         <TextInput
-          style={styles.input}
+          style={[
+            styles.input,
+            Platform.OS === "android" && { includeFontPadding: true },
+          ]}
           placeholder="Password"
           placeholderTextColor={styles.inputPlaceholder.color}
           value={password}
@@ -761,7 +764,10 @@ function SignupScreen({ goToLogin, goBack, showFlash }) {
       </View>
 
       <TextInput
-        style={styles.input}
+        style={[
+          styles.input,
+          Platform.OS === "android" && { includeFontPadding: true },
+        ]}
         placeholder="Password"
         placeholderTextColor={styles.inputPlaceholder.color}
         value={password}
@@ -770,7 +776,10 @@ function SignupScreen({ goToLogin, goBack, showFlash }) {
       />
 
       <TextInput
-        style={styles.input}
+        style={[
+          styles.input,
+          Platform.OS === "android" && { includeFontPadding: true },
+        ]}
         placeholder="Confirm Password"
         placeholderTextColor={styles.inputPlaceholder.color}
         value={confirmPassword}
