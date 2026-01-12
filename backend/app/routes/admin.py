@@ -1,8 +1,9 @@
 import logging
-from datetime import date
+from datetime import date, datetime, time, timedelta
 from typing import List
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query
+from sqlalchemy import case, func
 from sqlalchemy.orm import Session
 
 from app import crud, schemas, models
@@ -58,6 +59,43 @@ def list_provider_cancellations(
         return crud.list_admin_cancellation_stats(db, month=month, year=year)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.get("/reports/signups", response_model=schemas.AdminSignupReportOut)
+def get_signup_report(
+    start: date = Query(...),
+    end: date = Query(...),
+    db: Session = Depends(get_db),
+    _: models.User = Depends(_require_admin),
+):
+    if start > end:
+        raise HTTPException(status_code=400, detail="Start date must be on or before end date")
+
+    start_ts = datetime.combine(start, time.min)
+    end_ts_exclusive = datetime.combine(end + timedelta(days=1), time.min)
+
+    providers_count, clients_count = (
+        db.query(
+            func.coalesce(
+                func.sum(case((models.User.is_provider.is_(True), 1), else_=0)),
+                0,
+            ),
+            func.coalesce(
+                func.sum(case((models.User.is_provider.is_(False), 1), else_=0)),
+                0,
+            ),
+        )
+        .filter(models.User.created_at >= start_ts)
+        .filter(models.User.created_at < end_ts_exclusive)
+        .one()
+    )
+
+    return {
+        "start": start,
+        "end": end,
+        "providers": int(providers_count or 0),
+        "clients": int(clients_count or 0),
+    }
 
 
 @router.post("/users/{user_id}/suspend", response_model=schemas.UserSuspensionOut)

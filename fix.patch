@@ -1,161 +1,314 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
-diff --git a/mobile/App.js b/mobile/App.js
-index 7198e1590dbcca48612c08da2d63e268a9513ee6..202633e19da5a53f557696d66af85cc3fc372a68 100644
---- a/mobile/App.js
-+++ b/mobile/App.js
-@@ -612,50 +612,52 @@ function ForgotPasswordScreen({ goToLogin, goBack, showFlash }) {
-                   onPress={goToLogin}
-                   color="#166534"
-                 />
-               </View>
-             )}
+diff --git a/frontend/src/App.jsx b/frontend/src/App.jsx
+index b26b14889018dd4dce1fde6594a9b5af1b74bb0c..bcefdb08c1856a6a0086b643c45f2c25ccd75d95 100644
+--- a/frontend/src/App.jsx
++++ b/frontend/src/App.jsx
+@@ -98,50 +98,66 @@ const sampleBookings = [
+   { id: 3, providerId: 2, clientId: 12, status: 'completed', startTime: '2024-10-11T16:00:00Z' },
+   { id: 4, providerId: 2, clientId: 13, status: 'pending', startTime: '2024-10-10T10:00:00Z' },
+   { id: 5, providerId: 3, clientId: 14, status: 'no-show', startTime: '2024-10-01T10:00:00Z' },
+   { id: 6, providerId: 4, clientId: 10, status: 'completed', startTime: '2024-10-12T09:00:00Z' },
+   { id: 7, providerId: 4, clientId: 16, status: 'cancelled', startTime: '2024-09-15T09:00:00Z' },
+   { id: 8, providerId: 1, clientId: 15, status: 'completed', startTime: '2024-10-10T09:00:00Z' },
+ ];
  
-             {goBack && (
-               <View style={{ width: "100%" }}>
-                 <Button title="Back" onPress={goBack} color="#6b7280" />
-               </View>
-             )}
-           </View>
-         </TouchableWithoutFeedback>
-       </ScrollView>
-     </KeyboardAvoidingView>
+ const signupHistory = [
+   { month: 'Jun', providers: 10, clients: 54 },
+   { month: 'Jul', providers: 14, clients: 62 },
+   { month: 'Aug', providers: 21, clients: 70 },
+   { month: 'Sep', providers: 33, clients: 82 },
+   { month: 'Oct', providers: 40, clients: 95 },
+ ];
+ 
+ const normalizeServiceCharge = (value) => Math.max(0, Math.min(100, Number(value) || 0));
+ 
+ const loadStoredServiceCharge = () => {
+   const stored = localStorage.getItem(SERVICE_CHARGE_STORAGE_KEY);
+   if (stored === null) return null;
+ 
+   return normalizeServiceCharge(stored);
+ };
+ 
++const formatDateInput = (date) => {
++  const year = date.getFullYear();
++  const month = String(date.getMonth() + 1).padStart(2, '0');
++  const day = String(date.getDate()).padStart(2, '0');
++  return `${year}-${month}-${day}`;
++};
++
++const parseDateInput = (value) => {
++  if (!value) return null;
++  const [year, month, day] = value.split('-').map(Number);
++  if (!year || !month || !day) return null;
++  const parsed = new Date(year, month - 1, day);
++  if (Number.isNaN(parsed.getTime())) return null;
++  return parsed;
++};
++
+ const persistServiceCharge = (rate) => {
+   localStorage.setItem(SERVICE_CHARGE_STORAGE_KEY, String(rate));
+ };
+ 
+ const getSuspensionCutoffDate = () => {
+   const today = new Date();
+   return new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), 15));
+ };
+ 
+ const isPastSuspensionCutoff = () => {
+   const now = new Date();
+   const cutoff = getSuspensionCutoffDate();
+ 
+   return now.getTime() >= cutoff.getTime();
+ };
+ 
+ function useBillingCore() {
+   const billingCycleStart = useMemo(() => {
+     const today = new Date();
+     return new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), 1)).toISOString().slice(0, 10);
+   }, []);
+ 
+   const [providers, setProviders] = useState(sampleProviders);
+   const [charges, setCharges] = useState(() =>
+     sampleCharges.map((charge) => {
+@@ -915,78 +931,121 @@ function ProviderAccountsTable({ providers, creditInputs, setCreditInputs, apply
    );
  }
  
+ function AdminDashboard() {
+   const {
+     applyCredit,
+     billingCycleStart,
+     charges,
+     creditInputs,
+     loadingProviders,
+     providers,
+     resolvedCharges,
+     selectedChargeIds,
+     setCharges,
+     setCreditInputs,
+     setChargesPaidState,
+     setProviderSuspensionState,
+     suspensionCutoffLabel,
+     toggleAllChargesSelection,
+     toggleChargeSelection,
+     updateSingleChargeStatus,
+   } = useBillingCore();
  
+   const [serviceCharge, setServiceCharge] = useState(DEFAULT_SERVICE_CHARGE);
+   const [serviceChargeDraft, setServiceChargeDraft] = useState(DEFAULT_SERVICE_CHARGE);
++  const [signupStart, setSignupStart] = useState(() => {
++    const today = new Date();
++    const start = new Date();
++    start.setDate(today.getDate() - 6);
++    return formatDateInput(start);
++  });
++  const [signupEnd, setSignupEnd] = useState(() => formatDateInput(new Date()));
++  const [signupReport, setSignupReport] = useState(null);
++  const [signupLoading, setSignupLoading] = useState(false);
++  const [signupError, setSignupError] = useState('');
  
+   useLeafletMap(providers);
  
- function SignupScreen({ goToLogin, goBack, showFlash }) {
-   const [email, setEmail] = useState("");
-   const [password, setPassword] = useState("");
-   const [confirmPassword, setConfirmPassword] = useState("");
-+  const [passwordKey, setPasswordKey] = useState(0);
-+  const [confirmPasswordKey, setConfirmPasswordKey] = useState(0);
-   const [username, setUsername] = useState("");
-   const [phone, setPhone] = useState("");
-   const [isProvider, setIsProvider] = useState(false); // 👈 new
+   const recalculateChargesForRate = (rate) => {
+     const safeRate = normalizeServiceCharge(rate);
+     setCharges((prev) => prev.map((c) => ({ ...c, amount: Math.round(c.baseServiceCost * (safeRate / 100)) })));
+     setServiceCharge(safeRate);
+     setServiceChargeDraft(safeRate);
+   };
  
-   const signup = async () => {
-     const trimmedEmail = email.trim();
-     const normalizedEmail = trimmedEmail.toLowerCase();
-     const trimmedPassword = password.trim();
-     const trimmedConfirm = confirmPassword.trim();
-     const trimmedUsername = username.trim();
-     const trimmedPhone = phone.trim();
+   useEffect(() => {
+     const storedRate = loadStoredServiceCharge();
+     if (storedRate !== null) {
+       recalculateChargesForRate(storedRate);
+     }
+   }, []);
  
-     // ✅ All fields required
-     if (
-       !trimmedUsername ||
-       !trimmedEmail ||
-       !trimmedPhone ||
-       !trimmedPassword ||
-       !trimmedConfirm
-     ) {
-       if (showFlash) {
-         showFlash("error", "Please fill in all fields");
-       } else {
-         Alert.alert("Error", "Please fill in all fields");
-       }
-@@ -755,83 +757,91 @@ function SignupScreen({ goToLogin, goBack, showFlash }) {
-         style={styles.input}
-         placeholder="Email"
-         placeholderTextColor={styles.inputPlaceholder.color}
-         value={email}
-         onChangeText={setEmail}
-         keyboardType="email-address"
-         autoCapitalize="none"
-       />
+   const saveServiceCharge = () => {
+     const safeRate = normalizeServiceCharge(serviceChargeDraft);
+     persistServiceCharge(safeRate);
+     recalculateChargesForRate(safeRate);
+   };
  
-       <TextInput
-         style={styles.input}
-         placeholder="Phone (592XXXXXXX)"
-         placeholderTextColor={styles.inputPlaceholder.color}
-         value={phone}
-         onChangeText={setPhone}
-         keyboardType="phone-pad"
-       />
+   const resetServiceCharge = () => {
+     recalculateChargesForRate(DEFAULT_SERVICE_CHARGE);
+     localStorage.removeItem(SERVICE_CHARGE_STORAGE_KEY);
+   };
  
-       {/* Provider toggle */}
-       <View style={styles.toggleRow}>
-         <Text style={styles.toggleLabel}>Register as service provider</Text>
-         <Switch value={isProvider} onValueChange={setIsProvider} />
-       </View>
++  const runSignupReport = useCallback(async () => {
++    const parsedStart = parseDateInput(signupStart);
++    const parsedEnd = parseDateInput(signupEnd);
++
++    if (!parsedStart || !parsedEnd) {
++      setSignupError('Start and end dates are required.');
++      return;
++    }
++
++    if (parsedStart > parsedEnd) {
++      setSignupError('Start date must be on or before end date.');
++      return;
++    }
++
++    setSignupLoading(true);
++    setSignupError('');
++    try {
++      const res = await apiClient.get('/admin/reports/signups', {
++        params: { start: signupStart, end: signupEnd },
++      });
++      setSignupReport(res.data);
++    } catch (error) {
++      logApiError(error);
++      setSignupError('Unable to load the signup report. Please try again.');
++    } finally {
++      setSignupLoading(false);
++    }
++  }, [signupStart, signupEnd]);
++
++  useEffect(() => {
++    runSignupReport();
++  }, [runSignupReport]);
++
+   const totalProviders = providers.length;
+   const totalActiveProviders = providers.filter((p) => {
+     const lastActiveDate = new Date(p.lastActive);
+     const thirtyDaysAgo = new Date();
+     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+     return lastActiveDate >= thirtyDaysAgo;
+   }).length;
  
-       <TextInput
-+        key={passwordKey}
-         style={[
-           styles.input,
-           Platform.OS === "android" && { includeFontPadding: false },
-         ]}
-         placeholder="Password"
-         placeholderTextColor={styles.inputPlaceholder.color}
-         value={password}
--        onChangeText={setPassword}
-+        onChangeText={(t) => {
-+          setPassword(t);
-+          if (Platform.OS === "android") setPasswordKey((k) => k + 1);
-+        }}
-         autoCapitalize="none"
-         autoCorrect={false}
--        autoComplete="password"
--        textContentType="password"
--        importantForAutofill="yes"
-+        autoComplete={Platform.OS === "android" ? "off" : "password"}
-+        textContentType={Platform.OS === "android" ? "none" : "password"}
-+        importantForAutofill={Platform.OS === "android" ? "no" : "yes"}
-         underlineColorAndroid="transparent"
-         selectionColor="#16a34a"
-         cursorColor="#16a34a"
-         secureTextEntry={true}
-       />
+   const bookingStats = useMemo(() => {
+     const now = new Date();
+     const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+     const startOfWeek = new Date(startOfDay);
+     startOfWeek.setDate(startOfDay.getDate() - startOfDay.getDay());
+     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
  
-       <TextInput
-+        key={confirmPasswordKey}
-         style={[
-           styles.input,
-           Platform.OS === "android" && { includeFontPadding: false },
-         ]}
-         placeholder="Confirm Password"
-         placeholderTextColor={styles.inputPlaceholder.color}
-         value={confirmPassword}
--        onChangeText={setConfirmPassword}
-+        onChangeText={(t) => {
-+          setConfirmPassword(t);
-+          if (Platform.OS === "android") setConfirmPasswordKey((k) => k + 1);
-+        }}
-         autoCapitalize="none"
-         autoCorrect={false}
--        autoComplete="password"
--        textContentType="password"
--        importantForAutofill="yes"
-+        autoComplete={Platform.OS === "android" ? "off" : "password"}
-+        textContentType={Platform.OS === "android" ? "none" : "password"}
-+        importantForAutofill={Platform.OS === "android" ? "no" : "yes"}
-         underlineColorAndroid="transparent"
-         selectionColor="#16a34a"
-         cursorColor="#16a34a"
-         secureTextEntry={true}
-       />
+     const today = sampleBookings.filter((b) => new Date(b.startTime) >= startOfDay).length;
+     const thisWeek = sampleBookings.filter((b) => new Date(b.startTime) >= startOfWeek).length;
+     const thisMonth = sampleBookings.filter((b) => new Date(b.startTime) >= startOfMonth).length;
  
-       <View style={{ width: "100%", marginBottom: 10 }}>
-         <Button title="Sign Up" onPress={signup} color="#16a34a" />
-       </View>
+     const total = sampleBookings.length;
+     const completed = sampleBookings.filter((b) => b.status === 'completed').length;
+     const cancelled = sampleBookings.filter((b) => b.status === 'cancelled').length;
+     const noShows = sampleBookings.filter((b) => b.status === 'no-show').length;
  
-       {goToLogin && (
-         <View style={{ width: "100%", marginBottom: 10 }}>
-           <Button
-             title="Already have an account? Login"
-             onPress={goToLogin}
-             color="#166534"
-           />
-         </View>
-       )}
+     return {
+@@ -1068,50 +1127,116 @@ function AdminDashboard() {
+               <button
+                 style={{ padding: '10px 14px', background: '#16a34a', color: 'white', borderRadius: '10px', border: 'none', fontWeight: 700 }}
+                 onClick={saveServiceCharge}
+               >
+                 Save Changes
+               </button>
+               <button
+                 style={{ padding: '10px 14px', background: '#f3f4f6', color: '#111827', borderRadius: '10px', border: '1px solid #e5e7eb', fontWeight: 700 }}
+                 onClick={resetServiceCharge}
+               >
+                 Reset to {DEFAULT_SERVICE_CHARGE}%
+               </button>
+             </div>
+           </div>
+         </ReportSection>
  
-       {goBack && (
-         <View style={{ width: "100%" }}>
-           <Button title="Back" onPress={goBack} color="#6b7280" />
-         </View>
-       )}
+         <ReportSection title="Booking Health">
+           <div style={{ display: 'grid', gap: '8px' }}>
+             <StatCard label="Bookings Today" value={bookingStats.today} />
+             <StatCard label="Bookings This Week" value={bookingStats.thisWeek} />
+             <StatCard label="Bookings This Month" value={bookingStats.thisMonth} />
+           </div>
+         </ReportSection>
+       </div>
+ 
++      <ReportSection title="Signups Report">
++        <div style={{ display: 'grid', gap: '12px' }}>
++          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', alignItems: 'flex-end' }}>
++            <div style={{ display: 'grid', gap: '6px' }}>
++              <label style={{ fontSize: '12px', color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
++                Start date
++              </label>
++              <input
++                type="date"
++                value={signupStart}
++                onChange={(e) => setSignupStart(e.target.value)}
++                style={{ padding: '10px', borderRadius: '10px', border: '1px solid #d1d5db', minWidth: '170px' }}
++              />
++            </div>
++            <div style={{ display: 'grid', gap: '6px' }}>
++              <label style={{ fontSize: '12px', color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
++                End date
++              </label>
++              <input
++                type="date"
++                value={signupEnd}
++                onChange={(e) => setSignupEnd(e.target.value)}
++                style={{ padding: '10px', borderRadius: '10px', border: '1px solid #d1d5db', minWidth: '170px' }}
++              />
++            </div>
++            <button
++              onClick={runSignupReport}
++              disabled={signupLoading}
++              style={{
++                padding: '10px 16px',
++                background: '#16a34a',
++                color: 'white',
++                borderRadius: '10px',
++                border: 'none',
++                fontWeight: 700,
++                opacity: signupLoading ? 0.7 : 1,
++                cursor: signupLoading ? 'not-allowed' : 'pointer',
++              }}
++            >
++              {signupLoading ? 'Running…' : 'Run Report'}
++            </button>
++            <div style={{ fontSize: '12px', color: '#6b7280' }}>
++              Default: last 7 days
++            </div>
++          </div>
++          {signupError && (
++            <div style={{ color: '#b91c1c', fontSize: '14px' }}>{signupError}</div>
++          )}
++          {!signupError && signupLoading && (
++            <div style={{ fontSize: '14px', color: '#6b7280' }}>Loading signups…</div>
++          )}
++          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '12px' }}>
++            <StatCard
++              label="New Provider Signups"
++              value={signupReport ? signupReport.providers : '—'}
++              helper="Based on selected range"
++            />
++            <StatCard
++              label="New Client Signups"
++              value={signupReport ? signupReport.clients : '—'}
++              helper="Based on selected range"
++            />
++          </div>
++        </div>
++      </ReportSection>
++
+       <ReportSection title="Billing Actions" fullWidth>
+         <BillingActionsPanel
+           billingCycleStart={billingCycleStart}
+           resolvedCharges={resolvedCharges}
+           selectedChargeIds={selectedChargeIds}
+           setChargesPaidState={setChargesPaidState}
+           suspensionCutoffLabel={suspensionCutoffLabel}
+           toggleAllChargesSelection={toggleAllChargesSelection}
+           toggleChargeSelection={toggleChargeSelection}
+           updateSingleChargeStatus={updateSingleChargeStatus}
+           setProviderSuspensionState={setProviderSuspensionState}
+         />
+       </ReportSection>
+ 
+       <ReportSection title="Provider Accounts">
+         <ProviderAccountsTable
+           applyCredit={applyCredit}
+           creditInputs={creditInputs}
+           providers={providers}
+           setCreditInputs={setCreditInputs}
+           setProviderSuspensionState={setProviderSuspensionState}
+         />
+       </ReportSection>
+ 
+       <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '16px', marginBottom: '16px' }}>
  
 EOF
 )

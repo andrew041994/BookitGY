@@ -240,6 +240,13 @@ class AdminProviderCancellationOut(BaseModel):
     total_cancellations: int
 
 
+class AdminSignupReportOut(BaseModel):
+    start: date
+    end: date
+    providers: int
+    clients: int
+
+
 class ProviderBillingCycleItem(BaseModel):
     service_id: int
     service_name: str

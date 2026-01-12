@@ -120,6 +120,22 @@ const loadStoredServiceCharge = () => {
   return normalizeServiceCharge(stored);
 };
 
+const formatDateInput = (date) => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+const parseDateInput = (value) => {
+  if (!value) return null;
+  const [year, month, day] = value.split('-').map(Number);
+  if (!year || !month || !day) return null;
+  const parsed = new Date(year, month - 1, day);
+  if (Number.isNaN(parsed.getTime())) return null;
+  return parsed;
+};
+
 const persistServiceCharge = (rate) => {
   localStorage.setItem(SERVICE_CHARGE_STORAGE_KEY, String(rate));
 };
@@ -937,6 +953,16 @@ function AdminDashboard() {
 
   const [serviceCharge, setServiceCharge] = useState(DEFAULT_SERVICE_CHARGE);
   const [serviceChargeDraft, setServiceChargeDraft] = useState(DEFAULT_SERVICE_CHARGE);
+  const [signupStart, setSignupStart] = useState(() => {
+    const today = new Date();
+    const start = new Date();
+    start.setDate(today.getDate() - 6);
+    return formatDateInput(start);
+  });
+  const [signupEnd, setSignupEnd] = useState(() => formatDateInput(new Date()));
+  const [signupReport, setSignupReport] = useState(null);
+  const [signupLoading, setSignupLoading] = useState(false);
+  const [signupError, setSignupError] = useState('');
 
   useLeafletMap(providers);
 
@@ -964,6 +990,39 @@ function AdminDashboard() {
     recalculateChargesForRate(DEFAULT_SERVICE_CHARGE);
     localStorage.removeItem(SERVICE_CHARGE_STORAGE_KEY);
   };
+
+  const runSignupReport = useCallback(async () => {
+    const parsedStart = parseDateInput(signupStart);
+    const parsedEnd = parseDateInput(signupEnd);
+
+    if (!parsedStart || !parsedEnd) {
+      setSignupError('Start and end dates are required.');
+      return;
+    }
+
+    if (parsedStart > parsedEnd) {
+      setSignupError('Start date must be on or before end date.');
+      return;
+    }
+
+    setSignupLoading(true);
+    setSignupError('');
+    try {
+      const res = await apiClient.get('/admin/reports/signups', {
+        params: { start: signupStart, end: signupEnd },
+      });
+      setSignupReport(res.data);
+    } catch (error) {
+      logApiError(error);
+      setSignupError('Unable to load the signup report. Please try again.');
+    } finally {
+      setSignupLoading(false);
+    }
+  }, [signupStart, signupEnd]);
+
+  useEffect(() => {
+    runSignupReport();
+  }, [runSignupReport]);
 
   const totalProviders = providers.length;
   const totalActiveProviders = providers.filter((p) => {
@@ -1089,6 +1148,72 @@ function AdminDashboard() {
           </div>
         </ReportSection>
       </div>
+
+      <ReportSection title="Signups Report">
+        <div style={{ display: 'grid', gap: '12px' }}>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', alignItems: 'flex-end' }}>
+            <div style={{ display: 'grid', gap: '6px' }}>
+              <label style={{ fontSize: '12px', color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                Start date
+              </label>
+              <input
+                type="date"
+                value={signupStart}
+                onChange={(e) => setSignupStart(e.target.value)}
+                style={{ padding: '10px', borderRadius: '10px', border: '1px solid #d1d5db', minWidth: '170px' }}
+              />
+            </div>
+            <div style={{ display: 'grid', gap: '6px' }}>
+              <label style={{ fontSize: '12px', color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                End date
+              </label>
+              <input
+                type="date"
+                value={signupEnd}
+                onChange={(e) => setSignupEnd(e.target.value)}
+                style={{ padding: '10px', borderRadius: '10px', border: '1px solid #d1d5db', minWidth: '170px' }}
+              />
+            </div>
+            <button
+              onClick={runSignupReport}
+              disabled={signupLoading}
+              style={{
+                padding: '10px 16px',
+                background: '#16a34a',
+                color: 'white',
+                borderRadius: '10px',
+                border: 'none',
+                fontWeight: 700,
+                opacity: signupLoading ? 0.7 : 1,
+                cursor: signupLoading ? 'not-allowed' : 'pointer',
+              }}
+            >
+              {signupLoading ? 'Running…' : 'Run Report'}
+            </button>
+            <div style={{ fontSize: '12px', color: '#6b7280' }}>
+              Default: last 7 days
+            </div>
+          </div>
+          {signupError && (
+            <div style={{ color: '#b91c1c', fontSize: '14px' }}>{signupError}</div>
+          )}
+          {!signupError && signupLoading && (
+            <div style={{ fontSize: '14px', color: '#6b7280' }}>Loading signups…</div>
+          )}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '12px' }}>
+            <StatCard
+              label="New Provider Signups"
+              value={signupReport ? signupReport.providers : '—'}
+              helper="Based on selected range"
+            />
+            <StatCard
+              label="New Client Signups"
+              value={signupReport ? signupReport.clients : '—'}
+              helper="Based on selected range"
+            />
+          </div>
+        </div>
+      </ReportSection>
 
       <ReportSection title="Billing Actions" fullWidth>
         <BillingActionsPanel
