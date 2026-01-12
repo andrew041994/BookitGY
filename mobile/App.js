@@ -702,9 +702,9 @@ function SignupScreen({ goToLogin, goBack, showFlash }) {
       });
 
       if (showFlash) {
-        showFlash("success", "Account created! Please log in.");
+        showFlash("success", "Account created! Please verify email and log in.");
       } else {
-        Alert.alert("Success", "Account created! Now login");
+        Alert.alert("Success", "Account created! Please verify email and log in.");
       }
 
       if (goToLogin) goToLogin();

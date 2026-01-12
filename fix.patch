@@ -1,133 +1,368 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
 diff --git a/mobile/App.js b/mobile/App.js
-index 38354896f2929096b2d5de4fdeb9483092df0ed1..89f4b0b0d443802bfdcf986f3f38733f83cc46ee 100644
+index 89f4b0b0d443802bfdcf986f3f38733f83cc46ee..55d26c072f69760d6df7e44dbcada9b311e09ec7 100644
 --- a/mobile/App.js
 +++ b/mobile/App.js
-@@ -423,51 +423,54 @@ return (
-     >
-       <ScrollView
-         contentContainerStyle={styles.scrollContent}
-         keyboardShouldPersistTaps="handled"
-       >
-         <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-           <View style={styles.container}>
-             <View style={styles.logoWrapper}>
-               <Image
-                 source={BookitGYLogoTransparent}
-                 style={styles.logo}
-               />
-             </View>
-         <Text style={styles.title}>Login</Text>
+@@ -3554,130 +3554,130 @@ const loadServices = async () => {
+         // 🔒 Always normalize to an array
+     const rawServices = res.data;
+     const list = Array.isArray(rawServices)
+       ? rawServices
+       : rawServices?.services || rawServices?.results || [];
  
-         <TextInput
-           style={styles.input}
-           placeholder="Email"
-           placeholderTextColor={styles.inputPlaceholder.color}
-           value={email}
-           autoCapitalize="none"
-           onChangeText={setEmail}
-         />
+     setServices(list || []);
  
-         <TextInput
--          style={styles.input}
-+          style={[
-+            styles.input,
-+            Platform.OS === "android" && { includeFontPadding: true },
-+          ]}
-           placeholder="Password"
-           placeholderTextColor={styles.inputPlaceholder.color}
-           value={password}
-           onChangeText={setPassword}
-           secureTextEntry
-         />
+     } catch (err) {
+       console.log("Error loading services", err.response?.data || err.message);
+       setServicesError("Could not load services.");
+       if (showFlash) {
+         showFlash("error", "Could not load services.");
+       }
+     } finally {
+       setLoading(false);
+     }
+   };
  
-           {goToSignup && (
-             <View style={{ width: "100%", marginBottom: 10 }}>
-                {loading ? (
-                 <ActivityIndicator size="large" color="#16a34a" />
-               ) : (
-                 <Button title="Login" onPress={login} color="#16a34a" />
+ const saveWorkingHours = async () => {
+   try {
+     const authToken = await getAuthToken(token);
+     if (!authToken) {
+       if (showFlash) showFlash("error", "No access token found.");
+       setHoursFlash({ type: "error", message: "No access token found." });
+-      setTimeout(() => setHoursFlash(null), 2000);
++      setTimeout(() => setHoursFlash(null), 3500);
+       return;
+     }
+ 
+     // Validate and build payload
+     const payload = [];
+     for (const h of workingHours) {
+       const start24 = to24Hour(h.startLocal);
+       const end24 = to24Hour(h.endLocal);
+ 
+       if (!h.is_closed) {
+         // For open days, both times must be valid
+         if (!start24 || !end24) {
+           const dayNames = [
+             "Monday",
+             "Tuesday",
+             "Wednesday",
+             "Thursday",
+             "Friday",
+             "Saturday",
+             "Sunday",
+           ];
+           const label = dayNames[h.weekday] || `Day ${h.weekday}`;
+           const msg = `Please enter valid start and end times for ${label}.`;
+           if (showFlash) showFlash("error", msg);
+           setHoursFlash({ type: "error", message: msg });
+-          setTimeout(() => setHoursFlash(null), 2000);
++          setTimeout(() => setHoursFlash(null), 3500);
+           return;
+         }
+ 
+         // And end must be after start
+         const [sh, sm] = start24.split(":").map((n) => parseInt(n, 10));
+         const [eh, em] = end24.split(":").map((n) => parseInt(n, 10));
+         const startMinutes = sh * 60 + sm;
+         const endMinutes = eh * 60 + em;
+ 
+         if (endMinutes <= startMinutes) {
+           const dayNames = [
+             "Monday",
+             "Tuesday",
+             "Wednesday",
+             "Thursday",
+             "Friday",
+             "Saturday",
+             "Sunday",
+           ];
+           const label = dayNames[h.weekday] || `Day ${h.weekday}`;
+           const msg = `End time must be after start time for ${label}.`;
+           if (showFlash) showFlash("error", msg);
+           setHoursFlash({ type: "error", message: msg });
+-          setTimeout(() => setHoursFlash(null), 2000);
++          setTimeout(() => setHoursFlash(null), 3500);
+           return;
+         }
+       }
+ 
+       payload.push({
+         weekday: h.weekday,
+         is_closed: h.is_closed,
+         start_time: h.is_closed ? null : start24,
+         end_time: h.is_closed ? null : end24,
+       });
+     }
+ 
+     
+     await axios.put(`${API}/providers/me/working-hours`, payload, {
+       headers: { Authorization: `Bearer ${authToken}` },
+     });
+ 
+ 
+     // if (showFlash) showFlash("success", "Working hours saved");
+     setHoursFlash({ type: "success", message: "Working hours saved" });
+-    setTimeout(() => setHoursFlash(null), 2000);
++    setTimeout(() => setHoursFlash(null), 3500);
+   } catch (err) {
+     console.log(
+       "Error saving working hours",
+       err.response?.data || err.message
+     );
+     if (showFlash) showFlash("error", "Could not save working hours.");
+     setHoursFlash({ type: "error", message: "Could not save working hours." });
+-    setTimeout(() => setHoursFlash(null), 2000);
++    setTimeout(() => setHoursFlash(null), 3500);
+   }
+ };
+ 
+ // Convert "HH:MM" → "h:MM AM/PM" (safe)
+ const to12Hour = (time24) => {
+   if (!time24 || typeof time24 !== "string") return "";
+ 
+   if (!time24.includes(":")) return "";
+ 
+   let [h, m] = time24.split(":");
+ 
+   h = parseInt(h, 10);
+   m = parseInt(m, 10);
+ 
+   if (isNaN(h) || isNaN(m)) return "";
+ 
+   const suffix = h >= 12 ? "PM" : "AM";
+   h = h % 12 || 12;
+ 
+   return `${h}:${m.toString().padStart(2, "0")} ${suffix}`;
+ };
+ 
+ 
+ // Convert "h:MM AM/PM" → "HH:MM" safely
+ // "h:MM AM/PM" or "1000am" / "930 PM" / "10" -> "HH:MM"
+@@ -4070,58 +4070,58 @@ const saveProviderProfile = async () => {
+ 
+     // ✅ Save provider profile to backend
+     const res = await axios.put(
+       `${API}/providers/me/profile`,
+       payload,
+       {
+         headers: {
+           Authorization: `Bearer ${authToken}`,
+         },
+       }
+     );
+ 
+     // ✅ Update local state from server response so UI reflects what’s saved
+     setProfile({
+       full_name: res.data.full_name || "",
+       phone: res.data.phone || "",
+       whatsapp: res.data.whatsapp || "",
+       location: res.data.location || "",
+       bio: res.data.bio || "",
+       professions: res.data.professions || [],
+       username: res.data.username || "",
+     });
+ 
+     // ✅ Show success flash in the green bar
+     setHoursFlash({ type: "success", message: "Provider profile saved" });
+-    setTimeout(() => setHoursFlash(null), 2000);
++    setTimeout(() => setHoursFlash(null), 3500);
+ 
+     if (showFlash) showFlash("success", "Provider profile saved");
+   } catch (err) {
+     console.log("Error saving provider profile", err.response?.data || err.message);
+ 
+     setHoursFlash({ type: "error", message: "Provider profile not saved" });
+-    setTimeout(() => setHoursFlash(null), 2000);
++    setTimeout(() => setHoursFlash(null), 3500);
+ 
+     if (showFlash) {
+       const detail =
+         err.response?.data?.detail || "Could not save provider profile.";
+       showFlash("error", detail);
+     }
+   }
+ };
+ 
+ const pickAvatar = async () => {
+   try {
+     const result = await ImagePicker.launchImageLibraryAsync({
+       mediaTypes: ImagePicker.MediaTypeOptions.Images,
+       allowsEditing: true,
+       aspect: [1, 1],
+       quality: 1,
+     });
+ 
+     if (result.canceled) return;
+ 
+     const asset = result.assets && result.assets[0];
+     if (!asset || !asset.uri) return;
+ 
+     await uploadAvatar(asset.uri);
+   } catch (err) {
+@@ -5490,53 +5490,53 @@ function MainApp({ apiClient, authLoading, token, setToken, showFlash, navigatio
+                   authLoading={authLoading}
+                   token={token}
+                   setToken={setToken}
+                   showFlash={showFlash}
+                 />
                )}
-             </View>
-           )}
+             </Tab.Screen>
+           </Tab.Navigator>
  
-           {goToForgot && (
-             <TouchableOpacity onPress={goToForgot} style={styles.forgotLink}>
-               <Text style={styles.forgotLinkText}>Forgot password?</Text>
-             </TouchableOpacity>
-           )}
  
-             {goToSignup && (
-               <View style={{ width: "100%", marginBottom: 10 }}>
-@@ -739,60 +742,66 @@ function SignupScreen({ goToLogin, goBack, showFlash }) {
-         style={styles.input}
-         placeholder="Email"
-         placeholderTextColor={styles.inputPlaceholder.color}
-         value={email}
-         onChangeText={setEmail}
-         keyboardType="email-address"
-         autoCapitalize="none"
-       />
- 
-       <TextInput
-         style={styles.input}
-         placeholder="Phone (592XXXXXXX)"
-         placeholderTextColor={styles.inputPlaceholder.color}
-         value={phone}
-         onChangeText={setPhone}
-         keyboardType="phone-pad"
-       />
- 
-       {/* Provider toggle */}
-       <View style={styles.toggleRow}>
-         <Text style={styles.toggleLabel}>Register as service provider</Text>
-         <Switch value={isProvider} onValueChange={setIsProvider} />
-       </View>
- 
-       <TextInput
--        style={styles.input}
-+        style={[
-+          styles.input,
-+          Platform.OS === "android" && { includeFontPadding: true },
-+        ]}
-         placeholder="Password"
-         placeholderTextColor={styles.inputPlaceholder.color}
-         value={password}
-         onChangeText={setPassword}
-         secureTextEntry
-       />
- 
-       <TextInput
--        style={styles.input}
-+        style={[
-+          styles.input,
-+          Platform.OS === "android" && { includeFontPadding: true },
-+        ]}
-         placeholder="Confirm Password"
-         placeholderTextColor={styles.inputPlaceholder.color}
-         value={confirmPassword}
-         onChangeText={setConfirmPassword}
-         secureTextEntry
-       />
- 
-       <View style={{ width: "100%", marginBottom: 10 }}>
-         <Button title="Sign Up" onPress={signup} color="#16a34a" />
-       </View>
- 
-       {goToLogin && (
-         <View style={{ width: "100%", marginBottom: 10 }}>
-           <Button
-             title="Already have an account? Login"
-             onPress={goToLogin}
-             color="#166534"
-           />
-         </View>
        )}
+     </NavigationContainer>
+   );
+ }
  
-       {goBack && (
-         <View style={{ width: "100%" }}>
-           <Button title="Back" onPress={goBack} color="#6b7280" />
-         </View>
+ 
+ 
+ 
+ //Flash message component
+ 
+ function FlashMessage({ flash }) {
+   if (!flash || !flash.text) return null;
+ 
+   const isError = flash.type === "error";
+ 
+-  const backgroundColor = isError ? "#fee2e2" : "#dcfce7"; // red / green
+-  const borderColor = isError ? "#b91c1c" : "#16a34a";
+-  const textColor = isError ? "#7f1d1d" : "#166534";
++  const backgroundColor = isError ? "#fee2e2" : "#16a34a"; // red / green
++  const borderColor = isError ? "#b91c1c" : "#15803d";
++  const textColor = isError ? "#7f1d1d" : "#ffffff";
+ 
+   return (
+ 
+     <View
+       style={[
+         styles.flashContainer,
+         { backgroundColor, borderColor },
+       ]}
+     >
+       <Text style={[styles.flashText, { color: textColor }]}>
+         {flash.text}
+       </Text>
+     </View>
+   );
+ }
+ 
+ 
+ // 🔹 App orchestrates landing/login/signup/forgot-password vs main app
+ 
+ function App() {
+ 
+   const mountIdRef = useRef(Math.random().toString(16).slice(2));
+   console.log("APP MOUNT ID:", mountIdRef.current);
+   useEffect(() => console.log("APP useEffect ran for mount", mountIdRef.current), []);
+ 
+@@ -5587,51 +5587,51 @@ function App() {
+       if (message) return message;
+       return JSON.stringify(item);
+     };
+ 
+     if (Array.isArray(text)) {
+       return text.map(formatErrorItem).filter(Boolean).join("\n");
+     }
+ 
+     if (typeof text === "object") {
+       if (Array.isArray(text.detail)) {
+         return formatFlashText(text.detail);
+       }
+       if (typeof text.detail === "string") return text.detail;
+       if (typeof text.message === "string") return text.message;
+       if (typeof text.msg === "string") return text.msg;
+       return JSON.stringify(text);
+     }
+ 
+     return String(text);
+   };
+ 
+   const showFlash = (type, text) => {
+     setFlash({ type, text: formatFlashText(text) });
+     setTimeout(() => {
+       setFlash(null);
+-    }, 3000);
++    }, 4500);
+   };
+ 
+   useEffect(() => {
+     let isActive = true;
+     const restoreSession = async () => {
+       if (authBootstrapRef.current.inFlight || authBootstrapRef.current.completed) {
+         return;
+       }
+       authBootstrapRef.current.inFlight = true;
+       const bootstrapStartedAt = Date.now();
+       console.log("[auth] bootstrap start");
+       try {
+         const restoredToken = await withTimeout(
+           getAuthToken(),
+           AUTH_TOKEN_TIMEOUT_MS,
+           "getAuthToken"
+         );
+         console.log("[auth] token loaded:", Boolean(restoredToken));
+ 
+         if (!restoredToken) {
+           if (isActive) setToken(null);
+         } else {
+           try {
+             const meRes = await withTimeout(
+               apiClient.get("/users/me", {
+@@ -6275,51 +6275,51 @@ favoriteToggleButton: {
+   },
+   hoursInput: {
+     borderWidth: 1,
+     borderColor: "#d1d5db",
+     borderRadius: 6,
+     paddingHorizontal: 8,
+     paddingVertical: 4,
+     minWidth: 60,
+     textAlign: "center",
+     marginHorizontal: 4,
+     backgroundColor: "white",
+   },
+ 
+   hoursFlashGlobal: {
+     position: "absolute",
+     top: 50,
+     left: 20,
+     right: 20,
+     paddingVertical: 8,
+     paddingHorizontal: 12,
+     borderRadius: 8,
+     zIndex: 9999,
+     elevation: 10,
+   },
+   hoursFlashSuccess: {
+-    backgroundColor: "#22c55e",
++    backgroundColor: "#16a34a",
+   },
+   hoursFlashError: {
+     backgroundColor: "#ef4444",
+   },
+   hoursFlashText: {
+     color: "white",
+     fontSize: 13,
+     textAlign: "center",
+   },
+ 
+   hoursHelp: {
+   fontSize: 12,
+   color: "#6b7280",
+   marginTop: 4,
+   marginBottom: 8,
+ },
+ 
+ appointmentScroll: {
+     padding: 24,
+     backgroundColor: "#EAFDF4",
+     flexGrow: 1,
+   },
+   appointmentHeader: {
+     flexDirection: "row",
+     alignItems: "center",
  
 EOF
 )
