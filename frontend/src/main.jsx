@@ -64,6 +64,22 @@ const loadLeaflet = () => {
 
 const normalizeServiceCharge = (value) => Math.max(0, Math.min(100, Number(value) || 0))
 
+const formatDateInput = (date) => {
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+const parseDateInput = (value) => {
+  if (!value) return null
+  const [year, month, day] = value.split('-').map(Number)
+  if (!year || !month || !day) return null
+  const parsed = new Date(year, month - 1, day)
+  if (Number.isNaN(parsed.getTime())) return null
+  return parsed
+}
+
 const loadStoredServiceCharge = () => {
   const stored = localStorage.getItem(SERVICE_CHARGE_STORAGE_KEY)
   if (stored === null) return null
@@ -1416,6 +1432,110 @@ function App() {
     )
   }
 
+  const AdminSignupReport = () => {
+    const [startDate, setStartDate] = React.useState(() => {
+      const today = new Date()
+      const start = new Date()
+      start.setDate(today.getDate() - 6)
+      return formatDateInput(start)
+    })
+    const [endDate, setEndDate] = React.useState(() => formatDateInput(new Date()))
+    const [report, setReport] = React.useState(null)
+    const [loading, setLoading] = React.useState(false)
+    const [error, setError] = React.useState('')
+
+    const runReport = React.useCallback(async () => {
+      const parsedStart = parseDateInput(startDate)
+      const parsedEnd = parseDateInput(endDate)
+
+      if (!parsedStart || !parsedEnd) {
+        setError('Start and end dates are required.')
+        return
+      }
+
+      if (parsedStart > parsedEnd) {
+        setError('Start date must be on or before end date.')
+        return
+      }
+
+      setLoading(true)
+      setError('')
+      try {
+        const res = await apiClient.get('/admin/reports/signups', {
+          params: { start: startDate, end: endDate },
+        })
+        setReport(res.data)
+      } catch (err) {
+        logApiError(err)
+        setError('Unable to load signup counts. Please try again.')
+        setReport(null)
+      } finally {
+        setLoading(false)
+      }
+    }, [endDate, startDate])
+
+    React.useEffect(() => {
+      runReport()
+    }, [runReport])
+
+    return (
+      <div className="admin-page">
+        <div className="admin-header">
+          <div>
+            <p className="eyebrow">Reports</p>
+            <h1>Signups Report</h1>
+            <p className="header-subtitle">Track new provider and client signups over a selected date range.</p>
+          </div>
+        </div>
+
+        <div className="admin-card">
+          <div className="form-grid">
+            <label className="form-field">
+              <span>Start date</span>
+              <input
+                type="date"
+                value={startDate}
+                onChange={(e) => setStartDate(e.target.value)}
+              />
+            </label>
+            <label className="form-field">
+              <span>End date</span>
+              <input
+                type="date"
+                value={endDate}
+                onChange={(e) => setEndDate(e.target.value)}
+              />
+            </label>
+          </div>
+          <div className="button-row">
+            <button
+              className="primary-btn"
+              onClick={runReport}
+              disabled={loading}
+            >
+              {loading ? 'Running…' : 'Run report'}
+            </button>
+            <span className="muted">Default: last 7 days</span>
+          </div>
+
+          {error && <p className="form-error">{error}</p>}
+          {loading && !error && <p className="muted">Loading signups…</p>}
+
+          <div className="provider-location-summary">
+            <div>
+              <p className="muted">New provider signups</p>
+              <p className="provider-location-value">{report ? report.providers : '—'}</p>
+            </div>
+            <div>
+              <p className="muted">New client signups</p>
+              <p className="provider-location-value">{report ? report.clients : '—'}</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   const AdminLayout = () => {
     const location = useLocation()
     return (
@@ -1442,6 +1562,12 @@ function App() {
               className={({ isActive }) => isActive ? 'sidebar-link active' : 'sidebar-link'}
             >
               Cancellations
+            </NavLink>
+            <NavLink
+              to="/admin/signups"
+              className={({ isActive }) => isActive ? 'sidebar-link active' : 'sidebar-link'}
+            >
+              Signups Report
             </NavLink>
           </nav>
           <div className="sidebar-footer">
@@ -1504,6 +1630,7 @@ function App() {
           <Route path="billing" element={<AdminBilling />} />
           <Route path="provider-locations" element={<AdminProviderLocations />} />
           <Route path="cancellations" element={<AdminCancellations />} />
+          <Route path="signups" element={<AdminSignupReport />} />
         </Route>
       </Routes>
     </BrowserRouter>
