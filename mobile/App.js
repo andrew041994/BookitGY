@@ -3312,6 +3312,35 @@ const [catalogLoading, setCatalogLoading] = useState(false);
 const [catalogError, setCatalogError] = useState("");
 const [catalogUploading, setCatalogUploading] = useState(false);
 
+const validateServiceFields = useCallback((name, price, duration) => {
+  const errors = { name: "", price: "", duration: "" };
+  const trimmedName = name.trim();
+  const priceNumber = Number(price);
+  const durationNumber = Number(duration);
+
+  if (!trimmedName) {
+    errors.name = "Service name is required.";
+  }
+
+  if (!price || Number.isNaN(priceNumber) || priceNumber <= 0) {
+    errors.price = "Enter a price greater than 0.";
+  }
+
+  if (!duration || Number.isNaN(durationNumber) || durationNumber <= 0) {
+    errors.duration = "Enter a duration greater than 0.";
+  }
+
+  return errors;
+}, []);
+
+const serviceErrors = useMemo(
+  () => validateServiceFields(newName, newPrice, newDuration),
+  [newName, newPrice, newDuration, validateServiceFields]
+);
+
+const isServiceFormValid =
+  !serviceErrors.name && !serviceErrors.price && !serviceErrors.duration;
+
 
 
 
@@ -3755,13 +3784,28 @@ const to24Hour = (time12) => {
 
 
   const handleAddService = async () => {
-  if (!newName.trim()) {
-    if (showFlash) showFlash("error", "Service name is required");
+  const currentErrors = validateServiceFields(
+    newName,
+    newPrice,
+    newDuration
+  );
+  const isValid =
+    !currentErrors.name &&
+    !currentErrors.price &&
+    !currentErrors.duration;
+
+  if (!isValid) {
+    if (showFlash) {
+      showFlash(
+        "error",
+        currentErrors.name || currentErrors.price || currentErrors.duration
+      );
+    }
     return;
   }
 
-  const priceNumber = newPrice ? Number(newPrice) : 0;
-  const durationNumber = newDuration ? Number(newDuration) : 30;
+  const priceNumber = Number(newPrice);
+  const durationNumber = Number(newDuration);
 
   try {
     const authToken = await getAuthToken(token);
@@ -4551,25 +4595,49 @@ const loadProviderSummary = async () => {
           {adding && (
             <View style={{ marginBottom: 12 }}>
               <TextInput
-                style={styles.input}
+                style={[
+                  styles.input,
+                  serviceErrors.name ? styles.inputError : null,
+                ]}
                 placeholder="Service name"
                 value={newName}
                 onChangeText={setNewName}
               />
+              {serviceErrors.name ? (
+                <Text style={styles.inputErrorText}>
+                  {serviceErrors.name}
+                </Text>
+              ) : null}
               <TextInput
-                style={styles.input}
+                style={[
+                  styles.input,
+                  serviceErrors.price ? styles.inputError : null,
+                ]}
                 placeholder="Price (GYD)"
                 value={newPrice}
                 onChangeText={setNewPrice}
                 keyboardType="numeric"
               />
+              {serviceErrors.price ? (
+                <Text style={styles.inputErrorText}>
+                  {serviceErrors.price}
+                </Text>
+              ) : null}
               <TextInput
-                style={styles.input}
+                style={[
+                  styles.input,
+                  serviceErrors.duration ? styles.inputError : null,
+                ]}
                 placeholder="Duration (minutes)"
                 value={newDuration}
                 onChangeText={setNewDuration}
                 keyboardType="numeric"
               />
+              {serviceErrors.duration ? (
+                <Text style={styles.inputErrorText}>
+                  {serviceErrors.duration}
+                </Text>
+              ) : null}
               <TextInput
                 style={[styles.input, { height: 80 }]}
                 placeholder="Description"
@@ -4583,6 +4651,7 @@ const loadProviderSummary = async () => {
                   title="Save service"
                   onPress={handleAddService}
                   color="#16a34a"
+                  disabled={!isServiceFormValid}
                 />
               </View>
             </View>
@@ -5844,6 +5913,16 @@ const styles = StyleSheet.create({
         includeFontPadding: false,
       },
     }),
+  },
+  inputError: {
+    borderColor: "#ef4444",
+    borderWidth: 2,
+  },
+  inputErrorText: {
+    color: "#ef4444",
+    fontSize: 12,
+    marginTop: -6,
+    marginBottom: 12,
   },
   inputPlaceholder: {
     color: "#64748b",

@@ -1,6 +1,6 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
 diff --git a/mobile/App.js b/mobile/App.js
-index 2d7f8a09aafaaaae7f16eb50019559cd4c0710c3..8dc2b9db2d8962631ef6374fd47cc3f803ff0502 100644
+index d1188de4450de1c6cdcc2a7ad59bb4bc52bbf2a7..b58ac5ec005a6a585f88a9889fc355d8190a3e07 100644
 --- a/mobile/App.js
 +++ b/mobile/App.js
 @@ -3290,50 +3290,79 @@ function ProviderDashboardScreen({ apiClient, token, showFlash }) {
