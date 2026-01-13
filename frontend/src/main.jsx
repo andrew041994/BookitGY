@@ -1521,13 +1521,9 @@ function App() {
           {error && <p className="form-error">{error}</p>}
           {loading && !error && <p className="muted">Loading signups…</p>}
 
-<<<<<<< ours
-<<<<<<< ours
-=======
-          <div className="provider-missing-table">
-=======
+
+          {/* <div className="provider-missing-table"> */}
           <div className="provider-missing-table signup-totals-table">
->>>>>>> theirs
             <table>
               <thead>
                 <tr>
@@ -1548,10 +1544,6 @@ function App() {
             </table>
           </div>
 
-<<<<<<< ours
->>>>>>> theirs
-=======
->>>>>>> theirs
           <div className="provider-location-summary">
             <div>
               <p className="muted">New provider signups</p>
