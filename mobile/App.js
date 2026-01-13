@@ -634,8 +634,6 @@ function SignupScreen({ goToLogin, goBack, showFlash }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
-  const [passwordKey, setPasswordKey] = useState(0);
-  const [confirmPasswordKey, setConfirmPasswordKey] = useState(0);
   const [username, setUsername] = useState("");
   const [phone, setPhone] = useState("");
   const [isProvider, setIsProvider] = useState(false); // 👈 new
@@ -779,7 +777,6 @@ function SignupScreen({ goToLogin, goBack, showFlash }) {
       </View>
 
       <TextInput
-        key={passwordKey}
         style={[
           styles.input,
           Platform.OS === "android" && { includeFontPadding: false },
@@ -787,10 +784,7 @@ function SignupScreen({ goToLogin, goBack, showFlash }) {
         placeholder="Password"
         placeholderTextColor={styles.inputPlaceholder.color}
         value={password}
-        onChangeText={(t) => {
-          setPassword(t);
-          if (Platform.OS === "android") setPasswordKey((k) => k + 1);
-        }}
+        onChangeText={setPassword}
         autoCapitalize="none"
         autoCorrect={false}
         autoComplete={Platform.OS === "android" ? "off" : "password"}
@@ -803,7 +797,6 @@ function SignupScreen({ goToLogin, goBack, showFlash }) {
       />
 
       <TextInput
-        key={confirmPasswordKey}
         style={[
           styles.input,
           Platform.OS === "android" && { includeFontPadding: false },
@@ -811,10 +804,7 @@ function SignupScreen({ goToLogin, goBack, showFlash }) {
         placeholder="Confirm Password"
         placeholderTextColor={styles.inputPlaceholder.color}
         value={confirmPassword}
-        onChangeText={(t) => {
-          setConfirmPassword(t);
-          if (Platform.OS === "android") setConfirmPasswordKey((k) => k + 1);
-        }}
+        onChangeText={setConfirmPassword}
         autoCapitalize="none"
         autoCorrect={false}
         autoComplete={Platform.OS === "android" ? "off" : "password"}
