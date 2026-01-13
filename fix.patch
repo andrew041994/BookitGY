@@ -1,9 +1,84 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
 diff --git a/mobile/App.js b/mobile/App.js
-index e34ebdf4362078451ddef93b67241c7c43cf2f61..9f73071d662f8ab33e69dbbf8b31711f1ee3cce0 100644
+index 9f73071d662f8ab33e69dbbf8b31711f1ee3cce0..639f291d5b382e654fff0068ba6614e5900448d4 100644
 --- a/mobile/App.js
 +++ b/mobile/App.js
-@@ -716,148 +716,155 @@ function SignupScreen({ goToLogin, goBack, showFlash }) {
+@@ -615,50 +615,69 @@ function ForgotPasswordScreen({ goToLogin, goBack, showFlash }) {
+               </View>
+             )}
+ 
+             {goBack && (
+               <View style={{ width: "100%" }}>
+                 <Button title="Back" onPress={goBack} color="#6b7280" />
+               </View>
+             )}
+           </View>
+         </TouchableWithoutFeedback>
+       </ScrollView>
+     </KeyboardAvoidingView>
+   );
+ }
+ 
+ 
+ 
+ 
+ function SignupScreen({ goToLogin, goBack, showFlash }) {
+   const [email, setEmail] = useState("");
+   const [password, setPassword] = useState("");
+   const [confirmPassword, setConfirmPassword] = useState("");
+   const [username, setUsername] = useState("");
+   const [phone, setPhone] = useState("");
+   const [isProvider, setIsProvider] = useState(false); // 👈 new
++  const KeyboardWrapper = Platform.OS === "ios" ? KeyboardAvoidingView : View;
++  const keyboardWrapperProps =
++    Platform.OS === "ios"
++      ? { behavior: "padding", keyboardVerticalOffset: 40 }
++      : {};
++  const passwordInputProps = Platform.select({
++    ios: {
++      autoComplete: "new-password",
++      textContentType: "newPassword",
++      importantForAutofill: "yes",
++    },
++    android: {
++      autoComplete: "new-password",
++      importantForAutofill: "no",
++    },
++    default: {
++      autoComplete: "new-password",
++    },
++  });
+ 
+   const signup = async () => {
+     const trimmedEmail = email.trim();
+     const normalizedEmail = trimmedEmail.toLowerCase();
+     const trimmedPassword = password.trim();
+     const trimmedConfirm = confirmPassword.trim();
+     const trimmedUsername = username.trim();
+     const trimmedPhone = phone.trim();
+ 
+     // ✅ All fields required
+     if (
+       !trimmedUsername ||
+       !trimmedEmail ||
+       !trimmedPhone ||
+       !trimmedPassword ||
+       !trimmedConfirm
+     ) {
+       if (showFlash) {
+         showFlash("error", "Please fill in all fields");
+       } else {
+         Alert.alert("Error", "Please fill in all fields");
+       }
+       return;
+     }
+ 
+@@ -711,161 +730,156 @@ function SignupScreen({ goToLogin, goBack, showFlash }) {
+         phone: trimmedPhone,          // plain phone as user entered
+         location: "Georgetown",
+         whatsapp: whatsappValue,      // normalized WhatsApp format
+         is_provider: isProvider,      // tell backend this is a provider
+       });
  
        if (showFlash) {
          showFlash("success", "Account created! Please verify email and log in.");
@@ -24,207 +99,127 @@ index e34ebdf4362078451ddef93b67241c7c43cf2f61..9f73071d662f8ab33e69dbbf8b31711f
    };
  
    return (
-     <KeyboardAvoidingView
-       style={styles.avoider}
-       behavior={Platform.OS === "ios" ? "padding" : "height"}
-       keyboardVerticalOffset={Platform.OS === "ios" ? 40 : 0} // tweak if needed
- 
--    > 
--    <View style={styles.container}>
--      <Text style={styles.title}>Create Account</Text>
+-    <KeyboardAvoidingView
+-      style={styles.avoider}
+-      behavior={Platform.OS === "ios" ? "padding" : "height"}
+-      keyboardVerticalOffset={Platform.OS === "ios" ? 40 : 0} // tweak if needed
 -
--      {/* Username Field */}
--      <TextInput
--        style={styles.input}
--        placeholder="Username"
--        placeholderTextColor={styles.inputPlaceholder.color}
--        value={username}
--        onChangeText={setUsername}
--      />
-+    >
-+      <ScrollView
-+        contentContainerStyle={styles.scrollContent}
-+        keyboardShouldPersistTaps="handled"
-+      >
-+        <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-+          <View style={styles.container}>
-+            <Text style={styles.title}>Create Account</Text>
+-    >
++    <KeyboardWrapper style={styles.avoider} {...keyboardWrapperProps}>
+       <ScrollView
+-        contentContainerStyle={styles.scrollContent}
++        contentContainerStyle={[styles.scrollContent, styles.container]}
+         keyboardShouldPersistTaps="handled"
+       >
+         <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+-          <View style={styles.container}>
++          <View style={{ width: "100%" }}>
+             <Text style={styles.title}>Create Account</Text>
  
--      <TextInput
--        style={styles.input}
--        placeholder="Email"
--        placeholderTextColor={styles.inputPlaceholder.color}
--        value={email}
--        onChangeText={setEmail}
--        keyboardType="email-address"
--        autoCapitalize="none"
--      />
-+            {/* Username Field */}
-+            <TextInput
-+              style={styles.input}
-+              placeholder="Username"
-+              placeholderTextColor={styles.inputPlaceholder.color}
-+              value={username}
-+              onChangeText={setUsername}
-+            />
+             {/* Username Field */}
+             <TextInput
+               style={styles.input}
+               placeholder="Username"
+               placeholderTextColor={styles.inputPlaceholder.color}
+               value={username}
+               onChangeText={setUsername}
+             />
  
--      <TextInput
--        style={styles.input}
--        placeholder="Phone (592XXXXXXX)"
--        placeholderTextColor={styles.inputPlaceholder.color}
--        value={phone}
--        onChangeText={setPhone}
--        keyboardType="phone-pad"
--      />
-+            <TextInput
-+              style={styles.input}
-+              placeholder="Email"
-+              placeholderTextColor={styles.inputPlaceholder.color}
-+              value={email}
-+              onChangeText={setEmail}
-+              keyboardType="email-address"
-+              autoCapitalize="none"
-+            />
+             <TextInput
+               style={styles.input}
+               placeholder="Email"
+               placeholderTextColor={styles.inputPlaceholder.color}
+               value={email}
+               onChangeText={setEmail}
+               keyboardType="email-address"
+               autoCapitalize="none"
+             />
  
--      {/* Provider toggle */}
--      <View style={styles.toggleRow}>
--        <Text style={styles.toggleLabel}>Register as service provider</Text>
--        <Switch value={isProvider} onValueChange={setIsProvider} />
--      </View>
-+            <TextInput
-+              style={styles.input}
-+              placeholder="Phone (592XXXXXXX)"
-+              placeholderTextColor={styles.inputPlaceholder.color}
-+              value={phone}
-+              onChangeText={setPhone}
-+              keyboardType="phone-pad"
-+            />
+             <TextInput
+               style={styles.input}
+               placeholder="Phone (592XXXXXXX)"
+               placeholderTextColor={styles.inputPlaceholder.color}
+               value={phone}
+               onChangeText={setPhone}
+               keyboardType="phone-pad"
+             />
  
--      <TextInput
--        style={[
--          styles.input,
--          Platform.OS === "android" && { includeFontPadding: false },
--        ]}
--        placeholder="Password"
--        placeholderTextColor={styles.inputPlaceholder.color}
--        value={password}
--        onChangeText={setPassword}
--        autoCapitalize="none"
--        autoCorrect={false}
--        autoComplete={Platform.OS === "android" ? "off" : "password"}
--        textContentType={Platform.OS === "android" ? "none" : "password"}
--        importantForAutofill={Platform.OS === "android" ? "no" : "yes"}
--        underlineColorAndroid="transparent"
--        selectionColor="#16a34a"
--        cursorColor="#16a34a"
--        secureTextEntry={true}
--      />
-+            {/* Provider toggle */}
-+            <View style={styles.toggleRow}>
-+              <Text style={styles.toggleLabel}>Register as service provider</Text>
-+              <Switch value={isProvider} onValueChange={setIsProvider} />
-+            </View>
+             {/* Provider toggle */}
+             <View style={styles.toggleRow}>
+               <Text style={styles.toggleLabel}>Register as service provider</Text>
+               <Switch value={isProvider} onValueChange={setIsProvider} />
+             </View>
  
--      <TextInput
--        style={[
--          styles.input,
--          Platform.OS === "android" && { includeFontPadding: false },
--        ]}
--        placeholder="Confirm Password"
--        placeholderTextColor={styles.inputPlaceholder.color}
--        value={confirmPassword}
--        onChangeText={setConfirmPassword}
--        autoCapitalize="none"
--        autoCorrect={false}
--        autoComplete={Platform.OS === "android" ? "off" : "password"}
--        textContentType={Platform.OS === "android" ? "none" : "password"}
--        importantForAutofill={Platform.OS === "android" ? "no" : "yes"}
--        underlineColorAndroid="transparent"
--        selectionColor="#16a34a"
--        cursorColor="#16a34a"
--        secureTextEntry={true}
--      />
-+            <TextInput
-+              style={[
-+                styles.input,
-+                Platform.OS === "android" && { includeFontPadding: false },
-+              ]}
-+              placeholder="Password"
-+              placeholderTextColor={styles.inputPlaceholder.color}
-+              value={password}
-+              onChangeText={setPassword}
-+              autoCapitalize="none"
-+              autoCorrect={false}
-+              autoComplete={Platform.OS === "android" ? "off" : "password"}
-+              textContentType={Platform.OS === "android" ? "none" : "password"}
-+              importantForAutofill={Platform.OS === "android" ? "no" : "yes"}
-+              underlineColorAndroid="transparent"
-+              selectionColor="#16a34a"
-+              cursorColor="#16a34a"
-+              secureTextEntry={true}
-+            />
+             <TextInput
+               style={[
+                 styles.input,
+                 Platform.OS === "android" && { includeFontPadding: false },
+               ]}
+               placeholder="Password"
+               placeholderTextColor={styles.inputPlaceholder.color}
+               value={password}
+               onChangeText={setPassword}
++              keyboardType="default"
+               autoCapitalize="none"
+               autoCorrect={false}
+-              autoComplete={Platform.OS === "android" ? "off" : "password"}
+-              textContentType={Platform.OS === "android" ? "none" : "password"}
+-              importantForAutofill={Platform.OS === "android" ? "no" : "yes"}
++              spellCheck={false}
++              {...passwordInputProps}
+               underlineColorAndroid="transparent"
+               selectionColor="#16a34a"
+               cursorColor="#16a34a"
+               secureTextEntry={true}
+             />
  
--      <View style={{ width: "100%", marginBottom: 10 }}>
--        <Button title="Sign Up" onPress={signup} color="#16a34a" />
--      </View>
-+            <TextInput
-+              style={[
-+                styles.input,
-+                Platform.OS === "android" && { includeFontPadding: false },
-+              ]}
-+              placeholder="Confirm Password"
-+              placeholderTextColor={styles.inputPlaceholder.color}
-+              value={confirmPassword}
-+              onChangeText={setConfirmPassword}
-+              autoCapitalize="none"
-+              autoCorrect={false}
-+              autoComplete={Platform.OS === "android" ? "off" : "password"}
-+              textContentType={Platform.OS === "android" ? "none" : "password"}
-+              importantForAutofill={Platform.OS === "android" ? "no" : "yes"}
-+              underlineColorAndroid="transparent"
-+              selectionColor="#16a34a"
-+              cursorColor="#16a34a"
-+              secureTextEntry={true}
-+            />
+             <TextInput
+               style={[
+                 styles.input,
+                 Platform.OS === "android" && { includeFontPadding: false },
+               ]}
+               placeholder="Confirm Password"
+               placeholderTextColor={styles.inputPlaceholder.color}
+               value={confirmPassword}
+               onChangeText={setConfirmPassword}
++              keyboardType="default"
+               autoCapitalize="none"
+               autoCorrect={false}
+-              autoComplete={Platform.OS === "android" ? "off" : "password"}
+-              textContentType={Platform.OS === "android" ? "none" : "password"}
+-              importantForAutofill={Platform.OS === "android" ? "no" : "yes"}
++              spellCheck={false}
++              {...passwordInputProps}
+               underlineColorAndroid="transparent"
+               selectionColor="#16a34a"
+               cursorColor="#16a34a"
+               secureTextEntry={true}
+             />
  
--      {goToLogin && (
--        <View style={{ width: "100%", marginBottom: 10 }}>
--          <Button
--            title="Already have an account? Login"
--            onPress={goToLogin}
--            color="#166534"
--          />
--        </View>
--      )}
-+            <View style={{ width: "100%", marginBottom: 10 }}>
-+              <Button title="Sign Up" onPress={signup} color="#16a34a" />
-+            </View>
+             <View style={{ width: "100%", marginBottom: 10 }}>
+               <Button title="Sign Up" onPress={signup} color="#16a34a" />
+             </View>
  
--      {goBack && (
--        <View style={{ width: "100%" }}>
--          <Button title="Back" onPress={goBack} color="#6b7280" />
--        </View>
--      )}
--    </View>
-+            {goToLogin && (
-+              <View style={{ width: "100%", marginBottom: 10 }}>
-+                <Button
-+                  title="Already have an account? Login"
-+                  onPress={goToLogin}
-+                  color="#166534"
-+                />
-+              </View>
-+            )}
-+
-+            {goBack && (
-+              <View style={{ width: "100%" }}>
-+                <Button title="Back" onPress={goBack} color="#6b7280" />
-+              </View>
-+            )}
-+          </View>
-+        </TouchableWithoutFeedback>
-+      </ScrollView>
-     </KeyboardAvoidingView>
+             {goToLogin && (
+               <View style={{ width: "100%", marginBottom: 10 }}>
+                 <Button
+                   title="Already have an account? Login"
+                   onPress={goToLogin}
+                   color="#166534"
+                 />
+               </View>
+             )}
+ 
+             {goBack && (
+               <View style={{ width: "100%" }}>
+                 <Button title="Back" onPress={goBack} color="#6b7280" />
+               </View>
+             )}
+           </View>
+         </TouchableWithoutFeedback>
+       </ScrollView>
+-    </KeyboardAvoidingView>
++    </KeyboardWrapper>
    );
  }
  
@@ -249,6 +244,7 @@ index e34ebdf4362078451ddef93b67241c7c43cf2f61..9f73071d662f8ab33e69dbbf8b31711f
    const [bookings, setBookings] = useState([]);
    const [bookingsLoading, setBookingsLoading] = useState(false);
    const [bookingsError, setBookingsError] = useState("");
+   const [avatarUrl, setAvatarUrl] = useState(null);
  
 EOF
 )

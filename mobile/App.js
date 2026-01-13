@@ -637,6 +637,25 @@ function SignupScreen({ goToLogin, goBack, showFlash }) {
   const [username, setUsername] = useState("");
   const [phone, setPhone] = useState("");
   const [isProvider, setIsProvider] = useState(false); // 👈 new
+  const KeyboardWrapper = Platform.OS === "ios" ? KeyboardAvoidingView : View;
+  const keyboardWrapperProps =
+    Platform.OS === "ios"
+      ? { behavior: "padding", keyboardVerticalOffset: 40 }
+      : {};
+  const passwordInputProps = Platform.select({
+    ios: {
+      autoComplete: "new-password",
+      textContentType: "newPassword",
+      importantForAutofill: "yes",
+    },
+    android: {
+      autoComplete: "new-password",
+      importantForAutofill: "no",
+    },
+    default: {
+      autoComplete: "new-password",
+    },
+  });
 
   const signup = async () => {
     const trimmedEmail = email.trim();
@@ -733,18 +752,13 @@ function SignupScreen({ goToLogin, goBack, showFlash }) {
   };
 
   return (
-    <KeyboardAvoidingView
-      style={styles.avoider}
-      behavior={Platform.OS === "ios" ? "padding" : "height"}
-      keyboardVerticalOffset={Platform.OS === "ios" ? 40 : 0} // tweak if needed
-
-    >
+    <KeyboardWrapper style={styles.avoider} {...keyboardWrapperProps}>
       <ScrollView
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={[styles.scrollContent, styles.container]}
         keyboardShouldPersistTaps="handled"
       >
         <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-          <View style={styles.container}>
+          <View style={{ width: "100%" }}>
             <Text style={styles.title}>Create Account</Text>
 
             {/* Username Field */}
@@ -777,7 +791,7 @@ function SignupScreen({ goToLogin, goBack, showFlash }) {
 
             {/* Provider toggle */}
             <View style={styles.toggleRow}>
-              <Text style={styles.toggleLabel}>Register as service provider</Text>
+              <Text style={styles.toggleLabel}>Register as Service Provider</Text>
               <Switch value={isProvider} onValueChange={setIsProvider} />
             </View>
 
@@ -790,11 +804,11 @@ function SignupScreen({ goToLogin, goBack, showFlash }) {
               placeholderTextColor={styles.inputPlaceholder.color}
               value={password}
               onChangeText={setPassword}
+              keyboardType="default"
               autoCapitalize="none"
               autoCorrect={false}
-              autoComplete={Platform.OS === "android" ? "off" : "password"}
-              textContentType={Platform.OS === "android" ? "none" : "password"}
-              importantForAutofill={Platform.OS === "android" ? "no" : "yes"}
+              spellCheck={false}
+              {...passwordInputProps}
               underlineColorAndroid="transparent"
               selectionColor="#16a34a"
               cursorColor="#16a34a"
@@ -810,11 +824,11 @@ function SignupScreen({ goToLogin, goBack, showFlash }) {
               placeholderTextColor={styles.inputPlaceholder.color}
               value={confirmPassword}
               onChangeText={setConfirmPassword}
+              keyboardType="default"
               autoCapitalize="none"
               autoCorrect={false}
-              autoComplete={Platform.OS === "android" ? "off" : "password"}
-              textContentType={Platform.OS === "android" ? "none" : "password"}
-              importantForAutofill={Platform.OS === "android" ? "no" : "yes"}
+              spellCheck={false}
+              {...passwordInputProps}
               underlineColorAndroid="transparent"
               selectionColor="#16a34a"
               cursorColor="#16a34a"
@@ -843,7 +857,7 @@ function SignupScreen({ goToLogin, goBack, showFlash }) {
           </View>
         </TouchableWithoutFeedback>
       </ScrollView>
-    </KeyboardAvoidingView>
+    </KeyboardWrapper>
   );
 }
 
