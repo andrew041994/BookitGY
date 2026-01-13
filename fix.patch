@@ -1,9 +1,9 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
 diff --git a/mobile/App.js b/mobile/App.js
-index 9f73071d662f8ab33e69dbbf8b31711f1ee3cce0..639f291d5b382e654fff0068ba6614e5900448d4 100644
+index 7e1c5f86ac946bdb6e63e29e8525713262492b7c..858ab0e33b6158893dce5d2aa775b71dbdaf1c44 100644
 --- a/mobile/App.js
 +++ b/mobile/App.js
-@@ -615,50 +615,69 @@ function ForgotPasswordScreen({ goToLogin, goBack, showFlash }) {
+@@ -615,55 +615,54 @@ function ForgotPasswordScreen({ goToLogin, goBack, showFlash }) {
                </View>
              )}
  
@@ -29,25 +29,29 @@ index 9f73071d662f8ab33e69dbbf8b31711f1ee3cce0..639f291d5b382e654fff0068ba6614e5
    const [username, setUsername] = useState("");
    const [phone, setPhone] = useState("");
    const [isProvider, setIsProvider] = useState(false); // 👈 new
-+  const KeyboardWrapper = Platform.OS === "ios" ? KeyboardAvoidingView : View;
-+  const keyboardWrapperProps =
-+    Platform.OS === "ios"
-+      ? { behavior: "padding", keyboardVerticalOffset: 40 }
-+      : {};
-+  const passwordInputProps = Platform.select({
-+    ios: {
-+      autoComplete: "new-password",
-+      textContentType: "newPassword",
-+      importantForAutofill: "yes",
-+    },
-+    android: {
-+      autoComplete: "new-password",
-+      importantForAutofill: "no",
-+    },
-+    default: {
-+      autoComplete: "new-password",
-+    },
-+  });
+-  const KeyboardWrapper = Platform.OS === "ios" ? KeyboardAvoidingView : View;
+-  const keyboardWrapperProps =
+-    Platform.OS === "ios"
+-      ? { behavior: "padding", keyboardVerticalOffset: 40 }
+-      : {};
++  const keyboardWrapperProps = {
++    behavior: Platform.OS === "ios" ? "padding" : "height",
++    keyboardVerticalOffset: Platform.OS === "ios" ? 40 : 0,
++  };
+   const passwordInputProps = Platform.select({
+     ios: {
+       autoComplete: "new-password",
+       textContentType: "newPassword",
+       importantForAutofill: "yes",
+     },
+     android: {
+       autoComplete: "new-password",
+       importantForAutofill: "no",
+     },
+     default: {
+       autoComplete: "new-password",
+     },
+   });
  
    const signup = async () => {
      const trimmedEmail = email.trim();
@@ -59,21 +63,7 @@ index 9f73071d662f8ab33e69dbbf8b31711f1ee3cce0..639f291d5b382e654fff0068ba6614e5
  
      // ✅ All fields required
      if (
-       !trimmedUsername ||
-       !trimmedEmail ||
-       !trimmedPhone ||
-       !trimmedPassword ||
-       !trimmedConfirm
-     ) {
-       if (showFlash) {
-         showFlash("error", "Please fill in all fields");
-       } else {
-         Alert.alert("Error", "Please fill in all fields");
-       }
-       return;
-     }
- 
-@@ -711,161 +730,156 @@ function SignupScreen({ goToLogin, goBack, showFlash }) {
+@@ -730,57 +729,57 @@ function SignupScreen({ goToLogin, goBack, showFlash }) {
          phone: trimmedPhone,          // plain phone as user entered
          location: "Georgetown",
          whatsapp: whatsappValue,      // normalized WhatsApp format
@@ -99,21 +89,16 @@ index 9f73071d662f8ab33e69dbbf8b31711f1ee3cce0..639f291d5b382e654fff0068ba6614e5
    };
  
    return (
--    <KeyboardAvoidingView
--      style={styles.avoider}
--      behavior={Platform.OS === "ios" ? "padding" : "height"}
--      keyboardVerticalOffset={Platform.OS === "ios" ? 40 : 0} // tweak if needed
--
--    >
-+    <KeyboardWrapper style={styles.avoider} {...keyboardWrapperProps}>
+-    <KeyboardWrapper style={styles.avoider} {...keyboardWrapperProps}>
++    <KeyboardAvoidingView style={styles.avoider} {...keyboardWrapperProps}>
        <ScrollView
--        contentContainerStyle={styles.scrollContent}
-+        contentContainerStyle={[styles.scrollContent, styles.container]}
+-        contentContainerStyle={[styles.scrollContent, styles.container]}
++        contentContainerStyle={styles.scrollContent}
          keyboardShouldPersistTaps="handled"
        >
          <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
--          <View style={styles.container}>
-+          <View style={{ width: "100%" }}>
+-          <View style={{ width: "100%" }}>
++          <View style={styles.container}>
              <Text style={styles.title}>Create Account</Text>
  
              {/* Username Field */}
@@ -139,60 +124,7 @@ index 9f73071d662f8ab33e69dbbf8b31711f1ee3cce0..639f291d5b382e654fff0068ba6614e5
                style={styles.input}
                placeholder="Phone (592XXXXXXX)"
                placeholderTextColor={styles.inputPlaceholder.color}
-               value={phone}
-               onChangeText={setPhone}
-               keyboardType="phone-pad"
-             />
- 
-             {/* Provider toggle */}
-             <View style={styles.toggleRow}>
-               <Text style={styles.toggleLabel}>Register as service provider</Text>
-               <Switch value={isProvider} onValueChange={setIsProvider} />
-             </View>
- 
-             <TextInput
-               style={[
-                 styles.input,
-                 Platform.OS === "android" && { includeFontPadding: false },
-               ]}
-               placeholder="Password"
-               placeholderTextColor={styles.inputPlaceholder.color}
-               value={password}
-               onChangeText={setPassword}
-+              keyboardType="default"
-               autoCapitalize="none"
-               autoCorrect={false}
--              autoComplete={Platform.OS === "android" ? "off" : "password"}
--              textContentType={Platform.OS === "android" ? "none" : "password"}
--              importantForAutofill={Platform.OS === "android" ? "no" : "yes"}
-+              spellCheck={false}
-+              {...passwordInputProps}
-               underlineColorAndroid="transparent"
-               selectionColor="#16a34a"
-               cursorColor="#16a34a"
-               secureTextEntry={true}
-             />
- 
-             <TextInput
-               style={[
-                 styles.input,
-                 Platform.OS === "android" && { includeFontPadding: false },
-               ]}
-               placeholder="Confirm Password"
-               placeholderTextColor={styles.inputPlaceholder.color}
-               value={confirmPassword}
-               onChangeText={setConfirmPassword}
-+              keyboardType="default"
-               autoCapitalize="none"
-               autoCorrect={false}
--              autoComplete={Platform.OS === "android" ? "off" : "password"}
--              textContentType={Platform.OS === "android" ? "none" : "password"}
--              importantForAutofill={Platform.OS === "android" ? "no" : "yes"}
-+              spellCheck={false}
-+              {...passwordInputProps}
-               underlineColorAndroid="transparent"
-               selectionColor="#16a34a"
-               cursorColor="#16a34a"
+@@ -835,51 +834,51 @@ function SignupScreen({ goToLogin, goBack, showFlash }) {
                secureTextEntry={true}
              />
  
@@ -218,8 +150,8 @@ index 9f73071d662f8ab33e69dbbf8b31711f1ee3cce0..639f291d5b382e654fff0068ba6614e5
            </View>
          </TouchableWithoutFeedback>
        </ScrollView>
--    </KeyboardAvoidingView>
-+    </KeyboardWrapper>
+-    </KeyboardWrapper>
++    </KeyboardAvoidingView>
    );
  }
  
@@ -245,6 +177,71 @@ index 9f73071d662f8ab33e69dbbf8b31711f1ee3cce0..639f291d5b382e654fff0068ba6614e5
    const [bookingsLoading, setBookingsLoading] = useState(false);
    const [bookingsError, setBookingsError] = useState("");
    const [avatarUrl, setAvatarUrl] = useState(null);
+@@ -6311,61 +6310,62 @@ cardHeartButton: {
+ 
+   actionButton: {
+     backgroundColor: "#ffffff",
+     paddingVertical: 10,
+     paddingHorizontal: 12,
+     borderRadius: 999,
+     borderWidth: 1,
+     borderColor: "#bbf7d0",
+     marginBottom: 10,
+     alignItems: "center",
+   },
+   actionButtonText: {
+     fontSize: 15,
+     fontWeight: "500",
+     color: "#166534",
+   },
+   logoutButton: {
+     backgroundColor: "#fee2e2",
+     borderColor: "#b91c1c",
+     marginTop: 10,
+   },
+   logoutButtonText: {
+     color: "#b91c1c",
+   },
+ 
+-    toggleRow: {
++  toggleRow: {
+     width: "100%",
+     flexDirection: "row",
+     alignItems: "center",
+-    justifyContent: "space-between",
+     marginBottom: 12,
+   },
+   toggleLabel: {
+     fontSize: 14,
+     color: "#166534",
+     marginRight: 8,
++    flex: 1,
++    flexShrink: 1,
+   },
+ 
+     providerScroll: {
+     flexGrow: 1,
+     backgroundColor: "#f0fdf4",
+     padding: 20,
+     paddingTop: 60,
+   },
+   subtitleSmall: {
+     fontSize: 14,
+     color: "#6b7280",
+     marginBottom: 16,
+   },
+   serviceRow: {
+     flexDirection: "row",
+     justifyContent: "space-between",
+     alignItems: "center",
+     paddingVertical: 8,
+     borderBottomWidth: 1,
+     borderBottomColor: "#f3f4f6",
+   },
+ 
+ favoriteToggleButton: {
+     padding: 8,
+     borderRadius: 999,
  
 EOF
 )

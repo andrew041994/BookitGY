@@ -637,11 +637,10 @@ function SignupScreen({ goToLogin, goBack, showFlash }) {
   const [username, setUsername] = useState("");
   const [phone, setPhone] = useState("");
   const [isProvider, setIsProvider] = useState(false); // 👈 new
-  const KeyboardWrapper = Platform.OS === "ios" ? KeyboardAvoidingView : View;
-  const keyboardWrapperProps =
-    Platform.OS === "ios"
-      ? { behavior: "padding", keyboardVerticalOffset: 40 }
-      : {};
+  const keyboardWrapperProps = {
+    behavior: Platform.OS === "ios" ? "padding" : "height",
+    keyboardVerticalOffset: Platform.OS === "ios" ? 40 : 0,
+  };
   const passwordInputProps = Platform.select({
     ios: {
       autoComplete: "new-password",
@@ -752,13 +751,13 @@ function SignupScreen({ goToLogin, goBack, showFlash }) {
   };
 
   return (
-    <KeyboardWrapper style={styles.avoider} {...keyboardWrapperProps}>
+    <KeyboardAvoidingView style={styles.avoider} {...keyboardWrapperProps}>
       <ScrollView
-        contentContainerStyle={[styles.scrollContent, styles.container]}
+        contentContainerStyle={styles.scrollContent}
         keyboardShouldPersistTaps="handled"
       >
         <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-          <View style={{ width: "100%" }}>
+          <View style={styles.container}>
             <Text style={styles.title}>Create Account</Text>
 
             {/* Username Field */}
@@ -857,7 +856,7 @@ function SignupScreen({ goToLogin, goBack, showFlash }) {
           </View>
         </TouchableWithoutFeedback>
       </ScrollView>
-    </KeyboardWrapper>
+    </KeyboardAvoidingView>
   );
 }
 
@@ -6333,17 +6332,18 @@ cardHeartButton: {
     color: "#b91c1c",
   },
 
-    toggleRow: {
+  toggleRow: {
     width: "100%",
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
     marginBottom: 12,
   },
   toggleLabel: {
     fontSize: 14,
     color: "#166534",
     marginRight: 8,
+    flex: 1,
+    flexShrink: 1,
   },
 
     providerScroll: {
