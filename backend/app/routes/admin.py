@@ -3,7 +3,7 @@ from datetime import date, datetime, time, timedelta
 from typing import List, Optional
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query
-from sqlalchemy import case, func
+from sqlalchemy import case, func, literal
 from sqlalchemy.orm import Session
 
 from app import crud, schemas, models
@@ -113,20 +113,25 @@ def get_signup_report(
         "total_clients": int(total_clients or 0),
     }
 
+# Smoke test:
+# curl -H "Authorization: Bearer <token>" "https://<backend>/admin/reports/professions"
+# curl -H "Authorization: Bearer <token>" "https://<backend>/admin/reports/booking-metrics?start=2026-01-07&end=2026-01-13"
 
 @router.get("/reports/professions", response_model=schemas.AdminProfessionsOut)
 def list_professions(
     db: Session = Depends(get_db),
     _: models.User = Depends(_require_admin),
 ):
-    rows = (
-        db.query(models.ProviderProfession.name)
-        .filter(models.ProviderProfession.name.isnot(None))
-        .distinct()
-        .order_by(models.ProviderProfession.name.asc())
-        .all()
-    )
-    professions = [row[0] for row in rows if row[0]]
+    professions = []
+    if hasattr(models, "ProviderProfession"):
+        rows = (
+            db.query(models.ProviderProfession.name)
+            .filter(models.ProviderProfession.name.isnot(None))
+            .distinct()
+            .order_by(models.ProviderProfession.name.asc())
+            .all()
+        )
+        professions = [row[0] for row in rows if row[0]]
     return {"professions": professions}
 
 
@@ -149,7 +154,11 @@ def get_booking_metrics(
     normalized_profession = (profession or "all").strip()
 
     provider_ids_subquery = None
-    if normalized_profession and normalized_profession.lower() != "all":
+    if (
+        normalized_profession
+        and normalized_profession.lower() != "all"
+        and hasattr(models, "ProviderProfession")
+    ):
         provider_ids_subquery = (
             db.query(models.ProviderProfession.provider_id)
             .filter(models.ProviderProfession.name.ilike(normalized_profession))
@@ -201,19 +210,22 @@ def get_booking_metrics(
         .one()
     )
 
-    profession_label = (
-        db.query(models.ProviderProfession.name)
-        .filter(models.ProviderProfession.provider_id == models.Provider.id)
-        .order_by(models.ProviderProfession.name.asc())
-        .limit(1)
-        .scalar_subquery()
-    )
+    profession_label = None
+    if hasattr(models, "ProviderProfession"):
+        profession_label = (
+            db.query(models.ProviderProfession.name)
+            .filter(models.ProviderProfession.provider_id == models.Provider.id)
+            .order_by(models.ProviderProfession.name.asc())
+            .limit(1)
+            .scalar_subquery()
+        )
+    profession_label_expr = profession_label if profession_label is not None else literal(None)
 
     provider_rows = (
         base_query.with_entities(
             models.Provider.id.label("provider_id"),
             models.User.username.label("provider_name"),
-            profession_label.label("profession"),
+            profession_label_expr.label("profession"),
             func.count(models.Booking.id).label("total_bookings"),
             func.coalesce(
                 func.sum(
@@ -233,7 +245,7 @@ def get_booking_metrics(
                 0,
             ).label("cancelled"),
         )
-        .group_by(models.Provider.id, models.User.username, profession_label)
+        .group_by(models.Provider.id, models.User.username, profession_label_expr)
         .order_by(models.User.username.asc())
         .all()
     )

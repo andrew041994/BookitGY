@@ -1,346 +1,243 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
-diff --git a/frontend/src/main.jsx b/frontend/src/main.jsx
-index b0e83340fea96c8228fa1f590ea80efae047f9e8..524414b9750bd6a98c4a668680c5e86442c77c62 100644
---- a/frontend/src/main.jsx
-+++ b/frontend/src/main.jsx
-@@ -1537,83 +1537,303 @@ function App() {
-                   <td>{report ? report.total_providers : '—'}</td>
-                 </tr>
-                 <tr>
-                   <td>Total clients</td>
-                   <td>{report ? report.total_clients : '—'}</td>
-                 </tr>
-               </tbody>
-             </table>
-           </div>
+diff --git a/backend/app/routes/admin.py b/backend/app/routes/admin.py
+index abca7a56fb59cd7e22ea3d8e8ee9376a86d7bfc5..c3acdf62be6755b75210fe554b0e6e5fb180b90d 100644
+--- a/backend/app/routes/admin.py
++++ b/backend/app/routes/admin.py
+@@ -1,31 +1,31 @@
+ import logging
+ from datetime import date, datetime, time, timedelta
+ from typing import List, Optional
  
-           <div className="provider-location-summary">
-             <div>
-               <p className="muted">New provider signups</p>
-               <p className="provider-location-value">{report ? report.providers : '—'}</p>
-             </div>
-             <div>
-               <p className="muted">New client signups</p>
-               <p className="provider-location-value">{report ? report.clients : '—'}</p>
-             </div>
-           </div>
-         </div>
-       </div>
+ from fastapi import APIRouter, Body, Depends, HTTPException, Query
+-from sqlalchemy import case, func
++from sqlalchemy import case, func, literal
+ from sqlalchemy.orm import Session
+ 
+ from app import crud, schemas, models
+ from app.utils.email import send_billing_paid_email, send_provider_suspension_email
+ from app.database import get_db
+ from app.security import get_current_user_from_header
+ 
+ router = APIRouter(prefix="/admin", tags=["admin"])
+ logger = logging.getLogger(__name__)
+ 
+ 
+ def _require_admin(current_user: models.User = Depends(get_current_user_from_header)) -> models.User:
+     if not getattr(current_user, "is_admin", False):
+         raise HTTPException(status_code=403, detail="Admin access required")
+     return current_user
+ 
+ 
+ @router.get("/service-charge", response_model=schemas.ServiceChargeOut)
+ def get_service_charge(
+     db: Session = Depends(get_db),
+     _: models.User = Depends(_require_admin),
+ ):
+     pct = crud.get_platform_service_charge_percentage(db)
+     return {"service_charge_percentage": float(pct)}
+ 
+@@ -91,87 +91,96 @@ def get_signup_report(
      )
-   }
  
-+  const AdminBookingMetrics = () => {
-+    const [startDate, setStartDate] = React.useState(() => {
-+      const today = new Date()
-+      const start = new Date()
-+      start.setDate(today.getDate() - 6)
-+      return formatDateInput(start)
-+    })
-+    const [endDate, setEndDate] = React.useState(() => formatDateInput(new Date()))
-+    const [status, setStatus] = React.useState('all')
-+    const [profession, setProfession] = React.useState('all')
-+    const [professions, setProfessions] = React.useState([])
-+    const [report, setReport] = React.useState(null)
-+    const [loading, setLoading] = React.useState(false)
-+    const [error, setError] = React.useState('')
-+    const [loadingProfessions, setLoadingProfessions] = React.useState(false)
-+
-+    const statusOptions = [
-+      { value: 'all', label: 'All' },
-+      { value: 'upcoming', label: 'Upcoming' },
-+      { value: 'completed', label: 'Completed' },
-+      { value: 'cancelled', label: 'Cancelled' },
-+      { value: 'confirmed', label: 'Confirmed' },
-+      { value: 'pending', label: 'Pending' },
-+    ]
-+
-+    const loadProfessions = React.useCallback(async () => {
-+      setLoadingProfessions(true)
-+      try {
-+        const res = await apiClient.get('/admin/reports/professions')
-+        setProfessions(res.data.professions || [])
-+      } catch (err) {
-+        logApiError(err)
-+        setError('Unable to load professions. Please try again.')
-+      } finally {
-+        setLoadingProfessions(false)
-+      }
-+    }, [])
-+
-+    const runReport = React.useCallback(async () => {
-+      const parsedStart = parseDateInput(startDate)
-+      const parsedEnd = parseDateInput(endDate)
-+
-+      if (!parsedStart || !parsedEnd) {
-+        setError('Start and end dates are required.')
-+        return
-+      }
-+
-+      if (parsedStart > parsedEnd) {
-+        setError('Start date must be on or before end date.')
-+        return
-+      }
-+
-+      setLoading(true)
-+      setError('')
-+      try {
-+        const res = await apiClient.get('/admin/reports/booking-metrics', {
-+          params: {
-+            start: startDate,
-+            end: endDate,
-+            status: status !== 'all' ? status : undefined,
-+            profession: profession !== 'all' ? profession : undefined,
-+          },
-+        })
-+        setReport(res.data)
-+      } catch (err) {
-+        logApiError(err)
-+        setError('Unable to load booking metrics. Please try again.')
-+        setReport(null)
-+      } finally {
-+        setLoading(false)
-+      }
-+    }, [endDate, profession, startDate, status])
-+
-+    React.useEffect(() => {
-+      loadProfessions()
-+    }, [loadProfessions])
-+
-+    React.useEffect(() => {
-+      runReport()
-+    }, [runReport])
-+
-+    const totals = report?.totals
-+    const showRevenue = typeof totals?.total_revenue === 'number'
-+
-+    return (
-+      <div className="admin-page">
-+        <div className="admin-header">
-+          <div>
-+            <p className="eyebrow">Reports</p>
-+            <h1>Booking Metrics</h1>
-+            <p className="header-subtitle">Analyze bookings by date, status, and profession.</p>
-+          </div>
-+        </div>
-+
-+        <div className="admin-card">
-+          <div className="form-grid">
-+            <label className="form-field">
-+              <span>Start date</span>
-+              <input
-+                type="date"
-+                value={startDate}
-+                onChange={(e) => setStartDate(e.target.value)}
-+              />
-+            </label>
-+            <label className="form-field">
-+              <span>End date</span>
-+              <input
-+                type="date"
-+                value={endDate}
-+                onChange={(e) => setEndDate(e.target.value)}
-+              />
-+            </label>
-+            <label className="form-field">
-+              <span>Status</span>
-+              <select value={status} onChange={(e) => setStatus(e.target.value)}>
-+                {statusOptions.map((option) => (
-+                  <option key={option.value} value={option.value}>
-+                    {option.label}
-+                  </option>
-+                ))}
-+              </select>
-+            </label>
-+            <label className="form-field">
-+              <span>Profession</span>
-+              <select value={profession} onChange={(e) => setProfession(e.target.value)}>
-+                <option value="all">All</option>
-+                {professions.map((name) => (
-+                  <option key={name} value={name}>
-+                    {name}
-+                  </option>
-+                ))}
-+              </select>
-+            </label>
-+          </div>
-+
-+          <div className="button-row">
-+            <button
-+              className="primary-btn"
-+              onClick={runReport}
-+              disabled={loading}
-+            >
-+              {loading ? 'Running…' : 'Run report'}
-+            </button>
-+            <span className="muted">Default: last 7 days</span>
-+            {loadingProfessions && <span className="muted">Loading professions…</span>}
-+          </div>
-+
-+          {error && <p className="form-error">{error}</p>}
-+          {loading && !error && <p className="muted">Loading booking metrics…</p>}
-+
-+          <div className="provider-location-summary">
-+            <div>
-+              <p className="muted">Total bookings</p>
-+              <p className="provider-location-value">{totals ? totals.total_bookings : '—'}</p>
-+            </div>
-+            {showRevenue && (
-+              <div>
-+                <p className="muted">Total revenue (GYD)</p>
-+                <p className="provider-location-value">
-+                  {totals ? totals.total_revenue.toFixed(2) : '—'}
-+                </p>
-+              </div>
-+            )}
-+            <div>
-+              <p className="muted">Upcoming</p>
-+              <p className="provider-location-value">{totals ? totals.upcoming : '—'}</p>
-+            </div>
-+            <div>
-+              <p className="muted">Completed</p>
-+              <p className="provider-location-value">{totals ? totals.completed : '—'}</p>
-+            </div>
-+            <div>
-+              <p className="muted">Cancelled</p>
-+              <p className="provider-location-value">{totals ? totals.cancelled : '—'}</p>
-+            </div>
-+          </div>
-+
-+          <div className="provider-missing-table">
-+            <table>
-+              <thead>
-+                <tr>
-+                  <th>Provider</th>
-+                  <th>Profession</th>
-+                  <th>Total bookings</th>
-+                  <th>Completed</th>
-+                  <th>Cancelled</th>
-+                  <th>Upcoming</th>
-+                </tr>
-+              </thead>
-+              <tbody>
-+                {report?.by_provider?.length ? (
-+                  report.by_provider.map((row) => (
-+                    <tr key={row.provider_id}>
-+                      <td>{row.provider_name || '—'}</td>
-+                      <td>{row.profession || '—'}</td>
-+                      <td>{row.total_bookings}</td>
-+                      <td>{row.completed}</td>
-+                      <td>{row.cancelled}</td>
-+                      <td>{row.upcoming}</td>
-+                    </tr>
-+                  ))
-+                ) : (
-+                  <tr>
-+                    <td colSpan={6}>{loading ? 'Loading…' : 'No bookings found for this range.'}</td>
-+                  </tr>
-+                )}
-+              </tbody>
-+            </table>
-+          </div>
-+        </div>
-+      </div>
-+    )
-+  }
-+
-   const AdminLayout = () => {
-     const location = useLocation()
-     return (
-       <div className="admin-shell">
-         <aside className="admin-sidebar">
-           <nav className="sidebar-nav">
-             <NavLink to="/admin/promotions" className={({ isActive }) => isActive ? 'sidebar-link active' : 'sidebar-link'}>
-               Promotions
-             </NavLink>
-             <NavLink to="/admin/service-charge" className={({ isActive }) => isActive ? 'sidebar-link active' : 'sidebar-link'}>
-               Service Charge
-             </NavLink>
-             <NavLink to="/admin/billing" className={({ isActive }) => isActive ? 'sidebar-link active' : 'sidebar-link'}>
-               Billing
-             </NavLink>
-             <NavLink
-               to="/admin/provider-locations"
-               className={({ isActive }) => isActive ? 'sidebar-link active' : 'sidebar-link'}
-             >
-               Provider Locations
-             </NavLink>
-             <NavLink
-               to="/admin/cancellations"
-               className={({ isActive }) => isActive ? 'sidebar-link active' : 'sidebar-link'}
-             >
-               Cancellations
-             </NavLink>
-             <NavLink
-               to="/admin/signups"
-               className={({ isActive }) => isActive ? 'sidebar-link active' : 'sidebar-link'}
-             >
-               Signups Report
-             </NavLink>
-+            <NavLink
-+              to="/admin/booking-metrics"
-+              className={({ isActive }) => isActive ? 'sidebar-link active' : 'sidebar-link'}
-+            >
-+              Booking Metrics
-+            </NavLink>
-           </nav>
-           <div className="sidebar-footer">
-             Logged in · {token ? 'Authenticated' : 'Guest'}
-           </div>
-         </aside>
-         <main className="admin-main" key={location.pathname}>
-           <Outlet />
-         </main>
-       </div>
+     total_providers, total_clients = (
+         db.query(
+             func.coalesce(
+                 func.sum(case((models.User.is_provider.is_(True), 1), else_=0)),
+                 0,
+             ),
+             func.coalesce(
+                 func.sum(case((models.User.is_provider.is_(False), 1), else_=0)),
+                 0,
+             ),
+         )
+         .one()
      )
-   }
  
-   return (
-     <BrowserRouter>
-       <nav className="app-nav">
-         <div className="nav-inner">
-           <Link to="/" className="nav-brand" aria-label="BookitGY home">
-             <img src="/bookitgy-logo.png" alt="BookitGY" />
-             <div className="brand-text">
-               <span className="brand-name">BookitGY</span>
-               <span className="brand-subtitle">BookitGY</span>
-             </div>
-           </Link>
-           <div className="nav-actions">
-             {token ? (
-@@ -1632,32 +1852,33 @@ function App() {
-               </Link>
-             )}
-           </div>
-         </div>
-       </nav>
-       <Routes>
-         <Route path="/" element={<Home />} />
-         <Route path="/login" element={<Login />} />
-         <Route path="/reset-password" element={<ResetPassword />} />
-         <Route path="/p/:username" element={<ProviderLanding />} />
-         <Route
-           path="/admin"
-           element={(
-             <ProtectedRoute>
-               <AdminLayout />
-             </ProtectedRoute>
-           )}
-         >
-           <Route index element={<Navigate to="/admin/promotions" replace />} />
-           <Route path="promotions" element={<AdminPromotions />} />
-           <Route path="service-charge" element={<ServiceChargeSettings />} />
-           <Route path="billing" element={<AdminBilling />} />
-           <Route path="provider-locations" element={<AdminProviderLocations />} />
-           <Route path="cancellations" element={<AdminCancellations />} />
-           <Route path="signups" element={<AdminSignupReport />} />
-+          <Route path="booking-metrics" element={<AdminBookingMetrics />} />
-         </Route>
-       </Routes>
-     </BrowserRouter>
-   )
- }
+     return {
+         "start": start,
+         "end": end,
+         "providers": int(providers_count or 0),
+         "clients": int(clients_count or 0),
+         "total_providers": int(total_providers or 0),
+         "total_clients": int(total_clients or 0),
+     }
  
- ReactDOM.createRoot(document.getElementById('root')).render(<App />)
++# Smoke test:
++# curl -H "Authorization: Bearer <token>" "https://<backend>/admin/reports/professions"
++# curl -H "Authorization: Bearer <token>" "https://<backend>/admin/reports/booking-metrics?start=2026-01-07&end=2026-01-13"
+ 
+ @router.get("/reports/professions", response_model=schemas.AdminProfessionsOut)
+ def list_professions(
+     db: Session = Depends(get_db),
+     _: models.User = Depends(_require_admin),
+ ):
+-    rows = (
+-        db.query(models.ProviderProfession.name)
+-        .filter(models.ProviderProfession.name.isnot(None))
+-        .distinct()
+-        .order_by(models.ProviderProfession.name.asc())
+-        .all()
+-    )
+-    professions = [row[0] for row in rows if row[0]]
++    professions = []
++    if hasattr(models, "ProviderProfession"):
++        rows = (
++            db.query(models.ProviderProfession.name)
++            .filter(models.ProviderProfession.name.isnot(None))
++            .distinct()
++            .order_by(models.ProviderProfession.name.asc())
++            .all()
++        )
++        professions = [row[0] for row in rows if row[0]]
+     return {"professions": professions}
+ 
+ 
+ @router.get("/reports/booking-metrics", response_model=schemas.AdminBookingMetricsOut)
+ def get_booking_metrics(
+     start: date = Query(...),
+     end: date = Query(...),
+     status: Optional[str] = Query(None),
+     profession: Optional[str] = Query(None),
+     db: Session = Depends(get_db),
+     _: models.User = Depends(_require_admin),
+ ):
+     if start > end:
+         raise HTTPException(status_code=400, detail="Start date must be on or before end date")
+ 
+     start_ts = datetime.combine(start, time.min)
+     end_ts_exclusive = datetime.combine(end + timedelta(days=1), time.min)
+ 
+     normalized_status = (status or "all").strip().lower()
+     normalized_profession = (profession or "all").strip()
+ 
+     provider_ids_subquery = None
+-    if normalized_profession and normalized_profession.lower() != "all":
++    if (
++        normalized_profession
++        and normalized_profession.lower() != "all"
++        and hasattr(models, "ProviderProfession")
++    ):
+         provider_ids_subquery = (
+             db.query(models.ProviderProfession.provider_id)
+             .filter(models.ProviderProfession.name.ilike(normalized_profession))
+             .subquery()
+         )
+ 
+     base_query = (
+         db.query(models.Booking, models.Service, models.Provider, models.User)
+         .join(models.Service, models.Booking.service_id == models.Service.id)
+         .join(models.Provider, models.Service.provider_id == models.Provider.id)
+         .join(models.User, models.Provider.user_id == models.User.id)
+         .filter(models.Booking.start_time >= start_ts)
+         .filter(models.Booking.start_time < end_ts_exclusive)
+     )
+ 
+     if provider_ids_subquery is not None:
+         base_query = base_query.filter(models.Provider.id.in_(provider_ids_subquery))
+ 
+     if normalized_status and normalized_status != "all":
+         if normalized_status == "upcoming":
+             base_query = base_query.filter(
+                 models.Booking.status.in_(["confirmed", "pending"])
+             )
+         else:
+             base_query = base_query.filter(models.Booking.status == normalized_status)
+@@ -179,83 +188,86 @@ def get_booking_metrics(
+     totals = (
+         base_query.with_entities(
+             func.count(models.Booking.id).label("total_bookings"),
+             func.coalesce(
+                 func.sum(
+                     case(
+                         (models.Booking.status.in_(["confirmed", "pending"]), 1),
+                         else_=0,
+                     )
+                 ),
+                 0,
+             ).label("upcoming"),
+             func.coalesce(
+                 func.sum(case((models.Booking.status == "completed", 1), else_=0)),
+                 0,
+             ).label("completed"),
+             func.coalesce(
+                 func.sum(case((models.Booking.status == "cancelled", 1), else_=0)),
+                 0,
+             ).label("cancelled"),
+             func.coalesce(func.sum(models.Service.price_gyd), 0.0).label("total_revenue"),
+         )
+         .one()
+     )
+ 
+-    profession_label = (
+-        db.query(models.ProviderProfession.name)
+-        .filter(models.ProviderProfession.provider_id == models.Provider.id)
+-        .order_by(models.ProviderProfession.name.asc())
+-        .limit(1)
+-        .scalar_subquery()
+-    )
++    profession_label = None
++    if hasattr(models, "ProviderProfession"):
++        profession_label = (
++            db.query(models.ProviderProfession.name)
++            .filter(models.ProviderProfession.provider_id == models.Provider.id)
++            .order_by(models.ProviderProfession.name.asc())
++            .limit(1)
++            .scalar_subquery()
++        )
++    profession_label_expr = profession_label if profession_label is not None else literal(None)
+ 
+     provider_rows = (
+         base_query.with_entities(
+             models.Provider.id.label("provider_id"),
+             models.User.username.label("provider_name"),
+-            profession_label.label("profession"),
++            profession_label_expr.label("profession"),
+             func.count(models.Booking.id).label("total_bookings"),
+             func.coalesce(
+                 func.sum(
+                     case(
+                         (models.Booking.status.in_(["confirmed", "pending"]), 1),
+                         else_=0,
+                     )
+                 ),
+                 0,
+             ).label("upcoming"),
+             func.coalesce(
+                 func.sum(case((models.Booking.status == "completed", 1), else_=0)),
+                 0,
+             ).label("completed"),
+             func.coalesce(
+                 func.sum(case((models.Booking.status == "cancelled", 1), else_=0)),
+                 0,
+             ).label("cancelled"),
+         )
+-        .group_by(models.Provider.id, models.User.username, profession_label)
++        .group_by(models.Provider.id, models.User.username, profession_label_expr)
+         .order_by(models.User.username.asc())
+         .all()
+     )
+ 
+     return {
+         "start": start,
+         "end": end,
+         "status": normalized_status or "all",
+         "profession": normalized_profession or "all",
+         "totals": {
+             "total_bookings": int(totals.total_bookings or 0),
+             "upcoming": int(totals.upcoming or 0),
+             "completed": int(totals.completed or 0),
+             "cancelled": int(totals.cancelled or 0),
+             "total_revenue": float(totals.total_revenue or 0.0),
+         },
+         "by_provider": [
+             {
+                 "provider_id": row.provider_id,
+                 "provider_name": row.provider_name,
+                 "profession": row.profession,
+                 "total_bookings": int(row.total_bookings or 0),
+                 "upcoming": int(row.upcoming or 0),
+                 "completed": int(row.completed or 0),
+                 "cancelled": int(row.cancelled or 0),
  
 EOF
 )
