@@ -245,6 +245,8 @@ class AdminSignupReportOut(BaseModel):
     end: date
     providers: int
     clients: int
+    total_providers: int
+    total_clients: int
 
 
 class ProviderBillingCycleItem(BaseModel):

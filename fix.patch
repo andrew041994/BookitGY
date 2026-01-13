@@ -1,318 +1,61 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
-diff --git a/frontend/src/main.jsx b/frontend/src/main.jsx
-index 92de01d4b424cd67e180b70fe98372895c613a67..5b461e47662074da21053097cfbf0f5aaead4c85 100644
---- a/frontend/src/main.jsx
-+++ b/frontend/src/main.jsx
-@@ -42,50 +42,66 @@ const loadLeaflet = () => {
-           resolve(window.L)
-           return
-         }
-         existingScript.addEventListener('load', () => resolve(window.L))
-         existingScript.addEventListener('error', () => reject(new Error('Failed to load Leaflet script.')))
-         return
-       }
+diff --git a/backend/app/schemas.py b/backend/app/schemas.py
+index 47255682a9cabf80f918fc4977018c5420910062..18951081bd8032f75e9c525f2695eaf08e1a6bdc 100644
+--- a/backend/app/schemas.py
++++ b/backend/app/schemas.py
+@@ -223,50 +223,52 @@ class AdminProviderLocationOut(BaseModel):
+     provider_id: int
+     username: Optional[str] = None
+     email: Optional[EmailStr] = None
+     phone: Optional[str] = None
+     lat: Optional[float] = None
+     long: Optional[float] = None
+     account_number: Optional[str] = None
+     location: Optional[str] = None
  
-       const script = document.createElement('script')
-       script.id = LEAFLET_JS_ID
-       script.src = LEAFLET_JS_URL
-       script.integrity = 'sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo='
-       script.crossOrigin = ''
-       script.async = true
-       script.onload = () => resolve(window.L)
-       script.onerror = () => reject(new Error('Failed to load Leaflet script.'))
-       document.body.appendChild(script)
-     })
-   }
  
-   return leafletLoaderPromise
- }
+ class AdminProviderCancellationOut(BaseModel):
+     provider_id: int
+     username: Optional[str] = None
+     email: Optional[EmailStr] = None
+     phone: Optional[str] = None
+     provider_cancelled_count: int
+     customer_cancelled_count: int
+     total_cancellations: int
  
- const normalizeServiceCharge = (value) => Math.max(0, Math.min(100, Number(value) || 0))
  
-+const formatDateInput = (date) => {
-+  const year = date.getFullYear()
-+  const month = String(date.getMonth() + 1).padStart(2, '0')
-+  const day = String(date.getDate()).padStart(2, '0')
-+  return `${year}-${month}-${day}`
-+}
-+
-+const parseDateInput = (value) => {
-+  if (!value) return null
-+  const [year, month, day] = value.split('-').map(Number)
-+  if (!year || !month || !day) return null
-+  const parsed = new Date(year, month - 1, day)
-+  if (Number.isNaN(parsed.getTime())) return null
-+  return parsed
-+}
-+
- const loadStoredServiceCharge = () => {
-   const stored = localStorage.getItem(SERVICE_CHARGE_STORAGE_KEY)
-   if (stored === null) return null
-   return normalizeServiceCharge(stored)
- }
+ class AdminSignupReportOut(BaseModel):
+     start: date
+     end: date
+     providers: int
+     clients: int
++    total_providers: int
++    total_clients: int
  
- const persistServiceCharge = (rate) => {
-   localStorage.setItem(SERVICE_CHARGE_STORAGE_KEY, String(rate))
- }
  
- function App() {
-   const [token, setToken] = React.useState(localStorage.getItem('token') || '')
+ class ProviderBillingCycleItem(BaseModel):
+     service_id: int
+     service_name: str
+     qty: int
+     services_total_gyd: float
+     platform_fee_gyd: float
  
-   React.useEffect(() => {
-     if (token) {
-       apiClient.defaults.headers.common.Authorization = `Bearer ${token}`
-     } else {
-       delete apiClient.defaults.headers.common.Authorization
-     }
-   }, [token])
  
-   const Login = () => {
-     const [email, setEmail] = React.useState('customer@guyana.com')
-     const [password, setPassword] = React.useState('pass')
-     const [loading, setLoading] = React.useState(false)
-@@ -1394,77 +1410,208 @@ function App() {
-               const displayPhone = row.phone || '—'
-               return (
-                 <div
-                   key={row.provider_id ?? `${row.username}-${row.email}-${row.phone}`}
-                   className="cancellations-table__row"
-                 >
-                   <strong>{row.username || '—'}</strong>
-                   <span>{displayEmail}</span>
-                   <span>{displayPhone}</span>
-                   <span>{row.provider_cancelled_count}</span>
-                   <span>{row.customer_cancelled_count}</span>
-                   <strong>{row.total_cancellations}</strong>
-                 </div>
-               )
-             })}
-           </div>
+ class ProviderBillingCycleOut(BaseModel):
+     cycle_month: date
+     coverage_start: date
+     coverage_end: date
+     invoice_date: date
+     status: str
+     services_total_gyd: float
+     platform_fee_gyd: float
+     bill_credits_gyd: float
+     total_due_gyd: float
+     items: List[ProviderBillingCycleItem] = []
  
-           {showEmptyState && (
-             <p className="muted">No cancellations found for this month.</p>
-           )}
-         </div>
-       </div>
-     )
-   }
  
-+  const AdminSignupReport = () => {
-+    const [startDate, setStartDate] = React.useState(() => {
-+      const today = new Date()
-+      const start = new Date()
-+      start.setDate(today.getDate() - 6)
-+      return formatDateInput(start)
-+    })
-+    const [endDate, setEndDate] = React.useState(() => formatDateInput(new Date()))
-+    const [report, setReport] = React.useState(null)
-+    const [loading, setLoading] = React.useState(false)
-+    const [error, setError] = React.useState('')
-+
-+    const runReport = React.useCallback(async () => {
-+      const parsedStart = parseDateInput(startDate)
-+      const parsedEnd = parseDateInput(endDate)
-+
-+      if (!parsedStart || !parsedEnd) {
-+        setError('Start and end dates are required.')
-+        return
-+      }
-+
-+      if (parsedStart > parsedEnd) {
-+        setError('Start date must be on or before end date.')
-+        return
-+      }
-+
-+      setLoading(true)
-+      setError('')
-+      try {
-+        const res = await apiClient.get('/admin/reports/signups', {
-+          params: { start: startDate, end: endDate },
-+        })
-+        setReport(res.data)
-+      } catch (err) {
-+        logApiError(err)
-+        setError('Unable to load signup counts. Please try again.')
-+        setReport(null)
-+      } finally {
-+        setLoading(false)
-+      }
-+    }, [endDate, startDate])
-+
-+    React.useEffect(() => {
-+      runReport()
-+    }, [runReport])
-+
-+    return (
-+      <div className="admin-page">
-+        <div className="admin-header">
-+          <div>
-+            <p className="eyebrow">Reports</p>
-+            <h1>Signups Report</h1>
-+            <p className="header-subtitle">Track new provider and client signups over a selected date range.</p>
-+          </div>
-+        </div>
-+
-+        <div className="admin-card">
-+          <div className="form-grid">
-+            <label className="form-field">
-+              <span>Start date</span>
-+              <input
-+                type="date"
-+                value={startDate}
-+                onChange={(e) => setStartDate(e.target.value)}
-+              />
-+            </label>
-+            <label className="form-field">
-+              <span>End date</span>
-+              <input
-+                type="date"
-+                value={endDate}
-+                onChange={(e) => setEndDate(e.target.value)}
-+              />
-+            </label>
-+          </div>
-+          <div className="button-row">
-+            <button
-+              className="primary-btn"
-+              onClick={runReport}
-+              disabled={loading}
-+            >
-+              {loading ? 'Running…' : 'Run report'}
-+            </button>
-+            <span className="muted">Default: last 7 days</span>
-+          </div>
-+
-+          {error && <p className="form-error">{error}</p>}
-+          {loading && !error && <p className="muted">Loading signups…</p>}
-+
-+          <div className="provider-missing-table signup-totals-table">
-+            <table>
-+              <thead>
-+                <tr>
-+                  <th>Metric</th>
-+                  <th>Total</th>
-+                </tr>
-+              </thead>
-+              <tbody>
-+                <tr>
-+                  <td>Total providers</td>
-+                  <td>{report ? report.total_providers : '—'}</td>
-+                </tr>
-+                <tr>
-+                  <td>Total clients</td>
-+                  <td>{report ? report.total_clients : '—'}</td>
-+                </tr>
-+              </tbody>
-+            </table>
-+          </div>
-+
-+          <div className="provider-location-summary">
-+            <div>
-+              <p className="muted">New provider signups</p>
-+              <p className="provider-location-value">{report ? report.providers : '—'}</p>
-+            </div>
-+            <div>
-+              <p className="muted">New client signups</p>
-+              <p className="provider-location-value">{report ? report.clients : '—'}</p>
-+            </div>
-+          </div>
-+        </div>
-+      </div>
-+    )
-+  }
-+
-   const AdminLayout = () => {
-     const location = useLocation()
-     return (
-       <div className="admin-shell">
-         <aside className="admin-sidebar">
-           <nav className="sidebar-nav">
-             <NavLink to="/admin/promotions" className={({ isActive }) => isActive ? 'sidebar-link active' : 'sidebar-link'}>
-               Promotions
-             </NavLink>
-             <NavLink to="/admin/service-charge" className={({ isActive }) => isActive ? 'sidebar-link active' : 'sidebar-link'}>
-               Service Charge
-             </NavLink>
-             <NavLink to="/admin/billing" className={({ isActive }) => isActive ? 'sidebar-link active' : 'sidebar-link'}>
-               Billing
-             </NavLink>
-             <NavLink
-               to="/admin/provider-locations"
-               className={({ isActive }) => isActive ? 'sidebar-link active' : 'sidebar-link'}
-             >
-               Provider Locations
-             </NavLink>
-             <NavLink
-               to="/admin/cancellations"
-               className={({ isActive }) => isActive ? 'sidebar-link active' : 'sidebar-link'}
-             >
-               Cancellations
-             </NavLink>
-+            <NavLink
-+              to="/admin/signups"
-+              className={({ isActive }) => isActive ? 'sidebar-link active' : 'sidebar-link'}
-+            >
-+              Signups Report
-+            </NavLink>
-           </nav>
-           <div className="sidebar-footer">
-             Logged in · {token ? 'Authenticated' : 'Guest'}
-           </div>
-         </aside>
-         <main className="admin-main" key={location.pathname}>
-           <Outlet />
-         </main>
-       </div>
-     )
-   }
- 
-   return (
-     <BrowserRouter>
-       <nav className="app-nav">
-         <div className="nav-inner">
-           <Link to="/" className="nav-brand" aria-label="BookitGY home">
-             <img src="/bookitgy-logo.png" alt="BookitGY" />
-             <div className="brand-text">
-               <span className="brand-name">BookitGY</span>
-               <span className="brand-subtitle">BookitGY</span>
-             </div>
-           </Link>
-           <div className="nav-actions">
-             {token ? (
-@@ -1482,32 +1629,33 @@ function App() {
-                 Login
-               </Link>
-             )}
-           </div>
-         </div>
-       </nav>
-       <Routes>
-         <Route path="/" element={<Home />} />
-         <Route path="/login" element={<Login />} />
-         <Route path="/reset-password" element={<ResetPassword />} />
-         <Route path="/p/:username" element={<ProviderLanding />} />
-         <Route
-           path="/admin"
-           element={(
-             <ProtectedRoute>
-               <AdminLayout />
-             </ProtectedRoute>
-           )}
-         >
-           <Route index element={<Navigate to="/admin/promotions" replace />} />
-           <Route path="promotions" element={<AdminPromotions />} />
-           <Route path="service-charge" element={<ServiceChargeSettings />} />
-           <Route path="billing" element={<AdminBilling />} />
-           <Route path="provider-locations" element={<AdminProviderLocations />} />
-           <Route path="cancellations" element={<AdminCancellations />} />
-+          <Route path="signups" element={<AdminSignupReport />} />
-         </Route>
-       </Routes>
-     </BrowserRouter>
-   )
- }
- 
- ReactDOM.createRoot(document.getElementById('root')).render(<App />)
+ class ProviderBillingCyclesResponse(BaseModel):
+     account_number: str
  
 EOF
 )
