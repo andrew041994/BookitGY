@@ -73,6 +73,14 @@ def _add_months(start: date, months: int) -> date:
     return date(year, month, 1)
 
 
+def _month_key_expr(db: Session, dt_col):
+    dialect = getattr(getattr(db, "bind", None), "dialect", None)
+    name = getattr(dialect, "name", "") if dialect else ""
+    if name == "sqlite":
+        return func.strftime("%Y-%m", dt_col)
+    return func.to_char(dt_col, "YYYY-MM")
+
+
 @router.get("/service-charge", response_model=schemas.ServiceChargeOut)
 def get_service_charge(
     db: Session = Depends(get_db),
@@ -565,13 +573,14 @@ def get_provider_retention(
         profession,
     )
     profession_label_expr = _profession_label_expression(db)
+    month_expr = _month_key_expr(db, models.Booking.start_time)
 
     retention_query = (
         db.query(
             models.Provider.id.label("provider_id"),
             models.User.username.label("provider_name"),
             profession_label_expr.label("profession"),
-            func.strftime("%Y-%m", models.Booking.start_time).label("month"),
+            month_expr.label("month"),
             func.count(models.Booking.id).label("bookings"),
         )
         .join(models.Service, models.Booking.service_id == models.Service.id)
@@ -584,7 +593,7 @@ def get_provider_retention(
             models.Provider.id,
             models.User.username,
             profession_label_expr,
-            func.strftime("%Y-%m", models.Booking.start_time),
+            month_expr,
         )
     )
 
