@@ -1559,6 +1559,220 @@ function App() {
     )
   }
 
+  const AdminBookingMetrics = () => {
+    const [startDate, setStartDate] = React.useState(() => {
+      const today = new Date()
+      const start = new Date()
+      start.setDate(today.getDate() - 6)
+      return formatDateInput(start)
+    })
+    const [endDate, setEndDate] = React.useState(() => formatDateInput(new Date()))
+    const [status, setStatus] = React.useState('all')
+    const [profession, setProfession] = React.useState('all')
+    const [professions, setProfessions] = React.useState([])
+    const [report, setReport] = React.useState(null)
+    const [loading, setLoading] = React.useState(false)
+    const [error, setError] = React.useState('')
+    const [loadingProfessions, setLoadingProfessions] = React.useState(false)
+
+    const statusOptions = [
+      { value: 'all', label: 'All' },
+      { value: 'upcoming', label: 'Upcoming' },
+      { value: 'completed', label: 'Completed' },
+      { value: 'cancelled', label: 'Cancelled' },
+      { value: 'confirmed', label: 'Confirmed' },
+      { value: 'pending', label: 'Pending' },
+    ]
+
+    const loadProfessions = React.useCallback(async () => {
+      setLoadingProfessions(true)
+      try {
+        const res = await apiClient.get('/admin/reports/professions')
+        setProfessions(res.data.professions || [])
+      } catch (err) {
+        logApiError(err)
+        setError('Unable to load professions. Please try again.')
+      } finally {
+        setLoadingProfessions(false)
+      }
+    }, [])
+
+    const runReport = React.useCallback(async () => {
+      const parsedStart = parseDateInput(startDate)
+      const parsedEnd = parseDateInput(endDate)
+
+      if (!parsedStart || !parsedEnd) {
+        setError('Start and end dates are required.')
+        return
+      }
+
+      if (parsedStart > parsedEnd) {
+        setError('Start date must be on or before end date.')
+        return
+      }
+
+      setLoading(true)
+      setError('')
+      try {
+        const res = await apiClient.get('/admin/reports/booking-metrics', {
+          params: {
+            start: startDate,
+            end: endDate,
+            status: status !== 'all' ? status : undefined,
+            profession: profession !== 'all' ? profession : undefined,
+          },
+        })
+        setReport(res.data)
+      } catch (err) {
+        logApiError(err)
+        setError('Unable to load booking metrics. Please try again.')
+        setReport(null)
+      } finally {
+        setLoading(false)
+      }
+    }, [endDate, profession, startDate, status])
+
+    React.useEffect(() => {
+      loadProfessions()
+    }, [loadProfessions])
+
+    React.useEffect(() => {
+      runReport()
+    }, [runReport])
+
+    const totals = report?.totals
+    const showRevenue = typeof totals?.total_revenue === 'number'
+
+    return (
+      <div className="admin-page">
+        <div className="admin-header">
+          <div>
+            <p className="eyebrow">Reports</p>
+            <h1>Booking Metrics</h1>
+            <p className="header-subtitle">Analyze bookings by date, status, and profession.</p>
+          </div>
+        </div>
+
+        <div className="admin-card">
+          <div className="form-grid">
+            <label className="form-field">
+              <span>Start date</span>
+              <input
+                type="date"
+                value={startDate}
+                onChange={(e) => setStartDate(e.target.value)}
+              />
+            </label>
+            <label className="form-field">
+              <span>End date</span>
+              <input
+                type="date"
+                value={endDate}
+                onChange={(e) => setEndDate(e.target.value)}
+              />
+            </label>
+            <label className="form-field">
+              <span>Status</span>
+              <select value={status} onChange={(e) => setStatus(e.target.value)}>
+                {statusOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="form-field">
+              <span>Profession</span>
+              <select value={profession} onChange={(e) => setProfession(e.target.value)}>
+                <option value="all">All</option>
+                {professions.map((name) => (
+                  <option key={name} value={name}>
+                    {name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+
+          <div className="button-row">
+            <button
+              className="primary-btn"
+              onClick={runReport}
+              disabled={loading}
+            >
+              {loading ? 'Running…' : 'Run report'}
+            </button>
+            <span className="muted">Default: last 7 days</span>
+            {loadingProfessions && <span className="muted">Loading professions…</span>}
+          </div>
+
+          {error && <p className="form-error">{error}</p>}
+          {loading && !error && <p className="muted">Loading booking metrics…</p>}
+
+          <div className="provider-location-summary">
+            <div>
+              <p className="muted">Total bookings</p>
+              <p className="provider-location-value">{totals ? totals.total_bookings : '—'}</p>
+            </div>
+            {showRevenue && (
+              <div>
+                <p className="muted">Total revenue (GYD)</p>
+                <p className="provider-location-value">
+                  {totals ? totals.total_revenue.toFixed(2) : '—'}
+                </p>
+              </div>
+            )}
+            <div>
+              <p className="muted">Upcoming</p>
+              <p className="provider-location-value">{totals ? totals.upcoming : '—'}</p>
+            </div>
+            <div>
+              <p className="muted">Completed</p>
+              <p className="provider-location-value">{totals ? totals.completed : '—'}</p>
+            </div>
+            <div>
+              <p className="muted">Cancelled</p>
+              <p className="provider-location-value">{totals ? totals.cancelled : '—'}</p>
+            </div>
+          </div>
+
+          <div className="provider-missing-table">
+            <table>
+              <thead>
+                <tr>
+                  <th>Provider</th>
+                  <th>Profession</th>
+                  <th>Total bookings</th>
+                  <th>Completed</th>
+                  <th>Cancelled</th>
+                  <th>Upcoming</th>
+                </tr>
+              </thead>
+              <tbody>
+                {report?.by_provider?.length ? (
+                  report.by_provider.map((row) => (
+                    <tr key={row.provider_id}>
+                      <td>{row.provider_name || '—'}</td>
+                      <td>{row.profession || '—'}</td>
+                      <td>{row.total_bookings}</td>
+                      <td>{row.completed}</td>
+                      <td>{row.cancelled}</td>
+                      <td>{row.upcoming}</td>
+                    </tr>
+                  ))
+                ) : (
+                  <tr>
+                    <td colSpan={6}>{loading ? 'Loading…' : 'No bookings found for this range.'}</td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   const AdminLayout = () => {
     const location = useLocation()
     return (
@@ -1591,6 +1805,12 @@ function App() {
               className={({ isActive }) => isActive ? 'sidebar-link active' : 'sidebar-link'}
             >
               Signups Report
+            </NavLink>
+            <NavLink
+              to="/admin/booking-metrics"
+              className={({ isActive }) => isActive ? 'sidebar-link active' : 'sidebar-link'}
+            >
+              Booking Metrics
             </NavLink>
           </nav>
           <div className="sidebar-footer">
@@ -1654,6 +1874,7 @@ function App() {
           <Route path="provider-locations" element={<AdminProviderLocations />} />
           <Route path="cancellations" element={<AdminCancellations />} />
           <Route path="signups" element={<AdminSignupReport />} />
+          <Route path="booking-metrics" element={<AdminBookingMetrics />} />
         </Route>
       </Routes>
     </BrowserRouter>

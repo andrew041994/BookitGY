@@ -1,6 +1,6 @@
 import logging
 from datetime import date, datetime, time, timedelta
-from typing import List
+from typing import List, Optional
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query
 from sqlalchemy import case, func
@@ -111,6 +111,157 @@ def get_signup_report(
         "clients": int(clients_count or 0),
         "total_providers": int(total_providers or 0),
         "total_clients": int(total_clients or 0),
+    }
+
+
+@router.get("/reports/professions", response_model=schemas.AdminProfessionsOut)
+def list_professions(
+    db: Session = Depends(get_db),
+    _: models.User = Depends(_require_admin),
+):
+    rows = (
+        db.query(models.ProviderProfession.name)
+        .filter(models.ProviderProfession.name.isnot(None))
+        .distinct()
+        .order_by(models.ProviderProfession.name.asc())
+        .all()
+    )
+    professions = [row[0] for row in rows if row[0]]
+    return {"professions": professions}
+
+
+@router.get("/reports/booking-metrics", response_model=schemas.AdminBookingMetricsOut)
+def get_booking_metrics(
+    start: date = Query(...),
+    end: date = Query(...),
+    status: Optional[str] = Query(None),
+    profession: Optional[str] = Query(None),
+    db: Session = Depends(get_db),
+    _: models.User = Depends(_require_admin),
+):
+    if start > end:
+        raise HTTPException(status_code=400, detail="Start date must be on or before end date")
+
+    start_ts = datetime.combine(start, time.min)
+    end_ts_exclusive = datetime.combine(end + timedelta(days=1), time.min)
+
+    normalized_status = (status or "all").strip().lower()
+    normalized_profession = (profession or "all").strip()
+
+    provider_ids_subquery = None
+    if normalized_profession and normalized_profession.lower() != "all":
+        provider_ids_subquery = (
+            db.query(models.ProviderProfession.provider_id)
+            .filter(models.ProviderProfession.name.ilike(normalized_profession))
+            .subquery()
+        )
+
+    base_query = (
+        db.query(models.Booking, models.Service, models.Provider, models.User)
+        .join(models.Service, models.Booking.service_id == models.Service.id)
+        .join(models.Provider, models.Service.provider_id == models.Provider.id)
+        .join(models.User, models.Provider.user_id == models.User.id)
+        .filter(models.Booking.start_time >= start_ts)
+        .filter(models.Booking.start_time < end_ts_exclusive)
+    )
+
+    if provider_ids_subquery is not None:
+        base_query = base_query.filter(models.Provider.id.in_(provider_ids_subquery))
+
+    if normalized_status and normalized_status != "all":
+        if normalized_status == "upcoming":
+            base_query = base_query.filter(
+                models.Booking.status.in_(["confirmed", "pending"])
+            )
+        else:
+            base_query = base_query.filter(models.Booking.status == normalized_status)
+
+    totals = (
+        base_query.with_entities(
+            func.count(models.Booking.id).label("total_bookings"),
+            func.coalesce(
+                func.sum(
+                    case(
+                        (models.Booking.status.in_(["confirmed", "pending"]), 1),
+                        else_=0,
+                    )
+                ),
+                0,
+            ).label("upcoming"),
+            func.coalesce(
+                func.sum(case((models.Booking.status == "completed", 1), else_=0)),
+                0,
+            ).label("completed"),
+            func.coalesce(
+                func.sum(case((models.Booking.status == "cancelled", 1), else_=0)),
+                0,
+            ).label("cancelled"),
+            func.coalesce(func.sum(models.Service.price_gyd), 0.0).label("total_revenue"),
+        )
+        .one()
+    )
+
+    profession_label = (
+        db.query(models.ProviderProfession.name)
+        .filter(models.ProviderProfession.provider_id == models.Provider.id)
+        .order_by(models.ProviderProfession.name.asc())
+        .limit(1)
+        .scalar_subquery()
+    )
+
+    provider_rows = (
+        base_query.with_entities(
+            models.Provider.id.label("provider_id"),
+            models.User.username.label("provider_name"),
+            profession_label.label("profession"),
+            func.count(models.Booking.id).label("total_bookings"),
+            func.coalesce(
+                func.sum(
+                    case(
+                        (models.Booking.status.in_(["confirmed", "pending"]), 1),
+                        else_=0,
+                    )
+                ),
+                0,
+            ).label("upcoming"),
+            func.coalesce(
+                func.sum(case((models.Booking.status == "completed", 1), else_=0)),
+                0,
+            ).label("completed"),
+            func.coalesce(
+                func.sum(case((models.Booking.status == "cancelled", 1), else_=0)),
+                0,
+            ).label("cancelled"),
+        )
+        .group_by(models.Provider.id, models.User.username, profession_label)
+        .order_by(models.User.username.asc())
+        .all()
+    )
+
+    return {
+        "start": start,
+        "end": end,
+        "status": normalized_status or "all",
+        "profession": normalized_profession or "all",
+        "totals": {
+            "total_bookings": int(totals.total_bookings or 0),
+            "upcoming": int(totals.upcoming or 0),
+            "completed": int(totals.completed or 0),
+            "cancelled": int(totals.cancelled or 0),
+            "total_revenue": float(totals.total_revenue or 0.0),
+        },
+        "by_provider": [
+            {
+                "provider_id": row.provider_id,
+                "provider_name": row.provider_name,
+                "profession": row.profession,
+                "total_bookings": int(row.total_bookings or 0),
+                "upcoming": int(row.upcoming or 0),
+                "completed": int(row.completed or 0),
+                "cancelled": int(row.cancelled or 0),
+            }
+            for row in provider_rows
+        ],
     }
 
 

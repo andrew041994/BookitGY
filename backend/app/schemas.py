@@ -249,6 +249,37 @@ class AdminSignupReportOut(BaseModel):
     total_clients: int
 
 
+class AdminBookingMetricsTotals(BaseModel):
+    total_bookings: int
+    upcoming: int
+    completed: int
+    cancelled: int
+    total_revenue: Optional[float] = None
+
+
+class AdminBookingMetricsProviderRow(BaseModel):
+    provider_id: int
+    provider_name: Optional[str] = None
+    profession: Optional[str] = None
+    total_bookings: int
+    upcoming: int
+    completed: int
+    cancelled: int
+
+
+class AdminBookingMetricsOut(BaseModel):
+    start: date
+    end: date
+    status: str
+    profession: str
+    totals: AdminBookingMetricsTotals
+    by_provider: List[AdminBookingMetricsProviderRow] = []
+
+
+class AdminProfessionsOut(BaseModel):
+    professions: List[str] = []
+
+
 class ProviderBillingCycleItem(BaseModel):
     service_id: int
     service_name: str
