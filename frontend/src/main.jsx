@@ -1521,6 +1521,30 @@ function App() {
           {error && <p className="form-error">{error}</p>}
           {loading && !error && <p className="muted">Loading signups…</p>}
 
+<<<<<<< ours
+=======
+          <div className="provider-missing-table">
+            <table>
+              <thead>
+                <tr>
+                  <th>Metric</th>
+                  <th>Total</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Total providers</td>
+                  <td>{report ? report.total_providers : '—'}</td>
+                </tr>
+                <tr>
+                  <td>Total clients</td>
+                  <td>{report ? report.total_clients : '—'}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+>>>>>>> theirs
           <div className="provider-location-summary">
             <div>
               <p className="muted">New provider signups</p>

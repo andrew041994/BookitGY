@@ -1,150 +1,318 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
-diff --git a/mobile/App.js b/mobile/App.js
-index 202633e19da5a53f557696d66af85cc3fc372a68..e34ebdf4362078451ddef93b67241c7c43cf2f61 100644
---- a/mobile/App.js
-+++ b/mobile/App.js
-@@ -612,52 +612,50 @@ function ForgotPasswordScreen({ goToLogin, goBack, showFlash }) {
-                   onPress={goToLogin}
-                   color="#166534"
-                 />
-               </View>
-             )}
+diff --git a/frontend/src/main.jsx b/frontend/src/main.jsx
+index 92de01d4b424cd67e180b70fe98372895c613a67..7db0cf14a11a904c0454df4407296bb34b22f28e 100644
+--- a/frontend/src/main.jsx
++++ b/frontend/src/main.jsx
+@@ -42,50 +42,66 @@ const loadLeaflet = () => {
+           resolve(window.L)
+           return
+         }
+         existingScript.addEventListener('load', () => resolve(window.L))
+         existingScript.addEventListener('error', () => reject(new Error('Failed to load Leaflet script.')))
+         return
+       }
  
-             {goBack && (
-               <View style={{ width: "100%" }}>
-                 <Button title="Back" onPress={goBack} color="#6b7280" />
-               </View>
-             )}
-           </View>
-         </TouchableWithoutFeedback>
-       </ScrollView>
-     </KeyboardAvoidingView>
-   );
+       const script = document.createElement('script')
+       script.id = LEAFLET_JS_ID
+       script.src = LEAFLET_JS_URL
+       script.integrity = 'sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo='
+       script.crossOrigin = ''
+       script.async = true
+       script.onload = () => resolve(window.L)
+       script.onerror = () => reject(new Error('Failed to load Leaflet script.'))
+       document.body.appendChild(script)
+     })
+   }
+ 
+   return leafletLoaderPromise
  }
  
+ const normalizeServiceCharge = (value) => Math.max(0, Math.min(100, Number(value) || 0))
  
++const formatDateInput = (date) => {
++  const year = date.getFullYear()
++  const month = String(date.getMonth() + 1).padStart(2, '0')
++  const day = String(date.getDate()).padStart(2, '0')
++  return `${year}-${month}-${day}`
++}
++
++const parseDateInput = (value) => {
++  if (!value) return null
++  const [year, month, day] = value.split('-').map(Number)
++  if (!year || !month || !day) return null
++  const parsed = new Date(year, month - 1, day)
++  if (Number.isNaN(parsed.getTime())) return null
++  return parsed
++}
++
+ const loadStoredServiceCharge = () => {
+   const stored = localStorage.getItem(SERVICE_CHARGE_STORAGE_KEY)
+   if (stored === null) return null
+   return normalizeServiceCharge(stored)
+ }
  
+ const persistServiceCharge = (rate) => {
+   localStorage.setItem(SERVICE_CHARGE_STORAGE_KEY, String(rate))
+ }
  
- function SignupScreen({ goToLogin, goBack, showFlash }) {
-   const [email, setEmail] = useState("");
-   const [password, setPassword] = useState("");
-   const [confirmPassword, setConfirmPassword] = useState("");
--  const [passwordKey, setPasswordKey] = useState(0);
--  const [confirmPasswordKey, setConfirmPasswordKey] = useState(0);
-   const [username, setUsername] = useState("");
-   const [phone, setPhone] = useState("");
-   const [isProvider, setIsProvider] = useState(false); // 👈 new
+ function App() {
+   const [token, setToken] = React.useState(localStorage.getItem('token') || '')
  
-   const signup = async () => {
-     const trimmedEmail = email.trim();
-     const normalizedEmail = trimmedEmail.toLowerCase();
-     const trimmedPassword = password.trim();
-     const trimmedConfirm = confirmPassword.trim();
-     const trimmedUsername = username.trim();
-     const trimmedPhone = phone.trim();
+   React.useEffect(() => {
+     if (token) {
+       apiClient.defaults.headers.common.Authorization = `Bearer ${token}`
+     } else {
+       delete apiClient.defaults.headers.common.Authorization
+     }
+   }, [token])
  
-     // ✅ All fields required
-     if (
-       !trimmedUsername ||
-       !trimmedEmail ||
-       !trimmedPhone ||
-       !trimmedPassword ||
-       !trimmedConfirm
-     ) {
-       if (showFlash) {
-         showFlash("error", "Please fill in all fields");
-       } else {
-         Alert.alert("Error", "Please fill in all fields");
-       }
-@@ -757,86 +755,78 @@ function SignupScreen({ goToLogin, goBack, showFlash }) {
-         style={styles.input}
-         placeholder="Email"
-         placeholderTextColor={styles.inputPlaceholder.color}
-         value={email}
-         onChangeText={setEmail}
-         keyboardType="email-address"
-         autoCapitalize="none"
-       />
+   const Login = () => {
+     const [email, setEmail] = React.useState('customer@guyana.com')
+     const [password, setPassword] = React.useState('pass')
+     const [loading, setLoading] = React.useState(false)
+@@ -1394,77 +1410,208 @@ function App() {
+               const displayPhone = row.phone || '—'
+               return (
+                 <div
+                   key={row.provider_id ?? `${row.username}-${row.email}-${row.phone}`}
+                   className="cancellations-table__row"
+                 >
+                   <strong>{row.username || '—'}</strong>
+                   <span>{displayEmail}</span>
+                   <span>{displayPhone}</span>
+                   <span>{row.provider_cancelled_count}</span>
+                   <span>{row.customer_cancelled_count}</span>
+                   <strong>{row.total_cancellations}</strong>
+                 </div>
+               )
+             })}
+           </div>
  
-       <TextInput
-         style={styles.input}
-         placeholder="Phone (592XXXXXXX)"
-         placeholderTextColor={styles.inputPlaceholder.color}
-         value={phone}
-         onChangeText={setPhone}
-         keyboardType="phone-pad"
-       />
+           {showEmptyState && (
+             <p className="muted">No cancellations found for this month.</p>
+           )}
+         </div>
+       </div>
+     )
+   }
  
-       {/* Provider toggle */}
-       <View style={styles.toggleRow}>
-         <Text style={styles.toggleLabel}>Register as service provider</Text>
-         <Switch value={isProvider} onValueChange={setIsProvider} />
-       </View>
++  const AdminSignupReport = () => {
++    const [startDate, setStartDate] = React.useState(() => {
++      const today = new Date()
++      const start = new Date()
++      start.setDate(today.getDate() - 6)
++      return formatDateInput(start)
++    })
++    const [endDate, setEndDate] = React.useState(() => formatDateInput(new Date()))
++    const [report, setReport] = React.useState(null)
++    const [loading, setLoading] = React.useState(false)
++    const [error, setError] = React.useState('')
++
++    const runReport = React.useCallback(async () => {
++      const parsedStart = parseDateInput(startDate)
++      const parsedEnd = parseDateInput(endDate)
++
++      if (!parsedStart || !parsedEnd) {
++        setError('Start and end dates are required.')
++        return
++      }
++
++      if (parsedStart > parsedEnd) {
++        setError('Start date must be on or before end date.')
++        return
++      }
++
++      setLoading(true)
++      setError('')
++      try {
++        const res = await apiClient.get('/admin/reports/signups', {
++          params: { start: startDate, end: endDate },
++        })
++        setReport(res.data)
++      } catch (err) {
++        logApiError(err)
++        setError('Unable to load signup counts. Please try again.')
++        setReport(null)
++      } finally {
++        setLoading(false)
++      }
++    }, [endDate, startDate])
++
++    React.useEffect(() => {
++      runReport()
++    }, [runReport])
++
++    return (
++      <div className="admin-page">
++        <div className="admin-header">
++          <div>
++            <p className="eyebrow">Reports</p>
++            <h1>Signups Report</h1>
++            <p className="header-subtitle">Track new provider and client signups over a selected date range.</p>
++          </div>
++        </div>
++
++        <div className="admin-card">
++          <div className="form-grid">
++            <label className="form-field">
++              <span>Start date</span>
++              <input
++                type="date"
++                value={startDate}
++                onChange={(e) => setStartDate(e.target.value)}
++              />
++            </label>
++            <label className="form-field">
++              <span>End date</span>
++              <input
++                type="date"
++                value={endDate}
++                onChange={(e) => setEndDate(e.target.value)}
++              />
++            </label>
++          </div>
++          <div className="button-row">
++            <button
++              className="primary-btn"
++              onClick={runReport}
++              disabled={loading}
++            >
++              {loading ? 'Running…' : 'Run report'}
++            </button>
++            <span className="muted">Default: last 7 days</span>
++          </div>
++
++          {error && <p className="form-error">{error}</p>}
++          {loading && !error && <p className="muted">Loading signups…</p>}
++
++          <div className="provider-missing-table">
++            <table>
++              <thead>
++                <tr>
++                  <th>Metric</th>
++                  <th>Total</th>
++                </tr>
++              </thead>
++              <tbody>
++                <tr>
++                  <td>Total providers</td>
++                  <td>{report ? report.total_providers : '—'}</td>
++                </tr>
++                <tr>
++                  <td>Total clients</td>
++                  <td>{report ? report.total_clients : '—'}</td>
++                </tr>
++              </tbody>
++            </table>
++          </div>
++
++          <div className="provider-location-summary">
++            <div>
++              <p className="muted">New provider signups</p>
++              <p className="provider-location-value">{report ? report.providers : '—'}</p>
++            </div>
++            <div>
++              <p className="muted">New client signups</p>
++              <p className="provider-location-value">{report ? report.clients : '—'}</p>
++            </div>
++          </div>
++        </div>
++      </div>
++    )
++  }
++
+   const AdminLayout = () => {
+     const location = useLocation()
+     return (
+       <div className="admin-shell">
+         <aside className="admin-sidebar">
+           <nav className="sidebar-nav">
+             <NavLink to="/admin/promotions" className={({ isActive }) => isActive ? 'sidebar-link active' : 'sidebar-link'}>
+               Promotions
+             </NavLink>
+             <NavLink to="/admin/service-charge" className={({ isActive }) => isActive ? 'sidebar-link active' : 'sidebar-link'}>
+               Service Charge
+             </NavLink>
+             <NavLink to="/admin/billing" className={({ isActive }) => isActive ? 'sidebar-link active' : 'sidebar-link'}>
+               Billing
+             </NavLink>
+             <NavLink
+               to="/admin/provider-locations"
+               className={({ isActive }) => isActive ? 'sidebar-link active' : 'sidebar-link'}
+             >
+               Provider Locations
+             </NavLink>
+             <NavLink
+               to="/admin/cancellations"
+               className={({ isActive }) => isActive ? 'sidebar-link active' : 'sidebar-link'}
+             >
+               Cancellations
+             </NavLink>
++            <NavLink
++              to="/admin/signups"
++              className={({ isActive }) => isActive ? 'sidebar-link active' : 'sidebar-link'}
++            >
++              Signups Report
++            </NavLink>
+           </nav>
+           <div className="sidebar-footer">
+             Logged in · {token ? 'Authenticated' : 'Guest'}
+           </div>
+         </aside>
+         <main className="admin-main" key={location.pathname}>
+           <Outlet />
+         </main>
+       </div>
+     )
+   }
  
-       <TextInput
--        key={passwordKey}
-         style={[
-           styles.input,
-           Platform.OS === "android" && { includeFontPadding: false },
-         ]}
-         placeholder="Password"
-         placeholderTextColor={styles.inputPlaceholder.color}
-         value={password}
--        onChangeText={(t) => {
--          setPassword(t);
--          if (Platform.OS === "android") setPasswordKey((k) => k + 1);
--        }}
-+        onChangeText={setPassword}
-         autoCapitalize="none"
-         autoCorrect={false}
-         autoComplete={Platform.OS === "android" ? "off" : "password"}
-         textContentType={Platform.OS === "android" ? "none" : "password"}
-         importantForAutofill={Platform.OS === "android" ? "no" : "yes"}
-         underlineColorAndroid="transparent"
-         selectionColor="#16a34a"
-         cursorColor="#16a34a"
-         secureTextEntry={true}
-       />
+   return (
+     <BrowserRouter>
+       <nav className="app-nav">
+         <div className="nav-inner">
+           <Link to="/" className="nav-brand" aria-label="BookitGY home">
+             <img src="/bookitgy-logo.png" alt="BookitGY" />
+             <div className="brand-text">
+               <span className="brand-name">BookitGY</span>
+               <span className="brand-subtitle">BookitGY</span>
+             </div>
+           </Link>
+           <div className="nav-actions">
+             {token ? (
+@@ -1482,32 +1629,33 @@ function App() {
+                 Login
+               </Link>
+             )}
+           </div>
+         </div>
+       </nav>
+       <Routes>
+         <Route path="/" element={<Home />} />
+         <Route path="/login" element={<Login />} />
+         <Route path="/reset-password" element={<ResetPassword />} />
+         <Route path="/p/:username" element={<ProviderLanding />} />
+         <Route
+           path="/admin"
+           element={(
+             <ProtectedRoute>
+               <AdminLayout />
+             </ProtectedRoute>
+           )}
+         >
+           <Route index element={<Navigate to="/admin/promotions" replace />} />
+           <Route path="promotions" element={<AdminPromotions />} />
+           <Route path="service-charge" element={<ServiceChargeSettings />} />
+           <Route path="billing" element={<AdminBilling />} />
+           <Route path="provider-locations" element={<AdminProviderLocations />} />
+           <Route path="cancellations" element={<AdminCancellations />} />
++          <Route path="signups" element={<AdminSignupReport />} />
+         </Route>
+       </Routes>
+     </BrowserRouter>
+   )
+ }
  
-       <TextInput
--        key={confirmPasswordKey}
-         style={[
-           styles.input,
-           Platform.OS === "android" && { includeFontPadding: false },
-         ]}
-         placeholder="Confirm Password"
-         placeholderTextColor={styles.inputPlaceholder.color}
-         value={confirmPassword}
--        onChangeText={(t) => {
--          setConfirmPassword(t);
--          if (Platform.OS === "android") setConfirmPasswordKey((k) => k + 1);
--        }}
-+        onChangeText={setConfirmPassword}
-         autoCapitalize="none"
-         autoCorrect={false}
-         autoComplete={Platform.OS === "android" ? "off" : "password"}
-         textContentType={Platform.OS === "android" ? "none" : "password"}
-         importantForAutofill={Platform.OS === "android" ? "no" : "yes"}
-         underlineColorAndroid="transparent"
-         selectionColor="#16a34a"
-         cursorColor="#16a34a"
-         secureTextEntry={true}
-       />
- 
-       <View style={{ width: "100%", marginBottom: 10 }}>
-         <Button title="Sign Up" onPress={signup} color="#16a34a" />
-       </View>
- 
-       {goToLogin && (
-         <View style={{ width: "100%", marginBottom: 10 }}>
-           <Button
-             title="Already have an account? Login"
-             onPress={goToLogin}
-             color="#166534"
-           />
-         </View>
-       )}
- 
+ ReactDOM.createRoot(document.getElementById('root')).render(<App />)
  
 EOF
 )
