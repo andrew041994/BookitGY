@@ -453,15 +453,19 @@ return (
           style={[
             styles.input,
             Platform.OS === "android" && { includeFontPadding: false },
+            { fontFamily: "sans-serif" },
           ]}
           placeholder="Password"
           placeholderTextColor={styles.inputPlaceholder.color}
           value={password}
           onChangeText={setPassword}
+          keyboardType={
+            Platform.OS === "android" ? "visible-password" : "default"
+          }
           autoCapitalize="none"
           autoCorrect={false}
           autoComplete="password"
-          textContentType="password"
+          {...(Platform.OS === "ios" ? { textContentType: "password" } : {})}
           importantForAutofill="yes"
           underlineColorAndroid="transparent"
           selectionColor="#16a34a"
@@ -644,7 +648,6 @@ function SignupScreen({ goToLogin, goBack, showFlash }) {
   const passwordInputProps = Platform.select({
     ios: {
       autoComplete: "new-password",
-      textContentType: "newPassword",
       importantForAutofill: "yes",
     },
     android: {
@@ -655,6 +658,34 @@ function SignupScreen({ goToLogin, goBack, showFlash }) {
       autoComplete: "new-password",
     },
   });
+
+  const signupValidation = useMemo(() => {
+    const errors = {};
+    const trimmedUsername = username.trim();
+    const trimmedEmail = email.trim();
+    const trimmedPhone = phone.trim();
+    const trimmedPassword = password.trim();
+    const trimmedConfirm = confirmPassword.trim();
+
+    if (!trimmedUsername) errors.username = "Username is required";
+    if (!trimmedEmail) {
+      errors.email = "Email is required";
+    } else if (!isValidEmail(trimmedEmail)) {
+      errors.email = "Email is invalid";
+    }
+    if (!trimmedPhone) errors.phone = "Phone is required";
+    if (trimmedPassword.length < 8) {
+      errors.password = "Password must be at least 8 characters";
+    }
+    if (trimmedConfirm !== trimmedPassword) {
+      errors.confirmPassword = "Passwords do not match";
+    }
+
+    return {
+      errors,
+      canSubmit: Object.keys(errors).length === 0,
+    };
+  }, [username, email, phone, password, confirmPassword]);
 
   const signup = async () => {
     const trimmedEmail = email.trim();
@@ -762,7 +793,10 @@ function SignupScreen({ goToLogin, goBack, showFlash }) {
 
             {/* Username Field */}
             <TextInput
-              style={styles.input}
+              style={[
+                styles.input,
+                signupValidation.errors.username ? styles.inputError : null,
+              ]}
               placeholder="Username"
               placeholderTextColor={styles.inputPlaceholder.color}
               value={username}
@@ -770,7 +804,10 @@ function SignupScreen({ goToLogin, goBack, showFlash }) {
             />
 
             <TextInput
-              style={styles.input}
+              style={[
+                styles.input,
+                signupValidation.errors.email ? styles.inputError : null,
+              ]}
               placeholder="Email"
               placeholderTextColor={styles.inputPlaceholder.color}
               value={email}
@@ -780,7 +817,10 @@ function SignupScreen({ goToLogin, goBack, showFlash }) {
             />
 
             <TextInput
-              style={styles.input}
+              style={[
+                styles.input,
+                signupValidation.errors.phone ? styles.inputError : null,
+              ]}
               placeholder="Phone (592XXXXXXX)"
               placeholderTextColor={styles.inputPlaceholder.color}
               value={phone}
@@ -797,45 +837,74 @@ function SignupScreen({ goToLogin, goBack, showFlash }) {
             <TextInput
               style={[
                 styles.input,
+                signupValidation.errors.password ? styles.inputError : null,
                 Platform.OS === "android" && { includeFontPadding: false },
+                { fontFamily: "sans-serif" },
               ]}
               placeholder="Password"
               placeholderTextColor={styles.inputPlaceholder.color}
               value={password}
               onChangeText={setPassword}
-              keyboardType="default"
+              keyboardType={
+                Platform.OS === "android" ? "visible-password" : "default"
+              }
               autoCapitalize="none"
               autoCorrect={false}
               spellCheck={false}
               {...passwordInputProps}
+              {...(Platform.OS === "ios"
+                ? { textContentType: "password" }
+                : {})}
               underlineColorAndroid="transparent"
               selectionColor="#16a34a"
               cursorColor="#16a34a"
               secureTextEntry={true}
             />
+            {signupValidation.errors.password && (
+              <Text style={styles.inputErrorText}>
+                {signupValidation.errors.password}
+              </Text>
+            )}
 
             <TextInput
               style={[
                 styles.input,
+                signupValidation.errors.confirmPassword ? styles.inputError : null,
                 Platform.OS === "android" && { includeFontPadding: false },
+                { fontFamily: "sans-serif" },
               ]}
               placeholder="Confirm Password"
               placeholderTextColor={styles.inputPlaceholder.color}
               value={confirmPassword}
               onChangeText={setConfirmPassword}
-              keyboardType="default"
+              keyboardType={
+                Platform.OS === "android" ? "visible-password" : "default"
+              }
               autoCapitalize="none"
               autoCorrect={false}
               spellCheck={false}
               {...passwordInputProps}
+              {...(Platform.OS === "ios"
+                ? { textContentType: "password" }
+                : {})}
               underlineColorAndroid="transparent"
               selectionColor="#16a34a"
               cursorColor="#16a34a"
               secureTextEntry={true}
             />
+            {signupValidation.errors.confirmPassword && (
+              <Text style={styles.inputErrorText}>
+                {signupValidation.errors.confirmPassword}
+              </Text>
+            )}
 
             <View style={{ width: "100%", marginBottom: 10 }}>
-              <Button title="Sign Up" onPress={signup} color="#16a34a" />
+              <Button
+                title="Sign Up"
+                onPress={signup}
+                color="#16a34a"
+                disabled={!signupValidation.canSubmit}
+              />
             </View>
 
             {goToLogin && (

@@ -1,141 +1,333 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
-diff --git a/backend/app/routes/admin.py b/backend/app/routes/admin.py
-index 2c2fc018ad0f8b8f67113dfcd027167e9beef865..d4b17093e069e062fca6737321364644ae5295ff 100644
---- a/backend/app/routes/admin.py
-+++ b/backend/app/routes/admin.py
-@@ -51,50 +51,58 @@ def _profession_label_expression(db: Session):
-             .scalar_subquery()
-         )
-     return literal(None)
+diff --git a/mobile/App.js b/mobile/App.js
+index 858ab0e33b6158893dce5d2aa775b71dbdaf1c44..66b3cd2fcbcb45ab9a99155bc89ce30da9554ee8 100644
+--- a/mobile/App.js
++++ b/mobile/App.js
+@@ -431,59 +431,63 @@ return (
+         keyboardShouldPersistTaps="handled"
+       >
+         <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+           <View style={styles.container}>
+             <View style={styles.logoWrapper}>
+               <Image
+                 source={BookitGYLogoTransparent}
+                 style={styles.logo}
+               />
+             </View>
+         <Text style={styles.title}>Login</Text>
+ 
+         <TextInput
+           style={styles.input}
+           placeholder="Email"
+           placeholderTextColor={styles.inputPlaceholder.color}
+           value={email}
+           autoCapitalize="none"
+           onChangeText={setEmail}
+         />
+ 
+         <TextInput
+           style={[
+             styles.input,
+             Platform.OS === "android" && { includeFontPadding: false },
++            { fontFamily: "sans-serif" },
+           ]}
+           placeholder="Password"
+           placeholderTextColor={styles.inputPlaceholder.color}
+           value={password}
+           onChangeText={setPassword}
++          keyboardType={
++            Platform.OS === "android" ? "visible-password" : "default"
++          }
+           autoCapitalize="none"
+           autoCorrect={false}
+           autoComplete="password"
+-          textContentType="password"
++          {...(Platform.OS === "ios" ? { textContentType: "password" } : {})}
+           importantForAutofill="yes"
+           underlineColorAndroid="transparent"
+           selectionColor="#16a34a"
+           cursorColor="#16a34a"
+           secureTextEntry={true}
+         />
+ 
+           {goToSignup && (
+             <View style={{ width: "100%", marginBottom: 10 }}>
+                {loading ? (
+                 <ActivityIndicator size="large" color="#16a34a" />
+               ) : (
+                 <Button title="Login" onPress={login} color="#16a34a" />
+               )}
+             </View>
+           )}
+ 
+           {goToForgot && (
+             <TouchableOpacity onPress={goToForgot} style={styles.forgotLink}>
+               <Text style={styles.forgotLinkText}>Forgot password?</Text>
+             </TouchableOpacity>
+           )}
+ 
+             {goToSignup && (
+               <View style={{ width: "100%", marginBottom: 10 }}>
+@@ -622,62 +626,89 @@ function ForgotPasswordScreen({ goToLogin, goBack, showFlash }) {
+             )}
+           </View>
+         </TouchableWithoutFeedback>
+       </ScrollView>
+     </KeyboardAvoidingView>
+   );
+ }
  
  
- def _iter_months(start: date, end: date) -> List[str]:
-     current = date(start.year, start.month, 1)
-     end_month = date(end.year, end.month, 1)
-     months: List[str] = []
-     while current <= end_month:
-         months.append(current.strftime("%Y-%m"))
-         if current.month == 12:
-             current = date(current.year + 1, 1, 1)
-         else:
-             current = date(current.year, current.month + 1, 1)
-     return months
  
  
- def _add_months(start: date, months: int) -> date:
-     month_index = start.month - 1 + months
-     year = start.year + month_index // 12
-     month = month_index % 12 + 1
-     return date(year, month, 1)
+ function SignupScreen({ goToLogin, goBack, showFlash }) {
+   const [email, setEmail] = useState("");
+   const [password, setPassword] = useState("");
+   const [confirmPassword, setConfirmPassword] = useState("");
+   const [username, setUsername] = useState("");
+   const [phone, setPhone] = useState("");
+   const [isProvider, setIsProvider] = useState(false); // 👈 new
+   const keyboardWrapperProps = {
+     behavior: Platform.OS === "ios" ? "padding" : "height",
+     keyboardVerticalOffset: Platform.OS === "ios" ? 40 : 0,
+   };
+   const passwordInputProps = Platform.select({
+     ios: {
+       autoComplete: "new-password",
+-      textContentType: "newPassword",
+       importantForAutofill: "yes",
+     },
+     android: {
+       autoComplete: "new-password",
+       importantForAutofill: "no",
+     },
+     default: {
+       autoComplete: "new-password",
+     },
+   });
  
- 
-+def _month_key_expr(db: Session, dt_col):
-+    dialect = getattr(getattr(db, "bind", None), "dialect", None)
-+    name = getattr(dialect, "name", "") if dialect else ""
-+    if name == "sqlite":
-+        return func.strftime("%Y-%m", dt_col)
-+    return func.to_char(dt_col, "YYYY-MM")
++  const signupValidation = useMemo(() => {
++    const errors = {};
++    const trimmedUsername = username.trim();
++    const trimmedEmail = email.trim();
++    const trimmedPhone = phone.trim();
++    const trimmedPassword = password.trim();
++    const trimmedConfirm = confirmPassword.trim();
 +
++    if (!trimmedUsername) errors.username = "Username is required";
++    if (!trimmedEmail) {
++      errors.email = "Email is required";
++    } else if (!isValidEmail(trimmedEmail)) {
++      errors.email = "Email is invalid";
++    }
++    if (!trimmedPhone) errors.phone = "Phone is required";
++    if (trimmedPassword.length < 8) {
++      errors.password = "Password must be at least 8 characters";
++    }
++    if (trimmedConfirm !== trimmedPassword) {
++      errors.confirmPassword = "Passwords do not match";
++    }
 +
- @router.get("/service-charge", response_model=schemas.ServiceChargeOut)
- def get_service_charge(
-     db: Session = Depends(get_db),
-     _: models.User = Depends(_require_admin),
- ):
-     pct = crud.get_platform_service_charge_percentage(db)
-     return {"service_charge_percentage": float(pct)}
++    return {
++      errors,
++      canSubmit: Object.keys(errors).length === 0,
++    };
++  }, [username, email, phone, password, confirmPassword]);
++
+   const signup = async () => {
+     const trimmedEmail = email.trim();
+     const normalizedEmail = trimmedEmail.toLowerCase();
+     const trimmedPassword = password.trim();
+     const trimmedConfirm = confirmPassword.trim();
+     const trimmedUsername = username.trim();
+     const trimmedPhone = phone.trim();
+ 
+     // ✅ All fields required
+     if (
+       !trimmedUsername ||
+       !trimmedEmail ||
+       !trimmedPhone ||
+       !trimmedPassword ||
+       !trimmedConfirm
+     ) {
+       if (showFlash) {
+         showFlash("error", "Please fill in all fields");
+       } else {
+         Alert.alert("Error", "Please fill in all fields");
+       }
+       return;
+     }
+ 
+     // ✅ Passwords must match
+@@ -740,124 +771,162 @@ function SignupScreen({ goToLogin, goBack, showFlash }) {
+ 
+       if (goToLogin) goToLogin();
+     } catch (e) {
+       console.log("Signup error:", e.response?.data || e.message);
+       const detail = e.response?.data?.detail || "Signup failed. Try again.";
+       if (showFlash) {
+         showFlash("error", detail);
+       } else {
+         Alert.alert("Error", detail);
+       }
+     }
+   };
+ 
+   return (
+     <KeyboardAvoidingView style={styles.avoider} {...keyboardWrapperProps}>
+       <ScrollView
+         contentContainerStyle={styles.scrollContent}
+         keyboardShouldPersistTaps="handled"
+       >
+         <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+           <View style={styles.container}>
+             <Text style={styles.title}>Create Account</Text>
+ 
+             {/* Username Field */}
+             <TextInput
+-              style={styles.input}
++              style={[
++                styles.input,
++                signupValidation.errors.username ? styles.inputError : null,
++              ]}
+               placeholder="Username"
+               placeholderTextColor={styles.inputPlaceholder.color}
+               value={username}
+               onChangeText={setUsername}
+             />
+ 
+             <TextInput
+-              style={styles.input}
++              style={[
++                styles.input,
++                signupValidation.errors.email ? styles.inputError : null,
++              ]}
+               placeholder="Email"
+               placeholderTextColor={styles.inputPlaceholder.color}
+               value={email}
+               onChangeText={setEmail}
+               keyboardType="email-address"
+               autoCapitalize="none"
+             />
+ 
+             <TextInput
+-              style={styles.input}
++              style={[
++                styles.input,
++                signupValidation.errors.phone ? styles.inputError : null,
++              ]}
+               placeholder="Phone (592XXXXXXX)"
+               placeholderTextColor={styles.inputPlaceholder.color}
+               value={phone}
+               onChangeText={setPhone}
+               keyboardType="phone-pad"
+             />
+ 
+             {/* Provider toggle */}
+             <View style={styles.toggleRow}>
+               <Text style={styles.toggleLabel}>Register as Service Provider</Text>
+               <Switch value={isProvider} onValueChange={setIsProvider} />
+             </View>
+ 
+             <TextInput
+               style={[
+                 styles.input,
++                signupValidation.errors.password ? styles.inputError : null,
+                 Platform.OS === "android" && { includeFontPadding: false },
++                { fontFamily: "sans-serif" },
+               ]}
+               placeholder="Password"
+               placeholderTextColor={styles.inputPlaceholder.color}
+               value={password}
+               onChangeText={setPassword}
+-              keyboardType="default"
++              keyboardType={
++                Platform.OS === "android" ? "visible-password" : "default"
++              }
+               autoCapitalize="none"
+               autoCorrect={false}
+               spellCheck={false}
+               {...passwordInputProps}
++              {...(Platform.OS === "ios"
++                ? { textContentType: "password" }
++                : {})}
+               underlineColorAndroid="transparent"
+               selectionColor="#16a34a"
+               cursorColor="#16a34a"
+               secureTextEntry={true}
+             />
++            {signupValidation.errors.password && (
++              <Text style={styles.inputErrorText}>
++                {signupValidation.errors.password}
++              </Text>
++            )}
+ 
+             <TextInput
+               style={[
+                 styles.input,
++                signupValidation.errors.confirmPassword ? styles.inputError : null,
+                 Platform.OS === "android" && { includeFontPadding: false },
++                { fontFamily: "sans-serif" },
+               ]}
+               placeholder="Confirm Password"
+               placeholderTextColor={styles.inputPlaceholder.color}
+               value={confirmPassword}
+               onChangeText={setConfirmPassword}
+-              keyboardType="default"
++              keyboardType={
++                Platform.OS === "android" ? "visible-password" : "default"
++              }
+               autoCapitalize="none"
+               autoCorrect={false}
+               spellCheck={false}
+               {...passwordInputProps}
++              {...(Platform.OS === "ios"
++                ? { textContentType: "password" }
++                : {})}
+               underlineColorAndroid="transparent"
+               selectionColor="#16a34a"
+               cursorColor="#16a34a"
+               secureTextEntry={true}
+             />
++            {signupValidation.errors.confirmPassword && (
++              <Text style={styles.inputErrorText}>
++                {signupValidation.errors.confirmPassword}
++              </Text>
++            )}
+ 
+             <View style={{ width: "100%", marginBottom: 10 }}>
+-              <Button title="Sign Up" onPress={signup} color="#16a34a" />
++              <Button
++                title="Sign Up"
++                onPress={signup}
++                color="#16a34a"
++                disabled={!signupValidation.canSubmit}
++              />
+             </View>
+ 
+             {goToLogin && (
+               <View style={{ width: "100%", marginBottom: 10 }}>
+                 <Button
+                   title="Already have an account? Login"
+                   onPress={goToLogin}
+                   color="#166534"
+                 />
+               </View>
+             )}
+ 
+             {goBack && (
+               <View style={{ width: "100%" }}>
+                 <Button title="Back" onPress={goBack} color="#6b7280" />
+               </View>
+             )}
+           </View>
+         </TouchableWithoutFeedback>
+       </ScrollView>
+     </KeyboardAvoidingView>
+   );
+ }
  
  
- @router.put("/service-charge", response_model=schemas.ServiceChargeOut)
- def update_service_charge(
-     payload: schemas.ServiceChargeUpdate,
-     db: Session = Depends(get_db),
-     _: models.User = Depends(_require_admin),
- ):
-     pct = crud.update_platform_service_charge(db, payload.service_charge_percentage)
-     return {"service_charge_percentage": float(pct)}
- 
- 
- @router.get("/providers/locations", response_model=List[schemas.AdminProviderLocationOut])
- def list_provider_locations(
-     db: Session = Depends(get_db),
-     _: models.User = Depends(_require_admin),
- ):
-     return crud.list_admin_provider_locations(db)
-@@ -543,70 +551,71 @@ def get_provider_retention(
-     end: Optional[date] = Query(None),
-     profession: Optional[str] = Query(None),
-     db: Session = Depends(get_db),
-     _: models.User = Depends(_require_admin),
- ):
-     if start and end and start > end:
-         raise HTTPException(status_code=400, detail="Start date must be on or before end date")
- 
-     if start and end:
-         start_date = date(start.year, start.month, 1)
-         end_date = end
-     else:
-         today = date.today()
-         end_date = today
-         start_date = _add_months(date(today.year, today.month, 1), -(months_back - 1))
- 
-     months = _iter_months(start_date, end_date)
-     start_ts = datetime.combine(start_date, time.min)
-     end_ts_exclusive = datetime.combine(end_date + timedelta(days=1), time.min)
- 
-     _normalized_profession, provider_ids_subquery = _normalize_profession_filter(
-         db,
-         profession,
-     )
-     profession_label_expr = _profession_label_expression(db)
-+    month_expr = _month_key_expr(db, models.Booking.start_time)
- 
-     retention_query = (
-         db.query(
-             models.Provider.id.label("provider_id"),
-             models.User.username.label("provider_name"),
-             profession_label_expr.label("profession"),
--            func.strftime("%Y-%m", models.Booking.start_time).label("month"),
-+            month_expr.label("month"),
-             func.count(models.Booking.id).label("bookings"),
-         )
-         .join(models.Service, models.Booking.service_id == models.Service.id)
-         .join(models.Provider, models.Service.provider_id == models.Provider.id)
-         .join(models.User, models.Provider.user_id == models.User.id)
-         .filter(models.Booking.start_time >= start_ts)
-         .filter(models.Booking.start_time < end_ts_exclusive)
-         .filter(models.Booking.status != "cancelled")
-         .group_by(
-             models.Provider.id,
-             models.User.username,
-             profession_label_expr,
--            func.strftime("%Y-%m", models.Booking.start_time),
-+            month_expr,
-         )
-     )
- 
-     if provider_ids_subquery is not None:
-         retention_query = retention_query.filter(models.Provider.id.in_(provider_ids_subquery))
- 
-     retention_rows = retention_query.all()
- 
-     providers_map = defaultdict(lambda: {"active_months": set()})
-     for row in retention_rows:
-         providers_map[row.provider_id]["provider_id"] = row.provider_id
-         providers_map[row.provider_id]["provider_name"] = row.provider_name
-         providers_map[row.provider_id]["profession"] = row.profession
-         providers_map[row.provider_id]["active_months"].add(row.month)
- 
-     providers = []
-     for provider_id, payload in providers_map.items():
-         active_months = sorted(payload["active_months"])
-         last_active = active_months[-1] if active_months else None
-         providers.append(
-             {
-                 "provider_id": provider_id,
-                 "provider_name": payload.get("provider_name"),
-                 "profession": payload.get("profession"),
-                 "active_months": active_months,
  
 EOF
 )
