@@ -17,6 +17,7 @@ import {
   KeyboardAvoidingView,
   TouchableWithoutFeedback,
   Keyboard,
+  Pressable,
   RefreshControl,
 } from "react-native";
 import { NavigationContainer } from "@react-navigation/native";
@@ -338,6 +339,29 @@ function LoginScreen({
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
+  const [loginSecure, setLoginSecure] = useState(true);
+  const loginSecureTimeoutRef = useRef(null);
+
+  useEffect(() => {
+    return () => {
+      if (loginSecureTimeoutRef.current) {
+        clearTimeout(loginSecureTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  const handleLoginPasswordChange = (value) => {
+    setPassword(value);
+    if (Platform.OS !== "android") return;
+
+    setLoginSecure(false);
+    if (loginSecureTimeoutRef.current) {
+      clearTimeout(loginSecureTimeoutRef.current);
+    }
+    loginSecureTimeoutRef.current = setTimeout(() => {
+      setLoginSecure(true);
+    }, 600);
+  };
 
 
   const login = async () => {
@@ -458,10 +482,7 @@ return (
           placeholder="Password"
           placeholderTextColor={styles.inputPlaceholder.color}
           value={password}
-          onChangeText={setPassword}
-          keyboardType={
-            Platform.OS === "android" ? "visible-password" : "default"
-          }
+          onChangeText={handleLoginPasswordChange}
           autoCapitalize="none"
           autoCorrect={false}
           autoComplete="password"
@@ -470,7 +491,7 @@ return (
           underlineColorAndroid="transparent"
           selectionColor="#16a34a"
           cursorColor="#16a34a"
-          secureTextEntry={true}
+          secureTextEntry={loginSecure}
         />
 
           {goToSignup && (
@@ -641,6 +662,10 @@ function SignupScreen({ goToLogin, goBack, showFlash }) {
   const [username, setUsername] = useState("");
   const [phone, setPhone] = useState("");
   const [isProvider, setIsProvider] = useState(false); // 👈 new
+  const [signupSecure, setSignupSecure] = useState(true);
+  const [confirmSecure, setConfirmSecure] = useState(true);
+  const signupSecureTimeoutRef = useRef(null);
+  const confirmSecureTimeoutRef = useRef(null);
   const keyboardWrapperProps = {
     behavior: Platform.OS === "ios" ? "padding" : "height",
     keyboardVerticalOffset: Platform.OS === "ios" ? 40 : 0,
@@ -658,6 +683,43 @@ function SignupScreen({ goToLogin, goBack, showFlash }) {
       autoComplete: "new-password",
     },
   });
+
+  useEffect(() => {
+    return () => {
+      if (signupSecureTimeoutRef.current) {
+        clearTimeout(signupSecureTimeoutRef.current);
+      }
+      if (confirmSecureTimeoutRef.current) {
+        clearTimeout(confirmSecureTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  const handleSignupPasswordChange = (value) => {
+    setPassword(value);
+    if (Platform.OS !== "android") return;
+
+    setSignupSecure(false);
+    if (signupSecureTimeoutRef.current) {
+      clearTimeout(signupSecureTimeoutRef.current);
+    }
+    signupSecureTimeoutRef.current = setTimeout(() => {
+      setSignupSecure(true);
+    }, 600);
+  };
+
+  const handleConfirmPasswordChange = (value) => {
+    setConfirmPassword(value);
+    if (Platform.OS !== "android") return;
+
+    setConfirmSecure(false);
+    if (confirmSecureTimeoutRef.current) {
+      clearTimeout(confirmSecureTimeoutRef.current);
+    }
+    confirmSecureTimeoutRef.current = setTimeout(() => {
+      setConfirmSecure(true);
+    }, 600);
+  };
 
   const signupValidation = useMemo(() => {
     const errors = {};
@@ -829,10 +891,25 @@ function SignupScreen({ goToLogin, goBack, showFlash }) {
             />
 
             {/* Provider toggle */}
-            <View style={styles.toggleRow}>
-              <Text style={styles.toggleLabel}>Register as Service Provider</Text>
+            <Pressable
+              style={({ pressed }) => [
+                styles.toggleCard,
+                pressed && styles.toggleCardPressed,
+              ]}
+              onPress={() => setIsProvider((prev) => !prev)}
+              accessibilityRole="switch"
+              accessibilityState={{ checked: isProvider }}
+            >
+              <View style={styles.toggleTextGroup}>
+                <Text style={styles.toggleLabel}>
+                  Register as Service Provider
+                </Text>
+                <Text style={styles.toggleHelper}>
+                  Turn this on if you offer services to clients.
+                </Text>
+              </View>
               <Switch value={isProvider} onValueChange={setIsProvider} />
-            </View>
+            </Pressable>
 
             <TextInput
               style={[
@@ -844,10 +921,7 @@ function SignupScreen({ goToLogin, goBack, showFlash }) {
               placeholder="Password"
               placeholderTextColor={styles.inputPlaceholder.color}
               value={password}
-              onChangeText={setPassword}
-              keyboardType={
-                Platform.OS === "android" ? "visible-password" : "default"
-              }
+              onChangeText={handleSignupPasswordChange}
               autoCapitalize="none"
               autoCorrect={false}
               spellCheck={false}
@@ -858,7 +932,7 @@ function SignupScreen({ goToLogin, goBack, showFlash }) {
               underlineColorAndroid="transparent"
               selectionColor="#16a34a"
               cursorColor="#16a34a"
-              secureTextEntry={true}
+              secureTextEntry={signupSecure}
             />
             {signupValidation.errors.password && (
               <Text style={styles.inputErrorText}>
@@ -876,10 +950,7 @@ function SignupScreen({ goToLogin, goBack, showFlash }) {
               placeholder="Confirm Password"
               placeholderTextColor={styles.inputPlaceholder.color}
               value={confirmPassword}
-              onChangeText={setConfirmPassword}
-              keyboardType={
-                Platform.OS === "android" ? "visible-password" : "default"
-              }
+              onChangeText={handleConfirmPasswordChange}
               autoCapitalize="none"
               autoCorrect={false}
               spellCheck={false}
@@ -890,7 +961,7 @@ function SignupScreen({ goToLogin, goBack, showFlash }) {
               underlineColorAndroid="transparent"
               selectionColor="#16a34a"
               cursorColor="#16a34a"
-              secureTextEntry={true}
+              secureTextEntry={confirmSecure}
             />
             {signupValidation.errors.confirmPassword && (
               <Text style={styles.inputErrorText}>
@@ -6401,18 +6472,40 @@ cardHeartButton: {
     color: "#b91c1c",
   },
 
-  toggleRow: {
+  toggleCard: {
     width: "100%",
     flexDirection: "row",
     alignItems: "center",
-    marginBottom: 12,
+    justifyContent: "space-between",
+    backgroundColor: "#ffffff",
+    borderWidth: 2,
+    borderColor: "#16a34a",
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    marginBottom: 16,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  toggleCardPressed: {
+    opacity: 0.9,
+  },
+  toggleTextGroup: {
+    flex: 1,
+    marginRight: 12,
   },
   toggleLabel: {
-    fontSize: 14,
-    color: "#166534",
-    marginRight: 8,
-    flex: 1,
-    flexShrink: 1,
+    fontSize: 17,
+    fontWeight: "700",
+    color: "#14532d",
+  },
+  toggleHelper: {
+    marginTop: 4,
+    fontSize: 13,
+    color: "#6b7280",
   },
 
     providerScroll: {
