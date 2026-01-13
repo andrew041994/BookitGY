@@ -1,6 +1,6 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
 diff --git a/frontend/src/main.jsx b/frontend/src/main.jsx
-index 92de01d4b424cd67e180b70fe98372895c613a67..7db0cf14a11a904c0454df4407296bb34b22f28e 100644
+index 92de01d4b424cd67e180b70fe98372895c613a67..5b461e47662074da21053097cfbf0f5aaead4c85 100644
 --- a/frontend/src/main.jsx
 +++ b/frontend/src/main.jsx
 @@ -42,50 +42,66 @@ const loadLeaflet = () => {
@@ -185,7 +185,7 @@ index 92de01d4b424cd67e180b70fe98372895c613a67..7db0cf14a11a904c0454df4407296bb3
 +          {error && <p className="form-error">{error}</p>}
 +          {loading && !error && <p className="muted">Loading signups…</p>}
 +
-+          <div className="provider-missing-table">
++          <div className="provider-missing-table signup-totals-table">
 +            <table>
 +              <thead>
 +                <tr>

@@ -90,11 +90,33 @@ def get_signup_report(
         .one()
     )
 
+<<<<<<< ours
+=======
+    total_providers, total_clients = (
+        db.query(
+            func.coalesce(
+                func.sum(case((models.User.is_provider.is_(True), 1), else_=0)),
+                0,
+            ),
+            func.coalesce(
+                func.sum(case((models.User.is_provider.is_(False), 1), else_=0)),
+                0,
+            ),
+        )
+        .one()
+    )
+
+>>>>>>> theirs
     return {
         "start": start,
         "end": end,
         "providers": int(providers_count or 0),
         "clients": int(clients_count or 0),
+<<<<<<< ours
+=======
+        "total_providers": int(total_providers or 0),
+        "total_clients": int(total_clients or 0),
+>>>>>>> theirs
     }
 
 
