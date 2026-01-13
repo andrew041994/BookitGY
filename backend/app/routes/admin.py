@@ -1,9 +1,10 @@
 import logging
+from collections import defaultdict
 from datetime import date, datetime, time, timedelta
 from typing import List, Optional
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query
-from sqlalchemy import case, func, literal
+from sqlalchemy import and_, case, func, literal
 from sqlalchemy.orm import Session
 
 from app import crud, schemas, models
@@ -19,6 +20,57 @@ def _require_admin(current_user: models.User = Depends(get_current_user_from_hea
     if not getattr(current_user, "is_admin", False):
         raise HTTPException(status_code=403, detail="Admin access required")
     return current_user
+
+
+def _normalize_profession_filter(
+    db: Session,
+    profession: Optional[str],
+):
+    normalized_profession = (profession or "all").strip()
+    provider_ids_subquery = None
+    if (
+        normalized_profession
+        and normalized_profession.lower() != "all"
+        and hasattr(models, "ProviderProfession")
+    ):
+        provider_ids_subquery = (
+            db.query(models.ProviderProfession.provider_id)
+            .filter(models.ProviderProfession.name.ilike(normalized_profession))
+            .subquery()
+        )
+    return normalized_profession or "all", provider_ids_subquery
+
+
+def _profession_label_expression(db: Session):
+    if hasattr(models, "ProviderProfession"):
+        return (
+            db.query(models.ProviderProfession.name)
+            .filter(models.ProviderProfession.provider_id == models.Provider.id)
+            .order_by(models.ProviderProfession.name.asc())
+            .limit(1)
+            .scalar_subquery()
+        )
+    return literal(None)
+
+
+def _iter_months(start: date, end: date) -> List[str]:
+    current = date(start.year, start.month, 1)
+    end_month = date(end.year, end.month, 1)
+    months: List[str] = []
+    while current <= end_month:
+        months.append(current.strftime("%Y-%m"))
+        if current.month == 12:
+            current = date(current.year + 1, 1, 1)
+        else:
+            current = date(current.year, current.month + 1, 1)
+    return months
+
+
+def _add_months(start: date, months: int) -> date:
+    month_index = start.month - 1 + months
+    year = start.year + month_index // 12
+    month = month_index % 12 + 1
+    return date(year, month, 1)
 
 
 @router.get("/service-charge", response_model=schemas.ServiceChargeOut)
@@ -274,6 +326,458 @@ def get_booking_metrics(
             }
             for row in provider_rows
         ],
+    }
+
+
+@router.get(
+    "/reports/provider-performance/summary",
+    response_model=schemas.AdminProviderPerformanceSummaryOut,
+)
+def get_provider_performance_summary(
+    start: date = Query(...),
+    end: date = Query(...),
+    profession: Optional[str] = Query(None),
+    status: Optional[str] = Query(None),
+    db: Session = Depends(get_db),
+    _: models.User = Depends(_require_admin),
+):
+    if start > end:
+        raise HTTPException(status_code=400, detail="Start date must be on or before end date")
+
+    start_ts = datetime.combine(start, time.min)
+    end_ts_exclusive = datetime.combine(end + timedelta(days=1), time.min)
+
+    normalized_status = (status or "all").strip().lower()
+    normalized_profession, provider_ids_subquery = _normalize_profession_filter(
+        db,
+        profession,
+    )
+    profession_label_expr = _profession_label_expression(db)
+
+    base_query = (
+        db.query(models.Booking, models.Service, models.Provider, models.User)
+        .join(models.Service, models.Booking.service_id == models.Service.id)
+        .join(models.Provider, models.Service.provider_id == models.Provider.id)
+        .join(models.User, models.Provider.user_id == models.User.id)
+        .filter(models.Booking.start_time >= start_ts)
+        .filter(models.Booking.start_time < end_ts_exclusive)
+    )
+
+    if provider_ids_subquery is not None:
+        base_query = base_query.filter(models.Provider.id.in_(provider_ids_subquery))
+
+    if normalized_status and normalized_status != "all":
+        base_query = base_query.filter(models.Booking.status == normalized_status)
+
+    top_by_bookings_rows = (
+        base_query.with_entities(
+            models.Provider.id.label("provider_id"),
+            models.User.username.label("provider_name"),
+            profession_label_expr.label("profession"),
+            func.count(models.Booking.id).label("total_bookings"),
+        )
+        .group_by(models.Provider.id, models.User.username, profession_label_expr)
+        .order_by(func.count(models.Booking.id).desc(), models.User.username.asc())
+        .all()
+    )
+
+    revenue_supported = hasattr(models.Service, "price_gyd")
+    top_by_revenue_rows = []
+    if revenue_supported:
+        top_by_revenue_rows = (
+            base_query.with_entities(
+                models.Provider.id.label("provider_id"),
+                models.User.username.label("provider_name"),
+                profession_label_expr.label("profession"),
+                func.coalesce(func.sum(models.Service.price_gyd), 0.0).label("total_revenue"),
+            )
+            .group_by(models.Provider.id, models.User.username, profession_label_expr)
+            .order_by(func.coalesce(func.sum(models.Service.price_gyd), 0.0).desc())
+            .all()
+        )
+
+    most_booked_services_rows = (
+        base_query.with_entities(
+            models.Service.id.label("service_id"),
+            models.Service.name.label("service_name"),
+            models.Provider.id.label("provider_id"),
+            models.User.username.label("provider_name"),
+            func.count(models.Booking.id).label("bookings"),
+        )
+        .group_by(
+            models.Service.id,
+            models.Service.name,
+            models.Provider.id,
+            models.User.username,
+        )
+        .order_by(func.count(models.Booking.id).desc(), models.Service.name.asc())
+        .all()
+    )
+
+    cancellation_rows = (
+        base_query.with_entities(
+            models.Provider.id.label("provider_id"),
+            models.User.username.label("provider_name"),
+            profession_label_expr.label("profession"),
+            func.count(models.Booking.id).label("total_bookings"),
+            func.coalesce(
+                func.sum(case((models.Booking.status == "cancelled", 1), else_=0)),
+                0,
+            ).label("cancelled"),
+        )
+        .group_by(models.Provider.id, models.User.username, profession_label_expr)
+        .all()
+    )
+
+    high_cancellation_rates = []
+    for row in cancellation_rows:
+        total_bookings = int(row.total_bookings or 0)
+        cancelled = int(row.cancelled or 0)
+        if total_bookings <= 0:
+            continue
+        rate = cancelled / total_bookings if total_bookings else 0.0
+        high_cancellation_rates.append(
+            {
+                "provider_id": row.provider_id,
+                "provider_name": row.provider_name,
+                "profession": row.profession,
+                "cancelled": cancelled,
+                "total_bookings": total_bookings,
+                "cancellation_rate": round(rate, 4),
+            }
+        )
+    high_cancellation_rates.sort(
+        key=lambda item: (item["cancellation_rate"], item["total_bookings"]),
+        reverse=True,
+    )
+
+    booking_filters = [
+        models.Booking.start_time >= start_ts,
+        models.Booking.start_time < end_ts_exclusive,
+    ]
+    if normalized_status and normalized_status != "all":
+        booking_filters.append(models.Booking.status == normalized_status)
+
+    low_activity_query = (
+        db.query(
+            models.Provider.id.label("provider_id"),
+            models.User.username.label("provider_name"),
+            profession_label_expr.label("profession"),
+            func.count(models.Booking.id).label("bookings_in_range"),
+        )
+        .join(models.User, models.Provider.user_id == models.User.id)
+        .outerjoin(models.Service, models.Service.provider_id == models.Provider.id)
+        .outerjoin(
+            models.Booking,
+            and_(
+                models.Booking.service_id == models.Service.id,
+                *booking_filters,
+            ),
+        )
+        .group_by(models.Provider.id, models.User.username, profession_label_expr)
+        .having(func.count(models.Booking.id) <= 3)
+        .order_by(func.count(models.Booking.id).asc(), models.User.username.asc())
+    )
+
+    if provider_ids_subquery is not None:
+        low_activity_query = low_activity_query.filter(models.Provider.id.in_(provider_ids_subquery))
+
+    low_activity_rows = low_activity_query.all()
+
+    return {
+        "start": start,
+        "end": end,
+        "filters": {
+            "profession": normalized_profession or "all",
+            "status": normalized_status or "all",
+        },
+        "revenue_supported": revenue_supported,
+        "top_providers_by_bookings": [
+            {
+                "provider_id": row.provider_id,
+                "provider_name": row.provider_name,
+                "profession": row.profession,
+                "total_bookings": int(row.total_bookings or 0),
+            }
+            for row in top_by_bookings_rows
+        ],
+        "top_providers_by_revenue": [
+            {
+                "provider_id": row.provider_id,
+                "provider_name": row.provider_name,
+                "profession": row.profession,
+                "total_revenue": float(row.total_revenue or 0.0),
+            }
+            for row in top_by_revenue_rows
+        ],
+        "most_booked_services": [
+            {
+                "service_id": row.service_id,
+                "service_name": row.service_name,
+                "provider_id": row.provider_id,
+                "provider_name": row.provider_name,
+                "bookings": int(row.bookings or 0),
+            }
+            for row in most_booked_services_rows
+        ],
+        "high_cancellation_rates": high_cancellation_rates,
+        "low_activity_providers": [
+            {
+                "provider_id": row.provider_id,
+                "provider_name": row.provider_name,
+                "profession": row.profession,
+                "bookings_in_range": int(row.bookings_in_range or 0),
+            }
+            for row in low_activity_rows
+        ],
+    }
+
+
+@router.get(
+    "/reports/provider-performance/retention",
+    response_model=schemas.AdminProviderRetentionOut,
+)
+def get_provider_retention(
+    months_back: int = Query(6, ge=1),
+    start: Optional[date] = Query(None),
+    end: Optional[date] = Query(None),
+    profession: Optional[str] = Query(None),
+    db: Session = Depends(get_db),
+    _: models.User = Depends(_require_admin),
+):
+    if start and end and start > end:
+        raise HTTPException(status_code=400, detail="Start date must be on or before end date")
+
+    if start and end:
+        start_date = date(start.year, start.month, 1)
+        end_date = end
+    else:
+        today = date.today()
+        end_date = today
+        start_date = _add_months(date(today.year, today.month, 1), -(months_back - 1))
+
+    months = _iter_months(start_date, end_date)
+    start_ts = datetime.combine(start_date, time.min)
+    end_ts_exclusive = datetime.combine(end_date + timedelta(days=1), time.min)
+
+    _normalized_profession, provider_ids_subquery = _normalize_profession_filter(
+        db,
+        profession,
+    )
+    profession_label_expr = _profession_label_expression(db)
+
+    retention_query = (
+        db.query(
+            models.Provider.id.label("provider_id"),
+            models.User.username.label("provider_name"),
+            profession_label_expr.label("profession"),
+            func.strftime("%Y-%m", models.Booking.start_time).label("month"),
+            func.count(models.Booking.id).label("bookings"),
+        )
+        .join(models.Service, models.Booking.service_id == models.Service.id)
+        .join(models.Provider, models.Service.provider_id == models.Provider.id)
+        .join(models.User, models.Provider.user_id == models.User.id)
+        .filter(models.Booking.start_time >= start_ts)
+        .filter(models.Booking.start_time < end_ts_exclusive)
+        .filter(models.Booking.status != "cancelled")
+        .group_by(
+            models.Provider.id,
+            models.User.username,
+            profession_label_expr,
+            func.strftime("%Y-%m", models.Booking.start_time),
+        )
+    )
+
+    if provider_ids_subquery is not None:
+        retention_query = retention_query.filter(models.Provider.id.in_(provider_ids_subquery))
+
+    retention_rows = retention_query.all()
+
+    providers_map = defaultdict(lambda: {"active_months": set()})
+    for row in retention_rows:
+        providers_map[row.provider_id]["provider_id"] = row.provider_id
+        providers_map[row.provider_id]["provider_name"] = row.provider_name
+        providers_map[row.provider_id]["profession"] = row.profession
+        providers_map[row.provider_id]["active_months"].add(row.month)
+
+    providers = []
+    for provider_id, payload in providers_map.items():
+        active_months = sorted(payload["active_months"])
+        last_active = active_months[-1] if active_months else None
+        providers.append(
+            {
+                "provider_id": provider_id,
+                "provider_name": payload.get("provider_name"),
+                "profession": payload.get("profession"),
+                "active_months": active_months,
+                "months_active_count": len(active_months),
+                "is_active_every_month": len(active_months) == len(months),
+                "last_active_month": last_active,
+            }
+        )
+
+    providers.sort(key=lambda item: (item["months_active_count"], item["provider_name"] or ""), reverse=True)
+
+    return {
+        "months": months,
+        "providers": providers,
+    }
+
+
+@router.get(
+    "/reports/provider-performance/low-activity",
+    response_model=schemas.AdminLowActivityOut,
+)
+def get_low_activity_providers(
+    month: Optional[str] = Query(None),
+    year: Optional[int] = Query(None, ge=2000),
+    threshold: int = Query(3, ge=0),
+    profession: Optional[str] = Query(None),
+    db: Session = Depends(get_db),
+    _: models.User = Depends(_require_admin),
+):
+    if month:
+        if "-" in month:
+            try:
+                year_part, month_part = month.split("-")
+                month_year = date(int(year_part), int(month_part), 1)
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail="Invalid month format. Use YYYY-MM.") from exc
+        else:
+            if year is None:
+                raise HTTPException(status_code=400, detail="year is required when month is numeric")
+            try:
+                month_year = date(year, int(month), 1)
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail="Invalid year/month.") from exc
+    elif year is not None:
+        raise HTTPException(status_code=400, detail="month is required when year is provided")
+    else:
+        raise HTTPException(status_code=400, detail="month is required")
+
+    start_ts = datetime.combine(month_year, time.min)
+    next_month = _add_months(month_year, 1)
+    end_ts_exclusive = datetime.combine(next_month, time.min)
+
+    _normalized_profession, provider_ids_subquery = _normalize_profession_filter(
+        db,
+        profession,
+    )
+    profession_label_expr = _profession_label_expression(db)
+
+    low_activity_query = (
+        db.query(
+            models.Provider.id.label("provider_id"),
+            models.User.username.label("provider_name"),
+            profession_label_expr.label("profession"),
+            func.count(models.Booking.id).label("bookings"),
+        )
+        .join(models.User, models.Provider.user_id == models.User.id)
+        .outerjoin(models.Service, models.Service.provider_id == models.Provider.id)
+        .outerjoin(
+            models.Booking,
+            and_(
+                models.Booking.service_id == models.Service.id,
+                models.Booking.start_time >= start_ts,
+                models.Booking.start_time < end_ts_exclusive,
+            ),
+        )
+        .group_by(models.Provider.id, models.User.username, profession_label_expr)
+        .having(func.count(models.Booking.id) <= threshold)
+        .order_by(func.count(models.Booking.id).asc(), models.User.username.asc())
+    )
+
+    if provider_ids_subquery is not None:
+        low_activity_query = low_activity_query.filter(models.Provider.id.in_(provider_ids_subquery))
+
+    providers = [
+        {
+            "provider_id": row.provider_id,
+            "provider_name": row.provider_name,
+            "profession": row.profession,
+            "bookings": int(row.bookings or 0),
+        }
+        for row in low_activity_query.all()
+    ]
+
+    return {
+        "month": month_year.strftime("%Y-%m"),
+        "threshold": threshold,
+        "providers": providers,
+    }
+
+
+@router.get(
+    "/reports/provider-performance/cancellation-rates",
+    response_model=schemas.AdminCancellationRatesOut,
+)
+def get_provider_cancellation_rates(
+    start: date = Query(...),
+    end: date = Query(...),
+    min_bookings: int = Query(5, ge=1),
+    profession: Optional[str] = Query(None),
+    db: Session = Depends(get_db),
+    _: models.User = Depends(_require_admin),
+):
+    if start > end:
+        raise HTTPException(status_code=400, detail="Start date must be on or before end date")
+
+    start_ts = datetime.combine(start, time.min)
+    end_ts_exclusive = datetime.combine(end + timedelta(days=1), time.min)
+
+    normalized_profession, provider_ids_subquery = _normalize_profession_filter(
+        db,
+        profession,
+    )
+    profession_label_expr = _profession_label_expression(db)
+
+    cancellation_query = (
+        db.query(
+            models.Provider.id.label("provider_id"),
+            models.User.username.label("provider_name"),
+            profession_label_expr.label("profession"),
+            func.count(models.Booking.id).label("total"),
+            func.coalesce(
+                func.sum(case((models.Booking.status == "cancelled", 1), else_=0)),
+                0,
+            ).label("cancelled"),
+        )
+        .join(models.Service, models.Booking.service_id == models.Service.id)
+        .join(models.Provider, models.Service.provider_id == models.Provider.id)
+        .join(models.User, models.Provider.user_id == models.User.id)
+        .filter(models.Booking.start_time >= start_ts)
+        .filter(models.Booking.start_time < end_ts_exclusive)
+        .group_by(models.Provider.id, models.User.username, profession_label_expr)
+    )
+
+    if provider_ids_subquery is not None:
+        cancellation_query = cancellation_query.filter(models.Provider.id.in_(provider_ids_subquery))
+
+    providers = []
+    for row in cancellation_query.all():
+        total = int(row.total or 0)
+        cancelled = int(row.cancelled or 0)
+        if total < min_bookings:
+            continue
+        rate = cancelled / total if total else 0.0
+        providers.append(
+            {
+                "provider_id": row.provider_id,
+                "provider_name": row.provider_name,
+                "profession": row.profession,
+                "cancelled": cancelled,
+                "total": total,
+                "cancellation_rate": round(rate, 4),
+            }
+        )
+
+    providers.sort(key=lambda item: (item["cancellation_rate"], item["total"]), reverse=True)
+
+    return {
+        "start": start,
+        "end": end,
+        "min_bookings": min_bookings,
+        "providers": providers,
     }
 
 

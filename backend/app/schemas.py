@@ -280,6 +280,85 @@ class AdminProfessionsOut(BaseModel):
     professions: List[str] = []
 
 
+class AdminProviderPerformanceFilters(BaseModel):
+    profession: str
+    status: str
+
+
+class AdminProviderPerformanceProviderRow(BaseModel):
+    provider_id: int
+    provider_name: Optional[str] = None
+    profession: Optional[str] = None
+    total_bookings: Optional[int] = None
+    total_revenue: Optional[float] = None
+
+
+class AdminProviderPerformanceServiceRow(BaseModel):
+    service_id: int
+    service_name: Optional[str] = None
+    provider_id: Optional[int] = None
+    provider_name: Optional[str] = None
+    bookings: int
+
+
+class ProviderCancellationRow(BaseModel):
+    provider_id: int
+    provider_name: Optional[str] = None
+    profession: Optional[str] = None
+    cancelled: int
+    total: Optional[int] = None
+    total_bookings: Optional[int] = None
+    cancellation_rate: float
+
+
+class ProviderLowActivityRow(BaseModel):
+    provider_id: int
+    provider_name: Optional[str] = None
+    profession: Optional[str] = None
+    bookings: Optional[int] = None
+    bookings_in_range: Optional[int] = None
+
+
+class AdminProviderPerformanceSummaryOut(BaseModel):
+    start: date
+    end: date
+    filters: AdminProviderPerformanceFilters
+    revenue_supported: bool
+    top_providers_by_bookings: List[AdminProviderPerformanceProviderRow] = []
+    top_providers_by_revenue: List[AdminProviderPerformanceProviderRow] = []
+    most_booked_services: List[AdminProviderPerformanceServiceRow] = []
+    high_cancellation_rates: List[ProviderCancellationRow] = []
+    low_activity_providers: List[ProviderLowActivityRow] = []
+
+
+class ProviderRetentionRow(BaseModel):
+    provider_id: int
+    provider_name: Optional[str] = None
+    profession: Optional[str] = None
+    active_months: List[str] = []
+    months_active_count: int
+    is_active_every_month: bool
+    last_active_month: Optional[str] = None
+
+
+class AdminProviderRetentionOut(BaseModel):
+    months: List[str] = []
+    providers: List[ProviderRetentionRow] = []
+
+
+class AdminLowActivityOut(BaseModel):
+    month: str
+    threshold: int
+    providers: List[ProviderLowActivityRow] = []
+
+
+class AdminCancellationRatesOut(BaseModel):
+    start: date
+    end: date
+    min_bookings: int
+    providers: List[ProviderCancellationRow] = []
+
+
 class ProviderBillingCycleItem(BaseModel):
     service_id: int
     service_name: str

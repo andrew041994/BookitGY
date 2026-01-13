@@ -1,243 +1,549 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
-diff --git a/backend/app/routes/admin.py b/backend/app/routes/admin.py
-index abca7a56fb59cd7e22ea3d8e8ee9376a86d7bfc5..c3acdf62be6755b75210fe554b0e6e5fb180b90d 100644
---- a/backend/app/routes/admin.py
-+++ b/backend/app/routes/admin.py
-@@ -1,31 +1,31 @@
- import logging
- from datetime import date, datetime, time, timedelta
- from typing import List, Optional
- 
- from fastapi import APIRouter, Body, Depends, HTTPException, Query
--from sqlalchemy import case, func
-+from sqlalchemy import case, func, literal
- from sqlalchemy.orm import Session
- 
- from app import crud, schemas, models
- from app.utils.email import send_billing_paid_email, send_provider_suspension_email
- from app.database import get_db
- from app.security import get_current_user_from_header
- 
- router = APIRouter(prefix="/admin", tags=["admin"])
- logger = logging.getLogger(__name__)
- 
- 
- def _require_admin(current_user: models.User = Depends(get_current_user_from_header)) -> models.User:
-     if not getattr(current_user, "is_admin", False):
-         raise HTTPException(status_code=403, detail="Admin access required")
-     return current_user
- 
- 
- @router.get("/service-charge", response_model=schemas.ServiceChargeOut)
- def get_service_charge(
-     db: Session = Depends(get_db),
-     _: models.User = Depends(_require_admin),
- ):
-     pct = crud.get_platform_service_charge_percentage(db)
-     return {"service_charge_percentage": float(pct)}
- 
-@@ -91,87 +91,96 @@ def get_signup_report(
+diff --git a/frontend/src/main.jsx b/frontend/src/main.jsx
+index 524414b9750bd6a98c4a668680c5e86442c77c62..4556209ebe9d07f5dc26b07846ea26f53dcbafe1 100644
+--- a/frontend/src/main.jsx
++++ b/frontend/src/main.jsx
+@@ -1555,51 +1555,50 @@ function App() {
+             </div>
+           </div>
+         </div>
+       </div>
      )
+   }
  
-     total_providers, total_clients = (
-         db.query(
-             func.coalesce(
-                 func.sum(case((models.User.is_provider.is_(True), 1), else_=0)),
-                 0,
-             ),
-             func.coalesce(
-                 func.sum(case((models.User.is_provider.is_(False), 1), else_=0)),
-                 0,
-             ),
-         )
-         .one()
+   const AdminBookingMetrics = () => {
+     const [startDate, setStartDate] = React.useState(() => {
+       const today = new Date()
+       const start = new Date()
+       start.setDate(today.getDate() - 6)
+       return formatDateInput(start)
+     })
+     const [endDate, setEndDate] = React.useState(() => formatDateInput(new Date()))
+     const [status, setStatus] = React.useState('all')
+     const [profession, setProfession] = React.useState('all')
+     const [professions, setProfessions] = React.useState([])
+     const [report, setReport] = React.useState(null)
+     const [loading, setLoading] = React.useState(false)
+     const [error, setError] = React.useState('')
+     const [loadingProfessions, setLoadingProfessions] = React.useState(false)
+ 
+     const statusOptions = [
+       { value: 'all', label: 'All' },
+-      { value: 'upcoming', label: 'Upcoming' },
+       { value: 'completed', label: 'Completed' },
+       { value: 'cancelled', label: 'Cancelled' },
+       { value: 'confirmed', label: 'Confirmed' },
+       { value: 'pending', label: 'Pending' },
+     ]
+ 
+     const loadProfessions = React.useCallback(async () => {
+       setLoadingProfessions(true)
+       try {
+         const res = await apiClient.get('/admin/reports/professions')
+         setProfessions(res.data.professions || [])
+       } catch (err) {
+         logApiError(err)
+         setError('Unable to load professions. Please try again.')
+       } finally {
+         setLoadingProfessions(false)
+       }
+     }, [])
+ 
+     const runReport = React.useCallback(async () => {
+       const parsedStart = parseDateInput(startDate)
+       const parsedEnd = parseDateInput(endDate)
+ 
+       if (!parsedStart || !parsedEnd) {
+         setError('Start and end dates are required.')
+@@ -1751,89 +1750,454 @@ function App() {
+               <tbody>
+                 {report?.by_provider?.length ? (
+                   report.by_provider.map((row) => (
+                     <tr key={row.provider_id}>
+                       <td>{row.provider_name || '—'}</td>
+                       <td>{row.profession || '—'}</td>
+                       <td>{row.total_bookings}</td>
+                       <td>{row.completed}</td>
+                       <td>{row.cancelled}</td>
+                       <td>{row.upcoming}</td>
+                     </tr>
+                   ))
+                 ) : (
+                   <tr>
+                     <td colSpan={6}>{loading ? 'Loading…' : 'No bookings found for this range.'}</td>
+                   </tr>
+                 )}
+               </tbody>
+             </table>
+           </div>
+         </div>
+       </div>
      )
+   }
  
-     return {
-         "start": start,
-         "end": end,
-         "providers": int(providers_count or 0),
-         "clients": int(clients_count or 0),
-         "total_providers": int(total_providers or 0),
-         "total_clients": int(total_clients or 0),
-     }
- 
-+# Smoke test:
-+# curl -H "Authorization: Bearer <token>" "https://<backend>/admin/reports/professions"
-+# curl -H "Authorization: Bearer <token>" "https://<backend>/admin/reports/booking-metrics?start=2026-01-07&end=2026-01-13"
- 
- @router.get("/reports/professions", response_model=schemas.AdminProfessionsOut)
- def list_professions(
-     db: Session = Depends(get_db),
-     _: models.User = Depends(_require_admin),
- ):
--    rows = (
--        db.query(models.ProviderProfession.name)
--        .filter(models.ProviderProfession.name.isnot(None))
--        .distinct()
--        .order_by(models.ProviderProfession.name.asc())
--        .all()
--    )
--    professions = [row[0] for row in rows if row[0]]
-+    professions = []
-+    if hasattr(models, "ProviderProfession"):
-+        rows = (
-+            db.query(models.ProviderProfession.name)
-+            .filter(models.ProviderProfession.name.isnot(None))
-+            .distinct()
-+            .order_by(models.ProviderProfession.name.asc())
-+            .all()
-+        )
-+        professions = [row[0] for row in rows if row[0]]
-     return {"professions": professions}
- 
- 
- @router.get("/reports/booking-metrics", response_model=schemas.AdminBookingMetricsOut)
- def get_booking_metrics(
-     start: date = Query(...),
-     end: date = Query(...),
-     status: Optional[str] = Query(None),
-     profession: Optional[str] = Query(None),
-     db: Session = Depends(get_db),
-     _: models.User = Depends(_require_admin),
- ):
-     if start > end:
-         raise HTTPException(status_code=400, detail="Start date must be on or before end date")
- 
-     start_ts = datetime.combine(start, time.min)
-     end_ts_exclusive = datetime.combine(end + timedelta(days=1), time.min)
- 
-     normalized_status = (status or "all").strip().lower()
-     normalized_profession = (profession or "all").strip()
- 
-     provider_ids_subquery = None
--    if normalized_profession and normalized_profession.lower() != "all":
-+    if (
-+        normalized_profession
-+        and normalized_profession.lower() != "all"
-+        and hasattr(models, "ProviderProfession")
-+    ):
-         provider_ids_subquery = (
-             db.query(models.ProviderProfession.provider_id)
-             .filter(models.ProviderProfession.name.ilike(normalized_profession))
-             .subquery()
-         )
- 
-     base_query = (
-         db.query(models.Booking, models.Service, models.Provider, models.User)
-         .join(models.Service, models.Booking.service_id == models.Service.id)
-         .join(models.Provider, models.Service.provider_id == models.Provider.id)
-         .join(models.User, models.Provider.user_id == models.User.id)
-         .filter(models.Booking.start_time >= start_ts)
-         .filter(models.Booking.start_time < end_ts_exclusive)
++  const AdminProviderPerformanceReports = () => {
++    const [startDate, setStartDate] = React.useState(() => {
++      const today = new Date()
++      const start = new Date()
++      start.setDate(today.getDate() - 29)
++      return formatDateInput(start)
++    })
++    const [endDate, setEndDate] = React.useState(() => formatDateInput(new Date()))
++    const [status, setStatus] = React.useState('all')
++    const [profession, setProfession] = React.useState('all')
++    const [professions, setProfessions] = React.useState([])
++    const [summary, setSummary] = React.useState(null)
++    const [retention, setRetention] = React.useState(null)
++    const [loading, setLoading] = React.useState(false)
++    const [loadingProfessions, setLoadingProfessions] = React.useState(false)
++    const [error, setError] = React.useState('')
++
++    const statusOptions = [
++      { value: 'all', label: 'All' },
++      { value: 'completed', label: 'Completed' },
++      { value: 'cancelled', label: 'Cancelled' },
++      { value: 'confirmed', label: 'Confirmed' },
++      { value: 'pending', label: 'Pending' },
++    ]
++
++    const loadProfessions = React.useCallback(async () => {
++      setLoadingProfessions(true)
++      try {
++        const res = await apiClient.get('/admin/reports/professions')
++        setProfessions(res.data.professions || [])
++      } catch (err) {
++        logApiError(err)
++        setError('Unable to load professions. Please try again.')
++      } finally {
++        setLoadingProfessions(false)
++      }
++    }, [])
++
++    const runReport = React.useCallback(async () => {
++      const parsedStart = parseDateInput(startDate)
++      const parsedEnd = parseDateInput(endDate)
++
++      if (!parsedStart || !parsedEnd) {
++        setError('Start and end dates are required.')
++        return
++      }
++
++      if (parsedStart > parsedEnd) {
++        setError('Start date must be on or before end date.')
++        return
++      }
++
++      setLoading(true)
++      setError('')
++      try {
++        const [summaryRes, retentionRes] = await Promise.all([
++          apiClient.get('/admin/reports/provider-performance/summary', {
++            params: {
++              start: startDate,
++              end: endDate,
++              status,
++              profession,
++            },
++          }),
++          apiClient.get('/admin/reports/provider-performance/retention', {
++            params: {
++              start: startDate,
++              end: endDate,
++              profession,
++            },
++          }),
++        ])
++        setSummary(summaryRes.data)
++        setRetention(retentionRes.data)
++      } catch (err) {
++        logApiError(err)
++        setError('Unable to load provider performance reports. Please try again.')
++        setSummary(null)
++        setRetention(null)
++      } finally {
++        setLoading(false)
++      }
++    }, [endDate, profession, startDate, status])
++
++    React.useEffect(() => {
++      loadProfessions()
++    }, [loadProfessions])
++
++    React.useEffect(() => {
++      runReport()
++    }, [runReport])
++
++    const showRevenue = summary?.revenue_supported
++    const retentionMonths = retention?.months?.length || 0
++
++    return (
++      <div className="admin-page">
++        <div className="admin-header">
++          <div>
++            <p className="eyebrow">Reports</p>
++            <h1>Provider Performance Reports</h1>
++            <p className="header-subtitle">Understand which providers drive value and who needs help.</p>
++          </div>
++        </div>
++
++        <div className="admin-card">
++          <div className="form-grid">
++            <label className="form-field">
++              <span>Start date</span>
++              <input
++                type="date"
++                value={startDate}
++                onChange={(e) => setStartDate(e.target.value)}
++              />
++            </label>
++            <label className="form-field">
++              <span>End date</span>
++              <input
++                type="date"
++                value={endDate}
++                onChange={(e) => setEndDate(e.target.value)}
++              />
++            </label>
++            <label className="form-field">
++              <span>Profession</span>
++              <select value={profession} onChange={(e) => setProfession(e.target.value)}>
++                <option value="all">All</option>
++                {professions.map((name) => (
++                  <option key={name} value={name}>
++                    {name}
++                  </option>
++                ))}
++              </select>
++            </label>
++            <label className="form-field">
++              <span>Status</span>
++              <select value={status} onChange={(e) => setStatus(e.target.value)}>
++                {statusOptions.map((option) => (
++                  <option key={option.value} value={option.value}>
++                    {option.label}
++                  </option>
++                ))}
++              </select>
++            </label>
++          </div>
++
++          <div className="button-row">
++            <button
++              className="primary-btn"
++              onClick={runReport}
++              disabled={loading}
++            >
++              {loading ? 'Running…' : 'Run report'}
++            </button>
++            <span className="muted">Default: last 30 days</span>
++            {loadingProfessions && <span className="muted">Loading professions…</span>}
++          </div>
++
++          {error && <p className="form-error">{error}</p>}
++          {loading && !error && <p className="muted">Loading provider performance…</p>}
++
++          <div className="report-section">
++            <h2>Top performing providers</h2>
++            <p className="muted">By bookings in the selected range.</p>
++            <div className="provider-missing-table">
++              <table>
++                <thead>
++                  <tr>
++                    <th>Provider</th>
++                    <th>Profession</th>
++                    <th>Total bookings</th>
++                  </tr>
++                </thead>
++                <tbody>
++                  {summary?.top_providers_by_bookings?.length ? (
++                    summary.top_providers_by_bookings.map((row) => (
++                      <tr key={row.provider_id}>
++                        <td>{row.provider_name || '—'}</td>
++                        <td>{row.profession || '—'}</td>
++                        <td>{row.total_bookings ?? '—'}</td>
++                      </tr>
++                    ))
++                  ) : (
++                    <tr>
++                      <td colSpan={3}>{loading ? 'Loading…' : 'No provider activity found.'}</td>
++                    </tr>
++                  )}
++                </tbody>
++              </table>
++            </div>
++          </div>
++
++          {showRevenue && (
++            <div className="report-section">
++              <h2>Top earning providers</h2>
++              <p className="muted">Ordered by total revenue.</p>
++              <div className="provider-missing-table">
++                <table>
++                  <thead>
++                    <tr>
++                      <th>Provider</th>
++                      <th>Profession</th>
++                      <th>Total revenue (GYD)</th>
++                    </tr>
++                  </thead>
++                  <tbody>
++                    {summary?.top_providers_by_revenue?.length ? (
++                      summary.top_providers_by_revenue.map((row) => (
++                        <tr key={row.provider_id}>
++                          <td>{row.provider_name || '—'}</td>
++                          <td>{row.profession || '—'}</td>
++                          <td>{typeof row.total_revenue === 'number' ? row.total_revenue.toFixed(2) : '—'}</td>
++                        </tr>
++                      ))
++                    ) : (
++                      <tr>
++                        <td colSpan={3}>{loading ? 'Loading…' : 'No revenue data available.'}</td>
++                      </tr>
++                    )}
++                  </tbody>
++                </table>
++              </div>
++            </div>
++          )}
++
++          <div className="report-section">
++            <h2>Most frequently booked services</h2>
++            <p className="muted">Services that drive the most demand.</p>
++            <div className="provider-missing-table">
++              <table>
++                <thead>
++                  <tr>
++                    <th>Service</th>
++                    <th>Provider</th>
++                    <th>Bookings</th>
++                  </tr>
++                </thead>
++                <tbody>
++                  {summary?.most_booked_services?.length ? (
++                    summary.most_booked_services.map((row) => (
++                      <tr key={row.service_id}>
++                        <td>{row.service_name || '—'}</td>
++                        <td>{row.provider_name || '—'}</td>
++                        <td>{row.bookings}</td>
++                      </tr>
++                    ))
++                  ) : (
++                    <tr>
++                      <td colSpan={3}>{loading ? 'Loading…' : 'No service activity found.'}</td>
++                    </tr>
++                  )}
++                </tbody>
++              </table>
++            </div>
++          </div>
++
++          <div className="report-section">
++            <h2>Provider retention</h2>
++            <p className="muted">Providers active each month ({retentionMonths} months in range).</p>
++            <div className="provider-missing-table">
++              <table>
++                <thead>
++                  <tr>
++                    <th>Provider</th>
++                    <th>Profession</th>
++                    <th>Months active</th>
++                    <th>Last active month</th>
++                  </tr>
++                </thead>
++                <tbody>
++                  {retention?.providers?.length ? (
++                    retention.providers.map((row) => (
++                      <tr key={row.provider_id}>
++                        <td>{row.provider_name || '—'}</td>
++                        <td>{row.profession || '—'}</td>
++                        <td>{row.months_active_count}</td>
++                        <td>{row.last_active_month || '—'}</td>
++                      </tr>
++                    ))
++                  ) : (
++                    <tr>
++                      <td colSpan={4}>{loading ? 'Loading…' : 'No retention data found.'}</td>
++                    </tr>
++                  )}
++                </tbody>
++              </table>
++            </div>
++          </div>
++
++          <div className="report-section">
++            <h2>Low activity providers</h2>
++            <p className="muted">Providers with 0–3 bookings in the selected range.</p>
++            <div className="provider-missing-table">
++              <table>
++                <thead>
++                  <tr>
++                    <th>Provider</th>
++                    <th>Profession</th>
++                    <th>Bookings</th>
++                  </tr>
++                </thead>
++                <tbody>
++                  {summary?.low_activity_providers?.length ? (
++                    summary.low_activity_providers.map((row) => (
++                      <tr key={row.provider_id}>
++                        <td>{row.provider_name || '—'}</td>
++                        <td>{row.profession || '—'}</td>
++                        <td>{row.bookings_in_range ?? '—'}</td>
++                      </tr>
++                    ))
++                  ) : (
++                    <tr>
++                      <td colSpan={3}>{loading ? 'Loading…' : 'No low-activity providers found.'}</td>
++                    </tr>
++                  )}
++                </tbody>
++              </table>
++            </div>
++          </div>
++
++          <div className="report-section">
++            <h2>High cancellation rates</h2>
++            <p className="muted">Providers with the highest cancellation percentage.</p>
++            <div className="provider-missing-table">
++              <table>
++                <thead>
++                  <tr>
++                    <th>Provider</th>
++                    <th>Profession</th>
++                    <th>Cancellations</th>
++                    <th>Total bookings</th>
++                    <th>Cancellation %</th>
++                  </tr>
++                </thead>
++                <tbody>
++                  {summary?.high_cancellation_rates?.length ? (
++                    summary.high_cancellation_rates.map((row) => (
++                      <tr key={row.provider_id}>
++                        <td>{row.provider_name || '—'}</td>
++                        <td>{row.profession || '—'}</td>
++                        <td>{row.cancelled}</td>
++                        <td>{row.total_bookings}</td>
++                        <td>{(row.cancellation_rate * 100).toFixed(1)}%</td>
++                      </tr>
++                    ))
++                  ) : (
++                    <tr>
++                      <td colSpan={5}>{loading ? 'Loading…' : 'No cancellation data found.'}</td>
++                    </tr>
++                  )}
++                </tbody>
++              </table>
++            </div>
++          </div>
++        </div>
++      </div>
++    )
++  }
++
+   const AdminLayout = () => {
+     const location = useLocation()
+     return (
+       <div className="admin-shell">
+         <aside className="admin-sidebar">
+           <nav className="sidebar-nav">
+             <NavLink to="/admin/promotions" className={({ isActive }) => isActive ? 'sidebar-link active' : 'sidebar-link'}>
+               Promotions
+             </NavLink>
+             <NavLink to="/admin/service-charge" className={({ isActive }) => isActive ? 'sidebar-link active' : 'sidebar-link'}>
+               Service Charge
+             </NavLink>
+             <NavLink to="/admin/billing" className={({ isActive }) => isActive ? 'sidebar-link active' : 'sidebar-link'}>
+               Billing
+             </NavLink>
+             <NavLink
+               to="/admin/provider-locations"
+               className={({ isActive }) => isActive ? 'sidebar-link active' : 'sidebar-link'}
+             >
+               Provider Locations
+             </NavLink>
+             <NavLink
+               to="/admin/cancellations"
+               className={({ isActive }) => isActive ? 'sidebar-link active' : 'sidebar-link'}
+             >
+               Cancellations
+             </NavLink>
+             <NavLink
+               to="/admin/signups"
+               className={({ isActive }) => isActive ? 'sidebar-link active' : 'sidebar-link'}
+             >
+               Signups Report
+             </NavLink>
+             <NavLink
+               to="/admin/booking-metrics"
+               className={({ isActive }) => isActive ? 'sidebar-link active' : 'sidebar-link'}
+             >
+               Booking Metrics
+             </NavLink>
++            <NavLink
++              to="/admin/provider-performance"
++              className={({ isActive }) => isActive ? 'sidebar-link active' : 'sidebar-link'}
++            >
++              Provider Performance
++            </NavLink>
+           </nav>
+           <div className="sidebar-footer">
+             Logged in · {token ? 'Authenticated' : 'Guest'}
+           </div>
+         </aside>
+         <main className="admin-main" key={location.pathname}>
+           <Outlet />
+         </main>
+       </div>
      )
+   }
  
-     if provider_ids_subquery is not None:
-         base_query = base_query.filter(models.Provider.id.in_(provider_ids_subquery))
+   return (
+     <BrowserRouter>
+       <nav className="app-nav">
+         <div className="nav-inner">
+           <Link to="/" className="nav-brand" aria-label="BookitGY home">
+             <img src="/bookitgy-logo.png" alt="BookitGY" />
+             <div className="brand-text">
+               <span className="brand-name">BookitGY</span>
+               <span className="brand-subtitle">BookitGY</span>
+             </div>
+           </Link>
+           <div className="nav-actions">
+             {token ? (
+@@ -1853,32 +2217,33 @@ function App() {
+             )}
+           </div>
+         </div>
+       </nav>
+       <Routes>
+         <Route path="/" element={<Home />} />
+         <Route path="/login" element={<Login />} />
+         <Route path="/reset-password" element={<ResetPassword />} />
+         <Route path="/p/:username" element={<ProviderLanding />} />
+         <Route
+           path="/admin"
+           element={(
+             <ProtectedRoute>
+               <AdminLayout />
+             </ProtectedRoute>
+           )}
+         >
+           <Route index element={<Navigate to="/admin/promotions" replace />} />
+           <Route path="promotions" element={<AdminPromotions />} />
+           <Route path="service-charge" element={<ServiceChargeSettings />} />
+           <Route path="billing" element={<AdminBilling />} />
+           <Route path="provider-locations" element={<AdminProviderLocations />} />
+           <Route path="cancellations" element={<AdminCancellations />} />
+           <Route path="signups" element={<AdminSignupReport />} />
+           <Route path="booking-metrics" element={<AdminBookingMetrics />} />
++          <Route path="provider-performance" element={<AdminProviderPerformanceReports />} />
+         </Route>
+       </Routes>
+     </BrowserRouter>
+   )
+ }
  
-     if normalized_status and normalized_status != "all":
-         if normalized_status == "upcoming":
-             base_query = base_query.filter(
-                 models.Booking.status.in_(["confirmed", "pending"])
-             )
-         else:
-             base_query = base_query.filter(models.Booking.status == normalized_status)
-@@ -179,83 +188,86 @@ def get_booking_metrics(
-     totals = (
-         base_query.with_entities(
-             func.count(models.Booking.id).label("total_bookings"),
-             func.coalesce(
-                 func.sum(
-                     case(
-                         (models.Booking.status.in_(["confirmed", "pending"]), 1),
-                         else_=0,
-                     )
-                 ),
-                 0,
-             ).label("upcoming"),
-             func.coalesce(
-                 func.sum(case((models.Booking.status == "completed", 1), else_=0)),
-                 0,
-             ).label("completed"),
-             func.coalesce(
-                 func.sum(case((models.Booking.status == "cancelled", 1), else_=0)),
-                 0,
-             ).label("cancelled"),
-             func.coalesce(func.sum(models.Service.price_gyd), 0.0).label("total_revenue"),
-         )
-         .one()
-     )
- 
--    profession_label = (
--        db.query(models.ProviderProfession.name)
--        .filter(models.ProviderProfession.provider_id == models.Provider.id)
--        .order_by(models.ProviderProfession.name.asc())
--        .limit(1)
--        .scalar_subquery()
--    )
-+    profession_label = None
-+    if hasattr(models, "ProviderProfession"):
-+        profession_label = (
-+            db.query(models.ProviderProfession.name)
-+            .filter(models.ProviderProfession.provider_id == models.Provider.id)
-+            .order_by(models.ProviderProfession.name.asc())
-+            .limit(1)
-+            .scalar_subquery()
-+        )
-+    profession_label_expr = profession_label if profession_label is not None else literal(None)
- 
-     provider_rows = (
-         base_query.with_entities(
-             models.Provider.id.label("provider_id"),
-             models.User.username.label("provider_name"),
--            profession_label.label("profession"),
-+            profession_label_expr.label("profession"),
-             func.count(models.Booking.id).label("total_bookings"),
-             func.coalesce(
-                 func.sum(
-                     case(
-                         (models.Booking.status.in_(["confirmed", "pending"]), 1),
-                         else_=0,
-                     )
-                 ),
-                 0,
-             ).label("upcoming"),
-             func.coalesce(
-                 func.sum(case((models.Booking.status == "completed", 1), else_=0)),
-                 0,
-             ).label("completed"),
-             func.coalesce(
-                 func.sum(case((models.Booking.status == "cancelled", 1), else_=0)),
-                 0,
-             ).label("cancelled"),
-         )
--        .group_by(models.Provider.id, models.User.username, profession_label)
-+        .group_by(models.Provider.id, models.User.username, profession_label_expr)
-         .order_by(models.User.username.asc())
-         .all()
-     )
- 
-     return {
-         "start": start,
-         "end": end,
-         "status": normalized_status or "all",
-         "profession": normalized_profession or "all",
-         "totals": {
-             "total_bookings": int(totals.total_bookings or 0),
-             "upcoming": int(totals.upcoming or 0),
-             "completed": int(totals.completed or 0),
-             "cancelled": int(totals.cancelled or 0),
-             "total_revenue": float(totals.total_revenue or 0.0),
-         },
-         "by_provider": [
-             {
-                 "provider_id": row.provider_id,
-                 "provider_name": row.provider_name,
-                 "profession": row.profession,
-                 "total_bookings": int(row.total_bookings or 0),
-                 "upcoming": int(row.upcoming or 0),
-                 "completed": int(row.completed or 0),
-                 "cancelled": int(row.cancelled or 0),
+ ReactDOM.createRoot(document.getElementById('root')).render(<App />)
  
 EOF
 )
