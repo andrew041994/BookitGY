@@ -116,6 +116,59 @@ const FAVORITES_STORAGE_KEY = (userKey) =>
 const getProviderId = (provider) =>
   provider?.provider_id ?? provider?.id ?? provider?._id ?? null;
 
+const RESERVED_USERNAME_PATHS = new Set([
+  "u",
+  "privacy",
+  "terms",
+  "download",
+  "login",
+  "signup",
+  "forgot",
+  "reset",
+]);
+
+function extractUsernameFromUrl(url) {
+  if (!url) return null;
+  const trimmed = String(url).trim();
+  if (!trimmed) return null;
+
+  const withoutQuery = trimmed.split(/[?#]/)[0];
+  let pathname = withoutQuery;
+
+  try {
+    const parsed = new URL(withoutQuery);
+    pathname = parsed.pathname || "";
+  } catch (error) {
+    const schemeMatch = withoutQuery.match(/^[a-zA-Z][a-zA-Z0-9+.-]*:\/\/(.*)$/);
+    if (schemeMatch?.[1]) {
+      pathname = `/${schemeMatch[1]}`;
+    }
+  }
+
+  const segments = pathname.split("/").filter(Boolean);
+  if (segments.length === 0) return null;
+
+  let username = null;
+
+  if (segments[0] === "u" && segments[1]) {
+    username = segments[1];
+  } else if (segments.length === 1 && !RESERVED_USERNAME_PATHS.has(segments[0])) {
+    username = segments[0];
+  }
+
+  if (!username) return null;
+
+  let decoded = username;
+  try {
+    decoded = decodeURIComponent(username);
+  } catch (error) {
+    decoded = username;
+  }
+
+  const cleaned = decoded.trim().replace(/^@/, "");
+  return cleaned || null;
+}
+
 function useFavoriteProviders(userKey) {
   const storageKey = FAVORITES_STORAGE_KEY(userKey);
   const [favoriteIds, setFavoriteIds] = useState([]);
@@ -2492,6 +2545,12 @@ function SearchScreen({
   //Radius 
   const radiusOptions = [0, 5, 10, 15, 20, 25, 30, 40, 50, 75, 100];
 
+  useEffect(() => {
+    if (!incomingUsername) return;
+    setSearchQuery(incomingUsername);
+    setHasSearched(true);
+  }, [incomingUsername]);
+
   const haversineKm = (lat1, lon1, lat2, lon2) => {
     if (
       lat1 == null ||
@@ -2620,6 +2679,8 @@ function SearchScreen({
       list = list.filter((p) => {
         const name = (p.name || "").toLowerCase();
         const location = (p.location || "").toLowerCase();
+        const username = (p.username || "").toLowerCase();
+        const username2 = (p.user?.username || "").toLowerCase();
         const professions = (p.professions || []).map((pr) =>
           (pr || "").toLowerCase()
         );
@@ -2627,7 +2688,9 @@ function SearchScreen({
         return (
           professions.some((pr) => pr.includes(q)) ||
           name.includes(q) ||
-          location.includes(q)
+          location.includes(q) ||
+          username.includes(q) ||
+          username2.includes(q)
         );
       });
     }
@@ -5734,6 +5797,7 @@ function App() {
   const [authLoading, setAuthLoading] = useState(true);
   const [authMode, setAuthMode] = useState("landing"); // 'landing' | 'login' | 'signup' | 'forgot'
   const [isAdmin, setIsAdmin] = useState(false);
+  const [pendingDeepLinkUsername, setPendingDeepLinkUsername] = useState(null);
   const navigationRef = useRef(null);
   const authBootstrapRef = useRef({ inFlight: false, completed: false });
 
@@ -5801,6 +5865,59 @@ function App() {
       setFlash(null);
     }, 4500);
   };
+
+  useEffect(() => {
+    let isActive = true;
+
+    Linking.getInitialURL().then((url) => {
+      if (!isActive) return;
+      const username = extractUsernameFromUrl(url);
+      console.log("[deeplink] initial url", url, "username", username);
+      if (username) {
+        setPendingDeepLinkUsername(username);
+      }
+    });
+
+    const sub = Linking.addEventListener("url", ({ url }) => {
+      const username = extractUsernameFromUrl(url);
+      console.log("[deeplink] url event", url, "username", username);
+      if (username) {
+        setPendingDeepLinkUsername(username);
+      }
+    });
+
+    return () => {
+      isActive = false;
+      sub.remove();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!pendingDeepLinkUsername || !token) return;
+
+    if (token.isProvider) {
+      console.log(
+        "[deeplink] provider user ignoring username",
+        pendingDeepLinkUsername
+      );
+      if (showFlash) {
+        showFlash("error", "Open as a client to view provider links.");
+      }
+      setPendingDeepLinkUsername(null);
+      return;
+    }
+
+    if (!navigationRef.current) return;
+
+    console.log(
+      "[deeplink] navigating to Search for",
+      pendingDeepLinkUsername
+    );
+    navigationRef.current.navigate("Search", {
+      incomingUsername: pendingDeepLinkUsername,
+    });
+    setPendingDeepLinkUsername(null);
+  }, [pendingDeepLinkUsername, token, showFlash]);
 
   useEffect(() => {
     let isActive = true;
