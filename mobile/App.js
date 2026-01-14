@@ -3936,12 +3936,7 @@ const handleCancelBooking = (bookingId) => {
 };
 
 
-// const handleEditBooking = (booking) => {
-//   if (showFlash) {
-//     showFlash("info", "Editing bookings will be added soon.");
-//   }
-//   // Next step: navigate to an Edit Booking screen or show a time picker.
-// };
+
 
 const loadServices = async () => {
     try {
