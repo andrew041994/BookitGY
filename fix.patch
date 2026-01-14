@@ -1,55 +1,167 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
 diff --git a/mobile/App.js b/mobile/App.js
-index 66b3cd2fcbcb45ab9a99155bc89ce30da9554ee8..021dd1869c1c3f6fd77df4dc9e3d54513d0c6fca 100644
+index 021dd1869c1c3f6fd77df4dc9e3d54513d0c6fca..af037ff0ea4f917dad28c8b9ac7425dda6e33eaa 100644
 --- a/mobile/App.js
 +++ b/mobile/App.js
-@@ -1,44 +1,45 @@
- import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
- import { useFocusEffect } from "@react-navigation/native";
- import {
-   Text,
-   View,
-   StyleSheet,
-   TextInput,
-   Button,
-   Alert,
-   ActivityIndicator,
-   ScrollView,
-   TouchableOpacity,
-   Switch,
-   Linking,
-   Platform,
-   Image,
-   KeyboardAvoidingView,
-   TouchableWithoutFeedback,
-   Keyboard,
-+  Pressable,
-   RefreshControl,
- } from "react-native";
- import { NavigationContainer } from "@react-navigation/native";
- import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
- import { enableScreens } from "react-native-screens";
- import axios from "axios";
- import AsyncStorage from "@react-native-async-storage/async-storage";
- import { clearToken, loadToken, saveToken } from "./src/components/tokenStorage";
- import { createApiClient } from "./src/api/client";
- import * as Location from "expo-location";
- import Constants from "expo-constants";
- import * as ImagePicker from "expo-image-picker";
- import BookitGYLogoTransparent from "./assets/bookitgy-logo-transparent.png"
- import { Ionicons } from "@expo/vector-icons";
- import { SafeAreaProvider,SafeAreaView } from "react-native-safe-area-context";
- // import * as Sentry from "sentry-expo";
+@@ -49,50 +49,157 @@ enableScreens(false);
+ const API =
+   Constants.expoConfig?.extra?.API_URL ||
+   Constants.manifest?.extra?.API_URL ||
+   "https://bookitgy.onrender.com";
  
- enableScreens(false);
+   console.log("### API base URL =", API);
  
+ const withTimeout = (promise, ms, label) => {
+   let timeoutId;
+   const timeout = new Promise((_, reject) => {
+     timeoutId = setTimeout(() => {
+       const error = new Error(`${label || "Operation"} timed out after ${ms}ms`);
+       error.code = "ETIMEDOUT";
+       reject(error);
+     }, ms);
+   });
  
+   return Promise.race([promise, timeout]).finally(() => {
+     clearTimeout(timeoutId);
+   });
+ };
  
+ const AUTH_BOOTSTRAP_WATCHDOG_MS = 15000;
+ const AUTH_TOKEN_TIMEOUT_MS = 2000;
+ const AUTH_ME_TIMEOUT_MS = 12000;
++const ANDROID_PASSWORD_MASK_FALLBACK = true;
++
++const AndroidPasswordInput = ({
++  value,
++  onChangeText,
++  style,
++  autoComplete = "password",
++  textContentType = "password",
++  importantForAutofill = "yes",
++  onSelectionChange,
++  onKeyPress,
++  onTextInput,
++  ...rest
++}) => {
++  // Android secure dots can render blank on some devices; this keeps masking visible.
++  const fallbackEnabled = Platform.OS === "android" && ANDROID_PASSWORD_MASK_FALLBACK;
++  const maskedValue = useMemo(() => "*".repeat(value.length), [value.length]);
++  const [selection, setSelection] = useState({
++    start: maskedValue.length,
++    end: maskedValue.length,
++  });
++
++  useEffect(() => {
++    if (!fallbackEnabled) return;
++    const end = maskedValue.length;
++    setSelection({ start: end, end });
++  }, [fallbackEnabled, maskedValue.length]);
++
++  const handleChangeText = useCallback(
++    (text) => {
++      if (!fallbackEnabled) {
++        onChangeText(text);
++        return;
++      }
++      if (text.length === 0) {
++        onChangeText("");
++      }
++    },
++    [fallbackEnabled, onChangeText]
++  );
++
++  const handleKeyPress = useCallback(
++    (event) => {
++      if (fallbackEnabled && event?.nativeEvent?.key === "Backspace") {
++        onChangeText(value.slice(0, -1));
++      }
++      onKeyPress?.(event);
++    },
++    [fallbackEnabled, onChangeText, onKeyPress, value]
++  );
++
++  const handleTextInput = useCallback(
++    (event) => {
++      if (!fallbackEnabled) {
++        onTextInput?.(event);
++        return;
++      }
++      const inserted = event?.nativeEvent?.text ?? "";
++      if (inserted.length) {
++        onChangeText(value + inserted);
++      }
++      onTextInput?.(event);
++    },
++    [fallbackEnabled, onChangeText, onTextInput, value]
++  );
++
++  const handleSelectionChange = useCallback(
++    (event) => {
++      if (!fallbackEnabled) {
++        onSelectionChange?.(event);
++        return;
++      }
++      const end = maskedValue.length;
++      setSelection({ start: end, end });
++      // Keep the cursor at the end to avoid mid-string edits when masked.
++      onSelectionChange?.(event);
++    },
++    [fallbackEnabled, maskedValue.length, onSelectionChange]
++  );
++
++  return (
++    <TextInput
++      style={[
++        style,
++        {
++          color: "#0f172a",
++          // Android secure glyphs can disappear with custom fonts/letterSpacing.
++          fontFamily: Platform.OS === "android" ? "sans-serif" : undefined,
++        },
++      ]}
++      autoCorrect={false}
++      autoCapitalize="none"
++      textContentType={textContentType}
++      autoComplete={autoComplete}
++      importantForAutofill={importantForAutofill}
++      keyboardType="default"
++      secureTextEntry={!fallbackEnabled}
++      value={fallbackEnabled ? maskedValue : value}
++      onChangeText={handleChangeText}
++      onKeyPress={handleKeyPress}
++      onTextInput={handleTextInput}
++      onSelectionChange={handleSelectionChange}
++      selection={fallbackEnabled ? selection : rest.selection}
++      {...rest}
++    />
++  );
++};
  
- // import { API } from "./App"; // wherever you define your base URL
+   const isValidEmail = (value) => {
+   const trimmed = value.trim();
+   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+   return emailRegex.test(trimmed);
+ };
  
+ const resolveImageUrl = (url) => {
+     if (!url || typeof url !== "string") return null;
+     if (url.startsWith("http")) return url;
+     if (url.startsWith("//")) return `https:${url}`;
+     const normalizedPath = url.startsWith("/") ? url : `/${url}`;
+     return `${API}${normalizedPath}`;
+   };
  
-@@ -316,50 +317,73 @@ function LandingScreen({ goToLogin, goToSignup }) {
+ const LEGACY_ACCESS_TOKEN_KEY = "accessToken";
+ 
+ const getAuthToken = async (tokenState) => {
+   if (tokenState?.token) return tokenState.token;
+ 
+   try {
+     const secure = await withTimeout(loadToken(), 1500, "loadToken");
+     if (secure) return secure;
+   } catch (error) {
+     console.log("[auth] Failed to load secure token", error?.message || error);
+@@ -317,73 +424,50 @@ function LandingScreen({ goToLogin, goToSignup }) {
              </TouchableOpacity>
  
              <TouchableOpacity
@@ -75,29 +187,29 @@ index 66b3cd2fcbcb45ab9a99155bc89ce30da9554ee8..021dd1869c1c3f6fd77df4dc9e3d5451
    const [email, setEmail] = useState("");
    const [password, setPassword] = useState("");
    const [loading, setLoading] = useState(false);
-+  const [loginSecure, setLoginSecure] = useState(true);
-+  const loginSecureTimeoutRef = useRef(null);
-+
-+  useEffect(() => {
-+    return () => {
-+      if (loginSecureTimeoutRef.current) {
-+        clearTimeout(loginSecureTimeoutRef.current);
-+      }
-+    };
-+  }, []);
-+
-+  const handleLoginPasswordChange = (value) => {
-+    setPassword(value);
-+    if (Platform.OS !== "android") return;
-+
-+    setLoginSecure(false);
-+    if (loginSecureTimeoutRef.current) {
-+      clearTimeout(loginSecureTimeoutRef.current);
-+    }
-+    loginSecureTimeoutRef.current = setTimeout(() => {
-+      setLoginSecure(true);
-+    }, 600);
-+  };
+-  const [loginSecure, setLoginSecure] = useState(true);
+-  const loginSecureTimeoutRef = useRef(null);
+-
+-  useEffect(() => {
+-    return () => {
+-      if (loginSecureTimeoutRef.current) {
+-        clearTimeout(loginSecureTimeoutRef.current);
+-      }
+-    };
+-  }, []);
+-
+-  const handleLoginPasswordChange = (value) => {
+-    setPassword(value);
+-    if (Platform.OS !== "android") return;
+-
+-    setLoginSecure(false);
+-    if (loginSecureTimeoutRef.current) {
+-      clearTimeout(loginSecureTimeoutRef.current);
+-    }
+-    loginSecureTimeoutRef.current = setTimeout(() => {
+-      setLoginSecure(true);
+-    }, 600);
+-  };
  
  
    const login = async () => {
@@ -123,7 +235,16 @@ index 66b3cd2fcbcb45ab9a99155bc89ce30da9554ee8..021dd1869c1c3f6fd77df4dc9e3d5451
  
      const res = await axios.post(`${API}/auth/login`, body, {
          headers: {
-@@ -436,63 +460,60 @@ return (
+@@ -451,69 +535,62 @@ return (
+ 
+     >
+       <ScrollView
+         contentContainerStyle={styles.scrollContent}
+         keyboardShouldPersistTaps="handled"
+       >
+         <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+           <View style={styles.container}>
+             <View style={styles.logoWrapper}>
                <Image
                  source={BookitGYLogoTransparent}
                  style={styles.logo}
@@ -140,30 +261,29 @@ index 66b3cd2fcbcb45ab9a99155bc89ce30da9554ee8..021dd1869c1c3f6fd77df4dc9e3d5451
            onChangeText={setEmail}
          />
  
-         <TextInput
-           style={[
-             styles.input,
-             Platform.OS === "android" && { includeFontPadding: false },
-             { fontFamily: "sans-serif" },
-           ]}
+-        <TextInput
+-          style={[
+-            styles.input,
+-            Platform.OS === "android" && { includeFontPadding: false },
+-            { fontFamily: "sans-serif" },
+-          ]}
++        <AndroidPasswordInput
++          style={[styles.input, Platform.OS === "android" && { includeFontPadding: false }]}
            placeholder="Password"
            placeholderTextColor={styles.inputPlaceholder.color}
            value={password}
--          onChangeText={setPassword}
--          keyboardType={
--            Platform.OS === "android" ? "visible-password" : "default"
--          }
-+          onChangeText={handleLoginPasswordChange}
-           autoCapitalize="none"
-           autoCorrect={false}
+-          onChangeText={handleLoginPasswordChange}
+-          autoCapitalize="none"
+-          autoCorrect={false}
++          onChangeText={setPassword}
            autoComplete="password"
-           {...(Platform.OS === "ios" ? { textContentType: "password" } : {})}
+-          {...(Platform.OS === "ios" ? { textContentType: "password" } : {})}
++          textContentType="password"
            importantForAutofill="yes"
            underlineColorAndroid="transparent"
            selectionColor="#16a34a"
            cursorColor="#16a34a"
--          secureTextEntry={true}
-+          secureTextEntry={loginSecure}
+-          secureTextEntry={loginSecure}
          />
  
            {goToSignup && (
@@ -189,7 +309,7 @@ index 66b3cd2fcbcb45ab9a99155bc89ce30da9554ee8..021dd1869c1c3f6fd77df4dc9e3d5451
                    onPress={goToSignup}
                    color="#166534"
                  />
-@@ -619,68 +640,109 @@ function ForgotPasswordScreen({ goToLogin, goBack, showFlash }) {
+@@ -640,109 +717,68 @@ function ForgotPasswordScreen({ goToLogin, goBack, showFlash }) {
                </View>
              )}
  
@@ -215,10 +335,10 @@ index 66b3cd2fcbcb45ab9a99155bc89ce30da9554ee8..021dd1869c1c3f6fd77df4dc9e3d5451
    const [username, setUsername] = useState("");
    const [phone, setPhone] = useState("");
    const [isProvider, setIsProvider] = useState(false); // 👈 new
-+  const [signupSecure, setSignupSecure] = useState(true);
-+  const [confirmSecure, setConfirmSecure] = useState(true);
-+  const signupSecureTimeoutRef = useRef(null);
-+  const confirmSecureTimeoutRef = useRef(null);
+-  const [signupSecure, setSignupSecure] = useState(true);
+-  const [confirmSecure, setConfirmSecure] = useState(true);
+-  const signupSecureTimeoutRef = useRef(null);
+-  const confirmSecureTimeoutRef = useRef(null);
    const keyboardWrapperProps = {
      behavior: Platform.OS === "ios" ? "padding" : "height",
      keyboardVerticalOffset: Platform.OS === "ios" ? 40 : 0,
@@ -230,50 +350,51 @@ index 66b3cd2fcbcb45ab9a99155bc89ce30da9554ee8..021dd1869c1c3f6fd77df4dc9e3d5451
      },
      android: {
        autoComplete: "new-password",
-       importantForAutofill: "no",
+-      importantForAutofill: "no",
++      importantForAutofill: "yes",
      },
      default: {
        autoComplete: "new-password",
      },
    });
  
-+  useEffect(() => {
-+    return () => {
-+      if (signupSecureTimeoutRef.current) {
-+        clearTimeout(signupSecureTimeoutRef.current);
-+      }
-+      if (confirmSecureTimeoutRef.current) {
-+        clearTimeout(confirmSecureTimeoutRef.current);
-+      }
-+    };
-+  }, []);
-+
-+  const handleSignupPasswordChange = (value) => {
-+    setPassword(value);
-+    if (Platform.OS !== "android") return;
-+
-+    setSignupSecure(false);
-+    if (signupSecureTimeoutRef.current) {
-+      clearTimeout(signupSecureTimeoutRef.current);
-+    }
-+    signupSecureTimeoutRef.current = setTimeout(() => {
-+      setSignupSecure(true);
-+    }, 600);
-+  };
-+
-+  const handleConfirmPasswordChange = (value) => {
-+    setConfirmPassword(value);
-+    if (Platform.OS !== "android") return;
-+
-+    setConfirmSecure(false);
-+    if (confirmSecureTimeoutRef.current) {
-+      clearTimeout(confirmSecureTimeoutRef.current);
-+    }
-+    confirmSecureTimeoutRef.current = setTimeout(() => {
-+      setConfirmSecure(true);
-+    }, 600);
-+  };
-+
+-  useEffect(() => {
+-    return () => {
+-      if (signupSecureTimeoutRef.current) {
+-        clearTimeout(signupSecureTimeoutRef.current);
+-      }
+-      if (confirmSecureTimeoutRef.current) {
+-        clearTimeout(confirmSecureTimeoutRef.current);
+-      }
+-    };
+-  }, []);
+-
+-  const handleSignupPasswordChange = (value) => {
+-    setPassword(value);
+-    if (Platform.OS !== "android") return;
+-
+-    setSignupSecure(false);
+-    if (signupSecureTimeoutRef.current) {
+-      clearTimeout(signupSecureTimeoutRef.current);
+-    }
+-    signupSecureTimeoutRef.current = setTimeout(() => {
+-      setSignupSecure(true);
+-    }, 600);
+-  };
+-
+-  const handleConfirmPasswordChange = (value) => {
+-    setConfirmPassword(value);
+-    if (Platform.OS !== "android") return;
+-
+-    setConfirmSecure(false);
+-    if (confirmSecureTimeoutRef.current) {
+-      clearTimeout(confirmSecureTimeoutRef.current);
+-    }
+-    confirmSecureTimeoutRef.current = setTimeout(() => {
+-      setConfirmSecure(true);
+-    }, 600);
+-  };
+-
    const signupValidation = useMemo(() => {
      const errors = {};
      const trimmedUsername = username.trim();
@@ -299,82 +420,57 @@ index 66b3cd2fcbcb45ab9a99155bc89ce30da9554ee8..021dd1869c1c3f6fd77df4dc9e3d5451
      return {
        errors,
        canSubmit: Object.keys(errors).length === 0,
-@@ -807,112 +869,121 @@ function SignupScreen({ goToLogin, goBack, showFlash }) {
-               style={[
-                 styles.input,
-                 signupValidation.errors.email ? styles.inputError : null,
-               ]}
-               placeholder="Email"
-               placeholderTextColor={styles.inputPlaceholder.color}
-               value={email}
-               onChangeText={setEmail}
-               keyboardType="email-address"
-               autoCapitalize="none"
-             />
- 
-             <TextInput
-               style={[
-                 styles.input,
-                 signupValidation.errors.phone ? styles.inputError : null,
-               ]}
-               placeholder="Phone (592XXXXXXX)"
-               placeholderTextColor={styles.inputPlaceholder.color}
-               value={phone}
+@@ -889,101 +925,89 @@ function SignupScreen({ goToLogin, goBack, showFlash }) {
                onChangeText={setPhone}
                keyboardType="phone-pad"
              />
  
              {/* Provider toggle */}
--            <View style={styles.toggleRow}>
--              <Text style={styles.toggleLabel}>Register as Service Provider</Text>
-+            <Pressable
-+              style={({ pressed }) => [
-+                styles.toggleCard,
-+                pressed && styles.toggleCardPressed,
-+              ]}
-+              onPress={() => setIsProvider((prev) => !prev)}
-+              accessibilityRole="switch"
-+              accessibilityState={{ checked: isProvider }}
-+            >
-+              <View style={styles.toggleTextGroup}>
-+                <Text style={styles.toggleLabel}>
-+                  Register as Service Provider
-+                </Text>
-+                <Text style={styles.toggleHelper}>
-+                  Turn this on if you offer services to clients.
-+                </Text>
-+              </View>
+             <Pressable
+               style={({ pressed }) => [
+                 styles.toggleCard,
+                 pressed && styles.toggleCardPressed,
+               ]}
+               onPress={() => setIsProvider((prev) => !prev)}
+               accessibilityRole="switch"
+               accessibilityState={{ checked: isProvider }}
+             >
+               <View style={styles.toggleTextGroup}>
+                 <Text style={styles.toggleLabel}>
+                   Register as Service Provider
+                 </Text>
+                 <Text style={styles.toggleHelper}>
+                   Turn this on if you offer services to clients.
+                 </Text>
+               </View>
                <Switch value={isProvider} onValueChange={setIsProvider} />
--            </View>
-+            </Pressable>
+             </Pressable>
  
-             <TextInput
+-            <TextInput
++            <AndroidPasswordInput
                style={[
                  styles.input,
                  signupValidation.errors.password ? styles.inputError : null,
                  Platform.OS === "android" && { includeFontPadding: false },
-                 { fontFamily: "sans-serif" },
+-                { fontFamily: "sans-serif" },
                ]}
                placeholder="Password"
                placeholderTextColor={styles.inputPlaceholder.color}
                value={password}
--              onChangeText={setPassword}
--              keyboardType={
--                Platform.OS === "android" ? "visible-password" : "default"
--              }
-+              onChangeText={handleSignupPasswordChange}
-               autoCapitalize="none"
-               autoCorrect={false}
+-              onChangeText={handleSignupPasswordChange}
+-              autoCapitalize="none"
+-              autoCorrect={false}
++              onChangeText={setPassword}
                spellCheck={false}
                {...passwordInputProps}
-               {...(Platform.OS === "ios"
-                 ? { textContentType: "password" }
-                 : {})}
+-              {...(Platform.OS === "ios"
+-                ? { textContentType: "password" }
+-                : {})}
++              textContentType="password"
                underlineColorAndroid="transparent"
                selectionColor="#16a34a"
                cursorColor="#16a34a"
--              secureTextEntry={true}
-+              secureTextEntry={signupSecure}
+-              secureTextEntry={signupSecure}
              />
              {signupValidation.errors.password && (
                <Text style={styles.inputErrorText}>
@@ -382,33 +478,31 @@ index 66b3cd2fcbcb45ab9a99155bc89ce30da9554ee8..021dd1869c1c3f6fd77df4dc9e3d5451
                </Text>
              )}
  
-             <TextInput
+-            <TextInput
++            <AndroidPasswordInput
                style={[
                  styles.input,
                  signupValidation.errors.confirmPassword ? styles.inputError : null,
                  Platform.OS === "android" && { includeFontPadding: false },
-                 { fontFamily: "sans-serif" },
+-                { fontFamily: "sans-serif" },
                ]}
                placeholder="Confirm Password"
                placeholderTextColor={styles.inputPlaceholder.color}
                value={confirmPassword}
--              onChangeText={setConfirmPassword}
--              keyboardType={
--                Platform.OS === "android" ? "visible-password" : "default"
--              }
-+              onChangeText={handleConfirmPasswordChange}
-               autoCapitalize="none"
-               autoCorrect={false}
+-              onChangeText={handleConfirmPasswordChange}
+-              autoCapitalize="none"
+-              autoCorrect={false}
++              onChangeText={setConfirmPassword}
                spellCheck={false}
                {...passwordInputProps}
-               {...(Platform.OS === "ios"
-                 ? { textContentType: "password" }
-                 : {})}
+-              {...(Platform.OS === "ios"
+-                ? { textContentType: "password" }
+-                : {})}
++              textContentType="password"
                underlineColorAndroid="transparent"
                selectionColor="#16a34a"
                cursorColor="#16a34a"
--              secureTextEntry={true}
-+              secureTextEntry={confirmSecure}
+-              secureTextEntry={confirmSecure}
              />
              {signupValidation.errors.confirmPassword && (
                <Text style={styles.inputErrorText}>
@@ -434,98 +528,6 @@ index 66b3cd2fcbcb45ab9a99155bc89ce30da9554ee8..021dd1869c1c3f6fd77df4dc9e3d5451
                  />
                </View>
              )}
-@@ -6379,62 +6450,84 @@ cardHeartButton: {
- 
-   actionButton: {
-     backgroundColor: "#ffffff",
-     paddingVertical: 10,
-     paddingHorizontal: 12,
-     borderRadius: 999,
-     borderWidth: 1,
-     borderColor: "#bbf7d0",
-     marginBottom: 10,
-     alignItems: "center",
-   },
-   actionButtonText: {
-     fontSize: 15,
-     fontWeight: "500",
-     color: "#166534",
-   },
-   logoutButton: {
-     backgroundColor: "#fee2e2",
-     borderColor: "#b91c1c",
-     marginTop: 10,
-   },
-   logoutButtonText: {
-     color: "#b91c1c",
-   },
- 
--  toggleRow: {
-+  toggleCard: {
-     width: "100%",
-     flexDirection: "row",
-     alignItems: "center",
--    marginBottom: 12,
-+    justifyContent: "space-between",
-+    backgroundColor: "#ffffff",
-+    borderWidth: 2,
-+    borderColor: "#16a34a",
-+    borderRadius: 12,
-+    paddingVertical: 12,
-+    paddingHorizontal: 14,
-+    marginBottom: 16,
-+    shadowColor: "#000",
-+    shadowOffset: { width: 0, height: 2 },
-+    shadowOpacity: 0.1,
-+    shadowRadius: 4,
-+    elevation: 3,
-   },
--  toggleLabel: {
--    fontSize: 14,
--    color: "#166534",
--    marginRight: 8,
-+  toggleCardPressed: {
-+    opacity: 0.9,
-+  },
-+  toggleTextGroup: {
-     flex: 1,
--    flexShrink: 1,
-+    marginRight: 12,
-+  },
-+  toggleLabel: {
-+    fontSize: 17,
-+    fontWeight: "700",
-+    color: "#14532d",
-+  },
-+  toggleHelper: {
-+    marginTop: 4,
-+    fontSize: 13,
-+    color: "#6b7280",
-   },
- 
-     providerScroll: {
-     flexGrow: 1,
-     backgroundColor: "#f0fdf4",
-     padding: 20,
-     paddingTop: 60,
-   },
-   subtitleSmall: {
-     fontSize: 14,
-     color: "#6b7280",
-     marginBottom: 16,
-   },
-   serviceRow: {
-     flexDirection: "row",
-     justifyContent: "space-between",
-     alignItems: "center",
-     paddingVertical: 8,
-     borderBottomWidth: 1,
-     borderBottomColor: "#f3f4f6",
-   },
- 
- favoriteToggleButton: {
-     padding: 8,
-     borderRadius: 999,
  
 EOF
 )
