@@ -1,125 +1,9 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
 diff --git a/mobile/App.js b/mobile/App.js
-index 6f51cd933cf4cab3e2d01e1e68cc8d85701852f3..09495d8995a408993bb594df41f8ead765a588b7 100644
+index dd040932c1c1730b416184872181a10e4493a330..844728b3f3dca1f205ff0aa81e45d5791da0fc10 100644
 --- a/mobile/App.js
 +++ b/mobile/App.js
-@@ -61,50 +61,56 @@ const API =
- 
- const withTimeout = (promise, ms, label) => {
-   let timeoutId;
-   const timeout = new Promise((_, reject) => {
-     timeoutId = setTimeout(() => {
-       const error = new Error(`${label || "Operation"} timed out after ${ms}ms`);
-       error.code = "ETIMEDOUT";
-       reject(error);
-     }, ms);
-   });
- 
-   return Promise.race([promise, timeout]).finally(() => {
-     clearTimeout(timeoutId);
-   });
- };
- 
- const AUTH_BOOTSTRAP_WATCHDOG_MS = 15000;
- const AUTH_TOKEN_TIMEOUT_MS = 2000;
- const AUTH_ME_TIMEOUT_MS = 12000;
-   const isValidEmail = (value) => {
-   const trimmed = value.trim();
-   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-   return emailRegex.test(trimmed);
- };
- 
-+const isValidUsername = (value) => {
-+  const trimmed = String(value || "").trim();
-+  if (!trimmed) return false;
-+  return /^[a-zA-Z0-9._-]+$/.test(trimmed);
-+};
-+
- const resolveImageUrl = (url) => {
-     if (!url || typeof url !== "string") return null;
-     if (url.startsWith("http")) return url;
-     if (url.startsWith("//")) return `https:${url}`;
-     const normalizedPath = url.startsWith("/") ? url : `/${url}`;
-     return `${API}${normalizedPath}`;
-   };
- 
- const LEGACY_ACCESS_TOKEN_KEY = "accessToken";
- 
- const getAuthToken = async (tokenState) => {
-   if (tokenState?.token) return tokenState.token;
- 
-   try {
-     const secure = await withTimeout(loadToken(), 1500, "loadToken");
-     if (secure) return secure;
-   } catch (error) {
-     console.log("[auth] Failed to load secure token", error?.message || error);
-   }
- 
-   try {
-     const legacy = await withTimeout(
-       AsyncStorage.getItem(LEGACY_ACCESS_TOKEN_KEY),
-       1500,
-       "loadLegacyToken"
-@@ -116,85 +122,94 @@ const getAuthToken = async (tokenState) => {
-   }
- };
- 
- const FAVORITES_STORAGE_KEY = (userKey) =>
-   userKey ? `favoriteProviders:${userKey}` : "favoriteProviders";
- 
- const getProviderId = (provider) =>
-   provider?.provider_id ?? provider?.id ?? provider?._id ?? null;
- 
- const RESERVED_USERNAME_PATHS = new Set([
-   "u",
-   "privacy",
-   "terms",
-   "download",
-   "login",
-   "signup",
-   "forgot",
-   "reset",
- ]);
- 
- function extractUsernameFromUrl(url) {
-   if (!url) return null;
-   const trimmed = String(url).trim();
-   if (!trimmed) return null;
- 
-+  // Strip query string or hash before parsing.
-   const withoutQuery = trimmed.split(/[?#]/)[0];
-   let pathname = withoutQuery;
- 
--  try {
--    const parsed = new URL(withoutQuery);
--    pathname = parsed.pathname || "";
--  } catch (error) {
--    const schemeMatch = withoutQuery.match(/^[a-zA-Z][a-zA-Z0-9+.-]*:\/\/(.*)$/);
--    if (schemeMatch?.[1]) {
--      pathname = `/${schemeMatch[1]}`;
-+  if (/^https?:\/\//i.test(withoutQuery)) {
-+    // Strip protocol + host, keep only path.
-+    const withoutProtocol = withoutQuery.replace(/^https?:\/\//i, "");
-+    const slashIndex = withoutProtocol.indexOf("/");
-+    pathname = slashIndex === -1 ? "/" : withoutProtocol.slice(slashIndex);
-+  } else {
-+    const schemeMatch = withoutQuery.match(/^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//);
-+    if (schemeMatch) {
-+      // Strip custom scheme and treat remainder as path.
-+      pathname = `/${withoutQuery.slice(schemeMatch[0].length)}`;
-     }
-   }
- 
-+  if (!pathname.startsWith("/")) {
-+    pathname = `/${pathname}`;
-+  }
-+
-   const segments = pathname.split("/").filter(Boolean);
-   if (segments.length === 0) return null;
- 
-   let username = null;
- 
-   if (segments[0] === "u" && segments[1]) {
+@@ -174,50 +174,69 @@ function extractUsernameFromUrl(url) {
      username = segments[1];
    } else if (segments.length === 1 && !RESERVED_USERNAME_PATHS.has(segments[0])) {
      username = segments[0];
@@ -135,9 +19,8 @@ index 6f51cd933cf4cab3e2d01e1e68cc8d85701852f3..09495d8995a408993bb594df41f8ead7
    }
  
    const cleaned = decoded.trim().replace(/^@/, "");
--  return cleaned || null;
-+  if (!cleaned || !isValidUsername(cleaned)) return null;
-+  return cleaned;
+   if (!cleaned || !isValidUsername(cleaned)) return null;
+   return cleaned;
  }
  
  function buildProviderPublicLink(username) {
@@ -146,6 +29,25 @@ index 6f51cd933cf4cab3e2d01e1e68cc8d85701852f3..09495d8995a408993bb594df41f8ead7
    return `https://bookitgy.com/u/${encodeURIComponent(trimmed)}`;
  }
  
++function navigateToClientSearch(username, navigationRef) {
++  if (!navigationRef?.current) return false;
++  const deeplinkNonce = Date.now();
++  const params = { incomingUsername: username, deeplinkNonce };
++  const rootState = navigationRef.current.getRootState?.();
++  const routeNames = rootState?.routeNames || [];
++
++  if (routeNames.includes("ClientTabs")) {
++    navigationRef.current.navigate("ClientTabs", {
++      screen: "Search",
++      params,
++    });
++    return true;
++  }
++
++  navigationRef.current.navigate("Search", params);
++  return true;
++}
++
  function useFavoriteProviders(userKey) {
    const storageKey = FAVORITES_STORAGE_KEY(userKey);
    const [favoriteIds, setFavoriteIds] = useState([]);
@@ -163,7 +65,158 @@ index 6f51cd933cf4cab3e2d01e1e68cc8d85701852f3..09495d8995a408993bb594df41f8ead7
    const loadFavoritesFromStorage = useCallback(async () => {
      try {
        setFavoritesLoading(true);
-@@ -6022,59 +6037,63 @@ function App() {
+       const raw = await AsyncStorage.getItem(storageKey);
+       const parsed = raw ? JSON.parse(raw) : [];
+       setFavoriteIds(Array.isArray(parsed) ? parsed : []);
+     } catch (err) {
+       console.log("Error reading favorites", err?.message || err);
+       setFavoriteIds([]);
+     } finally {
+       setFavoritesLoading(false);
+@@ -2642,83 +2661,84 @@ function AppointmentsScreen({ token, showFlash }) {
+               renderBooking(booking, false)
+             )
+           )}
+         </View>
+       </>
+     )}
+   </ScrollView>
+ );
+ }
+ 
+     
+ 
+ 
+ 
+ 
+ function SearchScreen({
+   token,
+   showFlash,
+   navigation,
+   route,
+   toggleFavorite,
+   isFavorite,
+   syncFavoritesFromList,
+ }) {
+   const incomingUsername = route?.params?.incomingUsername ?? null;
++  const deeplinkNonce = route?.params?.deeplinkNonce ?? null;
+ 
+   const [filteredProviders, setFilteredProviders] = useState([]);
+   const [searchQuery, setSearchQuery] = useState("");
+   const [radiusKm, setRadiusKm] = useState(0); // 0 = any distance
+   const [clientLocation, setClientLocation] = useState(null);
+   const [locationError, setLocationError] = useState("");
+   const [providers, setProviders] = useState([]);
+   const [providersLoading, setProvidersLoading] = useState(true);
+   const [providersError, setProvidersError] = useState("");
+   const [selectedProvider, setSelectedProvider] = useState(null);
+   const [services, setServices] = useState([]);
+   const [servicesLoading, setServicesLoading] = useState(false);
+   const [servicesError, setServicesError] = useState("");
+   const [selectedService, setSelectedService] = useState(null);
+   const [catalogImages, setCatalogImages] = useState([]);
+   const [catalogLoading, setCatalogLoading] = useState(false);
+   const [catalogError, setCatalogError] = useState("");
+   const [availability, setAvailability] = useState([]);
+   const [availabilityLoading, setAvailabilityLoading] = useState(false);
+   const [availabilityError, setAvailabilityError] = useState("");
+   const [selectedDate, setSelectedDate] = useState(null);
+   const [selectedSlot, setSelectedSlot] = useState(null); // ISO string
+   const [bookingLoading, setBookingLoading] = useState(false);
+   const [hasSearched, setHasSearched] = useState(false); // 👈 NEW
+   const [refreshing, setRefreshing] = useState(false);
+   //Radius 
+   const radiusOptions = [0, 5, 10, 15, 20, 25, 30, 40, 50, 75, 100];
+ 
+   useEffect(() => {
+     if (!incomingUsername) return;
+     setSearchQuery(incomingUsername);
+     setHasSearched(true);
+-  }, [incomingUsername]);
++  }, [incomingUsername, deeplinkNonce]);
+ 
+   const haversineKm = (lat1, lon1, lat2, lon2) => {
+     if (
+       lat1 == null ||
+       lon1 == null ||
+       lat2 == null ||
+       lon2 == null
+     ) {
+       return null;
+     }
+     const toRad = (v) => (v * Math.PI) / 180;
+     const R = 6371; // km
+     const dLat = toRad(lat2 - lat1);
+     const dLon = toRad(lon2 - lon1);
+     const a =
+       Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+       Math.cos(toRad(lat1)) *
+         Math.cos(toRad(lat2)) *
+         Math.sin(dLon / 2) *
+         Math.sin(dLon / 2);
+     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+     return R * c;
+   };
+ 
+ 
+@@ -5953,50 +5973,51 @@ function FlashMessage({ flash }) {
+       ]}
+     >
+       <Text style={[styles.flashText, { color: textColor }]}>
+         {flash.text}
+       </Text>
+     </View>
+   );
+ }
+ 
+ 
+ // 🔹 App orchestrates landing/login/signup/forgot-password vs main app
+ 
+ function App() {
+ 
+   const mountIdRef = useRef(Math.random().toString(16).slice(2));
+   console.log("APP MOUNT ID:", mountIdRef.current);
+   useEffect(() => console.log("APP useEffect ran for mount", mountIdRef.current), []);
+ 
+   const [token, setToken] = useState(null);
+   const [authLoading, setAuthLoading] = useState(true);
+   const [authMode, setAuthMode] = useState("landing"); // 'landing' | 'login' | 'signup' | 'forgot'
+   const [isAdmin, setIsAdmin] = useState(false);
+   const [pendingDeepLinkUsername, setPendingDeepLinkUsername] = useState(null);
+   const navigationRef = useRef(null);
+   const authBootstrapRef = useRef({ inFlight: false, completed: false });
++  const tokenRef = useRef(token);
+ 
+   const [flash, setFlash] = useState(null);
+   const handleUnauthorized = useCallback(async () => {
+     try {
+       await AsyncStorage.removeItem(LEGACY_ACCESS_TOKEN_KEY);
+     } catch (storageError) {
+       console.log(
+         "[auth] Failed to clear legacy token",
+         storageError?.message || storageError
+       );
+     }
+     setToken(null);
+   }, []);
+ 
+   const apiClient = useMemo(
+     () =>
+       createApiClient({
+         baseURL: API,
+         onUnauthorized: handleUnauthorized,
+       }),
+     [handleUnauthorized]
+   );
+ 
+ 
+ 
+@@ -6019,104 +6040,130 @@ function App() {
+ 
+     if (Array.isArray(text)) {
+       return text.map(formatErrorItem).filter(Boolean).join("\n");
+     }
+ 
      if (typeof text === "object") {
        if (Array.isArray(text.detail)) {
          return formatFlashText(text.detail);
@@ -184,28 +237,56 @@ index 6f51cd933cf4cab3e2d01e1e68cc8d85701852f3..09495d8995a408993bb594df41f8ead7
      }, 4500);
    };
  
++  useEffect(() => {
++    tokenRef.current = token;
++  }, [token]);
++
    useEffect(() => {
      let isActive = true;
  
      Linking.getInitialURL().then((url) => {
        if (!isActive) return;
-+      console.log("[deeplink] received initial url", url);
++      const didNavigate = false;
+       console.log("[deeplink] received initial url", url);
        const username = extractUsernameFromUrl(url);
-+      console.log("[deeplink] extracted username", username);
-       console.log("[deeplink] initial url", url, "username", username);
+       console.log("[deeplink] extracted username", username);
+-      console.log("[deeplink] initial url", url, "username", username);
++      console.log(
++        "[deeplink] initial url",
++        url,
++        "username",
++        username,
++        "immediateNavigate",
++        didNavigate
++      );
        if (username) {
          setPendingDeepLinkUsername(username);
        }
      });
  
      const sub = Linking.addEventListener("url", ({ url }) => {
-+      console.log("[deeplink] received url event", url);
++      let didNavigate = false;
+       console.log("[deeplink] received url event", url);
        const username = extractUsernameFromUrl(url);
-+      console.log("[deeplink] extracted username", username);
-       console.log("[deeplink] url event", url, "username", username);
+       console.log("[deeplink] extracted username", username);
+-      console.log("[deeplink] url event", url, "username", username);
        if (username) {
-         setPendingDeepLinkUsername(username);
+-        setPendingDeepLinkUsername(username);
++        if (tokenRef.current && !tokenRef.current.isProvider) {
++          didNavigate = navigateToClientSearch(username, navigationRef);
++          setPendingDeepLinkUsername(null);
++        } else {
++          setPendingDeepLinkUsername(username);
++        }
        }
++      console.log(
++        "[deeplink] url event",
++        url,
++        "username",
++        username,
++        "immediateNavigate",
++        didNavigate
++      );
      });
  
      return () => {
@@ -227,6 +308,50 @@ index 6f51cd933cf4cab3e2d01e1e68cc8d85701852f3..09495d8995a408993bb594df41f8ead7
        }
        setPendingDeepLinkUsername(null);
        return;
+     }
+ 
+-    if (!navigationRef.current) return;
+-
++    const didNavigate = navigateToClientSearch(
++      pendingDeepLinkUsername,
++      navigationRef
++    );
+     console.log(
+-      "[deeplink] navigating to Search for",
+-      pendingDeepLinkUsername
++      "[deeplink] pending username",
++      pendingDeepLinkUsername,
++      "navigate",
++      didNavigate
+     );
+-    navigationRef.current.navigate("Search", {
+-      incomingUsername: pendingDeepLinkUsername,
+-    });
+     setPendingDeepLinkUsername(null);
+   }, [pendingDeepLinkUsername, token, showFlash]);
+ 
+   useEffect(() => {
+     let isActive = true;
+     const restoreSession = async () => {
+       if (authBootstrapRef.current.inFlight || authBootstrapRef.current.completed) {
+         return;
+       }
+       authBootstrapRef.current.inFlight = true;
+       const bootstrapStartedAt = Date.now();
+       console.log("[auth] bootstrap start");
+       try {
+         const restoredToken = await withTimeout(
+           getAuthToken(),
+           AUTH_TOKEN_TIMEOUT_MS,
+           "getAuthToken"
+         );
+         console.log("[auth] token loaded:", Boolean(restoredToken));
+ 
+         if (!restoredToken) {
+           if (isActive) setToken(null);
+         } else {
+           try {
+             const meRes = await withTimeout(
  
 EOF
 )

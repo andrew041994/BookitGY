@@ -324,8 +324,10 @@ def delete_my_service(
     db: Session = Depends(get_db),
     provider: models.Provider = Depends(_require_current_provider),
 ):
-    crud.delete_service(db, provider.id, service_id)
-    return {"status": "deleted"}
+    status = crud.delete_service(db, provider.id, service_id)
+    if status is None:
+        raise HTTPException(status_code=404, detail="Service not found")
+    return {"ok": True, "status": status}
 
 
 # -------------------------------------------------------------------

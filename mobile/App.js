@@ -196,6 +196,25 @@ function buildProviderPublicLink(username) {
   return `https://bookitgy.com/u/${encodeURIComponent(trimmed)}`;
 }
 
+function navigateToClientSearch(username, navigationRef) {
+  if (!navigationRef?.current) return false;
+  const deeplinkNonce = Date.now();
+  const params = { incomingUsername: username, deeplinkNonce };
+  const rootState = navigationRef.current.getRootState?.();
+  const routeNames = rootState?.routeNames || [];
+
+  if (routeNames.includes("ClientTabs")) {
+    navigationRef.current.navigate("ClientTabs", {
+      screen: "Search",
+      params,
+    });
+    return true;
+  }
+
+  navigationRef.current.navigate("Search", params);
+  return true;
+}
+
 function useFavoriteProviders(userKey) {
   const storageKey = FAVORITES_STORAGE_KEY(userKey);
   const [favoriteIds, setFavoriteIds] = useState([]);
@@ -2664,6 +2683,7 @@ function SearchScreen({
   syncFavoritesFromList,
 }) {
   const incomingUsername = route?.params?.incomingUsername ?? null;
+  const deeplinkNonce = route?.params?.deeplinkNonce ?? null;
 
   const [filteredProviders, setFilteredProviders] = useState([]);
   const [searchQuery, setSearchQuery] = useState("");
@@ -2696,7 +2716,7 @@ function SearchScreen({
     if (!incomingUsername) return;
     setSearchQuery(incomingUsername);
     setHasSearched(true);
-  }, [incomingUsername]);
+  }, [incomingUsername, deeplinkNonce]);
 
   const haversineKm = (lat1, lon1, lat2, lon2) => {
     if (
@@ -5975,6 +5995,7 @@ function App() {
   const [pendingDeepLinkUsername, setPendingDeepLinkUsername] = useState(null);
   const navigationRef = useRef(null);
   const authBootstrapRef = useRef({ inFlight: false, completed: false });
+  const tokenRef = useRef(token);
 
   const [flash, setFlash] = useState(null);
   const handleUnauthorized = useCallback(async () => {
@@ -6042,27 +6063,52 @@ function App() {
   };
 
   useEffect(() => {
+    tokenRef.current = token;
+  }, [token]);
+
+  useEffect(() => {
     let isActive = true;
 
     Linking.getInitialURL().then((url) => {
       if (!isActive) return;
+      const didNavigate = false;
       console.log("[deeplink] received initial url", url);
       const username = extractUsernameFromUrl(url);
       console.log("[deeplink] extracted username", username);
-      console.log("[deeplink] initial url", url, "username", username);
+      console.log(
+        "[deeplink] initial url",
+        url,
+        "username",
+        username,
+        "immediateNavigate",
+        didNavigate
+      );
       if (username) {
         setPendingDeepLinkUsername(username);
       }
     });
 
     const sub = Linking.addEventListener("url", ({ url }) => {
+      let didNavigate = false;
       console.log("[deeplink] received url event", url);
       const username = extractUsernameFromUrl(url);
       console.log("[deeplink] extracted username", username);
-      console.log("[deeplink] url event", url, "username", username);
       if (username) {
-        setPendingDeepLinkUsername(username);
+        if (tokenRef.current && !tokenRef.current.isProvider) {
+          didNavigate = navigateToClientSearch(username, navigationRef);
+          setPendingDeepLinkUsername(null);
+        } else {
+          setPendingDeepLinkUsername(username);
+        }
       }
+      console.log(
+        "[deeplink] url event",
+        url,
+        "username",
+        username,
+        "immediateNavigate",
+        didNavigate
+      );
     });
 
     return () => {
@@ -6086,15 +6132,16 @@ function App() {
       return;
     }
 
-    if (!navigationRef.current) return;
-
-    console.log(
-      "[deeplink] navigating to Search for",
-      pendingDeepLinkUsername
+    const didNavigate = navigateToClientSearch(
+      pendingDeepLinkUsername,
+      navigationRef
     );
-    navigationRef.current.navigate("Search", {
-      incomingUsername: pendingDeepLinkUsername,
-    });
+    console.log(
+      "[deeplink] pending username",
+      pendingDeepLinkUsername,
+      "navigate",
+      didNavigate
+    );
     setPendingDeepLinkUsername(null);
   }, [pendingDeepLinkUsername, token, showFlash]);
 

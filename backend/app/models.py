@@ -72,6 +72,10 @@ class Service(Base):
     description = Column(Text)
     price_gyd = Column(Float)
     duration_minutes = Column(Integer)
+    # requires DB migration:
+    # ALTER TABLE services ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT true;
+    # CREATE INDEX IF NOT EXISTS idx_services_provider_is_active ON services(provider_id, is_active);
+    is_active = Column(Boolean, default=True, nullable=False)
 
 
 class Booking(Base):

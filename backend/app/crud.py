@@ -318,13 +318,16 @@ def list_admin_cancellation_stats(
     return results
 
 
-def list_services_for_provider(db: Session, provider_id: int):
-    return (
-        db.query(models.Service)
-        .filter(models.Service.provider_id == provider_id)
-        .order_by(models.Service.id.asc())
-        .all()
-    )
+def list_services_for_provider(
+    db: Session,
+    provider_id: int,
+    *,
+    include_inactive: bool = False,
+):
+    query = db.query(models.Service).filter(models.Service.provider_id == provider_id)
+    if not include_inactive:
+        query = query.filter(models.Service.is_active.is_(True))
+    return query.order_by(models.Service.id.asc()).all()
 
 def create_service_for_provider(db: Session, provider_id: int, service_in: schemas.ServiceCreate):
     svc = models.Service(
@@ -340,26 +343,33 @@ def create_service_for_provider(db: Session, provider_id: int, service_in: schem
     return svc
 
 def get_service_for_provider(
-    db: Session, service_id: int, provider_id: int
+    db: Session,
+    service_id: int,
+    provider_id: int,
+    *,
+    include_inactive: bool = True,
 ) -> Optional[models.Service]:
-    return (
-        db.query(models.Service)
-        .filter(
-            models.Service.id == service_id,
-            models.Service.provider_id == provider_id,
-        )
-        .first()
+    query = db.query(models.Service).filter(
+        models.Service.id == service_id,
+        models.Service.provider_id == provider_id,
     )
+    if not include_inactive:
+        query = query.filter(models.Service.is_active.is_(True))
+    return query.first()
 
 def delete_service_for_provider(
-    db: Session, service_id: int, provider_id: int
-) -> bool:
-    svc = get_service_for_provider(db, service_id, provider_id)
+    db: Session,
+    service_id: int,
+    provider_id: int,
+) -> Optional[str]:
+    svc = get_service_for_provider(db, service_id, provider_id, include_inactive=True)
     if not svc:
-        return False
-    db.delete(svc)
+        return None
+    if not svc.is_active:
+        return "already_archived"
+    svc.is_active = False
     db.commit()
-    return True
+    return "archived"
 
 def get_or_create_provider_for_user(db: Session, user_id: int) -> models.Provider:
     provider = (
@@ -379,7 +389,7 @@ def get_or_create_provider_for_user(db: Session, user_id: int) -> models.Provide
     user = db.query(models.User).filter(models.User.id == user_id).first()
     return create_provider_for_user(db, user)
 
-def delete_service(db: Session, provider_id: int, service_id: int) -> bool:
+def delete_service(db: Session, provider_id: int, service_id: int) -> Optional[str]:
     """
     Backwards-compatible wrapper for deleting a service for a provider.
     Called as crud.delete_service(db, provider.id, service_id) from routes.
@@ -858,7 +868,10 @@ def create_booking(
     # Load service
     service = (
         db.query(models.Service)
-        .filter(models.Service.id == booking.service_id)
+        .filter(
+            models.Service.id == booking.service_id,
+            models.Service.is_active.is_(True),
+        )
         .first()
     )
     if not service:
@@ -2460,6 +2473,7 @@ def get_provider_availability(
         .filter(
             models.Service.id == service_id,
             models.Service.provider_id == provider_id,
+            models.Service.is_active.is_(True),
         )
         .first()
     )
