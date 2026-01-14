@@ -3627,6 +3627,13 @@ const [catalog, setCatalog] = useState([]);
 const [catalogLoading, setCatalogLoading] = useState(false);
 const [catalogError, setCatalogError] = useState("");
 const [catalogUploading, setCatalogUploading] = useState(false);
+const isProviderUser = token?.isProvider || token?.is_provider;
+const providerUsername =
+  provider?.user?.username ||
+  profile?.username ||
+  token?.user?.username ||
+  token?.username;
+const providerProfileLink = buildProviderPublicLink(providerUsername);
 
 const validateServiceFields = useCallback((name, price, duration) => {
   const errors = { name: "", price: "", duration: "" };
@@ -3657,6 +3664,28 @@ const serviceErrors = useMemo(
 const isServiceFormValid =
   !serviceErrors.name && !serviceErrors.price && !serviceErrors.duration;
 
+
+const handleShareProfileLink = async () => {
+  if (!providerProfileLink) {
+    if (showFlash) {
+      showFlash("error", "Set a username to enable your profile link.");
+    }
+    return;
+  }
+
+  try {
+    await Share.share({
+      message: providerProfileLink,
+      url: providerProfileLink,
+      title: "My BookitGY profile link",
+    });
+  } catch (err) {
+    console.log("Error sharing provider profile link", err?.message || err);
+    if (showFlash) {
+      showFlash("error", "Could not share your profile link.");
+    }
+  }
+};
 
 
 
@@ -4726,6 +4755,18 @@ const loadProviderSummary = async () => {
       
         <Text style={styles.profileTitle}>Provider dashboard</Text>
         <Text style={styles.subtitleSmall}>Welcome, {providerLabel}</Text>
+        {isProviderUser && (
+          <View style={styles.providerShareProfileLinkRow}>
+            <TouchableOpacity
+              style={styles.providerShareProfileLinkButton}
+              onPress={handleShareProfileLink}
+            >
+              <Text style={styles.providerShareProfileLinkButtonText}>
+                Share profile link
+              </Text>
+            </TouchableOpacity>
+          </View>
+        )}
         {/*Account Info */}
         {providerSummary && (
           <View style={styles.providerSummaryCard}>
@@ -7232,6 +7273,25 @@ providerSummaryValue: {
   fontSize: 17,
   fontWeight: "600",
   color: "#111",
+},
+
+providerShareProfileLinkRow: {
+  alignItems: "flex-start",
+  marginBottom: 12,
+  marginTop: 4,
+},
+providerShareProfileLinkButton: {
+  paddingHorizontal: 12,
+  paddingVertical: 6,
+  borderRadius: 999,
+  backgroundColor: "#EFF6FF",
+  borderWidth: 1,
+  borderColor: "#BFDBFE",
+},
+providerShareProfileLinkButtonText: {
+  fontSize: 12,
+  fontWeight: "600",
+  color: "#1D4ED8",
 },
 
 providerBillingScroll: {
