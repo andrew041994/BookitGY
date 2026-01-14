@@ -1,9 +1,9 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
 diff --git a/mobile/App.js b/mobile/App.js
-index 021dd1869c1c3f6fd77df4dc9e3d54513d0c6fca..af037ff0ea4f917dad28c8b9ac7425dda6e33eaa 100644
+index af037ff0ea4f917dad28c8b9ac7425dda6e33eaa..651a39b64ca9dac70008f73c7fba8fe8dedcf2a3 100644
 --- a/mobile/App.js
 +++ b/mobile/App.js
-@@ -49,50 +49,157 @@ enableScreens(false);
+@@ -49,158 +49,50 @@ enableScreens(false);
  const API =
    Constants.expoConfig?.extra?.API_URL ||
    Constants.manifest?.extra?.API_URL ||
@@ -29,114 +29,114 @@ index 021dd1869c1c3f6fd77df4dc9e3d54513d0c6fca..af037ff0ea4f917dad28c8b9ac7425dd
  const AUTH_BOOTSTRAP_WATCHDOG_MS = 15000;
  const AUTH_TOKEN_TIMEOUT_MS = 2000;
  const AUTH_ME_TIMEOUT_MS = 12000;
-+const ANDROID_PASSWORD_MASK_FALLBACK = true;
-+
-+const AndroidPasswordInput = ({
-+  value,
-+  onChangeText,
-+  style,
-+  autoComplete = "password",
-+  textContentType = "password",
-+  importantForAutofill = "yes",
-+  onSelectionChange,
-+  onKeyPress,
-+  onTextInput,
-+  ...rest
-+}) => {
-+  // Android secure dots can render blank on some devices; this keeps masking visible.
-+  const fallbackEnabled = Platform.OS === "android" && ANDROID_PASSWORD_MASK_FALLBACK;
-+  const maskedValue = useMemo(() => "*".repeat(value.length), [value.length]);
-+  const [selection, setSelection] = useState({
-+    start: maskedValue.length,
-+    end: maskedValue.length,
-+  });
-+
-+  useEffect(() => {
-+    if (!fallbackEnabled) return;
-+    const end = maskedValue.length;
-+    setSelection({ start: end, end });
-+  }, [fallbackEnabled, maskedValue.length]);
-+
-+  const handleChangeText = useCallback(
-+    (text) => {
-+      if (!fallbackEnabled) {
-+        onChangeText(text);
-+        return;
-+      }
-+      if (text.length === 0) {
-+        onChangeText("");
-+      }
-+    },
-+    [fallbackEnabled, onChangeText]
-+  );
-+
-+  const handleKeyPress = useCallback(
-+    (event) => {
-+      if (fallbackEnabled && event?.nativeEvent?.key === "Backspace") {
-+        onChangeText(value.slice(0, -1));
-+      }
-+      onKeyPress?.(event);
-+    },
-+    [fallbackEnabled, onChangeText, onKeyPress, value]
-+  );
-+
-+  const handleTextInput = useCallback(
-+    (event) => {
-+      if (!fallbackEnabled) {
-+        onTextInput?.(event);
-+        return;
-+      }
-+      const inserted = event?.nativeEvent?.text ?? "";
-+      if (inserted.length) {
-+        onChangeText(value + inserted);
-+      }
-+      onTextInput?.(event);
-+    },
-+    [fallbackEnabled, onChangeText, onTextInput, value]
-+  );
-+
-+  const handleSelectionChange = useCallback(
-+    (event) => {
-+      if (!fallbackEnabled) {
-+        onSelectionChange?.(event);
-+        return;
-+      }
-+      const end = maskedValue.length;
-+      setSelection({ start: end, end });
-+      // Keep the cursor at the end to avoid mid-string edits when masked.
-+      onSelectionChange?.(event);
-+    },
-+    [fallbackEnabled, maskedValue.length, onSelectionChange]
-+  );
-+
-+  return (
-+    <TextInput
-+      style={[
-+        style,
-+        {
-+          color: "#0f172a",
-+          // Android secure glyphs can disappear with custom fonts/letterSpacing.
-+          fontFamily: Platform.OS === "android" ? "sans-serif" : undefined,
-+        },
-+      ]}
-+      autoCorrect={false}
-+      autoCapitalize="none"
-+      textContentType={textContentType}
-+      autoComplete={autoComplete}
-+      importantForAutofill={importantForAutofill}
-+      keyboardType="default"
-+      secureTextEntry={!fallbackEnabled}
-+      value={fallbackEnabled ? maskedValue : value}
-+      onChangeText={handleChangeText}
-+      onKeyPress={handleKeyPress}
-+      onTextInput={handleTextInput}
-+      onSelectionChange={handleSelectionChange}
-+      selection={fallbackEnabled ? selection : rest.selection}
-+      {...rest}
-+    />
-+  );
-+};
- 
+-const ANDROID_PASSWORD_MASK_FALLBACK = true;
+-
+-const AndroidPasswordInput = ({
+-  value,
+-  onChangeText,
+-  style,
+-  autoComplete = "password",
+-  textContentType = "password",
+-  importantForAutofill = "yes",
+-  onSelectionChange,
+-  onKeyPress,
+-  onTextInput,
+-  ...rest
+-}) => {
+-  // Android secure dots can render blank on some devices; this keeps masking visible.
+-  const fallbackEnabled = Platform.OS === "android" && ANDROID_PASSWORD_MASK_FALLBACK;
+-  const maskedValue = useMemo(() => "*".repeat(value.length), [value.length]);
+-  const [selection, setSelection] = useState({
+-    start: maskedValue.length,
+-    end: maskedValue.length,
+-  });
+-
+-  useEffect(() => {
+-    if (!fallbackEnabled) return;
+-    const end = maskedValue.length;
+-    setSelection({ start: end, end });
+-  }, [fallbackEnabled, maskedValue.length]);
+-
+-  const handleChangeText = useCallback(
+-    (text) => {
+-      if (!fallbackEnabled) {
+-        onChangeText(text);
+-        return;
+-      }
+-      if (text.length === 0) {
+-        onChangeText("");
+-      }
+-    },
+-    [fallbackEnabled, onChangeText]
+-  );
+-
+-  const handleKeyPress = useCallback(
+-    (event) => {
+-      if (fallbackEnabled && event?.nativeEvent?.key === "Backspace") {
+-        onChangeText(value.slice(0, -1));
+-      }
+-      onKeyPress?.(event);
+-    },
+-    [fallbackEnabled, onChangeText, onKeyPress, value]
+-  );
+-
+-  const handleTextInput = useCallback(
+-    (event) => {
+-      if (!fallbackEnabled) {
+-        onTextInput?.(event);
+-        return;
+-      }
+-      const inserted = event?.nativeEvent?.text ?? "";
+-      if (inserted.length) {
+-        onChangeText(value + inserted);
+-      }
+-      onTextInput?.(event);
+-    },
+-    [fallbackEnabled, onChangeText, onTextInput, value]
+-  );
+-
+-  const handleSelectionChange = useCallback(
+-    (event) => {
+-      if (!fallbackEnabled) {
+-        onSelectionChange?.(event);
+-        return;
+-      }
+-      const end = maskedValue.length;
+-      setSelection({ start: end, end });
+-      // Keep the cursor at the end to avoid mid-string edits when masked.
+-      onSelectionChange?.(event);
+-    },
+-    [fallbackEnabled, maskedValue.length, onSelectionChange]
+-  );
+-
+-  return (
+-    <TextInput
+-      style={[
+-        style,
+-        {
+-          color: "#0f172a",
+-          // Android secure glyphs can disappear with custom fonts/letterSpacing.
+-          fontFamily: Platform.OS === "android" ? "sans-serif" : undefined,
+-        },
+-      ]}
+-      autoCorrect={false}
+-      autoCapitalize="none"
+-      textContentType={textContentType}
+-      autoComplete={autoComplete}
+-      importantForAutofill={importantForAutofill}
+-      keyboardType="default"
+-      secureTextEntry={!fallbackEnabled}
+-      value={fallbackEnabled ? maskedValue : value}
+-      onChangeText={handleChangeText}
+-      onKeyPress={handleKeyPress}
+-      onTextInput={handleTextInput}
+-      onSelectionChange={handleSelectionChange}
+-      selection={fallbackEnabled ? selection : rest.selection}
+-      {...rest}
+-    />
+-  );
+-};
+-
    const isValidEmail = (value) => {
    const trimmed = value.trim();
    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -161,81 +161,8 @@ index 021dd1869c1c3f6fd77df4dc9e3d54513d0c6fca..af037ff0ea4f917dad28c8b9ac7425dd
      if (secure) return secure;
    } catch (error) {
      console.log("[auth] Failed to load secure token", error?.message || error);
-@@ -317,73 +424,50 @@ function LandingScreen({ goToLogin, goToSignup }) {
-             </TouchableOpacity>
- 
-             <TouchableOpacity
-               style={styles.authSecondaryButton}
-               onPress={goToSignup}
-             >
-               <Text style={styles.authSecondaryButtonText}>SIGN UP</Text>
-             </TouchableOpacity>
-           </View>
-         </View>
-       );
-     }
- 
- // 🔹 Dedicated login screen component
- function LoginScreen({
-   setToken,
-   setIsAdmin,
-   goToSignup,
-   goToForgot,
-   goBack,
-   showFlash,
- }) {
-   const [email, setEmail] = useState("");
-   const [password, setPassword] = useState("");
-   const [loading, setLoading] = useState(false);
--  const [loginSecure, setLoginSecure] = useState(true);
--  const loginSecureTimeoutRef = useRef(null);
--
--  useEffect(() => {
--    return () => {
--      if (loginSecureTimeoutRef.current) {
--        clearTimeout(loginSecureTimeoutRef.current);
--      }
--    };
--  }, []);
--
--  const handleLoginPasswordChange = (value) => {
--    setPassword(value);
--    if (Platform.OS !== "android") return;
--
--    setLoginSecure(false);
--    if (loginSecureTimeoutRef.current) {
--      clearTimeout(loginSecureTimeoutRef.current);
--    }
--    loginSecureTimeoutRef.current = setTimeout(() => {
--      setLoginSecure(true);
--    }, 600);
--  };
- 
- 
-   const login = async () => {
-     const trimmedEmail = email.trim();
-     const normalizedEmail = trimmedEmail.toLowerCase();
- 
-     if (!trimmedEmail || !isValidEmail(trimmedEmail)) {
-       if (showFlash) {
-         showFlash("error", "Please enter a valid email address");
-       } else {
-         Alert.alert("Error", "Please enter a valid email address");
-       }
-       return;
    }
- 
-   setLoading(true);
- 
-     try {
-       const body = new URLSearchParams({
-         username: normalizedEmail,
-         password: password,
-       }).toString();
- 
-     const res = await axios.post(`${API}/auth/login`, body, {
-         headers: {
-@@ -451,69 +535,62 @@ return (
+@@ -535,59 +427,64 @@ return (
  
      >
        <ScrollView
@@ -261,29 +188,26 @@ index 021dd1869c1c3f6fd77df4dc9e3d54513d0c6fca..af037ff0ea4f917dad28c8b9ac7425dd
            onChangeText={setEmail}
          />
  
--        <TextInput
--          style={[
--            styles.input,
--            Platform.OS === "android" && { includeFontPadding: false },
--            { fontFamily: "sans-serif" },
--          ]}
-+        <AndroidPasswordInput
-+          style={[styles.input, Platform.OS === "android" && { includeFontPadding: false }]}
+-        <AndroidPasswordInput
+-          style={[styles.input, Platform.OS === "android" && { includeFontPadding: false }]}
++        <TextInput
++          style={styles.input}
            placeholder="Password"
            placeholderTextColor={styles.inputPlaceholder.color}
            value={password}
--          onChangeText={handleLoginPasswordChange}
--          autoCapitalize="none"
--          autoCorrect={false}
-+          onChangeText={setPassword}
-           autoComplete="password"
--          {...(Platform.OS === "ios" ? { textContentType: "password" } : {})}
-+          textContentType="password"
+           onChangeText={setPassword}
+-          autoComplete="password"
+           textContentType="password"
++          autoComplete="password"
            importantForAutofill="yes"
++          secureTextEntry={true}
++          keyboardType="default"
++          autoCapitalize="none"
++          autoCorrect={false}
++          spellCheck={false}
            underlineColorAndroid="transparent"
            selectionColor="#16a34a"
            cursorColor="#16a34a"
--          secureTextEntry={loginSecure}
          />
  
            {goToSignup && (
@@ -306,14 +230,7 @@ index 021dd1869c1c3f6fd77df4dc9e3d54513d0c6fca..af037ff0ea4f917dad28c8b9ac7425dd
                <View style={{ width: "100%", marginBottom: 10 }}>
                  <Button
                    title="Need an account? Sign Up"
-                   onPress={goToSignup}
-                   color="#166534"
-                 />
-@@ -640,109 +717,68 @@ function ForgotPasswordScreen({ goToLogin, goBack, showFlash }) {
-               </View>
-             )}
- 
-             {goBack && (
+@@ -721,64 +618,50 @@ function ForgotPasswordScreen({ goToLogin, goBack, showFlash }) {
                <View style={{ width: "100%" }}>
                  <Button title="Back" onPress={goBack} color="#6b7280" />
                </View>
@@ -335,65 +252,23 @@ index 021dd1869c1c3f6fd77df4dc9e3d54513d0c6fca..af037ff0ea4f917dad28c8b9ac7425dd
    const [username, setUsername] = useState("");
    const [phone, setPhone] = useState("");
    const [isProvider, setIsProvider] = useState(false); // 👈 new
--  const [signupSecure, setSignupSecure] = useState(true);
--  const [confirmSecure, setConfirmSecure] = useState(true);
--  const signupSecureTimeoutRef = useRef(null);
--  const confirmSecureTimeoutRef = useRef(null);
    const keyboardWrapperProps = {
      behavior: Platform.OS === "ios" ? "padding" : "height",
      keyboardVerticalOffset: Platform.OS === "ios" ? 40 : 0,
    };
-   const passwordInputProps = Platform.select({
-     ios: {
-       autoComplete: "new-password",
-       importantForAutofill: "yes",
-     },
-     android: {
-       autoComplete: "new-password",
--      importantForAutofill: "no",
-+      importantForAutofill: "yes",
-     },
-     default: {
-       autoComplete: "new-password",
-     },
-   });
- 
--  useEffect(() => {
--    return () => {
--      if (signupSecureTimeoutRef.current) {
--        clearTimeout(signupSecureTimeoutRef.current);
--      }
--      if (confirmSecureTimeoutRef.current) {
--        clearTimeout(confirmSecureTimeoutRef.current);
--      }
--    };
--  }, []);
--
--  const handleSignupPasswordChange = (value) => {
--    setPassword(value);
--    if (Platform.OS !== "android") return;
--
--    setSignupSecure(false);
--    if (signupSecureTimeoutRef.current) {
--      clearTimeout(signupSecureTimeoutRef.current);
--    }
--    signupSecureTimeoutRef.current = setTimeout(() => {
--      setSignupSecure(true);
--    }, 600);
--  };
--
--  const handleConfirmPasswordChange = (value) => {
--    setConfirmPassword(value);
--    if (Platform.OS !== "android") return;
--
--    setConfirmSecure(false);
--    if (confirmSecureTimeoutRef.current) {
--      clearTimeout(confirmSecureTimeoutRef.current);
--    }
--    confirmSecureTimeoutRef.current = setTimeout(() => {
--      setConfirmSecure(true);
--    }, 600);
--  };
+-  const passwordInputProps = Platform.select({
+-    ios: {
+-      autoComplete: "new-password",
+-      importantForAutofill: "yes",
+-    },
+-    android: {
+-      autoComplete: "new-password",
+-      importantForAutofill: "yes",
+-    },
+-    default: {
+-      autoComplete: "new-password",
+-    },
+-  });
 -
    const signupValidation = useMemo(() => {
      const errors = {};
@@ -420,7 +295,7 @@ index 021dd1869c1c3f6fd77df4dc9e3d54513d0c6fca..af037ff0ea4f917dad28c8b9ac7425dd
      return {
        errors,
        canSubmit: Object.keys(errors).length === 0,
-@@ -889,101 +925,89 @@ function SignupScreen({ goToLogin, goBack, showFlash }) {
+@@ -925,86 +808,94 @@ function SignupScreen({ goToLogin, goBack, showFlash }) {
                onChangeText={setPhone}
                keyboardType="phone-pad"
              />
@@ -446,31 +321,30 @@ index 021dd1869c1c3f6fd77df4dc9e3d54513d0c6fca..af037ff0ea4f917dad28c8b9ac7425dd
                <Switch value={isProvider} onValueChange={setIsProvider} />
              </Pressable>
  
--            <TextInput
-+            <AndroidPasswordInput
+-            <AndroidPasswordInput
++            <TextInput
                style={[
                  styles.input,
                  signupValidation.errors.password ? styles.inputError : null,
-                 Platform.OS === "android" && { includeFontPadding: false },
--                { fontFamily: "sans-serif" },
+-                Platform.OS === "android" && { includeFontPadding: false },
                ]}
                placeholder="Password"
                placeholderTextColor={styles.inputPlaceholder.color}
                value={password}
--              onChangeText={handleSignupPasswordChange}
--              autoCapitalize="none"
--              autoCorrect={false}
-+              onChangeText={setPassword}
-               spellCheck={false}
-               {...passwordInputProps}
--              {...(Platform.OS === "ios"
--                ? { textContentType: "password" }
--                : {})}
-+              textContentType="password"
+               onChangeText={setPassword}
+-              spellCheck={false}
+-              {...passwordInputProps}
+               textContentType="password"
++              autoComplete="password"
++              importantForAutofill="yes"
++              secureTextEntry={true}
++              keyboardType="default"
++              autoCapitalize="none"
++              autoCorrect={false}
++              spellCheck={false}
                underlineColorAndroid="transparent"
                selectionColor="#16a34a"
                cursorColor="#16a34a"
--              secureTextEntry={signupSecure}
              />
              {signupValidation.errors.password && (
                <Text style={styles.inputErrorText}>
@@ -478,31 +352,30 @@ index 021dd1869c1c3f6fd77df4dc9e3d54513d0c6fca..af037ff0ea4f917dad28c8b9ac7425dd
                </Text>
              )}
  
--            <TextInput
-+            <AndroidPasswordInput
+-            <AndroidPasswordInput
++            <TextInput
                style={[
                  styles.input,
                  signupValidation.errors.confirmPassword ? styles.inputError : null,
-                 Platform.OS === "android" && { includeFontPadding: false },
--                { fontFamily: "sans-serif" },
+-                Platform.OS === "android" && { includeFontPadding: false },
                ]}
                placeholder="Confirm Password"
                placeholderTextColor={styles.inputPlaceholder.color}
                value={confirmPassword}
--              onChangeText={handleConfirmPasswordChange}
--              autoCapitalize="none"
--              autoCorrect={false}
-+              onChangeText={setConfirmPassword}
-               spellCheck={false}
-               {...passwordInputProps}
--              {...(Platform.OS === "ios"
--                ? { textContentType: "password" }
--                : {})}
-+              textContentType="password"
+               onChangeText={setConfirmPassword}
+-              spellCheck={false}
+-              {...passwordInputProps}
+               textContentType="password"
++              autoComplete="password"
++              importantForAutofill="yes"
++              secureTextEntry={true}
++              keyboardType="default"
++              autoCapitalize="none"
++              autoCorrect={false}
++              spellCheck={false}
                underlineColorAndroid="transparent"
                selectionColor="#16a34a"
                cursorColor="#16a34a"
--              secureTextEntry={confirmSecure}
              />
              {signupValidation.errors.confirmPassword && (
                <Text style={styles.inputErrorText}>
@@ -525,9 +398,6 @@ index 021dd1869c1c3f6fd77df4dc9e3d54513d0c6fca..af037ff0ea4f917dad28c8b9ac7425dd
                    title="Already have an account? Login"
                    onPress={goToLogin}
                    color="#166534"
-                 />
-               </View>
-             )}
  
 EOF
 )
