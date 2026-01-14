@@ -1,252 +1,232 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
 diff --git a/mobile/App.js b/mobile/App.js
-index ec43887e6a14fd1f0ed3dba3d3e2460b4fe266a5..d266cf80efb1de7d84083918eb626ed67ca55597 100644
+index 6f51cd933cf4cab3e2d01e1e68cc8d85701852f3..09495d8995a408993bb594df41f8ead765a588b7 100644
 --- a/mobile/App.js
 +++ b/mobile/App.js
-@@ -3605,81 +3605,110 @@ function ProviderDashboardScreen({ apiClient, token, showFlash }) {
-   const [provider, setProvider] = useState(null);  // 👈 add this
+@@ -61,50 +61,56 @@ const API =
  
+ const withTimeout = (promise, ms, label) => {
+   let timeoutId;
+   const timeout = new Promise((_, reject) => {
+     timeoutId = setTimeout(() => {
+       const error = new Error(`${label || "Operation"} timed out after ${ms}ms`);
+       error.code = "ETIMEDOUT";
+       reject(error);
+     }, ms);
+   });
  
- const providerLabel =
-   (profile?.full_name && profile.full_name.trim()) ||
-   token?.email ||
-   "Provider";
+   return Promise.race([promise, timeout]).finally(() => {
+     clearTimeout(timeoutId);
+   });
+ };
  
+ const AUTH_BOOTSTRAP_WATCHDOG_MS = 15000;
+ const AUTH_TOKEN_TIMEOUT_MS = 2000;
+ const AUTH_ME_TIMEOUT_MS = 12000;
+   const isValidEmail = (value) => {
+   const trimmed = value.trim();
+   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+   return emailRegex.test(trimmed);
+ };
  
- const [customProfession, setCustomProfession] = useState("");
- const [providerSummary, setProviderSummary] = useState(null);
- const [todayBookings, setTodayBookings] = useState([]);
- const [todayLoading, setTodayLoading] = useState(false);
- const [todayError, setTodayError] = useState("");
- const [upcomingBookings, setUpcomingBookings] = useState([]);
- const [upcomingLoading, setUpcomingLoading] = useState(false);
- const [upcomingError, setUpcomingError] = useState("");
- const [providerLocation, setProviderLocation] = useState(null);
- const [focusedHoursField, setFocusedHoursField] = useState(null);
- const [avatarUrl, setAvatarUrl] = useState(null);
- // Catalog (portfolio images)
- const [catalog, setCatalog] = useState([]);
- const [catalogLoading, setCatalogLoading] = useState(false);
- const [catalogError, setCatalogError] = useState("");
- const [catalogUploading, setCatalogUploading] = useState(false);
-+const isProviderUser = token?.isProvider || token?.is_provider;
-+const providerUsername =
-+  provider?.user?.username ||
-+  profile?.username ||
-+  token?.user?.username ||
-+  token?.username;
-+const providerProfileLink = buildProviderPublicLink(providerUsername);
- 
- const validateServiceFields = useCallback((name, price, duration) => {
-   const errors = { name: "", price: "", duration: "" };
-   const trimmedName = name.trim();
-   const priceNumber = Number(price);
-   const durationNumber = Number(duration);
- 
-   if (!trimmedName) {
-     errors.name = "Service name is required.";
-   }
- 
-   if (!price || Number.isNaN(priceNumber) || priceNumber <= 0) {
-     errors.price = "Enter a price greater than 0.";
-   }
- 
-   if (!duration || Number.isNaN(durationNumber) || durationNumber <= 0) {
-     errors.duration = "Enter a duration greater than 0.";
-   }
- 
-   return errors;
- }, []);
- 
- const serviceErrors = useMemo(
-   () => validateServiceFields(newName, newPrice, newDuration),
-   [newName, newPrice, newDuration, validateServiceFields]
- );
- 
- const isServiceFormValid =
-   !serviceErrors.name && !serviceErrors.price && !serviceErrors.duration;
- 
- 
-+const handleShareProfileLink = async () => {
-+  if (!providerProfileLink) {
-+    if (showFlash) {
-+      showFlash("error", "Set a username to enable your profile link.");
-+    }
-+    return;
-+  }
-+
-+  try {
-+    await Share.share({
-+      message: providerProfileLink,
-+      url: providerProfileLink,
-+      title: "My BookitGY profile link",
-+    });
-+  } catch (err) {
-+    console.log("Error sharing provider profile link", err?.message || err);
-+    if (showFlash) {
-+      showFlash("error", "Could not share your profile link.");
-+    }
-+  }
++const isValidUsername = (value) => {
++  const trimmed = String(value || "").trim();
++  if (!trimmed) return false;
++  return /^[a-zA-Z0-9._-]+$/.test(trimmed);
 +};
 +
+ const resolveImageUrl = (url) => {
+     if (!url || typeof url !== "string") return null;
+     if (url.startsWith("http")) return url;
+     if (url.startsWith("//")) return `https:${url}`;
+     const normalizedPath = url.startsWith("/") ? url : `/${url}`;
+     return `${API}${normalizedPath}`;
+   };
  
+ const LEGACY_ACCESS_TOKEN_KEY = "accessToken";
+ 
+ const getAuthToken = async (tokenState) => {
+   if (tokenState?.token) return tokenState.token;
+ 
+   try {
+     const secure = await withTimeout(loadToken(), 1500, "loadToken");
+     if (secure) return secure;
+   } catch (error) {
+     console.log("[auth] Failed to load secure token", error?.message || error);
+   }
+ 
+   try {
+     const legacy = await withTimeout(
+       AsyncStorage.getItem(LEGACY_ACCESS_TOKEN_KEY),
+       1500,
+       "loadLegacyToken"
+@@ -116,85 +122,94 @@ const getAuthToken = async (tokenState) => {
+   }
+ };
+ 
+ const FAVORITES_STORAGE_KEY = (userKey) =>
+   userKey ? `favoriteProviders:${userKey}` : "favoriteProviders";
+ 
+ const getProviderId = (provider) =>
+   provider?.provider_id ?? provider?.id ?? provider?._id ?? null;
+ 
+ const RESERVED_USERNAME_PATHS = new Set([
+   "u",
+   "privacy",
+   "terms",
+   "download",
+   "login",
+   "signup",
+   "forgot",
+   "reset",
+ ]);
+ 
+ function extractUsernameFromUrl(url) {
+   if (!url) return null;
+   const trimmed = String(url).trim();
+   if (!trimmed) return null;
+ 
++  // Strip query string or hash before parsing.
+   const withoutQuery = trimmed.split(/[?#]/)[0];
+   let pathname = withoutQuery;
+ 
+-  try {
+-    const parsed = new URL(withoutQuery);
+-    pathname = parsed.pathname || "";
+-  } catch (error) {
+-    const schemeMatch = withoutQuery.match(/^[a-zA-Z][a-zA-Z0-9+.-]*:\/\/(.*)$/);
+-    if (schemeMatch?.[1]) {
+-      pathname = `/${schemeMatch[1]}`;
++  if (/^https?:\/\//i.test(withoutQuery)) {
++    // Strip protocol + host, keep only path.
++    const withoutProtocol = withoutQuery.replace(/^https?:\/\//i, "");
++    const slashIndex = withoutProtocol.indexOf("/");
++    pathname = slashIndex === -1 ? "/" : withoutProtocol.slice(slashIndex);
++  } else {
++    const schemeMatch = withoutQuery.match(/^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//);
++    if (schemeMatch) {
++      // Strip custom scheme and treat remainder as path.
++      pathname = `/${withoutQuery.slice(schemeMatch[0].length)}`;
+     }
+   }
+ 
++  if (!pathname.startsWith("/")) {
++    pathname = `/${pathname}`;
++  }
++
+   const segments = pathname.split("/").filter(Boolean);
+   if (segments.length === 0) return null;
+ 
+   let username = null;
+ 
+   if (segments[0] === "u" && segments[1]) {
+     username = segments[1];
+   } else if (segments.length === 1 && !RESERVED_USERNAME_PATHS.has(segments[0])) {
+     username = segments[0];
+   }
+ 
+   if (!username) return null;
+ 
+   let decoded = username;
+   try {
+     decoded = decodeURIComponent(username);
+   } catch (error) {
+     decoded = username;
+   }
+ 
+   const cleaned = decoded.trim().replace(/^@/, "");
+-  return cleaned || null;
++  if (!cleaned || !isValidUsername(cleaned)) return null;
++  return cleaned;
+ }
+ 
+ function buildProviderPublicLink(username) {
+   const trimmed = String(username || "").trim();
+   if (!trimmed) return null;
+   return `https://bookitgy.com/u/${encodeURIComponent(trimmed)}`;
+ }
+ 
+ function useFavoriteProviders(userKey) {
+   const storageKey = FAVORITES_STORAGE_KEY(userKey);
+   const [favoriteIds, setFavoriteIds] = useState([]);
+   const [favoriteProviders, setFavoriteProviders] = useState([]);
+   const [favoritesLoading, setFavoritesLoading] = useState(true);
+ 
+   const persistIds = useCallback(async (ids) => {
+     try {
+       await AsyncStorage.setItem(storageKey, JSON.stringify(ids));
+     } catch (err) {
+       console.log("Error saving favorites", err?.message || err);
+     }
+   }, [storageKey]);
+ 
+   const loadFavoritesFromStorage = useCallback(async () => {
+     try {
+       setFavoritesLoading(true);
+@@ -6022,59 +6037,63 @@ function App() {
+     if (typeof text === "object") {
+       if (Array.isArray(text.detail)) {
+         return formatFlashText(text.detail);
+       }
+       if (typeof text.detail === "string") return text.detail;
+       if (typeof text.message === "string") return text.message;
+       if (typeof text.msg === "string") return text.msg;
+       return JSON.stringify(text);
+     }
+ 
+     return String(text);
+   };
+ 
+   const showFlash = (type, text) => {
+     setFlash({ type, text: formatFlashText(text) });
+     setTimeout(() => {
+       setFlash(null);
+     }, 4500);
+   };
  
    useEffect(() => {
-     loadServices();
-     loadBookings();
-     loadWorkingHours();
-     loadTodayBookings();
-     loadUpcomingBookings(); 
-     loadProviderLocation(); 
-     loadProviderSummary();
-     loadProviderProfile();
-     loadCatalog();
+     let isActive = true;
  
+     Linking.getInitialURL().then((url) => {
+       if (!isActive) return;
++      console.log("[deeplink] received initial url", url);
+       const username = extractUsernameFromUrl(url);
++      console.log("[deeplink] extracted username", username);
+       console.log("[deeplink] initial url", url, "username", username);
+       if (username) {
+         setPendingDeepLinkUsername(username);
+       }
+     });
  
+     const sub = Linking.addEventListener("url", ({ url }) => {
++      console.log("[deeplink] received url event", url);
+       const username = extractUsernameFromUrl(url);
++      console.log("[deeplink] extracted username", username);
+       console.log("[deeplink] url event", url, "username", username);
+       if (username) {
+         setPendingDeepLinkUsername(username);
+       }
+     });
  
+     return () => {
+       isActive = false;
+       sub.remove();
+     };
    }, []);
  
-   useFocusEffect(
-   useCallback(() => {
-     // Re-fetch profile (and anything else you want live-updated)
-     loadProviderProfile();
-     // optional: also refresh bookings, summary, etc.
-     // loadTodayBookings();
-     // loadUpcomingBookings();
-     // loadProviderSummary();
-@@ -4704,50 +4733,62 @@ const loadProviderSummary = async () => {
-         </TouchableOpacity>
-       </View>
-       
-       {hoursFlash && (
-         <View
-           style={[
-             styles.hoursFlashGlobal,
-             hoursFlash.type === "error"
-               ? styles.hoursFlashError
-               : styles.hoursFlashSuccess,
-           ]}
-         >
-           <Text style={styles.hoursFlashText}>{hoursFlash.message}</Text>
-         </View>
-       )}
+   useEffect(() => {
+     if (!pendingDeepLinkUsername || !token) return;
  
-       <ScrollView
-         contentContainerStyle={styles.providerScroll}
-         refreshControl={
-           <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
-         }
-       >
-       
-         <Text style={styles.profileTitle}>Provider dashboard</Text>
-         <Text style={styles.subtitleSmall}>Welcome, {providerLabel}</Text>
-+        {isProviderUser && (
-+          <View style={styles.providerShareProfileLinkRow}>
-+            <TouchableOpacity
-+              style={styles.providerShareProfileLinkButton}
-+              onPress={handleShareProfileLink}
-+            >
-+              <Text style={styles.providerShareProfileLinkButtonText}>
-+                Share profile link
-+              </Text>
-+            </TouchableOpacity>
-+          </View>
-+        )}
-         {/*Account Info */}
-         {providerSummary && (
-           <View style={styles.providerSummaryCard}>
-             <Text style={styles.providerSummaryLabel}>Account number</Text>
-             <Text style={styles.providerSummaryValue}>
-               {providerSummary.account_number || "N/A"}
-             </Text>
-           </View>
-         )}
- 
-         {/* TODAY overview */}
-         <View style={styles.card}>
-           <Text style={styles.label}>TODAY</Text>
- 
-           {todayLoading && (
-             <View style={{ paddingVertical: 10 }}>
-               <ActivityIndicator />
-               <Text style={styles.serviceMeta}>Loading today&apos;s bookings…</Text>
-             </View>
-           )}
- 
-           {!todayLoading && todayError ? (
-             <Text style={styles.errorText}>{todayError}</Text>
-           ) : null}
- 
-@@ -7212,50 +7253,69 @@ hoursInputFocused: {
- 
- providerSummaryCard: {
-   backgroundColor: "#FFFFFF",
-   borderRadius: 12,
-   paddingHorizontal: 16,
-   paddingVertical: 12,
-   marginBottom: 12,
-   shadowColor: "#000",
-   shadowOpacity: 0.05,
-   shadowRadius: 6,
-   shadowOffset: { width: 0, height: 2 },
-   elevation: 2,
- },
- 
- providerSummaryLabel: {
-   fontSize: 13,
-   color: "#666",
- },
- 
- providerSummaryValue: {
-   fontSize: 17,
-   fontWeight: "600",
-   color: "#111",
- },
- 
-+providerShareProfileLinkRow: {
-+  alignItems: "flex-start",
-+  marginBottom: 12,
-+  marginTop: 4,
-+},
-+providerShareProfileLinkButton: {
-+  paddingHorizontal: 12,
-+  paddingVertical: 6,
-+  borderRadius: 999,
-+  backgroundColor: "#EFF6FF",
-+  borderWidth: 1,
-+  borderColor: "#BFDBFE",
-+},
-+providerShareProfileLinkButtonText: {
-+  fontSize: 12,
-+  fontWeight: "600",
-+  color: "#1D4ED8",
-+},
-+
- providerBillingScroll: {
-   flexGrow: 1,
-   backgroundColor: "#f0fdf4",
-   padding: 20,
-   paddingTop: 60,
- },
- 
- billingCard: {
-   backgroundColor: "#ffffff",
-   borderRadius: 12,
-   padding: 16,
-   marginBottom: 16,
-   borderWidth: 1,
-   borderColor: "#e5e7eb",
-   shadowColor: "#000",
-   shadowOpacity: 0.04,
-   shadowRadius: 6,
-   shadowOffset: { width: 0, height: 3 },
-   elevation: 3,
- },
- 
- billingHeaderRow: {
-   flexDirection: "row",
-   justifyContent: "space-between",
-   alignItems: "center",
+     if (token.isProvider) {
+       console.log(
+         "[deeplink] provider user ignoring username",
+         pendingDeepLinkUsername
+       );
+       if (showFlash) {
+         showFlash("error", "Open as a client to view provider links.");
+       }
+       setPendingDeepLinkUsername(null);
+       return;
  
 EOF
 )

@@ -83,6 +83,12 @@ const AUTH_ME_TIMEOUT_MS = 12000;
   return emailRegex.test(trimmed);
 };
 
+const isValidUsername = (value) => {
+  const trimmed = String(value || "").trim();
+  if (!trimmed) return false;
+  return /^[a-zA-Z0-9._-]+$/.test(trimmed);
+};
+
 const resolveImageUrl = (url) => {
     if (!url || typeof url !== "string") return null;
     if (url.startsWith("http")) return url;
@@ -138,17 +144,25 @@ function extractUsernameFromUrl(url) {
   const trimmed = String(url).trim();
   if (!trimmed) return null;
 
+  // Strip query string or hash before parsing.
   const withoutQuery = trimmed.split(/[?#]/)[0];
   let pathname = withoutQuery;
 
-  try {
-    const parsed = new URL(withoutQuery);
-    pathname = parsed.pathname || "";
-  } catch (error) {
-    const schemeMatch = withoutQuery.match(/^[a-zA-Z][a-zA-Z0-9+.-]*:\/\/(.*)$/);
-    if (schemeMatch?.[1]) {
-      pathname = `/${schemeMatch[1]}`;
+  if (/^https?:\/\//i.test(withoutQuery)) {
+    // Strip protocol + host, keep only path.
+    const withoutProtocol = withoutQuery.replace(/^https?:\/\//i, "");
+    const slashIndex = withoutProtocol.indexOf("/");
+    pathname = slashIndex === -1 ? "/" : withoutProtocol.slice(slashIndex);
+  } else {
+    const schemeMatch = withoutQuery.match(/^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//);
+    if (schemeMatch) {
+      // Strip custom scheme and treat remainder as path.
+      pathname = `/${withoutQuery.slice(schemeMatch[0].length)}`;
     }
+  }
+
+  if (!pathname.startsWith("/")) {
+    pathname = `/${pathname}`;
   }
 
   const segments = pathname.split("/").filter(Boolean);
@@ -172,7 +186,8 @@ function extractUsernameFromUrl(url) {
   }
 
   const cleaned = decoded.trim().replace(/^@/, "");
-  return cleaned || null;
+  if (!cleaned || !isValidUsername(cleaned)) return null;
+  return cleaned;
 }
 
 function buildProviderPublicLink(username) {
@@ -6044,7 +6059,9 @@ function App() {
 
     Linking.getInitialURL().then((url) => {
       if (!isActive) return;
+      console.log("[deeplink] received initial url", url);
       const username = extractUsernameFromUrl(url);
+      console.log("[deeplink] extracted username", username);
       console.log("[deeplink] initial url", url, "username", username);
       if (username) {
         setPendingDeepLinkUsername(username);
@@ -6052,7 +6069,9 @@ function App() {
     });
 
     const sub = Linking.addEventListener("url", ({ url }) => {
+      console.log("[deeplink] received url event", url);
       const username = extractUsernameFromUrl(url);
+      console.log("[deeplink] extracted username", username);
       console.log("[deeplink] url event", url, "username", username);
       if (username) {
         setPendingDeepLinkUsername(username);
