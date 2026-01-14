@@ -1449,7 +1449,7 @@ function ProfileScreen({ apiClient, authLoading, setToken, showFlash, token }) {
 
     try {
       await Share.share({
-        message: `Book with me on BookitGY: ${providerPublicLink}`,
+        message: `Book with me on BookitGY:`,
         url: providerPublicLink,
       });
     } catch (err) {
