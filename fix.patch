@@ -1,169 +1,9 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
 diff --git a/mobile/App.js b/mobile/App.js
-index af037ff0ea4f917dad28c8b9ac7425dda6e33eaa..651a39b64ca9dac70008f73c7fba8fe8dedcf2a3 100644
+index 651a39b64ca9dac70008f73c7fba8fe8dedcf2a3..ebd4a55fe82bdb0c0f5a9af81cfd49f35f3838fd 100644
 --- a/mobile/App.js
 +++ b/mobile/App.js
-@@ -49,158 +49,50 @@ enableScreens(false);
- const API =
-   Constants.expoConfig?.extra?.API_URL ||
-   Constants.manifest?.extra?.API_URL ||
-   "https://bookitgy.onrender.com";
- 
-   console.log("### API base URL =", API);
- 
- const withTimeout = (promise, ms, label) => {
-   let timeoutId;
-   const timeout = new Promise((_, reject) => {
-     timeoutId = setTimeout(() => {
-       const error = new Error(`${label || "Operation"} timed out after ${ms}ms`);
-       error.code = "ETIMEDOUT";
-       reject(error);
-     }, ms);
-   });
- 
-   return Promise.race([promise, timeout]).finally(() => {
-     clearTimeout(timeoutId);
-   });
- };
- 
- const AUTH_BOOTSTRAP_WATCHDOG_MS = 15000;
- const AUTH_TOKEN_TIMEOUT_MS = 2000;
- const AUTH_ME_TIMEOUT_MS = 12000;
--const ANDROID_PASSWORD_MASK_FALLBACK = true;
--
--const AndroidPasswordInput = ({
--  value,
--  onChangeText,
--  style,
--  autoComplete = "password",
--  textContentType = "password",
--  importantForAutofill = "yes",
--  onSelectionChange,
--  onKeyPress,
--  onTextInput,
--  ...rest
--}) => {
--  // Android secure dots can render blank on some devices; this keeps masking visible.
--  const fallbackEnabled = Platform.OS === "android" && ANDROID_PASSWORD_MASK_FALLBACK;
--  const maskedValue = useMemo(() => "*".repeat(value.length), [value.length]);
--  const [selection, setSelection] = useState({
--    start: maskedValue.length,
--    end: maskedValue.length,
--  });
--
--  useEffect(() => {
--    if (!fallbackEnabled) return;
--    const end = maskedValue.length;
--    setSelection({ start: end, end });
--  }, [fallbackEnabled, maskedValue.length]);
--
--  const handleChangeText = useCallback(
--    (text) => {
--      if (!fallbackEnabled) {
--        onChangeText(text);
--        return;
--      }
--      if (text.length === 0) {
--        onChangeText("");
--      }
--    },
--    [fallbackEnabled, onChangeText]
--  );
--
--  const handleKeyPress = useCallback(
--    (event) => {
--      if (fallbackEnabled && event?.nativeEvent?.key === "Backspace") {
--        onChangeText(value.slice(0, -1));
--      }
--      onKeyPress?.(event);
--    },
--    [fallbackEnabled, onChangeText, onKeyPress, value]
--  );
--
--  const handleTextInput = useCallback(
--    (event) => {
--      if (!fallbackEnabled) {
--        onTextInput?.(event);
--        return;
--      }
--      const inserted = event?.nativeEvent?.text ?? "";
--      if (inserted.length) {
--        onChangeText(value + inserted);
--      }
--      onTextInput?.(event);
--    },
--    [fallbackEnabled, onChangeText, onTextInput, value]
--  );
--
--  const handleSelectionChange = useCallback(
--    (event) => {
--      if (!fallbackEnabled) {
--        onSelectionChange?.(event);
--        return;
--      }
--      const end = maskedValue.length;
--      setSelection({ start: end, end });
--      // Keep the cursor at the end to avoid mid-string edits when masked.
--      onSelectionChange?.(event);
--    },
--    [fallbackEnabled, maskedValue.length, onSelectionChange]
--  );
--
--  return (
--    <TextInput
--      style={[
--        style,
--        {
--          color: "#0f172a",
--          // Android secure glyphs can disappear with custom fonts/letterSpacing.
--          fontFamily: Platform.OS === "android" ? "sans-serif" : undefined,
--        },
--      ]}
--      autoCorrect={false}
--      autoCapitalize="none"
--      textContentType={textContentType}
--      autoComplete={autoComplete}
--      importantForAutofill={importantForAutofill}
--      keyboardType="default"
--      secureTextEntry={!fallbackEnabled}
--      value={fallbackEnabled ? maskedValue : value}
--      onChangeText={handleChangeText}
--      onKeyPress={handleKeyPress}
--      onTextInput={handleTextInput}
--      onSelectionChange={handleSelectionChange}
--      selection={fallbackEnabled ? selection : rest.selection}
--      {...rest}
--    />
--  );
--};
--
-   const isValidEmail = (value) => {
-   const trimmed = value.trim();
-   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-   return emailRegex.test(trimmed);
- };
- 
- const resolveImageUrl = (url) => {
-     if (!url || typeof url !== "string") return null;
-     if (url.startsWith("http")) return url;
-     if (url.startsWith("//")) return `https:${url}`;
-     const normalizedPath = url.startsWith("/") ? url : `/${url}`;
-     return `${API}${normalizedPath}`;
-   };
- 
- const LEGACY_ACCESS_TOKEN_KEY = "accessToken";
- 
- const getAuthToken = async (tokenState) => {
-   if (tokenState?.token) return tokenState.token;
- 
-   try {
-     const secure = await withTimeout(loadToken(), 1500, "loadToken");
-     if (secure) return secure;
-   } catch (error) {
-     console.log("[auth] Failed to load secure token", error?.message || error);
-   }
-@@ -535,59 +427,64 @@ return (
- 
+@@ -428,51 +428,58 @@ return (
      >
        <ScrollView
          contentContainerStyle={styles.scrollContent}
@@ -188,23 +28,28 @@ index af037ff0ea4f917dad28c8b9ac7425dda6e33eaa..651a39b64ca9dac70008f73c7fba8fe8
            onChangeText={setEmail}
          />
  
--        <AndroidPasswordInput
--          style={[styles.input, Platform.OS === "android" && { includeFontPadding: false }]}
-+        <TextInput
-+          style={styles.input}
+         <TextInput
+-          style={styles.input}
++          style={[
++            styles.input,
++            Platform.OS === "android" && {
++              fontFamily: "sans-serif",
++              letterSpacing: 0,
++              includeFontPadding: false,
++            },
++          ]}
            placeholder="Password"
            placeholderTextColor={styles.inputPlaceholder.color}
            value={password}
            onChangeText={setPassword}
--          autoComplete="password"
            textContentType="password"
-+          autoComplete="password"
+           autoComplete="password"
            importantForAutofill="yes"
-+          secureTextEntry={true}
-+          keyboardType="default"
-+          autoCapitalize="none"
-+          autoCorrect={false}
-+          spellCheck={false}
+           secureTextEntry={true}
+           keyboardType="default"
+           autoCapitalize="none"
+           autoCorrect={false}
+           spellCheck={false}
            underlineColorAndroid="transparent"
            selectionColor="#16a34a"
            cursorColor="#16a34a"
@@ -218,88 +63,7 @@ index af037ff0ea4f917dad28c8b9ac7425dda6e33eaa..651a39b64ca9dac70008f73c7fba8fe8
                  <Button title="Login" onPress={login} color="#16a34a" />
                )}
              </View>
-           )}
- 
-           {goToForgot && (
-             <TouchableOpacity onPress={goToForgot} style={styles.forgotLink}>
-               <Text style={styles.forgotLinkText}>Forgot password?</Text>
-             </TouchableOpacity>
-           )}
- 
-             {goToSignup && (
-               <View style={{ width: "100%", marginBottom: 10 }}>
-                 <Button
-                   title="Need an account? Sign Up"
-@@ -721,64 +618,50 @@ function ForgotPasswordScreen({ goToLogin, goBack, showFlash }) {
-               <View style={{ width: "100%" }}>
-                 <Button title="Back" onPress={goBack} color="#6b7280" />
-               </View>
-             )}
-           </View>
-         </TouchableWithoutFeedback>
-       </ScrollView>
-     </KeyboardAvoidingView>
-   );
- }
- 
- 
- 
- 
- function SignupScreen({ goToLogin, goBack, showFlash }) {
-   const [email, setEmail] = useState("");
-   const [password, setPassword] = useState("");
-   const [confirmPassword, setConfirmPassword] = useState("");
-   const [username, setUsername] = useState("");
-   const [phone, setPhone] = useState("");
-   const [isProvider, setIsProvider] = useState(false); // 👈 new
-   const keyboardWrapperProps = {
-     behavior: Platform.OS === "ios" ? "padding" : "height",
-     keyboardVerticalOffset: Platform.OS === "ios" ? 40 : 0,
-   };
--  const passwordInputProps = Platform.select({
--    ios: {
--      autoComplete: "new-password",
--      importantForAutofill: "yes",
--    },
--    android: {
--      autoComplete: "new-password",
--      importantForAutofill: "yes",
--    },
--    default: {
--      autoComplete: "new-password",
--    },
--  });
--
-   const signupValidation = useMemo(() => {
-     const errors = {};
-     const trimmedUsername = username.trim();
-     const trimmedEmail = email.trim();
-     const trimmedPhone = phone.trim();
-     const trimmedPassword = password.trim();
-     const trimmedConfirm = confirmPassword.trim();
- 
-     if (!trimmedUsername) errors.username = "Username is required";
-     if (!trimmedEmail) {
-       errors.email = "Email is required";
-     } else if (!isValidEmail(trimmedEmail)) {
-       errors.email = "Email is invalid";
-     }
-     if (!trimmedPhone) errors.phone = "Phone is required";
-     if (trimmedPassword.length < 8) {
-       errors.password = "Password must be at least 8 characters";
-     }
-     if (trimmedConfirm !== trimmedPassword) {
-       errors.confirmPassword = "Passwords do not match";
-     }
- 
-     return {
-       errors,
-       canSubmit: Object.keys(errors).length === 0,
-@@ -925,86 +808,94 @@ function SignupScreen({ goToLogin, goBack, showFlash }) {
-               onChangeText={setPhone}
-               keyboardType="phone-pad"
-             />
- 
+@@ -812,77 +819,87 @@ function SignupScreen({ goToLogin, goBack, showFlash }) {
              {/* Provider toggle */}
              <Pressable
                style={({ pressed }) => [
@@ -321,27 +85,28 @@ index af037ff0ea4f917dad28c8b9ac7425dda6e33eaa..651a39b64ca9dac70008f73c7fba8fe8
                <Switch value={isProvider} onValueChange={setIsProvider} />
              </Pressable>
  
--            <AndroidPasswordInput
-+            <TextInput
+             <TextInput
                style={[
                  styles.input,
                  signupValidation.errors.password ? styles.inputError : null,
--                Platform.OS === "android" && { includeFontPadding: false },
++                Platform.OS === "android" && {
++                  fontFamily: "sans-serif",
++                  letterSpacing: 0,
++                  includeFontPadding: false,
++                },
                ]}
                placeholder="Password"
                placeholderTextColor={styles.inputPlaceholder.color}
                value={password}
                onChangeText={setPassword}
--              spellCheck={false}
--              {...passwordInputProps}
                textContentType="password"
-+              autoComplete="password"
-+              importantForAutofill="yes"
-+              secureTextEntry={true}
-+              keyboardType="default"
-+              autoCapitalize="none"
-+              autoCorrect={false}
-+              spellCheck={false}
+               autoComplete="password"
+               importantForAutofill="yes"
+               secureTextEntry={true}
+               keyboardType="default"
+               autoCapitalize="none"
+               autoCorrect={false}
+               spellCheck={false}
                underlineColorAndroid="transparent"
                selectionColor="#16a34a"
                cursorColor="#16a34a"
@@ -352,27 +117,28 @@ index af037ff0ea4f917dad28c8b9ac7425dda6e33eaa..651a39b64ca9dac70008f73c7fba8fe8
                </Text>
              )}
  
--            <AndroidPasswordInput
-+            <TextInput
+             <TextInput
                style={[
                  styles.input,
                  signupValidation.errors.confirmPassword ? styles.inputError : null,
--                Platform.OS === "android" && { includeFontPadding: false },
++                Platform.OS === "android" && {
++                  fontFamily: "sans-serif",
++                  letterSpacing: 0,
++                  includeFontPadding: false,
++                },
                ]}
                placeholder="Confirm Password"
                placeholderTextColor={styles.inputPlaceholder.color}
                value={confirmPassword}
                onChangeText={setConfirmPassword}
--              spellCheck={false}
--              {...passwordInputProps}
                textContentType="password"
-+              autoComplete="password"
-+              importantForAutofill="yes"
-+              secureTextEntry={true}
-+              keyboardType="default"
-+              autoCapitalize="none"
-+              autoCorrect={false}
-+              spellCheck={false}
+               autoComplete="password"
+               importantForAutofill="yes"
+               secureTextEntry={true}
+               keyboardType="default"
+               autoCapitalize="none"
+               autoCorrect={false}
+               spellCheck={false}
                underlineColorAndroid="transparent"
                selectionColor="#16a34a"
                cursorColor="#16a34a"
@@ -385,19 +151,67 @@ index af037ff0ea4f917dad28c8b9ac7425dda6e33eaa..651a39b64ca9dac70008f73c7fba8fe8
  
              <View style={{ width: "100%", marginBottom: 10 }}>
                <Button
-                 title="Sign Up"
-                 onPress={signup}
-                 color="#16a34a"
-                 disabled={!signupValidation.canSubmit}
-               />
-             </View>
+@@ -7165,60 +7182,50 @@ authSecondaryButtonText: {
+   },
+   scrollContent: {
+     flexGrow: 1,
+   },
+   container: {
+     flex: 1,
+     paddingHorizontal: 24,
+     alignItems: "center",
+     justifyContent: "center",
+   },
+   logoWrapper: {
+     alignItems: "center",
+     marginBottom: 24,
+   },
+   logo: {
+     width: 260,
+     height: 260,
+     resizeMode: "contain",
+   },
+   title: {
+     fontSize: 28,
+     fontWeight: "700",
+     color: "#16a34a",
+     marginBottom: 16,
+   },
+-  input: {
+-    width: "100%",
+-    borderWidth: 1,
+-    borderColor: "#d4d4d4",
+-    borderRadius: 8,
+-    paddingHorizontal: 12,
+-    paddingVertical: 10,
+-    marginBottom: 12,
+-    backgroundColor: "#ffffff",
+-  },
  
-             {goToLogin && (
-               <View style={{ width: "100%", marginBottom: 10 }}>
-                 <Button
-                   title="Already have an account? Login"
-                   onPress={goToLogin}
-                   color="#166534"
+     catalogGrid: {
+     flexDirection: "row",
+     flexWrap: "wrap",
+     marginTop: 12,
+   },
+   catalogItem: {
+     width: "30%",
+     marginRight: 8,
+     marginBottom: 12,
+   },
+   catalogImage: {
+     width: "100%",
+     aspectRatio: 3 / 4,
+     borderRadius: 8,
+     backgroundColor: "#E5E7EB",
+   },
+   catalogCaption: {
+     fontSize: 11,
+     color: "#4B5563",
+     marginTop: 4,
+   },
+   catalogDeleteText: {
+     fontSize: 11,
+     color: "#DC2626",
  
 EOF
 )

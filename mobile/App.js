@@ -450,7 +450,14 @@ return (
         />
 
         <TextInput
-          style={styles.input}
+          style={[
+            styles.input,
+            Platform.OS === "android" && {
+              fontFamily: "sans-serif",
+              letterSpacing: 0,
+              includeFontPadding: false,
+            },
+          ]}
           placeholder="Password"
           placeholderTextColor={styles.inputPlaceholder.color}
           value={password}
@@ -834,6 +841,11 @@ function SignupScreen({ goToLogin, goBack, showFlash }) {
               style={[
                 styles.input,
                 signupValidation.errors.password ? styles.inputError : null,
+                Platform.OS === "android" && {
+                  fontFamily: "sans-serif",
+                  letterSpacing: 0,
+                  includeFontPadding: false,
+                },
               ]}
               placeholder="Password"
               placeholderTextColor={styles.inputPlaceholder.color}
@@ -861,6 +873,11 @@ function SignupScreen({ goToLogin, goBack, showFlash }) {
               style={[
                 styles.input,
                 signupValidation.errors.confirmPassword ? styles.inputError : null,
+                Platform.OS === "android" && {
+                  fontFamily: "sans-serif",
+                  letterSpacing: 0,
+                  includeFontPadding: false,
+                },
               ]}
               placeholder="Confirm Password"
               placeholderTextColor={styles.inputPlaceholder.color}
@@ -7186,16 +7203,6 @@ authSecondaryButtonText: {
     fontWeight: "700",
     color: "#16a34a",
     marginBottom: 16,
-  },
-  input: {
-    width: "100%",
-    borderWidth: 1,
-    borderColor: "#d4d4d4",
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    marginBottom: 12,
-    backgroundColor: "#ffffff",
   },
 
     catalogGrid: {
