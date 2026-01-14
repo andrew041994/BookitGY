@@ -1,96 +1,491 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
-diff --git a/mobile/app.config.js b/mobile/app.config.js
-index 27cf3d445c46368f6181442061f2b66631da0d6a..b282ae704181cb1daa9899ddc797faf56afbf9e2 100644
---- a/mobile/app.config.js
-+++ b/mobile/app.config.js
-@@ -1,69 +1,87 @@
- import "dotenv/config";
+diff --git a/mobile/App.js b/mobile/App.js
+index bfafe257bb8c8c9ad33921752bb41430801113cd..ec43887e6a14fd1f0ed3dba3d3e2460b4fe266a5 100644
+--- a/mobile/App.js
++++ b/mobile/App.js
+@@ -1,62 +1,68 @@
+ import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
+ import { useFocusEffect } from "@react-navigation/native";
+ import {
+   Text,
+   View,
+   StyleSheet,
+   TextInput,
+   Button,
+   Alert,
+   ActivityIndicator,
+   ScrollView,
+   TouchableOpacity,
+   Switch,
+   Linking,
+   Platform,
+   Image,
+   KeyboardAvoidingView,
+   TouchableWithoutFeedback,
+   Keyboard,
+   Pressable,
+   RefreshControl,
++  Share,
+ } from "react-native";
+ import { NavigationContainer } from "@react-navigation/native";
+ import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
+ import { enableScreens } from "react-native-screens";
+ import axios from "axios";
+ import AsyncStorage from "@react-native-async-storage/async-storage";
+ import { clearToken, loadToken, saveToken } from "./src/components/tokenStorage";
+ import { createApiClient } from "./src/api/client";
+ import * as Location from "expo-location";
+ import Constants from "expo-constants";
+ import * as ImagePicker from "expo-image-picker";
+ import BookitGYLogoTransparent from "./assets/bookitgy-logo-transparent.png"
+ import { Ionicons } from "@expo/vector-icons";
+ import { SafeAreaProvider,SafeAreaView } from "react-native-safe-area-context";
+ // import * as Sentry from "sentry-expo";
  
- console.log(">>> USING app.config.js <<<");
- 
- export default {
-   name: "BookitGY",
-   slug: "bookitgy",
-+  scheme: "bookitgy",
-   version: "1.0.0",
-   orientation: "portrait",
-   icon: "./assets/icon.png",
-   userInterfaceStyle: "light",
-   splash: {
-     image: "./assets/splash.png",
-     resizeMode: "contain",
-     backgroundColor: "#16a34a",
-   },
-   assetBundlePatterns: ["**/*"],
-   newArchEnabled: false,
-   // plugins: ["sentry-expo"],
- 
-   ios: {
-     deploymentTarget: "16.0",
-     supportsTablet: true,
-     bundleIdentifier: "com.bookitgy.app",
-     buildNumber: "1",
-+    associatedDomains: ["applinks:bookitgy.com", "applinks:www.bookitgy.com"],
-     privacyManifest: {
-       NSPrivacyAccessedAPITypes: [],
-       NSPrivacyCollectedDataTypes: [],
-       NSPrivacyTracking: false,
-     },
-     infoPlist: {
-       NSLocationWhenInUseUsageDescription:
-         "BookitGY uses your location to show nearby service providers and enable navigation.",
-       NSLocationAlwaysAndWhenInUseUsageDescription:
-         "Location access allows providers to share their business location with customers.",
-       ITSAppUsesNonExemptEncryption: false,
-     },
-     config: {
-       googleMapsApiKey: (process.env.IOS_GOOGLE_MAPS_API_KEY || "").trim(),
- 
-     },
-   },
- 
-   android: {
-     package: "com.bookitgy.app",
-     versionCode: 1,
-     permissions: ["ACCESS_FINE_LOCATION", "ACCESS_COARSE_LOCATION"],
-+    intentFilters: [
-+      {
-+        action: "VIEW",
-+        autoVerify: true,
-+        data: [
-+          { scheme: "https", host: "bookitgy.com", pathPrefix: "/u" },
-+          { scheme: "https", host: "www.bookitgy.com", pathPrefix: "/u" },
-+        ],
-+        category: ["BROWSABLE", "DEFAULT"],
-+      },
-+    ],
-     adaptiveIcon: {
-       foregroundImage: "./assets/adaptive-icon.png",
-       backgroundColor: "#16a34a",
-     },
-     config: {
-       googleMaps: {
-         apiKey: (process.env.ANDROID_GOOGLE_MAPS_API_KEY || "").trim(),
- 
-       },
-     },
-   },
- 
-   web: { favicon: "./assets/favicon.png" },
- 
-   extra: {
-     eas: {
-       projectId: "ba67429b-0180-4382-bb17-633982e5a5f8",
-       API_URL: process.env.API_URL || "https://bookitgy.onrender.com",
-     },
-     SENTRY_DSN: process.env.SENTRY_DSN || "",
-   },
- };
++let Clipboard = null;
++try {
++  Clipboard = require("expo-clipboard");
++} catch (e) {}
 +
-+// iOS requires apple-app-site-association hosted at:
-+// https://bookitgy.com/.well-known/apple-app-site-association
-+// Android requires assetlinks.json hosted at:
-+// https://bookitgy.com/.well-known/assetlinks.json
+ enableScreens(false);
+ 
+ 
+ 
+ 
+ // import { API } from "./App"; // wherever you define your base URL
+ 
+ 
+ 
+ 
+ 
+ const API =
+   Constants.expoConfig?.extra?.API_URL ||
+   Constants.manifest?.extra?.API_URL ||
+   "https://bookitgy.onrender.com";
+ 
+   console.log("### API base URL =", API);
+ 
+ const withTimeout = (promise, ms, label) => {
+   let timeoutId;
+   const timeout = new Promise((_, reject) => {
+     timeoutId = setTimeout(() => {
+       const error = new Error(`${label || "Operation"} timed out after ${ms}ms`);
+       error.code = "ETIMEDOUT";
+       reject(error);
+@@ -147,50 +153,56 @@ function extractUsernameFromUrl(url) {
+ 
+   const segments = pathname.split("/").filter(Boolean);
+   if (segments.length === 0) return null;
+ 
+   let username = null;
+ 
+   if (segments[0] === "u" && segments[1]) {
+     username = segments[1];
+   } else if (segments.length === 1 && !RESERVED_USERNAME_PATHS.has(segments[0])) {
+     username = segments[0];
+   }
+ 
+   if (!username) return null;
+ 
+   let decoded = username;
+   try {
+     decoded = decodeURIComponent(username);
+   } catch (error) {
+     decoded = username;
+   }
+ 
+   const cleaned = decoded.trim().replace(/^@/, "");
+   return cleaned || null;
+ }
+ 
++function buildProviderPublicLink(username) {
++  const trimmed = String(username || "").trim();
++  if (!trimmed) return null;
++  return `https://bookitgy.com/u/${encodeURIComponent(trimmed)}`;
++}
++
+ function useFavoriteProviders(userKey) {
+   const storageKey = FAVORITES_STORAGE_KEY(userKey);
+   const [favoriteIds, setFavoriteIds] = useState([]);
+   const [favoriteProviders, setFavoriteProviders] = useState([]);
+   const [favoritesLoading, setFavoritesLoading] = useState(true);
+ 
+   const persistIds = useCallback(async (ids) => {
+     try {
+       await AsyncStorage.setItem(storageKey, JSON.stringify(ids));
+     } catch (err) {
+       console.log("Error saving favorites", err?.message || err);
+     }
+   }, [storageKey]);
+ 
+   const loadFavoritesFromStorage = useCallback(async () => {
+     try {
+       setFavoritesLoading(true);
+       const raw = await AsyncStorage.getItem(storageKey);
+       const parsed = raw ? JSON.parse(raw) : [];
+       setFavoriteIds(Array.isArray(parsed) ? parsed : []);
+     } catch (err) {
+       console.log("Error reading favorites", err?.message || err);
+       setFavoriteIds([]);
+     } finally {
+       setFavoritesLoading(false);
+@@ -987,50 +999,51 @@ function SignupScreen({ goToLogin, goBack, showFlash }) {
+ 
+ 
+ 
+ // Placeholder screens so MainApp compiles — replace with your real ones
+ function ProfileScreen({ apiClient, authLoading, setToken, showFlash, token }) {
+   const [user, setUser] = useState(null);
+   const [loading, setLoading] = useState(true);
+   const [error, setError] = useState("");
+    // NEW state for editing profile
+   const [showEdit, setShowEdit] = useState(false);
+   const [editSaving, setEditSaving] = useState(false);
+   const [editProfile, setEditProfile] = useState({
+     full_name: "",
+     phone: "",
+     whatsapp: "",
+     location: "",
+   });
+   // NEW state for "My bookings"
+   const [showBookings, setShowBookings] = useState(false);
+   const [bookings, setBookings] = useState([]);
+   const [bookingsLoading, setBookingsLoading] = useState(false);
+   const [bookingsError, setBookingsError] = useState("");
+   const [avatarUrl, setAvatarUrl] = useState(null);
+   const [refreshing, setRefreshing] = useState(false);
+   const [isProviderUser, setIsProviderUser] = useState(null);
++  const canUseClipboard = Boolean(Clipboard?.setStringAsync);
+ 
+ 
+   const uploadAvatar = async (uri) => {
+     try {
+       const storedToken = await loadToken();
+       if (!storedToken) {
+         alert("No access token found. Please log in again.");
+         return;
+       }
+ 
+       const filename = uri.split("/").pop() || "avatar.jpg";
+       const match = /\.(\w+)$/.exec(filename);
+       const ext = match ? match[1] : "jpg";
+       const mimeType = ext === "png" ? "image/png" : "image/jpeg";
+ 
+       const formData = new FormData();
+       formData.append("file", {
+         uri,
+         name: filename,
+         type: mimeType,
+       });
+ 
+       let isProvider = isProviderUser;
+ 
+       if (typeof isProvider !== "boolean") {
+@@ -1400,50 +1413,117 @@ function ProfileScreen({ apiClient, authLoading, setToken, showFlash, token }) {
+         const dest = `${booking.provider_lat},${booking.provider_long}`;
+         url = `https://www.google.com/maps/dir/?api=1&destination=${dest}`;
+       } else if (booking.provider_location) {
+         const q = encodeURIComponent(booking.provider_location);
+         url = `https://www.google.com/maps/search/?api=1&query=${q}`;
+       } else {
+         if (showFlash) {
+           showFlash(
+             "error",
+             "No location is available yet for this booking."
+           );
+         }
+         return;
+       }
+ 
+       Linking.openURL(url);
+     } catch (err) {
+       console.log("Error opening maps", err);
+       if (showFlash) {
+         showFlash("error", "Could not open maps on this device.");
+       }
+     }
+   };
+ 
+   const displayAvatarUrl = resolveImageUrl(avatarUrl || user?.avatar_url);
++  const isProviderPublic =
++    user?.is_provider === true || token?.is_provider === true;
++  const providerPublicLink = buildProviderPublicLink(user?.username);
++
++  const handleShareProviderLink = async () => {
++    if (!providerPublicLink) {
++      if (showFlash) {
++        showFlash("error", "Set a username to enable your profile link.");
++      }
++      return;
++    }
++
++    try {
++      await Share.share({
++        message: `Book with me on BookitGY: ${providerPublicLink}`,
++        url: providerPublicLink,
++      });
++    } catch (err) {
++      console.log("Error sharing provider link", err?.message || err);
++      if (showFlash) {
++        showFlash("error", "Could not share your profile link.");
++      }
++    }
++  };
++
++  const handleCopyProviderLink = async () => {
++    if (!providerPublicLink) {
++      if (showFlash) {
++        showFlash("error", "Set a username to enable your profile link.");
++      }
++      return;
++    }
++
++    try {
++      await Clipboard.setStringAsync(providerPublicLink);
++      if (showFlash) {
++        showFlash("success", "Profile link copied.");
++      }
++    } catch (err) {
++      console.log("Error copying provider link", err?.message || err);
++      if (showFlash) {
++        showFlash("error", "Could not copy your profile link.");
++      }
++    }
++  };
++
++  const handleTestProviderLink = async () => {
++    if (!providerPublicLink) {
++      if (showFlash) {
++        showFlash("error", "Set a username to enable your profile link.");
++      }
++      return;
++    }
++
++    try {
++      const supported = await Linking.canOpenURL(providerPublicLink);
++      if (!supported) {
++        throw new Error("Unsupported URL");
++      }
++      await Linking.openURL(providerPublicLink);
++    } catch (err) {
++      console.log("Error opening provider link", err?.message || err);
++      if (showFlash) {
++        showFlash("error", "Could not open your profile link.");
++      }
++    }
++  };
+ 
+   return (
+     <ScrollView
+       contentContainerStyle={styles.profileScroll}
+       refreshControl={
+         <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+       }
+     >
+       <View style={styles.profileHeader}>
+         {/* Avatar */}
+         <View style={{ alignItems: "center", marginBottom: 16 }}>
+           <View style={styles.profileAvatarWrapper}>
+             {displayAvatarUrl ? (
+               <Image
+                 source={{ uri: displayAvatarUrl }}
+                 style={{ width: "100%", height: "100%" }}
+                 resizeMode="cover"
+               />
+             ) : (
+               <View style={styles.profileAvatarFallback}>
+                 <Text style={styles.profileAvatarInitial}>
+                   {(user.full_name || user.email || "C").charAt(0).toUpperCase()}
+                 </Text>
+               </View>
+             )}
+@@ -1460,50 +1540,102 @@ function ProfileScreen({ apiClient, authLoading, setToken, showFlash, token }) {
+             </Text>
+           </TouchableOpacity>
+         </View>
+ 
+ 
+         {/* Name + role */}
+         <View style={{ flex: 1, marginLeft: 12 }}>
+           <Text style={styles.profileTitle}>
+             {user.full_name || "My Profile"}
+           </Text>
+           <View
+             style={[
+               styles.roleBadge,
+               isAdmin
+                 ? styles.roleBadgeAdmin
+                 : isProvider
+                 ? styles.roleBadgeProvider
+                 : styles.roleBadgeClient,
+             ]}
+           >
+             <Text style={styles.roleBadgeText}>{role}</Text>
+           </View>
+         </View>
+       </View>
+ 
++      {isProviderPublic && (
++        <View style={styles.card}>
++          <Text style={styles.sectionTitle}>Profile Link</Text>
++          {providerPublicLink ? (
++            <Text selectable style={styles.profileLinkText}>
++              {providerPublicLink}
++            </Text>
++          ) : (
++            <Text style={styles.profileLinkWarning}>
++              Set a username to enable your profile link.
++            </Text>
++          )}
++
++          <View style={styles.profileLinkActions}>
++            <TouchableOpacity
++              style={[
++                styles.linkActionButton,
++                !providerPublicLink && styles.linkActionButtonDisabled,
++              ]}
++              onPress={handleShareProviderLink}
++              disabled={!providerPublicLink}
++            >
++              <Text style={styles.linkActionButtonText}>Share Link</Text>
++            </TouchableOpacity>
++
++            {canUseClipboard && (
++              <TouchableOpacity
++                style={[
++                  styles.linkActionButton,
++                  !providerPublicLink && styles.linkActionButtonDisabled,
++                ]}
++                onPress={handleCopyProviderLink}
++                disabled={!providerPublicLink}
++              >
++                <Text style={styles.linkActionButtonText}>Copy Link</Text>
++              </TouchableOpacity>
++            )}
++
++            <TouchableOpacity
++              style={[
++                styles.linkActionButton,
++                !providerPublicLink && styles.linkActionButtonDisabled,
++              ]}
++              onPress={handleTestProviderLink}
++              disabled={!providerPublicLink}
++            >
++              <Text style={styles.linkActionButtonText}>Test Link</Text>
++            </TouchableOpacity>
++          </View>
++        </View>
++      )}
++
+       <View style={styles.card}>
+         <Text style={styles.label}>Email</Text>
+         <Text style={styles.value}>{user.email}</Text>
+ 
+         {user.phone && (
+           <>
+             <Text style={[styles.label, { marginTop: 16 }]}>Phone</Text>
+             <Text style={styles.value}>{user.phone}</Text>
+           </>
+         )}
+ 
+         {user.location && (
+           <>
+             <Text style={[styles.label, { marginTop: 16 }]}>Location</Text>
+             <Text style={styles.value}>{user.location}</Text>
+           </>
+         )}
+       </View>
+ 
+       {isAdmin && (
+         <View style={styles.adminBox}>
+           <Text style={styles.adminTitle}>Admin tools</Text>
+           <Text style={styles.adminText}>
+             You are logged in as an admin. In future versions, this area will
+             let you manage users, providers and bookings.
+@@ -6401,50 +6533,83 @@ cardHeartButton: {
+     borderRadius: 12,
+     padding: 16,
+     marginBottom: 20,
+     borderWidth: 1,
+     borderColor: "#bbf7d0",
+   },
+   adminTitle: {
+     fontSize: 16,
+     fontWeight: "700",
+     color: "#166534",
+     marginBottom: 4,
+   },
+   adminText: {
+     fontSize: 14,
+     color: "#4b5563",
+   },
+   actionsContainer: {
+     marginTop: 10,
+   },
+   sectionTitle: {
+     fontSize: 18,
+     fontWeight: "600",
+     color: "#166534",
+     marginBottom: 10,
+   },
++  profileLinkText: {
++    fontSize: 15,
++    color: "#111827",
++    marginBottom: 10,
++  },
++  profileLinkWarning: {
++    fontSize: 13,
++    color: "#b91c1c",
++    marginBottom: 10,
++  },
++  profileLinkActions: {
++    flexDirection: "row",
++    flexWrap: "wrap",
++  },
++  linkActionButton: {
++    backgroundColor: "#ffffff",
++    paddingVertical: 8,
++    paddingHorizontal: 14,
++    borderRadius: 999,
++    borderWidth: 1,
++    borderColor: "#bbf7d0",
++    marginRight: 8,
++    marginBottom: 8,
++    alignItems: "center",
++  },
++  linkActionButtonDisabled: {
++    opacity: 0.5,
++  },
++  linkActionButtonText: {
++    fontSize: 14,
++    fontWeight: "500",
++    color: "#166534",
++  },
+ 
+   carouselHeader: {
+     flexDirection: "row",
+     justifyContent: "space-between",
+     alignItems: "center",
+     marginBottom: 12,
+   },
+   carouselBody: {
+     flexDirection: "row",
+     alignItems: "center",
+   },
+   carouselBadge: {
+     minWidth: 32,
+     height: 32,
+     borderRadius: 16,
+     backgroundColor: "#ecfdf3",
+     borderWidth: 1,
+     borderColor: "#bbf7d0",
+     alignItems: "center",
+     justifyContent: "center",
+     paddingHorizontal: 6,
+   },
+   carouselBadgeText: {
+     fontSize: 14,
+     fontWeight: "700",
  
 EOF
 )

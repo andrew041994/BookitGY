@@ -19,6 +19,7 @@ import {
   Keyboard,
   Pressable,
   RefreshControl,
+  Share,
 } from "react-native";
 import { NavigationContainer } from "@react-navigation/native";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
@@ -34,6 +35,11 @@ import BookitGYLogoTransparent from "./assets/bookitgy-logo-transparent.png"
 import { Ionicons } from "@expo/vector-icons";
 import { SafeAreaProvider,SafeAreaView } from "react-native-safe-area-context";
 // import * as Sentry from "sentry-expo";
+
+let Clipboard = null;
+try {
+  Clipboard = require("expo-clipboard");
+} catch (e) {}
 
 enableScreens(false);
 
@@ -167,6 +173,12 @@ function extractUsernameFromUrl(url) {
 
   const cleaned = decoded.trim().replace(/^@/, "");
   return cleaned || null;
+}
+
+function buildProviderPublicLink(username) {
+  const trimmed = String(username || "").trim();
+  if (!trimmed) return null;
+  return `https://bookitgy.com/u/${encodeURIComponent(trimmed)}`;
 }
 
 function useFavoriteProviders(userKey) {
@@ -1009,6 +1021,7 @@ function ProfileScreen({ apiClient, authLoading, setToken, showFlash, token }) {
   const [avatarUrl, setAvatarUrl] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
   const [isProviderUser, setIsProviderUser] = useState(null);
+  const canUseClipboard = Boolean(Clipboard?.setStringAsync);
 
 
   const uploadAvatar = async (uri) => {
@@ -1422,6 +1435,73 @@ function ProfileScreen({ apiClient, authLoading, setToken, showFlash, token }) {
   };
 
   const displayAvatarUrl = resolveImageUrl(avatarUrl || user?.avatar_url);
+  const isProviderPublic =
+    user?.is_provider === true || token?.is_provider === true;
+  const providerPublicLink = buildProviderPublicLink(user?.username);
+
+  const handleShareProviderLink = async () => {
+    if (!providerPublicLink) {
+      if (showFlash) {
+        showFlash("error", "Set a username to enable your profile link.");
+      }
+      return;
+    }
+
+    try {
+      await Share.share({
+        message: `Book with me on BookitGY: ${providerPublicLink}`,
+        url: providerPublicLink,
+      });
+    } catch (err) {
+      console.log("Error sharing provider link", err?.message || err);
+      if (showFlash) {
+        showFlash("error", "Could not share your profile link.");
+      }
+    }
+  };
+
+  const handleCopyProviderLink = async () => {
+    if (!providerPublicLink) {
+      if (showFlash) {
+        showFlash("error", "Set a username to enable your profile link.");
+      }
+      return;
+    }
+
+    try {
+      await Clipboard.setStringAsync(providerPublicLink);
+      if (showFlash) {
+        showFlash("success", "Profile link copied.");
+      }
+    } catch (err) {
+      console.log("Error copying provider link", err?.message || err);
+      if (showFlash) {
+        showFlash("error", "Could not copy your profile link.");
+      }
+    }
+  };
+
+  const handleTestProviderLink = async () => {
+    if (!providerPublicLink) {
+      if (showFlash) {
+        showFlash("error", "Set a username to enable your profile link.");
+      }
+      return;
+    }
+
+    try {
+      const supported = await Linking.canOpenURL(providerPublicLink);
+      if (!supported) {
+        throw new Error("Unsupported URL");
+      }
+      await Linking.openURL(providerPublicLink);
+    } catch (err) {
+      console.log("Error opening provider link", err?.message || err);
+      if (showFlash) {
+        showFlash("error", "Could not open your profile link.");
+      }
+    }
+  };
 
   return (
     <ScrollView
@@ -1481,6 +1561,58 @@ function ProfileScreen({ apiClient, authLoading, setToken, showFlash, token }) {
           </View>
         </View>
       </View>
+
+      {isProviderPublic && (
+        <View style={styles.card}>
+          <Text style={styles.sectionTitle}>Profile Link</Text>
+          {providerPublicLink ? (
+            <Text selectable style={styles.profileLinkText}>
+              {providerPublicLink}
+            </Text>
+          ) : (
+            <Text style={styles.profileLinkWarning}>
+              Set a username to enable your profile link.
+            </Text>
+          )}
+
+          <View style={styles.profileLinkActions}>
+            <TouchableOpacity
+              style={[
+                styles.linkActionButton,
+                !providerPublicLink && styles.linkActionButtonDisabled,
+              ]}
+              onPress={handleShareProviderLink}
+              disabled={!providerPublicLink}
+            >
+              <Text style={styles.linkActionButtonText}>Share Link</Text>
+            </TouchableOpacity>
+
+            {canUseClipboard && (
+              <TouchableOpacity
+                style={[
+                  styles.linkActionButton,
+                  !providerPublicLink && styles.linkActionButtonDisabled,
+                ]}
+                onPress={handleCopyProviderLink}
+                disabled={!providerPublicLink}
+              >
+                <Text style={styles.linkActionButtonText}>Copy Link</Text>
+              </TouchableOpacity>
+            )}
+
+            <TouchableOpacity
+              style={[
+                styles.linkActionButton,
+                !providerPublicLink && styles.linkActionButtonDisabled,
+              ]}
+              onPress={handleTestProviderLink}
+              disabled={!providerPublicLink}
+            >
+              <Text style={styles.linkActionButtonText}>Test Link</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
 
       <View style={styles.card}>
         <Text style={styles.label}>Email</Text>
@@ -6422,6 +6554,39 @@ cardHeartButton: {
     fontWeight: "600",
     color: "#166534",
     marginBottom: 10,
+  },
+  profileLinkText: {
+    fontSize: 15,
+    color: "#111827",
+    marginBottom: 10,
+  },
+  profileLinkWarning: {
+    fontSize: 13,
+    color: "#b91c1c",
+    marginBottom: 10,
+  },
+  profileLinkActions: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+  },
+  linkActionButton: {
+    backgroundColor: "#ffffff",
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: "#bbf7d0",
+    marginRight: 8,
+    marginBottom: 8,
+    alignItems: "center",
+  },
+  linkActionButtonDisabled: {
+    opacity: 0.5,
+  },
+  linkActionButtonText: {
+    fontSize: 14,
+    fontWeight: "500",
+    color: "#166534",
   },
 
   carouselHeader: {
