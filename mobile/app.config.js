@@ -5,6 +5,7 @@ console.log(">>> USING app.config.js <<<");
 export default {
   name: "BookitGY",
   slug: "bookitgy",
+  scheme: "bookitgy",
   version: "1.0.0",
   orientation: "portrait",
   icon: "./assets/icon.png",
@@ -23,6 +24,7 @@ export default {
     supportsTablet: true,
     bundleIdentifier: "com.bookitgy.app",
     buildNumber: "1",
+    associatedDomains: ["applinks:bookitgy.com", "applinks:www.bookitgy.com"],
     privacyManifest: {
       NSPrivacyAccessedAPITypes: [],
       NSPrivacyCollectedDataTypes: [],
@@ -45,6 +47,17 @@ export default {
     package: "com.bookitgy.app",
     versionCode: 1,
     permissions: ["ACCESS_FINE_LOCATION", "ACCESS_COARSE_LOCATION"],
+    intentFilters: [
+      {
+        action: "VIEW",
+        autoVerify: true,
+        data: [
+          { scheme: "https", host: "bookitgy.com", pathPrefix: "/u" },
+          { scheme: "https", host: "www.bookitgy.com", pathPrefix: "/u" },
+        ],
+        category: ["BROWSABLE", "DEFAULT"],
+      },
+    ],
     adaptiveIcon: {
       foregroundImage: "./assets/adaptive-icon.png",
       backgroundColor: "#16a34a",
@@ -67,3 +80,8 @@ export default {
     SENTRY_DSN: process.env.SENTRY_DSN || "",
   },
 };
+
+// iOS requires apple-app-site-association hosted at:
+// https://bookitgy.com/.well-known/apple-app-site-association
+// Android requires assetlinks.json hosted at:
+// https://bookitgy.com/.well-known/assetlinks.json
