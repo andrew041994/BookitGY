@@ -4743,9 +4743,7 @@ const loadProviderSummary = async () => {
           </View>
         )}
 
-        <TouchableOpacity onPress={pickAvatar}>
-          <Text style={{ color: "#007AFF", marginTop: 4 }}>Change photo</Text>
-        </TouchableOpacity>
+        
       </View>
       
       {hoursFlash && (
@@ -4770,18 +4768,7 @@ const loadProviderSummary = async () => {
       
         <Text style={styles.profileTitle}>Provider dashboard</Text>
         <Text style={styles.subtitleSmall}>Welcome, {providerLabel}</Text>
-        {isProviderUser && (
-          <View style={styles.providerShareProfileLinkRow}>
-            <TouchableOpacity
-              style={styles.providerShareProfileLinkButton}
-              onPress={handleShareProfileLink}
-            >
-              <Text style={styles.providerShareProfileLinkButtonText}>
-                Share profile link
-              </Text>
-            </TouchableOpacity>
-          </View>
-        )}
+    
         {/*Account Info */}
         {providerSummary && (
           <View style={styles.providerSummaryCard}>
