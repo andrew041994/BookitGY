@@ -4249,21 +4249,55 @@ const to24Hour = (time12) => {
         return;
       }
 
-      await axios.delete(`${API}/providers/me/services/${serviceId}`, {
+      const res = await axios.delete(`${API}/providers/me/services/${serviceId}`, {
         headers: {
           Authorization: `Bearer ${authToken}`,
         },
       });
 
+      const responseData = res?.data || {};
+      const responseStatus = `${responseData.status || responseData.result || ""}`.toLowerCase();
+      const responseMessage =
+        responseData.detail || responseData.message || responseData.error || "";
+      const responseText = `${responseStatus} ${responseMessage}`.toLowerCase();
+      const hasBookings = responseText.includes("booking");
+
       if (showFlash) {
-        showFlash("success", "Service deleted");
+        if (hasBookings) {
+          showFlash(
+            "info",
+            "This service has bookings and was archived instead."
+          );
+        } else {
+          showFlash("success", "Service removed from your list.");
+        }
       }
 
-      setServices((prev) => prev.filter((s) => s.id !== serviceId));
+      await loadServices();
     } catch (err) {
       console.log("Error deleting service", err.response?.data || err.message);
+      const status = err.response?.status;
+      const detail =
+        err.response?.data?.detail ||
+        err.response?.data?.message ||
+        err.response?.data?.error ||
+        "";
+      const hasBookings =
+        status === 409 || String(detail).toLowerCase().includes("booking");
+
+      if (hasBookings) {
+        if (showFlash) {
+          showFlash(
+            "info",
+            "This service has bookings and was archived instead."
+          );
+        }
+        await loadServices();
+        return;
+      }
+
       if (showFlash) {
-        showFlash("error", "Could not delete service.");
+        showFlash("error", detail || "Could not delete service.");
       }
     }
   };

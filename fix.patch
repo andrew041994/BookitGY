@@ -1,357 +1,112 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
 diff --git a/mobile/App.js b/mobile/App.js
-index dd040932c1c1730b416184872181a10e4493a330..844728b3f3dca1f205ff0aa81e45d5791da0fc10 100644
+index 844728b3f3dca1f205ff0aa81e45d5791da0fc10..94a7e81559126e08be4832e0b6f320bb6e1ac0f8 100644
 --- a/mobile/App.js
 +++ b/mobile/App.js
-@@ -174,50 +174,69 @@ function extractUsernameFromUrl(url) {
-     username = segments[1];
-   } else if (segments.length === 1 && !RESERVED_USERNAME_PATHS.has(segments[0])) {
-     username = segments[0];
+@@ -4227,65 +4227,99 @@ const to24Hour = (time12) => {
+     // Reset form + close add UI
+     resetForm();
+     setAdding(false);
+ 
+     // Optional: background refresh to stay in sync with backend
+     loadServices();
+   } catch (err) {
+     console.log("Error creating service", err.response?.data || err.message);
+     if (showFlash) {
+       const detail =
+         err.response?.data?.detail || "Could not create service.";
+       showFlash("error", detail);
+     }
    }
+ };
  
-   if (!username) return null;
  
-   let decoded = username;
-   try {
-     decoded = decodeURIComponent(username);
-   } catch (error) {
-     decoded = username;
-   }
- 
-   const cleaned = decoded.trim().replace(/^@/, "");
-   if (!cleaned || !isValidUsername(cleaned)) return null;
-   return cleaned;
- }
- 
- function buildProviderPublicLink(username) {
-   const trimmed = String(username || "").trim();
-   if (!trimmed) return null;
-   return `https://bookitgy.com/u/${encodeURIComponent(trimmed)}`;
- }
- 
-+function navigateToClientSearch(username, navigationRef) {
-+  if (!navigationRef?.current) return false;
-+  const deeplinkNonce = Date.now();
-+  const params = { incomingUsername: username, deeplinkNonce };
-+  const rootState = navigationRef.current.getRootState?.();
-+  const routeNames = rootState?.routeNames || [];
-+
-+  if (routeNames.includes("ClientTabs")) {
-+    navigationRef.current.navigate("ClientTabs", {
-+      screen: "Search",
-+      params,
-+    });
-+    return true;
-+  }
-+
-+  navigationRef.current.navigate("Search", params);
-+  return true;
-+}
-+
- function useFavoriteProviders(userKey) {
-   const storageKey = FAVORITES_STORAGE_KEY(userKey);
-   const [favoriteIds, setFavoriteIds] = useState([]);
-   const [favoriteProviders, setFavoriteProviders] = useState([]);
-   const [favoritesLoading, setFavoritesLoading] = useState(true);
- 
-   const persistIds = useCallback(async (ids) => {
+   const handleDeleteService = async (serviceId) => {
      try {
-       await AsyncStorage.setItem(storageKey, JSON.stringify(ids));
-     } catch (err) {
-       console.log("Error saving favorites", err?.message || err);
-     }
-   }, [storageKey]);
- 
-   const loadFavoritesFromStorage = useCallback(async () => {
-     try {
-       setFavoritesLoading(true);
-       const raw = await AsyncStorage.getItem(storageKey);
-       const parsed = raw ? JSON.parse(raw) : [];
-       setFavoriteIds(Array.isArray(parsed) ? parsed : []);
-     } catch (err) {
-       console.log("Error reading favorites", err?.message || err);
-       setFavoriteIds([]);
-     } finally {
-       setFavoritesLoading(false);
-@@ -2642,83 +2661,84 @@ function AppointmentsScreen({ token, showFlash }) {
-               renderBooking(booking, false)
-             )
-           )}
-         </View>
-       </>
-     )}
-   </ScrollView>
- );
- }
- 
-     
- 
- 
- 
- 
- function SearchScreen({
-   token,
-   showFlash,
-   navigation,
-   route,
-   toggleFavorite,
-   isFavorite,
-   syncFavoritesFromList,
- }) {
-   const incomingUsername = route?.params?.incomingUsername ?? null;
-+  const deeplinkNonce = route?.params?.deeplinkNonce ?? null;
- 
-   const [filteredProviders, setFilteredProviders] = useState([]);
-   const [searchQuery, setSearchQuery] = useState("");
-   const [radiusKm, setRadiusKm] = useState(0); // 0 = any distance
-   const [clientLocation, setClientLocation] = useState(null);
-   const [locationError, setLocationError] = useState("");
-   const [providers, setProviders] = useState([]);
-   const [providersLoading, setProvidersLoading] = useState(true);
-   const [providersError, setProvidersError] = useState("");
-   const [selectedProvider, setSelectedProvider] = useState(null);
-   const [services, setServices] = useState([]);
-   const [servicesLoading, setServicesLoading] = useState(false);
-   const [servicesError, setServicesError] = useState("");
-   const [selectedService, setSelectedService] = useState(null);
-   const [catalogImages, setCatalogImages] = useState([]);
-   const [catalogLoading, setCatalogLoading] = useState(false);
-   const [catalogError, setCatalogError] = useState("");
-   const [availability, setAvailability] = useState([]);
-   const [availabilityLoading, setAvailabilityLoading] = useState(false);
-   const [availabilityError, setAvailabilityError] = useState("");
-   const [selectedDate, setSelectedDate] = useState(null);
-   const [selectedSlot, setSelectedSlot] = useState(null); // ISO string
-   const [bookingLoading, setBookingLoading] = useState(false);
-   const [hasSearched, setHasSearched] = useState(false); // 👈 NEW
-   const [refreshing, setRefreshing] = useState(false);
-   //Radius 
-   const radiusOptions = [0, 5, 10, 15, 20, 25, 30, 40, 50, 75, 100];
- 
-   useEffect(() => {
-     if (!incomingUsername) return;
-     setSearchQuery(incomingUsername);
-     setHasSearched(true);
--  }, [incomingUsername]);
-+  }, [incomingUsername, deeplinkNonce]);
- 
-   const haversineKm = (lat1, lon1, lat2, lon2) => {
-     if (
-       lat1 == null ||
-       lon1 == null ||
-       lat2 == null ||
-       lon2 == null
-     ) {
-       return null;
-     }
-     const toRad = (v) => (v * Math.PI) / 180;
-     const R = 6371; // km
-     const dLat = toRad(lat2 - lat1);
-     const dLon = toRad(lon2 - lon1);
-     const a =
-       Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-       Math.cos(toRad(lat1)) *
-         Math.cos(toRad(lat2)) *
-         Math.sin(dLon / 2) *
-         Math.sin(dLon / 2);
-     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-     return R * c;
-   };
- 
- 
-@@ -5953,50 +5973,51 @@ function FlashMessage({ flash }) {
-       ]}
-     >
-       <Text style={[styles.flashText, { color: textColor }]}>
-         {flash.text}
-       </Text>
-     </View>
-   );
- }
- 
- 
- // 🔹 App orchestrates landing/login/signup/forgot-password vs main app
- 
- function App() {
- 
-   const mountIdRef = useRef(Math.random().toString(16).slice(2));
-   console.log("APP MOUNT ID:", mountIdRef.current);
-   useEffect(() => console.log("APP useEffect ran for mount", mountIdRef.current), []);
- 
-   const [token, setToken] = useState(null);
-   const [authLoading, setAuthLoading] = useState(true);
-   const [authMode, setAuthMode] = useState("landing"); // 'landing' | 'login' | 'signup' | 'forgot'
-   const [isAdmin, setIsAdmin] = useState(false);
-   const [pendingDeepLinkUsername, setPendingDeepLinkUsername] = useState(null);
-   const navigationRef = useRef(null);
-   const authBootstrapRef = useRef({ inFlight: false, completed: false });
-+  const tokenRef = useRef(token);
- 
-   const [flash, setFlash] = useState(null);
-   const handleUnauthorized = useCallback(async () => {
-     try {
-       await AsyncStorage.removeItem(LEGACY_ACCESS_TOKEN_KEY);
-     } catch (storageError) {
-       console.log(
-         "[auth] Failed to clear legacy token",
-         storageError?.message || storageError
-       );
-     }
-     setToken(null);
-   }, []);
- 
-   const apiClient = useMemo(
-     () =>
-       createApiClient({
-         baseURL: API,
-         onUnauthorized: handleUnauthorized,
-       }),
-     [handleUnauthorized]
-   );
- 
- 
- 
-@@ -6019,104 +6040,130 @@ function App() {
- 
-     if (Array.isArray(text)) {
-       return text.map(formatErrorItem).filter(Boolean).join("\n");
-     }
- 
-     if (typeof text === "object") {
-       if (Array.isArray(text.detail)) {
-         return formatFlashText(text.detail);
-       }
-       if (typeof text.detail === "string") return text.detail;
-       if (typeof text.message === "string") return text.message;
-       if (typeof text.msg === "string") return text.msg;
-       return JSON.stringify(text);
-     }
- 
-     return String(text);
-   };
- 
-   const showFlash = (type, text) => {
-     setFlash({ type, text: formatFlashText(text) });
-     setTimeout(() => {
-       setFlash(null);
-     }, 4500);
-   };
- 
-+  useEffect(() => {
-+    tokenRef.current = token;
-+  }, [token]);
-+
-   useEffect(() => {
-     let isActive = true;
- 
-     Linking.getInitialURL().then((url) => {
-       if (!isActive) return;
-+      const didNavigate = false;
-       console.log("[deeplink] received initial url", url);
-       const username = extractUsernameFromUrl(url);
-       console.log("[deeplink] extracted username", username);
--      console.log("[deeplink] initial url", url, "username", username);
-+      console.log(
-+        "[deeplink] initial url",
-+        url,
-+        "username",
-+        username,
-+        "immediateNavigate",
-+        didNavigate
-+      );
-       if (username) {
-         setPendingDeepLinkUsername(username);
-       }
-     });
- 
-     const sub = Linking.addEventListener("url", ({ url }) => {
-+      let didNavigate = false;
-       console.log("[deeplink] received url event", url);
-       const username = extractUsernameFromUrl(url);
-       console.log("[deeplink] extracted username", username);
--      console.log("[deeplink] url event", url, "username", username);
-       if (username) {
--        setPendingDeepLinkUsername(username);
-+        if (tokenRef.current && !tokenRef.current.isProvider) {
-+          didNavigate = navigateToClientSearch(username, navigationRef);
-+          setPendingDeepLinkUsername(null);
-+        } else {
-+          setPendingDeepLinkUsername(username);
-+        }
-       }
-+      console.log(
-+        "[deeplink] url event",
-+        url,
-+        "username",
-+        username,
-+        "immediateNavigate",
-+        didNavigate
-+      );
-     });
- 
-     return () => {
-       isActive = false;
-       sub.remove();
-     };
-   }, []);
- 
-   useEffect(() => {
-     if (!pendingDeepLinkUsername || !token) return;
- 
-     if (token.isProvider) {
-       console.log(
-         "[deeplink] provider user ignoring username",
-         pendingDeepLinkUsername
-       );
-       if (showFlash) {
-         showFlash("error", "Open as a client to view provider links.");
-       }
-       setPendingDeepLinkUsername(null);
-       return;
-     }
- 
--    if (!navigationRef.current) return;
--
-+    const didNavigate = navigateToClientSearch(
-+      pendingDeepLinkUsername,
-+      navigationRef
-+    );
-     console.log(
--      "[deeplink] navigating to Search for",
--      pendingDeepLinkUsername
-+      "[deeplink] pending username",
-+      pendingDeepLinkUsername,
-+      "navigate",
-+      didNavigate
-     );
--    navigationRef.current.navigate("Search", {
--      incomingUsername: pendingDeepLinkUsername,
--    });
-     setPendingDeepLinkUsername(null);
-   }, [pendingDeepLinkUsername, token, showFlash]);
- 
-   useEffect(() => {
-     let isActive = true;
-     const restoreSession = async () => {
-       if (authBootstrapRef.current.inFlight || authBootstrapRef.current.completed) {
+       const authToken = await getAuthToken(token);
+       if (!authToken) {
+         if (showFlash) showFlash("error", "No access token found.");
          return;
        }
-       authBootstrapRef.current.inFlight = true;
-       const bootstrapStartedAt = Date.now();
-       console.log("[auth] bootstrap start");
-       try {
-         const restoredToken = await withTimeout(
-           getAuthToken(),
-           AUTH_TOKEN_TIMEOUT_MS,
-           "getAuthToken"
-         );
-         console.log("[auth] token loaded:", Boolean(restoredToken));
  
-         if (!restoredToken) {
-           if (isActive) setToken(null);
-         } else {
-           try {
-             const meRes = await withTimeout(
+-      await axios.delete(`${API}/providers/me/services/${serviceId}`, {
++      const res = await axios.delete(`${API}/providers/me/services/${serviceId}`, {
+         headers: {
+           Authorization: `Bearer ${authToken}`,
+         },
+       });
+ 
++      const responseData = res?.data || {};
++      const responseStatus = `${responseData.status || responseData.result || ""}`.toLowerCase();
++      const responseMessage =
++        responseData.detail || responseData.message || responseData.error || "";
++      const responseText = `${responseStatus} ${responseMessage}`.toLowerCase();
++      const hasBookings = responseText.includes("booking");
++
+       if (showFlash) {
+-        showFlash("success", "Service deleted");
++        if (hasBookings) {
++          showFlash(
++            "info",
++            "This service has bookings and was archived instead."
++          );
++        } else {
++          showFlash("success", "Service removed from your list.");
++        }
+       }
+ 
+-      setServices((prev) => prev.filter((s) => s.id !== serviceId));
++      await loadServices();
+     } catch (err) {
+       console.log("Error deleting service", err.response?.data || err.message);
++      const status = err.response?.status;
++      const detail =
++        err.response?.data?.detail ||
++        err.response?.data?.message ||
++        err.response?.data?.error ||
++        "";
++      const hasBookings =
++        status === 409 || String(detail).toLowerCase().includes("booking");
++
++      if (hasBookings) {
++        if (showFlash) {
++          showFlash(
++            "info",
++            "This service has bookings and was archived instead."
++          );
++        }
++        await loadServices();
++        return;
++      }
++
+       if (showFlash) {
+-        showFlash("error", "Could not delete service.");
++        showFlash("error", detail || "Could not delete service.");
+       }
+     }
+   };
+ 
+ 
+   const todayBookingsCount = () => {
+     if (!bookings || bookings.length === 0) return 0;
+ 
+     const now = new Date();
+     const y = now.getFullYear();
+     const m = now.getMonth();
+     const d = now.getDate();
+ 
+     return bookings.filter((b) => {
+       const start = new Date(b.start_time);
+       return (
+         start.getFullYear() === y &&
+         start.getMonth() === m &&
+         start.getDate() === d
+       );
+     }).length;
+   };
+ 
+ const loadProviderProfile = async () => {
+   try {
  
 EOF
 )
