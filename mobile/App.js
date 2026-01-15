@@ -31,9 +31,9 @@ import { createApiClient } from "./src/api/client";
 import * as Location from "expo-location";
 import Constants from "expo-constants";
 import * as ImagePicker from "expo-image-picker";
-import BookitGYLogoTransparent from "./assets/bookitgy-logo-transparent.png"
 import { Ionicons } from "@expo/vector-icons";
 import { SafeAreaProvider,SafeAreaView } from "react-native-safe-area-context";
+import BookitGYLogoTransparent from "./assets/bookitgy-logo-transparent.png"
 // import * as Sentry from "sentry-expo";
 
 let Clipboard = null;
@@ -1834,6 +1834,7 @@ function ProfileScreen({ apiClient, authLoading, setToken, showFlash, token }) {
 
 function ClientHomeScreen({
   navigation,
+  token,
   favoriteProviders,
   favoriteIds,
   favoritesLoading,
@@ -1847,6 +1848,19 @@ function ClientHomeScreen({
   const [nearbyLoading, setNearbyLoading] = useState(true);
   const [nearbyError, setNearbyError] = useState("");
   const [refreshing, setRefreshing] = useState(false);
+  const [searchText, setSearchText] = useState("");
+
+  const quickCategories = useMemo(
+    () => ["Barber", "Hair", "Nails", "Massage", "Makeup", "Lash"],
+    []
+  );
+
+  const greetingName = useMemo(() => {
+    const firstName = token?.firstName || token?.first_name;
+    if (firstName) return firstName;
+    if (token?.email) return token.email;
+    return "there";
+  }, [token?.email, token?.firstName, token?.first_name]);
 
   const haversineKm = (lat1, lon1, lat2, lon2) => {
     if (
@@ -1952,44 +1966,68 @@ function ClientHomeScreen({
     navigation.navigate("Search", { provider });
   };
 
+  const handleSearchNavigate = useCallback(
+    (query) => {
+      const trimmed = String(query || "").trim();
+      const params = trimmed
+        ? { incomingUsername: trimmed, deeplinkNonce: Date.now() }
+        : undefined;
+      navigation.navigate("Search", params);
+    },
+    [navigation]
+  );
+
   useEffect(() => {
     refreshFavoriteProviders();
   }, [refreshFavoriteProviders]);
 
   return (
-      <SafeAreaView style={{ flex: 1, backgroundColor: "#EFFFF3" }}>
+      <SafeAreaView style={styles.homeWrapper}>
       <ScrollView
         contentContainerStyle={styles.homeScroll}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
         }
       >
-        <View style={{ alignItems: "center", marginBottom: 24 }}>
-          <Image
-            source={BookitGYLogoTransparent}
-            style={{ width: 260, height: 260, resizeMode: "contain" }}
+        <View style={styles.homeHeader}>
+          <Text style={styles.homeGreeting}>Hi, {greetingName}</Text>
+          <Text style={styles.homeSubtitle}>
+            What are you looking for today?
+          </Text>
+        </View>
+
+        <View style={styles.searchBar}>
+          <Ionicons name="search-outline" size={20} color="#64748b" />
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Search by profession, provider, or service"
+            placeholderTextColor="#94a3b8"
+            value={searchText}
+            onChangeText={setSearchText}
+            onFocus={() => handleSearchNavigate(searchText)}
+            onSubmitEditing={() => handleSearchNavigate(searchText)}
+            returnKeyType="search"
           />
         </View>
 
-        <Text style={styles.subtitle} allowFontScaling={false}>
-          Find and book services in {"\n"}Guyana
-        </Text>
-
-        <View
-            style={{
-              marginTop: 10,        // was 30 — now moved up
-              width: "70%",
-              alignSelf: "center",  // ensures it's centered
-              marginBottom: 20, 
-            }}
+        <View style={styles.quickCategorySection}>
+          <Text style={styles.sectionTitle}>Quick categories</Text>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.quickCategoryList}
           >
-            <TouchableOpacity
-              style={[styles.bookButton, { paddingVertical: 14 }]}
-              onPress={() => navigation.navigate("Search")}
-            >
-              <Text style={styles.bookButtonLabel}>Start searching</Text>
-            </TouchableOpacity>
-          </View>
+            {quickCategories.map((category) => (
+              <Pressable
+                key={category}
+                style={styles.quickCategoryChip}
+                onPress={() => handleSearchNavigate(category)}
+              >
+                <Text style={styles.quickCategoryText}>{category}</Text>
+              </Pressable>
+            ))}
+          </ScrollView>
+        </View>
 
 
         <View style={[styles.card, styles.homeCard]}>
@@ -2011,10 +2049,22 @@ function ClientHomeScreen({
           </View>
 
           {nearbyLoading ? (
-            <View style={{ paddingVertical: 12 }}>
-              <ActivityIndicator />
-              <Text style={styles.serviceMeta}>Loading nearby providers…</Text>
-            </View>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.carouselList}
+            >
+              {[0, 1, 2].map((index) => (
+                <View key={`nearby-skeleton-${index}`} style={styles.providerCard}>
+                  <View style={[styles.cardImageWrapper, styles.skeletonBlock]} />
+                  <View style={styles.cardBody}>
+                    <View style={[styles.skeletonLine, { width: "70%" }]} />
+                    <View style={[styles.skeletonLine, { width: "45%" }]} />
+                    <View style={[styles.skeletonLine, { width: "60%" }]} />
+                  </View>
+                </View>
+              ))}
+            </ScrollView>
           ) : null}
 
           {!nearbyLoading && nearbyError ? (
@@ -5897,7 +5947,7 @@ function MainApp({ apiClient, authLoading, token, setToken, showFlash, navigatio
         </Tab.Navigator>
       ) : (
         // 👇 Client view: Profile + Search
-        <Tab.Navigator
+            <Tab.Navigator
             screenOptions={({ route }) => ({
               headerShown: false,
               tabBarShowLabel: true,
@@ -5934,6 +5984,7 @@ function MainApp({ apiClient, authLoading, token, setToken, showFlash, navigatio
               {({ navigation }) => (
                 <ClientHomeScreen
                   navigation={navigation}
+                  token={token}
                   favoriteProviders={favoriteProviders}
                   favoriteIds={favoriteIds}
                   favoritesLoading={favoritesLoading}
@@ -6457,12 +6508,72 @@ const styles = StyleSheet.create({
 
    homeScroll: {
     flexGrow: 1,
-    backgroundColor: "#f0fdf4",
-    padding: 20,
-    paddingTop: 60,
+    backgroundColor: "#f8fffb",
+    paddingHorizontal: 20,
+    paddingBottom: 32,
+    paddingTop: 16,
   },
   homeCard: {
     width: "100%",
+  },
+  homeWrapper: {
+    flex: 1,
+    backgroundColor: "#f8fffb",
+  },
+  homeHeader: {
+    marginBottom: 20,
+  },
+  homeGreeting: {
+    fontSize: 26,
+    fontWeight: "700",
+    color: "#0f172a",
+  },
+  homeSubtitle: {
+    fontSize: 16,
+    color: "#475569",
+    marginTop: 6,
+  },
+  searchBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    backgroundColor: "#ffffff",
+    borderRadius: 16,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+    shadowColor: "#0f172a",
+    shadowOpacity: 0.06,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 2,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: 15,
+    color: "#0f172a",
+  },
+  quickCategorySection: {
+    marginTop: 20,
+    marginBottom: 8,
+  },
+  quickCategoryList: {
+    paddingVertical: 4,
+  },
+  quickCategoryChip: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 999,
+    backgroundColor: "#ecfdf3",
+    borderWidth: 1,
+    borderColor: "#bbf7d0",
+    marginRight: 10,
+  },
+  quickCategoryText: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#166534",
   },
 
 
@@ -6473,12 +6584,17 @@ const styles = StyleSheet.create({
 
   providerCard: {
     width: 280,
-    borderRadius: 12,
+    borderRadius: 16,
     backgroundColor: "#ffffff",
     marginRight: 12,
     overflow: "hidden",
     borderWidth: 1,
-    borderColor: "#e5e7eb",
+    borderColor: "#eef2f7",
+    shadowColor: "#0f172a",
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 3,
   },
   cardImageWrapper: {
     height: 140,
@@ -6550,6 +6666,15 @@ cardHeartButton: {
     fontSize: 13,
     color: "#1f2937",
   },
+  skeletonBlock: {
+    backgroundColor: "#e2e8f0",
+  },
+  skeletonLine: {
+    height: 10,
+    borderRadius: 999,
+    backgroundColor: "#e2e8f0",
+    marginBottom: 8,
+  },
   carouselActiveLabel: {
     marginTop: 12,
     fontSize: 13,
@@ -6574,9 +6699,10 @@ cardHeartButton: {
 
    homeScroll: {
     flexGrow: 1,
-    backgroundColor: "#f0fdf4",
-    padding: 20,
-    paddingTop: 60,
+    backgroundColor: "#f8fffb",
+    paddingHorizontal: 20,
+    paddingBottom: 32,
+    paddingTop: 16,
   },
   homeCard: {
     width: "100%",

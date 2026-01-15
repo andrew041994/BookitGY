@@ -1,140 +1,639 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
 diff --git a/mobile/App.js b/mobile/App.js
-index 373be66e867824a77ccf40565236f5094137ab7b..7078345c2df05d9e2aaa64f4cd2ce57b694e465e 100644
+index 7078345c2df05d9e2aaa64f4cd2ce57b694e465e..748cd49ad2d19b7c0340c88261dadf5166307d7f 100644
 --- a/mobile/App.js
 +++ b/mobile/App.js
-@@ -6078,118 +6078,123 @@ function App() {
-       if (typeof text.detail === "string") return text.detail;
-       if (typeof text.message === "string") return text.message;
-       if (typeof text.msg === "string") return text.msg;
-       return JSON.stringify(text);
+@@ -9,51 +9,50 @@ import {
+   Alert,
+   ActivityIndicator,
+   ScrollView,
+   TouchableOpacity,
+   Switch,
+   Linking,
+   Platform,
+   Image,
+   KeyboardAvoidingView,
+   TouchableWithoutFeedback,
+   Keyboard,
+   Pressable,
+   RefreshControl,
+   Share,
+ } from "react-native";
+ import { NavigationContainer } from "@react-navigation/native";
+ import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
+ import { enableScreens } from "react-native-screens";
+ import axios from "axios";
+ import AsyncStorage from "@react-native-async-storage/async-storage";
+ import { clearToken, loadToken, saveToken } from "./src/components/tokenStorage";
+ import { createApiClient } from "./src/api/client";
+ import * as Location from "expo-location";
+ import Constants from "expo-constants";
+ import * as ImagePicker from "expo-image-picker";
+-import BookitGYLogoTransparent from "./assets/bookitgy-logo-transparent.png"
+ import { Ionicons } from "@expo/vector-icons";
+ import { SafeAreaProvider,SafeAreaView } from "react-native-safe-area-context";
+ // import * as Sentry from "sentry-expo";
+ 
+ let Clipboard = null;
+ try {
+   Clipboard = require("expo-clipboard");
+ } catch (e) {}
+ 
+ enableScreens(false);
+ 
+ 
+ 
+ 
+ // import { API } from "./App"; // wherever you define your base URL
+ 
+ 
+ 
+ 
+ 
+ const API =
+   Constants.expoConfig?.extra?.API_URL ||
+   Constants.manifest?.extra?.API_URL ||
+   "https://bookitgy.onrender.com";
+ 
+@@ -1812,63 +1811,77 @@ function ProfileScreen({ apiClient, authLoading, setToken, showFlash, token }) {
+           
+           </TouchableOpacity>
+         )}
+ 
+         {/* Logout */}
+         <TouchableOpacity
+           style={[styles.actionButton, styles.logoutButton]}
+           onPress={logout}
+         >
+           <Text style={[styles.actionButtonText, styles.logoutButtonText]}>
+             Logout
+           </Text>
+         </TouchableOpacity>
+       </View>
+ 
+     </ScrollView>
+     
+   );
+   
+ }
+ 
+ 
+ 
+ function ClientHomeScreen({
+   navigation,
++  token,
+   favoriteProviders,
+   favoriteIds,
+   favoritesLoading,
+   toggleFavorite,
+   isFavorite,
+   syncFavoritesFromList,
+   refreshFavoriteProviders,
+   }) {
+  const [nearbyProviders, setNearbyProviders] = useState([]);
+   const [currentProvider, setCurrentProvider] = useState(null);
+   const [nearbyLoading, setNearbyLoading] = useState(true);
+   const [nearbyError, setNearbyError] = useState("");
+   const [refreshing, setRefreshing] = useState(false);
++  const [searchText, setSearchText] = useState("");
++
++  const quickCategories = useMemo(
++    () => ["Barber", "Hair", "Nails", "Massage", "Makeup", "Lash"],
++    []
++  );
++
++  const greetingName = useMemo(() => {
++    const firstName = token?.firstName || token?.first_name;
++    if (firstName) return firstName;
++    if (token?.email) return token.email;
++    return "there";
++  }, [token?.email, token?.firstName, token?.first_name]);
+ 
+   const haversineKm = (lat1, lon1, lat2, lon2) => {
+     if (
+       lat1 == null ||
+       lon1 == null ||
+       lat2 == null ||
+       lon2 == null
+     ) {
+       return null;
      }
- 
-     return String(text);
+     const toRad = (v) => (v * Math.PI) / 180;
+     const R = 6371; // km
+     const dLat = toRad(lat2 - lat1);
+     const dLon = toRad(lon2 - lon1);
+     const a =
+       Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+       Math.cos(toRad(lat1)) *
+         Math.cos(toRad(lat2)) *
+         Math.sin(dLon / 2) *
+         Math.sin(dLon / 2);
+     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+     return R * c;
    };
  
-   const showFlash = (type, text) => {
-     setFlash({ type, text: formatFlashText(text) });
-     setTimeout(() => {
-       setFlash(null);
-     }, 4500);
+   const loadNearbyProviders = useCallback(async () => {
+@@ -1930,113 +1943,149 @@ function ClientHomeScreen({
+       refreshFavoriteProviders ? refreshFavoriteProviders() : Promise.resolve(),
+     ]);
+     setRefreshing(false);
+   }, [loadNearbyProviders, refreshFavoriteProviders]);
+ 
+   const hasCarousel = nearbyProviders.length > 0;
+ 
+   const handleCarouselScroll = (event) => {
+     if (!nearbyProviders.length) return;
+ 
+     const CARD_WIDTH = 280 + 12; // card width + marginRight
+     const offsetX = event?.nativeEvent?.contentOffset?.x ?? 0;
+     const index = Math.min(
+       nearbyProviders.length - 1,
+       Math.max(0, Math.round(offsetX / CARD_WIDTH))
+     );
+ 
+     setCurrentProvider(nearbyProviders[index] || null);
    };
  
+   const handleProviderPress = (provider) => {
+     if (!provider) return;
+     navigation.navigate("Search", { provider });
+   };
+ 
++  const handleSearchNavigate = useCallback(
++    (query) => {
++      const trimmed = String(query || "").trim();
++      const params = trimmed
++        ? { incomingUsername: trimmed, deeplinkNonce: Date.now() }
++        : undefined;
++      navigation.navigate("Search", params);
++    },
++    [navigation]
++  );
++
    useEffect(() => {
-     tokenRef.current = token;
-   }, [token]);
+     refreshFavoriteProviders();
+   }, [refreshFavoriteProviders]);
  
-   useEffect(() => {
-     let isActive = true;
- 
-     Linking.getInitialURL().then((url) => {
-       if (!isActive) return;
--      const didNavigate = false;
-+      let didNavigate = false;
-       console.log("[deeplink] received initial url", url);
-       const username = extractUsernameFromUrl(url);
-       console.log("[deeplink] extracted username", username);
-+      if (username) {
-+        if (tokenRef.current && !tokenRef.current.isProvider) {
-+          didNavigate = navigateToClientSearch(username, navigationRef);
-+          setPendingDeepLinkUsername(null);
-+        } else {
-+          setPendingDeepLinkUsername({ username, nonce: Date.now() });
-+        }
-+      }
-       console.log(
-         "[deeplink] initial url",
-         url,
-         "username",
-         username,
-         "immediateNavigate",
-         didNavigate
-       );
--      if (username) {
--        setPendingDeepLinkUsername(username);
--      }
-     });
- 
-     const sub = Linking.addEventListener("url", ({ url }) => {
-       let didNavigate = false;
-       console.log("[deeplink] received url event", url);
-       const username = extractUsernameFromUrl(url);
-       console.log("[deeplink] extracted username", username);
-       if (username) {
-         if (tokenRef.current && !tokenRef.current.isProvider) {
-           didNavigate = navigateToClientSearch(username, navigationRef);
-           setPendingDeepLinkUsername(null);
-         } else {
--          setPendingDeepLinkUsername(username);
-+          setPendingDeepLinkUsername({ username, nonce: Date.now() });
+   return (
+-      <SafeAreaView style={{ flex: 1, backgroundColor: "#EFFFF3" }}>
++      <SafeAreaView style={styles.homeWrapper}>
+       <ScrollView
+         contentContainerStyle={styles.homeScroll}
+         refreshControl={
+           <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
          }
-       }
-       console.log(
-         "[deeplink] url event",
-         url,
-         "username",
-         username,
-         "immediateNavigate",
-         didNavigate
-       );
-     });
+       >
+-        <View style={{ alignItems: "center", marginBottom: 24 }}>
+-          <Image
+-            source={BookitGYLogoTransparent}
+-            style={{ width: 260, height: 260, resizeMode: "contain" }}
+-          />
++        <View style={styles.homeHeader}>
++          <Text style={styles.homeGreeting}>Hi, {greetingName}</Text>
++          <Text style={styles.homeSubtitle}>
++            What are you looking for today?
++          </Text>
+         </View>
  
-     return () => {
-       isActive = false;
-       sub.remove();
-     };
-   }, []);
+-        <Text style={styles.subtitle} allowFontScaling={false}>
+-          Find and book services in {"\n"}Guyana
+-        </Text>
++        <View style={styles.searchBar}>
++          <Ionicons name="search-outline" size={20} color="#64748b" />
++          <TextInput
++            style={styles.searchInput}
++            placeholder="Search by profession, provider, or service"
++            placeholderTextColor="#94a3b8"
++            value={searchText}
++            onChangeText={setSearchText}
++            onFocus={() => handleSearchNavigate(searchText)}
++            onSubmitEditing={() => handleSearchNavigate(searchText)}
++            returnKeyType="search"
++          />
++        </View>
  
-   useEffect(() => {
-     if (!pendingDeepLinkUsername || !token) return;
+-        <View
+-            style={{
+-              marginTop: 10,        // was 30 — now moved up
+-              width: "70%",
+-              alignSelf: "center",  // ensures it's centered
+-              marginBottom: 20, 
+-            }}
++        <View style={styles.quickCategorySection}>
++          <Text style={styles.sectionTitle}>Quick categories</Text>
++          <ScrollView
++            horizontal
++            showsHorizontalScrollIndicator={false}
++            contentContainerStyle={styles.quickCategoryList}
+           >
+-            <TouchableOpacity
+-              style={[styles.bookButton, { paddingVertical: 14 }]}
+-              onPress={() => navigation.navigate("Search")}
+-            >
+-              <Text style={styles.bookButtonLabel}>Start searching</Text>
+-            </TouchableOpacity>
+-          </View>
++            {quickCategories.map((category) => (
++              <Pressable
++                key={category}
++                style={styles.quickCategoryChip}
++                onPress={() => handleSearchNavigate(category)}
++              >
++                <Text style={styles.quickCategoryText}>{category}</Text>
++              </Pressable>
++            ))}
++          </ScrollView>
++        </View>
  
-     if (token.isProvider) {
-       console.log(
-         "[deeplink] provider user ignoring username",
--        pendingDeepLinkUsername
-+        pendingDeepLinkUsername.username
-       );
-       if (showFlash) {
-         showFlash("error", "Open as a client to view provider links.");
-       }
-       setPendingDeepLinkUsername(null);
-       return;
-     }
  
-     const didNavigate = navigateToClientSearch(
--      pendingDeepLinkUsername,
-+      pendingDeepLinkUsername.username,
-       navigationRef
-     );
-     console.log(
-       "[deeplink] pending username",
--      pendingDeepLinkUsername,
-+      pendingDeepLinkUsername.username,
-       "navigate",
-       didNavigate
-     );
-     setPendingDeepLinkUsername(null);
-   }, [pendingDeepLinkUsername, token, showFlash]);
+         <View style={[styles.card, styles.homeCard]}>
+           <View style={styles.carouselHeader}>
+             <View>
+               <Text style={styles.sectionTitle}>Nearby Providers</Text>
+               <Text style={styles.serviceMeta}>
+                 Based on your current location
+               </Text>
+             </View>
  
-   useEffect(() => {
-     let isActive = true;
-     const restoreSession = async () => {
-       if (authBootstrapRef.current.inFlight || authBootstrapRef.current.completed) {
-         return;
-       }
-       authBootstrapRef.current.inFlight = true;
-       const bootstrapStartedAt = Date.now();
-       console.log("[auth] bootstrap start");
-       try {
-         const restoredToken = await withTimeout(
-           getAuthToken(),
-           AUTH_TOKEN_TIMEOUT_MS,
-           "getAuthToken"
-         );
-         console.log("[auth] token loaded:", Boolean(restoredToken));
+             {hasCarousel ? (
+               <View style={styles.carouselBadge}>
+                 <Text style={styles.carouselBadgeText}>
+                   {nearbyProviders.length}
+                 </Text>
+               </View>
+             ) : null}
+           </View>
  
-         if (!restoredToken) {
-           if (isActive) setToken(null);
+           {nearbyLoading ? (
+-            <View style={{ paddingVertical: 12 }}>
+-              <ActivityIndicator />
+-              <Text style={styles.serviceMeta}>Loading nearby providers…</Text>
+-            </View>
++            <ScrollView
++              horizontal
++              showsHorizontalScrollIndicator={false}
++              contentContainerStyle={styles.carouselList}
++            >
++              {[0, 1, 2].map((index) => (
++                <View key={`nearby-skeleton-${index}`} style={styles.providerCard}>
++                  <View style={[styles.cardImageWrapper, styles.skeletonBlock]} />
++                  <View style={styles.cardBody}>
++                    <View style={[styles.skeletonLine, { width: "70%" }]} />
++                    <View style={[styles.skeletonLine, { width: "45%" }]} />
++                    <View style={[styles.skeletonLine, { width: "60%" }]} />
++                  </View>
++                </View>
++              ))}
++            </ScrollView>
+           ) : null}
+ 
+           {!nearbyLoading && nearbyError ? (
+             <Text style={styles.errorText}>{nearbyError}</Text>
+           ) : null}
+ 
+           {!nearbyLoading && !nearbyError && !hasCarousel ? (
+             <Text style={styles.serviceHint}>
+               No providers found within 15 km yet.
+             </Text>
+           ) : null}
+ 
+           {!nearbyLoading && !nearbyError && hasCarousel ? (
+             <ScrollView
+               horizontal
+               showsHorizontalScrollIndicator={false}
+               contentContainerStyle={styles.carouselList}
+               onMomentumScrollEnd={handleCarouselScroll}
+             >
+               {nearbyProviders.map((provider) => {
+                 const avatar = resolveImageUrl(
+                   provider.avatar_url || provider.profile_photo_url
+                 );
+                 const servicesLabel = (provider.services || []).join(" · ");
+                 const saved = isFavorite(provider);
+@@ -5875,87 +5924,88 @@ function MainApp({ apiClient, authLoading, token, setToken, showFlash, navigatio
+               />
+             )}
+           </Tab.Screen>
+ 
+           <Tab.Screen name="Billing">
+             {() => (
+               <ProviderBillingScreen token={token} showFlash={showFlash} />
+             )}
+           </Tab.Screen>
+ 
+ 
+           <Tab.Screen name="Profile">
+             {() => (
+               <ProfileScreen
+                 apiClient={apiClient}
+                 authLoading={authLoading}
+                 token={token}
+                 setToken={setToken}
+                 showFlash={showFlash}
+               />
+             )}
+           </Tab.Screen>
+         </Tab.Navigator>
+       ) : (
+         // 👇 Client view: Profile + Search
+-        <Tab.Navigator
++            <Tab.Navigator
+             screenOptions={({ route }) => ({
+               headerShown: false,
+               tabBarShowLabel: true,
+               tabBarActiveTintColor: "#0B6BF2",
+               tabBarInactiveTintColor: "#A1A1A1",
+               tabBarStyle: {
+                 backgroundColor: "#FFFFFF",
+                 height: 70,
+                 paddingBottom: 25,
+                 paddingTop: 8,
+                 borderTopWidth: 0,
+                 shadowColor: "#000",
+                 shadowOpacity: 0.05,
+                 shadowRadius: 8,
+                 elevation: 4,
+                 marginBottom: Platform.OS === "android" ? 8 : 0, // ⬅️ lifts bar above system buttons
+ 
+               },
+ 
+               tabBarIcon: ({ color, size }) => {
+                 let iconName;
+ 
+                 if (route.name === "Home") iconName = "home-outline";
+                 else if (route.name === "Search") iconName = "search-outline";
+                 else if (route.name === "Appointments") iconName = "calendar-outline";
+                 else if (route.name === "Profile") iconName = "person-outline";
+ 
+                 return <Ionicons name={iconName} size={24} color={color} />;
+               },
+             })}
+             initialRouteName="Home"
+           >
+             <Tab.Screen name="Home">
+               {({ navigation }) => (
+                 <ClientHomeScreen
+                   navigation={navigation}
++                  token={token}
+                   favoriteProviders={favoriteProviders}
+                   favoriteIds={favoriteIds}
+                   favoritesLoading={favoritesLoading}
+                   toggleFavorite={toggleFavorite}
+                   isFavorite={isFavorite}
+                   syncFavoritesFromList={syncFavoritesFromList}
+                   refreshFavoriteProviders={refreshFavoriteProviders}
+                 />
+               )}
+             </Tab.Screen>
+             <Tab.Screen name="Search">
+               {({ navigation, route }) => (
+                 <SearchScreen
+                   token={token}
+                   showFlash={showFlash}
+                   navigation={navigation}
+                   route={route}
+                   toggleFavorite={toggleFavorite}
+                   isFavorite={isFavorite}
+                   syncFavoritesFromList={syncFavoritesFromList}
+                 />
+               )}
+             </Tab.Screen>
+             <Tab.Screen name="Appointments">
+               {() => <AppointmentsScreen token={token} showFlash={showFlash} />}
+@@ -6435,72 +6485,137 @@ const styles = StyleSheet.create({
+     textDecorationLine: "underline",
+     textAlign: "center",
+   },
+   subtitle: { fontSize: 22, color: "#166534", marginTop: 20, textAlign: "center" },
+   text: { fontSize: 18, color: "#166534", marginTop: 15, textAlign: "center" },
+ 
+     flashContainer: {
+     position: "absolute",
+     top: 40,
+     left: 20,
+     right: 20,
+     paddingVertical: 10,
+     paddingHorizontal: 12,
+     borderRadius: 8,
+     borderWidth: 1,
+     zIndex: 100,
+     shadowColor: "#000",
+     shadowOpacity: 0.1,
+     shadowRadius: 6,
+     shadowOffset: { width: 0, height: 3 },
+     elevation: 4,
+   },
+ 
+    homeScroll: {
+     flexGrow: 1,
+-    backgroundColor: "#f0fdf4",
+-    padding: 20,
+-    paddingTop: 60,
++    backgroundColor: "#f8fffb",
++    paddingHorizontal: 20,
++    paddingBottom: 32,
++    paddingTop: 16,
+   },
+   homeCard: {
+     width: "100%",
+   },
++  homeWrapper: {
++    flex: 1,
++    backgroundColor: "#f8fffb",
++  },
++  homeHeader: {
++    marginBottom: 20,
++  },
++  homeGreeting: {
++    fontSize: 26,
++    fontWeight: "700",
++    color: "#0f172a",
++  },
++  homeSubtitle: {
++    fontSize: 16,
++    color: "#475569",
++    marginTop: 6,
++  },
++  searchBar: {
++    flexDirection: "row",
++    alignItems: "center",
++    gap: 10,
++    backgroundColor: "#ffffff",
++    borderRadius: 16,
++    paddingHorizontal: 14,
++    paddingVertical: 12,
++    borderWidth: 1,
++    borderColor: "#e2e8f0",
++    shadowColor: "#0f172a",
++    shadowOpacity: 0.06,
++    shadowRadius: 6,
++    shadowOffset: { width: 0, height: 3 },
++    elevation: 2,
++  },
++  searchInput: {
++    flex: 1,
++    fontSize: 15,
++    color: "#0f172a",
++  },
++  quickCategorySection: {
++    marginTop: 20,
++    marginBottom: 8,
++  },
++  quickCategoryList: {
++    paddingVertical: 4,
++  },
++  quickCategoryChip: {
++    paddingHorizontal: 14,
++    paddingVertical: 8,
++    borderRadius: 999,
++    backgroundColor: "#ecfdf3",
++    borderWidth: 1,
++    borderColor: "#bbf7d0",
++    marginRight: 10,
++  },
++  quickCategoryText: {
++    fontSize: 13,
++    fontWeight: "600",
++    color: "#166534",
++  },
+ 
+ 
+   carouselList: {
+     paddingVertical: 4,
+     paddingRight: 12,
+   },
+ 
+   providerCard: {
+     width: 280,
+-    borderRadius: 12,
++    borderRadius: 16,
+     backgroundColor: "#ffffff",
+     marginRight: 12,
+     overflow: "hidden",
+     borderWidth: 1,
+-    borderColor: "#e5e7eb",
++    borderColor: "#eef2f7",
++    shadowColor: "#0f172a",
++    shadowOpacity: 0.06,
++    shadowRadius: 8,
++    shadowOffset: { width: 0, height: 4 },
++    elevation: 3,
+   },
+   cardImageWrapper: {
+     height: 140,
+     backgroundColor: "#dcfce7",
+     position: "relative",
+   },
+ 
+ cardHeartButton: {
+     position: "absolute",
+     top: 10,
+     right: 10,
+     zIndex: 12,
+     width: 36,
+     height: 36,
+     backgroundColor: "rgba(255,255,255,0.9)",
+     borderRadius: 999,
+     alignItems: "center",
+     justifyContent: "center",
+   },
+ 
+   cardImage: {
+     width: "100%",
+     height: "100%",
+   },
+   cardImageFallback: {
+@@ -6528,77 +6643,87 @@ cardHeartButton: {
+   cardBody: {
+     padding: 12,
+     gap: 4,
+   },
+   cardTitle: {
+     fontSize: 18,
+     fontWeight: "700",
+     color: "#111827",
+   },
+   cardMeta: {
+     fontSize: 12,
+     color: "#4b5563",
+   },
+   cardMetaMuted: {
+     fontSize: 12,
+     color: "#94a3b8",
+   },
+   cardSubtitle: {
+     fontSize: 13,
+     color: "#111827",
+   },
+   cardDescription: {
+     fontSize: 13,
+     color: "#1f2937",
+   },
++  skeletonBlock: {
++    backgroundColor: "#e2e8f0",
++  },
++  skeletonLine: {
++    height: 10,
++    borderRadius: 999,
++    backgroundColor: "#e2e8f0",
++    marginBottom: 8,
++  },
+   carouselActiveLabel: {
+     marginTop: 12,
+     fontSize: 13,
+     color: "#166534",
+     fontWeight: "600",
+     textAlign: "center",
+   },
+ 
+   flashText: {
+     textAlign: "center",
+     fontSize: 14,
+     fontWeight: "500",
+   },
+ 
+     center: {
+     flex: 1,
+     backgroundColor: "#f0fdf4",
+     justifyContent: "center",
+     alignItems: "center",
+     padding: 20,
+   },
+ 
+    homeScroll: {
+     flexGrow: 1,
+-    backgroundColor: "#f0fdf4",
+-    padding: 20,
+-    paddingTop: 60,
++    backgroundColor: "#f8fffb",
++    paddingHorizontal: 20,
++    paddingBottom: 32,
++    paddingTop: 16,
+   },
+   homeCard: {
+     width: "100%",
+   },
+ 
+   loadingText: {
+     marginTop: 12,
+     fontSize: 16,
+     color: "#4b5563",
+   },
+   errorText: {
+     fontSize: 16,
+     color: "#b91c1c",
+     textAlign: "center",
+   },
+   profileScroll: {
+     flexGrow: 1,
+     backgroundColor: "#f0fdf4",
+     padding: 20,
+     paddingTop: 60,
+   },
+   profileHeader: {
+     flexDirection: "row",
+     justifyContent: "space-between",
+     alignItems: "center",
  
 EOF
 )
