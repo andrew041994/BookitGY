@@ -2048,7 +2048,6 @@ function ClientHomeScreen({
                 style={styles.headerLogo}
               />
             </View>
-            <View style={styles.headerLogoSpacer} />
           </View>
           <Text style={styles.homeGreeting}>Hi, {greetingName}</Text>
           <Text style={styles.homeSubtitle}>
@@ -4696,7 +4695,6 @@ const loadProviderSummary = async () => {
                 style={styles.headerLogo}
               />
             </View>
-            <View style={styles.headerLogoSpacer} />
           </View>
           <Text style={styles.homeGreeting}>Provider dashboard</Text>
           <Text style={styles.homeSubtitle}>Welcome, {providerLabel}</Text>
@@ -6416,27 +6414,24 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   headerLogoRow: {
-    flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
-    paddingTop: 8,
-    marginBottom: 12,
+    paddingTop: 12,
+    marginBottom: 16,
   },
   headerLogoWrapper: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: colors.surfaceElevated,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: "#1F2937",
+    borderWidth: 1,
+    borderColor: "#2A3343",
     alignItems: "center",
     justifyContent: "center",
   },
   headerLogo: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-  },
-  headerLogoSpacer: {
-    flex: 1,
+    width: 52,
+    height: 52,
+    borderRadius: 26,
   },
   homeGreeting: {
     fontSize: 26,
