@@ -35,6 +35,7 @@ import * as ImagePicker from "expo-image-picker";
 import { Ionicons } from "@expo/vector-icons";
 import { SafeAreaProvider,SafeAreaView } from "react-native-safe-area-context";
 import BookitGYLogoTransparent from "./assets/bookitgy-logo-transparent.png"
+import { theme } from "./src/theme";
 // import * as Sentry from "sentry-expo";
 
 let Clipboard = null;
@@ -59,6 +60,8 @@ const API =
   "https://bookitgy.onrender.com";
 
   console.log("### API base URL =", API);
+
+const colors = theme.colors;
 
 const withTimeout = (promise, ms, label) => {
   let timeoutId;
@@ -571,16 +574,16 @@ return (
           autoCorrect={false}
           spellCheck={false}
           underlineColorAndroid="transparent"
-          selectionColor="#16a34a"
-          cursorColor="#16a34a"
+          selectionColor={colors.primary}
+          cursorColor={colors.primary}
         />
 
           {goToSignup && (
             <View style={{ width: "100%", marginBottom: 10 }}>
                {loading ? (
-                <ActivityIndicator size="large" color="#16a34a" />
+                <ActivityIndicator size="large" color={colors.primary} />
               ) : (
-                <Button title="Login" onPress={login} color="#16a34a" />
+                <Button title="Login" onPress={login} color={colors.primary} />
               )}
             </View>
           )}
@@ -596,14 +599,14 @@ return (
                 <Button
                   title="Need an account? Sign Up"
                   onPress={goToSignup}
-                  color="#166534"
+                  color={colors.primary}
                 />
               </View>
             )}
 
             {goBack && (
               <View style={{ width: "100%" }}>
-                <Button title="Back" onPress={goBack} color="#6b7280" />
+                <Button title="Back" onPress={goBack} color={colors.textMuted} />
               </View>
             )}
           </View>
@@ -685,14 +688,14 @@ function ForgotPasswordScreen({ goToLogin, goBack, showFlash }) {
               <Button
                 title={submitting ? "Sending..." : "Send reset link"}
                 onPress={requestReset}
-                color="#16a34a"
+                color={colors.primary}
                 disabled={submitting}
               />
             </View>
 
             {devResetLink && (
               <View style={{ width: "100%", marginBottom: 10 }}>
-                <Text style={{ color: "#0f172a", marginBottom: 6 }}>
+                <Text style={{ color: colors.textSecondary, marginBottom: 6 }}>
                   Dev reset link (only visible in dev):
                 </Text>
                 <TouchableOpacity
@@ -701,7 +704,7 @@ function ForgotPasswordScreen({ goToLogin, goBack, showFlash }) {
                 >
                   <Text
                     style={{
-                      color: "#2563eb",
+                      color: colors.primary,
                       textDecorationLine: "underline",
                     }}
                   >
@@ -716,14 +719,14 @@ function ForgotPasswordScreen({ goToLogin, goBack, showFlash }) {
                 <Button
                   title="Back to Login"
                   onPress={goToLogin}
-                  color="#166534"
+                  color={colors.primary}
                 />
               </View>
             )}
 
             {goBack && (
               <View style={{ width: "100%" }}>
-                <Button title="Back" onPress={goBack} color="#6b7280" />
+                <Button title="Back" onPress={goBack} color={colors.textMuted} />
               </View>
             )}
           </View>
@@ -960,8 +963,8 @@ function SignupScreen({ goToLogin, goBack, showFlash }) {
               autoCorrect={false}
               spellCheck={false}
               underlineColorAndroid="transparent"
-              selectionColor="#16a34a"
-              cursorColor="#16a34a"
+              selectionColor={colors.primary}
+              cursorColor={colors.primary}
             />
             {signupValidation.errors.password && (
               <Text style={styles.inputErrorText}>
@@ -992,8 +995,8 @@ function SignupScreen({ goToLogin, goBack, showFlash }) {
               autoCorrect={false}
               spellCheck={false}
               underlineColorAndroid="transparent"
-              selectionColor="#16a34a"
-              cursorColor="#16a34a"
+              selectionColor={colors.primary}
+              cursorColor={colors.primary}
             />
             {signupValidation.errors.confirmPassword && (
               <Text style={styles.inputErrorText}>
@@ -1005,7 +1008,7 @@ function SignupScreen({ goToLogin, goBack, showFlash }) {
               <Button
                 title="Sign Up"
                 onPress={signup}
-                color="#16a34a"
+                color={colors.primary}
                 disabled={!signupValidation.canSubmit}
               />
             </View>
@@ -1015,14 +1018,14 @@ function SignupScreen({ goToLogin, goBack, showFlash }) {
                 <Button
                   title="Already have an account? Login"
                   onPress={goToLogin}
-                  color="#166534"
+                  color={colors.primary}
                 />
               </View>
             )}
 
             {goBack && (
               <View style={{ width: "100%" }}>
-                <Button title="Back" onPress={goBack} color="#6b7280" />
+                <Button title="Back" onPress={goBack} color={colors.textMuted} />
               </View>
             )}
           </View>
@@ -1055,7 +1058,7 @@ const ListRow = ({
         <Ionicons
           name={icon}
           size={18}
-          color="#64748b"
+          color={colors.textMuted}
           style={styles.listRowIcon}
         />
       ) : null}
@@ -1765,7 +1768,7 @@ function ProfileScreen({ apiClient, authLoading, setToken, showFlash, token }) {
             <Button
               title={editSaving ? "Saving..." : "Save changes"}
               onPress={saveProfileChanges}
-              color="#16a34a"
+              color={colors.primary}
               disabled={editSaving}
             />
           </View>
@@ -2045,11 +2048,11 @@ function ClientHomeScreen({
         </View>
 
         <View style={styles.searchBar}>
-          <Ionicons name="search-outline" size={20} color="#64748b" />
+          <Ionicons name="search-outline" size={20} color={colors.textMuted} />
           <TextInput
             style={styles.searchInput}
             placeholder="Search by profession, provider, or service"
-            placeholderTextColor="#94a3b8"
+            placeholderTextColor={colors.textSecondary}
             value={searchText}
             onChangeText={setSearchText}
             onFocus={() => handleSearchNavigate(searchText)}
@@ -2059,7 +2062,7 @@ function ClientHomeScreen({
         </View>
 
         <View style={styles.quickCategorySection}>
-          <Text style={styles.sectionTitle}>Quick categories</Text>
+          <Text style={styles.sectionTitle}>Quick Categories</Text>
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
@@ -3126,11 +3129,11 @@ function SearchScreen({ token, showFlash, navigation, route, toggleFavorite, isF
         <View style={styles.searchHeader}>
           <Text style={styles.searchHeaderTitle}>Search providers</Text>
           <View style={styles.searchBar}>
-            <Ionicons name="search-outline" size={18} color="#6b7280" />
+            <Ionicons name="search-outline" size={18} color={colors.textMuted} />
             <TextInput
               style={styles.searchInput}
               placeholder="Search by profession or provider…"
-              placeholderTextColor="#94a3b8"
+              placeholderTextColor={colors.textSecondary}
               value={searchQuery}
               onChangeText={setSearchQuery}
               onSubmitEditing={handleSearchSubmit}
@@ -3345,7 +3348,7 @@ function SearchScreen({ token, showFlash, navigation, route, toggleFavorite, isF
                             key={s.id}
                             style={[
                               styles.serviceRow,
-                              isSelected && { borderColor: "#16a34a", borderWidth: 1 },
+                              isSelected && { borderColor: colors.primary, borderWidth: 1 },
                             ]}
                             onPress={() => handleSelectService(s)}
                           >
@@ -4674,13 +4677,13 @@ const loadProviderSummary = async () => {
               width: 96,
               height: 96,
               borderRadius: 48,
-              backgroundColor: "#ccc",
+              backgroundColor: colors.surfaceElevated,
               justifyContent: "center",
               alignItems: "center",
               marginBottom: 8,
             }}
           >
-            <Text style={{ fontSize: 32 }}>
+            <Text style={{ fontSize: 32, color: colors.textPrimary }}>
               {(profile.full_name || token?.email || "P")[0].toUpperCase()}
             </Text>
           </View>
@@ -4888,7 +4891,7 @@ const loadProviderSummary = async () => {
           >
             <Text style={styles.sectionTitle}>Your services</Text>
             <TouchableOpacity onPress={() => setAdding((prev) => !prev)}>
-              <Text style={{ color: "#16a34a", fontWeight: "600" }}>
+              <Text style={{ color: colors.primary, fontWeight: "600" }}>
                 {adding ? "Cancel" : "+ Add"}
               </Text>
             </TouchableOpacity>
@@ -4952,7 +4955,7 @@ const loadProviderSummary = async () => {
                 <Button
                   title="Save service"
                   onPress={handleAddService}
-                  color="#16a34a"
+                  color={colors.primary}
                   disabled={!isServiceFormValid}
                 />
               </View>
@@ -5000,7 +5003,7 @@ const loadProviderSummary = async () => {
                     onPress={() => handleDeleteService(s.id)}
                     style={{ marginTop: 4 }}
                   >
-                    <Text style={{ fontSize: 12, color: "#b91c1c" }}>
+                    <Text style={{ fontSize: 12, color: colors.error }}>
                       Delete
                     </Text>
                   </TouchableOpacity>
@@ -5147,7 +5150,7 @@ const loadProviderSummary = async () => {
               <Button
                 title="Save working hours"
                 onPress={saveWorkingHours}
-                color="#16a34a"
+                color={colors.primary}
               />
             </View>
           </View>
@@ -5304,7 +5307,7 @@ const loadProviderSummary = async () => {
                   <Button
                     title="Save provider profile"
                     onPress={saveProviderProfile}
-                    color="#16a34a"
+                    color={colors.primary}
                   />
                 </View>
 
@@ -5330,7 +5333,7 @@ const loadProviderSummary = async () => {
             >
               <Text
                 style={{
-                  color: "#16a34a",
+                  color: colors.primary,
                   fontWeight: "600",
                   opacity: catalogUploading ? 0.6 : 1,
                 }}
@@ -5648,7 +5651,7 @@ function ProviderBillingScreen({ token, showFlash }) {
               <Ionicons
                 name={expandedBills[bill.cycle_month] ? "chevron-up" : "chevron-down"}
                 size={18}
-                color="#0B6BF2"
+                color={colors.primary}
               />
             </TouchableOpacity>
 
@@ -5735,15 +5738,15 @@ function MainApp({ apiClient, authLoading, token, setToken, showFlash, navigatio
           screenOptions={({ route }) => ({
             headerShown: false,
             tabBarShowLabel: true,
-            tabBarActiveTintColor: "#16a34a",
-            tabBarInactiveTintColor: "#9CA3AF",
+            tabBarActiveTintColor: colors.primary,
+            tabBarInactiveTintColor: colors.textSecondary,
             tabBarStyle: {
-              backgroundColor: "#FFFFFF",
+              backgroundColor: colors.surface,
               height: 76,
               paddingBottom: Platform.OS === "ios" ? 24 : 12,
               paddingTop: 8,
               borderTopWidth: 1,
-              borderTopColor: "#E5E7EB",
+              borderTopColor: colors.border,
               shadowColor: "#000",
               shadowOpacity: 0.08,
               shadowRadius: 12,
@@ -5777,7 +5780,7 @@ function MainApp({ apiClient, authLoading, token, setToken, showFlash, navigatio
                   style={{
                     padding: 6,
                     borderRadius: 16,
-                    backgroundColor: focused ? "rgba(22, 163, 74, 0.12)" : "transparent",
+                    backgroundColor: focused ? colors.primarySoft : "transparent",
                   }}
                 >
                   <Ionicons
@@ -5825,15 +5828,15 @@ function MainApp({ apiClient, authLoading, token, setToken, showFlash, navigatio
             screenOptions={({ route }) => ({
               headerShown: false,
               tabBarShowLabel: true,
-              tabBarActiveTintColor: "#16a34a",
-              tabBarInactiveTintColor: "#9CA3AF",
+              tabBarActiveTintColor: colors.primary,
+              tabBarInactiveTintColor: colors.textSecondary,
               tabBarStyle: {
-                backgroundColor: "#FFFFFF",
+                backgroundColor: colors.surface,
                 height: 76,
                 paddingBottom: Platform.OS === "ios" ? 24 : 12,
                 paddingTop: 8,
                 borderTopWidth: 1,
-                borderTopColor: "#E5E7EB",
+                borderTopColor: colors.border,
                 shadowColor: "#000",
                 shadowOpacity: 0.08,
                 shadowRadius: 12,
@@ -5868,7 +5871,7 @@ function MainApp({ apiClient, authLoading, token, setToken, showFlash, navigatio
                     style={{
                       padding: 6,
                       borderRadius: 16,
-                      backgroundColor: focused ? "rgba(22, 163, 74, 0.12)" : "transparent",
+                      backgroundColor: focused ? colors.primarySoft : "transparent",
                     }}
                   >
                     <Ionicons
@@ -5942,9 +5945,9 @@ function FlashMessage({ flash }) {
 
   const isError = flash.type === "error";
 
-  const backgroundColor = isError ? "#fee2e2" : "#16a34a"; // red / green
-  const borderColor = isError ? "#b91c1c" : "#15803d";
-  const textColor = isError ? "#7f1d1d" : "#ffffff";
+  const backgroundColor = isError ? colors.error : colors.success;
+  const borderColor = isError ? colors.error : colors.primaryPressed;
+  const textColor = colors.textPrimary;
 
   return (
 
@@ -6258,10 +6261,10 @@ function App() {
 
     return (
       <SafeAreaProvider>
-        <SafeAreaView style={{ flex: 1 }} edges={["top", "bottom"]}>
+        <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }} edges={["top", "bottom"]}>
           <FlashMessage flash={flash} />
           <View style={styles.center}>
-            <ActivityIndicator size="large" color="#0B6BF2" />
+            <ActivityIndicator size="large" color={colors.primary} />
             <Text style={styles.loadingText}>Loading BookitGY…</Text>
 
             {/* DEBUG LINES */}
@@ -6277,7 +6280,7 @@ function App() {
 
   return (
     <SafeAreaProvider>
-      <SafeAreaView style={{ flex: 1 }} edges={["top", "bottom"]}>
+      <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }} edges={["top", "bottom"]}>
         <FlashMessage flash={flash} />
 
         {!token ? (
@@ -6336,7 +6339,7 @@ function App() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#f0fdf4",
+    backgroundColor: colors.background,
     justifyContent: "center",
     alignItems: "center",
     padding: 20,
@@ -6344,19 +6347,19 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 36,
     fontWeight: "bold",
-    color: "#16a34a",
+    color: colors.textPrimary,
     marginBottom: 20,
   },
   input: {
     width: "100%",
-    backgroundColor: "white",
+    backgroundColor: colors.surfaceElevated,
     borderRadius: 8,
     paddingHorizontal: 12,
     paddingVertical: 12,
     marginBottom: 12,
     borderWidth: 1,
-    borderColor: "#bbf7d0",
-    color: "#0f172a",
+    borderColor: colors.border,
+    color: colors.textPrimary,
     minHeight: 48,
     textAlignVertical: "center",
     ...Platform.select({
@@ -6366,17 +6369,17 @@ const styles = StyleSheet.create({
     }),
   },
   inputError: {
-    borderColor: "#ef4444",
+    borderColor: colors.error,
     borderWidth: 2,
   },
   inputErrorText: {
-    color: "#ef4444",
+    color: colors.error,
     fontSize: 12,
     marginTop: -6,
     marginBottom: 12,
   },
   inputPlaceholder: {
-    color: "#64748b",
+    color: colors.textMuted,
   },
   forgotLink: {
     marginBottom: 6,
@@ -6384,12 +6387,12 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
   },
   forgotLinkText: {
-    color: "#0f172a",
+    color: colors.textSecondary,
     textDecorationLine: "underline",
     textAlign: "center",
   },
-  subtitle: { fontSize: 22, color: "#166534", marginTop: 20, textAlign: "center" },
-  text: { fontSize: 18, color: "#166534", marginTop: 15, textAlign: "center" },
+  subtitle: { fontSize: 22, color: colors.textSecondary, marginTop: 20, textAlign: "center" },
+  text: { fontSize: 18, color: colors.textSecondary, marginTop: 15, textAlign: "center" },
 
     flashContainer: {
     position: "absolute",
@@ -6410,7 +6413,7 @@ const styles = StyleSheet.create({
 
    homeScroll: {
     flexGrow: 1,
-    backgroundColor: "#f8fffb",
+    backgroundColor: colors.background,
     paddingHorizontal: 20,
     paddingBottom: 32,
     paddingTop: 16,
@@ -6420,7 +6423,7 @@ const styles = StyleSheet.create({
   },
   homeWrapper: {
     flex: 1,
-    backgroundColor: "#f8fffb",
+    backgroundColor: colors.background,
   },
   homeHeader: {
     marginBottom: 20,
@@ -6428,23 +6431,23 @@ const styles = StyleSheet.create({
   homeGreeting: {
     fontSize: 26,
     fontWeight: "700",
-    color: "#0f172a",
+    color: colors.textPrimary,
   },
   homeSubtitle: {
     fontSize: 16,
-    color: "#475569",
+    color: colors.textSecondary,
     marginTop: 6,
   },
   searchBar: {
     flexDirection: "row",
     alignItems: "center",
     gap: 10,
-    backgroundColor: "#ffffff",
+    backgroundColor: colors.surfaceElevated,
     borderRadius: 16,
     paddingHorizontal: 14,
     paddingVertical: 12,
     borderWidth: 1,
-    borderColor: "#e2e8f0",
+    borderColor: colors.border,
     shadowColor: "#0f172a",
     shadowOpacity: 0.06,
     shadowRadius: 6,
@@ -6454,7 +6457,7 @@ const styles = StyleSheet.create({
   searchInput: {
     flex: 1,
     fontSize: 15,
-    color: "#0f172a",
+    color: colors.textPrimary,
   },
   quickCategorySection: {
     marginTop: 20,
@@ -6467,15 +6470,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 8,
     borderRadius: 999,
-    backgroundColor: "#ecfdf3",
+    backgroundColor: colors.primarySoft,
     borderWidth: 1,
-    borderColor: "#bbf7d0",
+    borderColor: colors.primary,
     marginRight: 10,
   },
   quickCategoryText: {
     fontSize: 13,
     fontWeight: "600",
-    color: "#166534",
+    color: colors.primary,
   },
 
 
@@ -6487,11 +6490,11 @@ const styles = StyleSheet.create({
   providerCardSkeleton: {
     width: 270,
     borderRadius: 16,
-    backgroundColor: "#ffffff",
+    backgroundColor: colors.surface,
     marginRight: 12,
     overflow: "hidden",
     borderWidth: 1,
-    borderColor: "#eef2f7",
+    borderColor: colors.border,
     shadowColor: "#0f172a",
     shadowOpacity: 0.06,
     shadowRadius: 8,
@@ -6507,7 +6510,7 @@ const styles = StyleSheet.create({
   },
   cardImageWrapper: {
     height: 140,
-    backgroundColor: "#dcfce7",
+    backgroundColor: colors.surfaceElevated,
     position: "relative",
   },
 
@@ -6518,7 +6521,7 @@ cardHeartButton: {
     zIndex: 12,
     width: 36,
     height: 36,
-    backgroundColor: "rgba(255,255,255,0.9)",
+    backgroundColor: "rgba(17,24,39,0.9)",
     borderRadius: 999,
     alignItems: "center",
     justifyContent: "center",
@@ -6532,21 +6535,21 @@ cardHeartButton: {
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#16a34a",
+    backgroundColor: colors.primary,
   },
   cardBadge: {
     position: "absolute",
     bottom: 8,
     left: 8,
-    backgroundColor: "#ecfdf3",
-    borderColor: "#bbf7d0",
+    backgroundColor: colors.primarySoft,
+    borderColor: colors.primary,
     borderWidth: 1,
     borderRadius: 999,
     paddingHorizontal: 10,
     paddingVertical: 4,
   },
   cardBadgeText: {
-    color: "#166534",
+    color: colors.primary,
     fontSize: 12,
     fontWeight: "700",
   },
@@ -6557,37 +6560,37 @@ cardHeartButton: {
   cardTitle: {
     fontSize: 18,
     fontWeight: "700",
-    color: "#111827",
+    color: colors.textPrimary,
   },
   cardMeta: {
     fontSize: 12,
-    color: "#4b5563",
+    color: colors.textSecondary,
   },
   cardMetaMuted: {
     fontSize: 12,
-    color: "#94a3b8",
+    color: colors.textMuted,
   },
   cardSubtitle: {
     fontSize: 13,
-    color: "#111827",
+    color: colors.textPrimary,
   },
   cardDescription: {
     fontSize: 13,
-    color: "#1f2937",
+    color: colors.textSecondary,
   },
   skeletonBlock: {
-    backgroundColor: "#e2e8f0",
+    backgroundColor: colors.surfaceElevated,
   },
   skeletonLine: {
     height: 10,
     borderRadius: 999,
-    backgroundColor: "#e2e8f0",
+    backgroundColor: colors.surfaceElevated,
     marginBottom: 8,
   },
   carouselActiveLabel: {
     marginTop: 12,
     fontSize: 13,
-    color: "#166534",
+    color: colors.textSecondary,
     fontWeight: "600",
     textAlign: "center",
   },
@@ -6600,7 +6603,7 @@ cardHeartButton: {
 
     center: {
     flex: 1,
-    backgroundColor: "#f0fdf4",
+    backgroundColor: colors.background,
     justifyContent: "center",
     alignItems: "center",
     padding: 20,
@@ -6608,7 +6611,7 @@ cardHeartButton: {
 
    homeScroll: {
     flexGrow: 1,
-    backgroundColor: "#f8fffb",
+    backgroundColor: colors.background,
     paddingHorizontal: 20,
     paddingBottom: 32,
     paddingTop: 16,
@@ -6620,26 +6623,26 @@ cardHeartButton: {
   loadingText: {
     marginTop: 12,
     fontSize: 16,
-    color: "#4b5563",
+    color: colors.textSecondary,
   },
   errorText: {
     fontSize: 16,
-    color: "#b91c1c",
+    color: colors.error,
     textAlign: "center",
   },
   profileScroll: {
     flexGrow: 1,
-    backgroundColor: "#f8fafc",
+    backgroundColor: colors.background,
     padding: 20,
     paddingTop: 32,
   },
   profileHeaderCard: {
-    backgroundColor: "#ffffff",
+    backgroundColor: colors.surface,
     borderRadius: 16,
     padding: 16,
     marginBottom: 16,
     borderWidth: 1,
-    borderColor: "#e5e7eb",
+    borderColor: colors.border,
   },
   profileIdentityRow: {
     flexDirection: "row",
@@ -6655,11 +6658,11 @@ cardHeartButton: {
   profileName: {
     fontSize: 22,
     fontWeight: "700",
-    color: "#0f172a",
+    color: colors.textPrimary,
   },
   profileEmail: {
     fontSize: 14,
-    color: "#64748b",
+    color: colors.textSecondary,
     marginTop: 4,
     marginBottom: 8,
   },
@@ -6669,7 +6672,7 @@ cardHeartButton: {
   profileAvatarLinkText: {
     fontSize: 12,
     fontWeight: "500",
-    color: "#2563eb",
+    color: colors.primary,
   },
   roleBadge: {
     paddingHorizontal: 10,
@@ -6678,21 +6681,21 @@ cardHeartButton: {
     borderWidth: 1,
   },
   roleBadgeAdmin: {
-    backgroundColor: "#fee2e2",
-    borderColor: "#b91c1c",
+    backgroundColor: colors.surfaceElevated,
+    borderColor: colors.error,
   },
   roleBadgeProvider: {
-    backgroundColor: "#dbeafe",
-    borderColor: "#1d4ed8",
+    backgroundColor: colors.primarySoft,
+    borderColor: colors.primary,
   },
   roleBadgeClient: {
-    backgroundColor: "#dcfce7",
-    borderColor: "#16a34a",
+    backgroundColor: colors.surfaceElevated,
+    borderColor: colors.border,
   },
   roleBadgeText: {
     fontSize: 12,
     fontWeight: "600",
-    color: "#111827",
+    color: colors.textPrimary,
   },
   profileSection: {
     marginBottom: 16,
@@ -6700,14 +6703,14 @@ cardHeartButton: {
   profileSectionTitle: {
     fontSize: 16,
     fontWeight: "600",
-    color: "#0f172a",
+    color: colors.textPrimary,
     marginBottom: 10,
   },
   sectionCard: {
-    backgroundColor: "#ffffff",
+    backgroundColor: colors.surface,
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: "#e5e7eb",
+    borderColor: colors.border,
     overflow: "hidden",
   },
   listRow: {
@@ -6717,7 +6720,7 @@ cardHeartButton: {
     paddingVertical: 12,
     paddingHorizontal: 14,
     borderBottomWidth: 1,
-    borderBottomColor: "#e5e7eb",
+    borderBottomColor: colors.border,
   },
   listRowLast: {
     borderBottomWidth: 0,
@@ -6735,14 +6738,14 @@ cardHeartButton: {
   listRowTitle: {
     fontSize: 15,
     fontWeight: "500",
-    color: "#111827",
+    color: colors.textPrimary,
   },
   listRowChevron: {
     fontSize: 18,
-    color: "#94a3b8",
+    color: colors.textMuted,
   },
   card: {
-    backgroundColor: "#ffffff",
+    backgroundColor: colors.surface,
     borderRadius: 12,
     padding: 16,
     marginBottom: 20,
@@ -6755,33 +6758,33 @@ cardHeartButton: {
   label: {
     fontSize: 13,
     fontWeight: "500",
-    color: "#6b7280",
+    color: colors.textMuted,
     textTransform: "uppercase",
     letterSpacing: 0.6,
   },
   value: {
     fontSize: 17,
     fontWeight: "500",
-    color: "#111827",
+    color: colors.textPrimary,
     marginTop: 4,
   },
   adminBox: {
-    backgroundColor: "#ecfdf3",
+    backgroundColor: colors.primarySoft,
     borderRadius: 12,
     padding: 16,
     marginBottom: 20,
     borderWidth: 1,
-    borderColor: "#bbf7d0",
+    borderColor: colors.primary,
   },
   adminTitle: {
     fontSize: 16,
     fontWeight: "700",
-    color: "#166534",
+    color: colors.primary,
     marginBottom: 4,
   },
   adminText: {
     fontSize: 14,
-    color: "#4b5563",
+    color: colors.textSecondary,
   },
   actionsContainer: {
     marginTop: 10,
@@ -6789,17 +6792,17 @@ cardHeartButton: {
   sectionTitle: {
     fontSize: 18,
     fontWeight: "600",
-    color: "#166534",
+    color: colors.textPrimary,
     marginBottom: 10,
   },
   profileLinkText: {
     fontSize: 15,
-    color: "#111827",
+    color: colors.textSecondary,
     marginBottom: 10,
   },
   profileLinkWarning: {
     fontSize: 13,
-    color: "#b91c1c",
+    color: colors.error,
     marginBottom: 10,
   },
   profileLinkActions: {
@@ -6807,12 +6810,12 @@ cardHeartButton: {
     flexWrap: "wrap",
   },
   linkActionButton: {
-    backgroundColor: "#ffffff",
+    backgroundColor: "transparent",
     paddingVertical: 8,
     paddingHorizontal: 14,
     borderRadius: 999,
     borderWidth: 1,
-    borderColor: "#bbf7d0",
+    borderColor: colors.border,
     marginRight: 8,
     marginBottom: 8,
     alignItems: "center",
@@ -6823,7 +6826,7 @@ cardHeartButton: {
   linkActionButtonText: {
     fontSize: 14,
     fontWeight: "500",
-    color: "#166534",
+    color: colors.textPrimary,
   },
 
   carouselHeader: {
@@ -6840,9 +6843,9 @@ cardHeartButton: {
     minWidth: 32,
     height: 32,
     borderRadius: 16,
-    backgroundColor: "#ecfdf3",
+    backgroundColor: colors.primarySoft,
     borderWidth: 1,
-    borderColor: "#bbf7d0",
+    borderColor: colors.primary,
     alignItems: "center",
     justifyContent: "center",
     paddingHorizontal: 6,
@@ -6850,7 +6853,7 @@ cardHeartButton: {
   carouselBadgeText: {
     fontSize: 14,
     fontWeight: "700",
-    color: "#166534",
+    color: colors.primary,
   },
   carouselAvatar: {
     width: 72,
@@ -6863,14 +6866,14 @@ cardHeartButton: {
     height: 72,
     borderRadius: 36,
     marginRight: 12,
-    backgroundColor: "#dcfce7",
+    backgroundColor: colors.surfaceElevated,
     alignItems: "center",
     justifyContent: "center",
   },
   carouselAvatarInitial: {
     fontSize: 28,
     fontWeight: "700",
-    color: "#166534",
+    color: colors.textPrimary,
   },
   carouselNav: {
     flexDirection: "row",
@@ -6879,8 +6882,8 @@ cardHeartButton: {
     marginTop: 14,
   },
   carouselButton: {
-    backgroundColor: "#dcfce7",
-    borderColor: "#bbf7d0",
+    backgroundColor: colors.surfaceElevated,
+    borderColor: colors.border,
     borderWidth: 1,
     paddingHorizontal: 14,
     paddingVertical: 8,
@@ -6890,51 +6893,51 @@ cardHeartButton: {
     opacity: 0.5,
   },
   carouselButtonText: {
-    color: "#166534",
+    color: colors.textPrimary,
     fontWeight: "600",
   },
   carouselCounter: {
     fontSize: 14,
-    color: "#166534",
+    color: colors.textSecondary,
     fontWeight: "600",
   },
 
   actionButton: {
-    backgroundColor: "#ffffff",
+    backgroundColor: "transparent",
     paddingVertical: 10,
     paddingHorizontal: 12,
     borderRadius: 999,
     borderWidth: 1,
-    borderColor: "#bbf7d0",
+    borderColor: colors.border,
     marginBottom: 10,
     alignItems: "center",
   },
   actionButtonText: {
     fontSize: 15,
     fontWeight: "500",
-    color: "#166534",
+    color: colors.textPrimary,
   },
   logoutButton: {
-    backgroundColor: "#fee2e2",
-    borderColor: "#b91c1c",
+    backgroundColor: "transparent",
+    borderColor: colors.error,
     marginTop: 10,
   },
   logoutButtonText: {
-    color: "#b91c1c",
+    color: colors.error,
   },
   logoutRow: {
     marginTop: 8,
     paddingVertical: 12,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: "#fecaca",
-    backgroundColor: "#ffffff",
+    borderColor: colors.error,
+    backgroundColor: colors.surface,
     alignItems: "center",
   },
   logoutRowText: {
     fontSize: 15,
     fontWeight: "600",
-    color: "#b91c1c",
+    color: colors.error,
   },
 
   toggleCard: {
@@ -6942,9 +6945,9 @@ cardHeartButton: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    backgroundColor: "#ffffff",
+    backgroundColor: colors.surface,
     borderWidth: 2,
-    borderColor: "#16a34a",
+    borderColor: colors.primary,
     borderRadius: 12,
     paddingVertical: 12,
     paddingHorizontal: 14,
@@ -6965,23 +6968,23 @@ cardHeartButton: {
   toggleLabel: {
     fontSize: 17,
     fontWeight: "700",
-    color: "#14532d",
+    color: colors.textPrimary,
   },
   toggleHelper: {
     marginTop: 4,
     fontSize: 13,
-    color: "#6b7280",
+    color: colors.textSecondary,
   },
 
     providerScroll: {
     flexGrow: 1,
-    backgroundColor: "#f0fdf4",
+    backgroundColor: colors.background,
     padding: 20,
     paddingTop: 60,
   },
   subtitleSmall: {
     fontSize: 14,
-    color: "#6b7280",
+    color: colors.textSecondary,
     marginBottom: 16,
   },
   serviceRow: {
@@ -6990,13 +6993,13 @@ cardHeartButton: {
     alignItems: "center",
     paddingVertical: 8,
     borderBottomWidth: 1,
-    borderBottomColor: "#f3f4f6",
+    borderBottomColor: colors.border,
   },
 
 favoriteToggleButton: {
     padding: 8,
     borderRadius: 999,
-    backgroundColor: "#e2e8f0",
+    backgroundColor: colors.surfaceElevated,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -7004,20 +7007,20 @@ favoriteToggleButton: {
   serviceName: {
     fontSize: 15,
     fontWeight: "600",
-    color: "#111827",
+    color: colors.textPrimary,
   },
   serviceMeta: {
     fontSize: 13,
-    color: "#6b7280",
+    color: colors.textSecondary,
   },
   servicePrice: {
     fontSize: 14,
     fontWeight: "600",
-    color: "#166534",
+    color: colors.primary,
   },
   serviceHint: {
     fontSize: 12,
-    color: "#9ca3af",
+    color: colors.textMuted,
     marginTop: 8,
   },
 
@@ -7027,18 +7030,19 @@ favoriteToggleButton: {
     alignItems: "center",
     paddingVertical: 8,
     borderBottomWidth: 1,
-    borderBottomColor: "#f3f4f6",
+    borderBottomColor: colors.border,
   },
   hoursInput: {
     borderWidth: 1,
-    borderColor: "#d1d5db",
+    borderColor: colors.border,
     borderRadius: 6,
     paddingHorizontal: 8,
     paddingVertical: 4,
     minWidth: 60,
     textAlign: "center",
     marginHorizontal: 4,
-    backgroundColor: "white",
+    backgroundColor: colors.surfaceElevated,
+    color: colors.textPrimary,
   },
 
   hoursFlashGlobal: {
@@ -7053,27 +7057,27 @@ favoriteToggleButton: {
     elevation: 10,
   },
   hoursFlashSuccess: {
-    backgroundColor: "#16a34a",
+    backgroundColor: colors.success,
   },
   hoursFlashError: {
-    backgroundColor: "#ef4444",
+    backgroundColor: colors.error,
   },
   hoursFlashText: {
-    color: "white",
+    color: colors.textPrimary,
     fontSize: 13,
     textAlign: "center",
   },
 
   hoursHelp: {
   fontSize: 12,
-  color: "#6b7280",
+  color: colors.textMuted,
   marginTop: 4,
   marginBottom: 8,
 },
 
 appointmentScroll: {
     padding: 24,
-    backgroundColor: "#EAFDF4",
+    backgroundColor: colors.background,
     flexGrow: 1,
   },
   appointmentHeader: {
@@ -7083,7 +7087,7 @@ appointmentScroll: {
     marginBottom: 8,
   },
   refreshText: {
-    color: "#16a34a",
+    color: colors.primary,
     fontWeight: "600",
     fontSize: 13,
   },
@@ -7096,7 +7100,7 @@ appointmentScroll: {
     marginTop: 12,
     paddingTop: 12,
     borderTopWidth: 1,
-    borderTopColor: "#e5e7eb",
+    borderTopColor: colors.border,
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "flex-start",
@@ -7104,24 +7108,24 @@ appointmentScroll: {
   appointmentTitle: {
     fontSize: 16,
     fontWeight: "700",
-    color: "#065f46",
+    color: colors.textPrimary,
   },
   appointmentMeta: {
     fontSize: 13,
-    color: "#4b5563",
+    color: colors.textSecondary,
     marginTop: 4,
   },
 
- appointmentCancelButton: {
+appointmentCancelButton: {
   paddingHorizontal: 6,
   paddingVertical: 2,
   borderRadius: 6,
-  backgroundColor: "#FCE4E4", // soft light red
+  backgroundColor: colors.error,
   alignSelf: "flex-start",
 },
 
 appointmentCancelButtonText: {
-  color: "#C62828", // darker red text
+  color: colors.textPrimary,
   fontSize: 12,
   fontWeight: "600",
 },
@@ -7129,7 +7133,7 @@ appointmentCancelButtonText: {
   appointmentStatus: {
     marginTop: 6,
     fontSize: 12,
-    color: "#0f172a",
+    color: colors.textPrimary,
     fontWeight: "600",
   },
   appointmentNavigate: {
@@ -7138,14 +7142,14 @@ appointmentCancelButtonText: {
   },
   appointmentCount: {
     fontSize: 13,
-    color: "#6b7280",
+    color: colors.textMuted,
   },
 
-  bookingRow: {
+bookingRow: {
   marginTop: 8,
   paddingTop: 8,
   borderTopWidth: 1,
-  borderTopColor: "#e5e7eb",
+  borderTopColor: colors.border,
   flexDirection: "row",
   justifyContent: "space-between",
   alignItems: "flex-start",
@@ -7156,17 +7160,17 @@ bookingMain: {
 },
 bookingTime: {
   fontSize: 13,
-  color: "#6b7280",
+  color: colors.textMuted,
 },
 bookingService: {
   fontSize: 16,
   fontWeight: "600",
-  color: "#065f46",
+  color: colors.textPrimary,
   marginTop: 2,
 },
 bookingMeta: {
   fontSize: 13,
-  color: "#6b7280",
+  color: colors.textSecondary,
   marginTop: 2,
 },
 bookingActions: {
@@ -7174,17 +7178,17 @@ bookingActions: {
 },
 bookingEdit: {
   fontSize: 12,
-  color: "#16a34a",
+  color: colors.primary,
 },
 bookingCancel: {
   fontSize: 12,
-  color: "#b91c1c",
+  color: colors.error,
   marginTop: 4,
 },
 
   bookingNavigate: {
     fontSize: 12,
-    color: "#0284C7", // blue-ish link color
+    color: colors.primary,
     marginTop: 4,
   },
 
@@ -7210,7 +7214,7 @@ navigateButtonContainer: {
 },
 
 navigateButton: {
-  backgroundColor: "#007AFF",
+  backgroundColor: colors.primary,
   paddingVertical: 10,
   paddingHorizontal: 18,
   borderRadius: 999,                 // pill shape
@@ -7219,7 +7223,7 @@ navigateButton: {
 },
 
 navigateButtonText: {
-  color: "#fff",                 // IOS blue
+  color: colors.textPrimary,
   fontSize: 15,
   fontWeight: "600",
 },
@@ -7233,36 +7237,36 @@ mapContainer: {
   borderRadius: 12,
   overflow: "hidden",
   borderWidth: 1,
-  borderColor: "#bbf7d0",
+  borderColor: colors.border,
 },
 
 searchSafeArea: {
   flex: 1,
-  backgroundColor: "#F2FFF2",
+  backgroundColor: colors.background,
 },
 searchHeader: {
   paddingHorizontal: 16,
   paddingTop: 8,
   paddingBottom: 12,
-  backgroundColor: "#F2FFF2",
+  backgroundColor: colors.background,
   borderBottomWidth: 1,
-  borderBottomColor: "#E2E8F0",
+  borderBottomColor: colors.border,
 },
 searchHeaderTitle: {
   fontSize: 16,
   fontWeight: "600",
-  color: "#064E3B",
+  color: colors.textPrimary,
   marginBottom: 8,
 },
 searchBar: {
   flexDirection: "row",
   alignItems: "center",
-  backgroundColor: "#ffffff",
+  backgroundColor: colors.surfaceElevated,
   borderRadius: 14,
   paddingHorizontal: 12,
   paddingVertical: 10,
   borderWidth: 1,
-  borderColor: "#E2E8F0",
+  borderColor: colors.border,
   shadowColor: "#000",
   shadowOpacity: 0.06,
   shadowRadius: 6,
@@ -7273,7 +7277,7 @@ searchInput: {
   flex: 1,
   marginLeft: 8,
   fontSize: 15,
-  color: "#0f172a",
+  color: colors.textPrimary,
 },
 chipsRow: {
   marginTop: 10,
@@ -7286,26 +7290,26 @@ filterChip: {
   paddingVertical: 6,
   borderRadius: 999,
   borderWidth: 1,
-  borderColor: "#cbd5e1",
-  backgroundColor: "#ffffff",
+  borderColor: colors.border,
+  backgroundColor: "transparent",
   marginRight: 8,
 },
 filterChipSelected: {
-  backgroundColor: "#16a34a",
-  borderColor: "#16a34a",
+  backgroundColor: colors.primarySoft,
+  borderColor: colors.primary,
 },
 filterChipText: {
   fontSize: 12,
-  color: "#475569",
+  color: colors.textSecondary,
   fontWeight: "600",
 },
 filterChipTextSelected: {
-  color: "#ffffff",
+  color: colors.textPrimary,
 },
 locationErrorText: {
   marginTop: 6,
   fontSize: 12,
-  color: "#DC2626",
+  color: colors.error,
 },
 searchContent: {
   paddingHorizontal: 16,
@@ -7323,25 +7327,25 @@ resultsHeader: {
 },
 resultsCount: {
   fontSize: 12,
-  color: "#64748b",
+  color: colors.textMuted,
   fontWeight: "600",
 },
 emptyStateCard: {
-  backgroundColor: "#ffffff",
+  backgroundColor: colors.surface,
   borderRadius: 14,
   padding: 16,
   borderWidth: 1,
-  borderColor: "#E2E8F0",
+  borderColor: colors.border,
 },
 emptyStateTitle: {
   fontSize: 15,
   fontWeight: "700",
-  color: "#0f172a",
+  color: colors.textPrimary,
   marginBottom: 6,
 },
 emptyStateText: {
   fontSize: 13,
-  color: "#64748b",
+  color: colors.textSecondary,
   lineHeight: 18,
 },
 skeletonList: {
@@ -7350,17 +7354,17 @@ skeletonList: {
 skeletonCard: {
   flexDirection: "row",
   alignItems: "center",
-  backgroundColor: "#ffffff",
+  backgroundColor: colors.surface,
   borderRadius: 14,
   padding: 14,
   borderWidth: 1,
-  borderColor: "#E2E8F0",
+  borderColor: colors.border,
 },
 skeletonAvatar: {
   width: 48,
   height: 48,
   borderRadius: 24,
-  backgroundColor: "#E2E8F0",
+  backgroundColor: colors.surfaceElevated,
 },
 skeletonDetails: {
   flex: 1,
@@ -7369,24 +7373,24 @@ skeletonDetails: {
 skeletonLine: {
   height: 12,
   borderRadius: 6,
-  backgroundColor: "#E2E8F0",
+  backgroundColor: colors.surfaceElevated,
   marginBottom: 8,
 },
 skeletonLineShort: {
   height: 10,
   width: "60%",
   borderRadius: 6,
-  backgroundColor: "#E2E8F0",
+  backgroundColor: colors.surfaceElevated,
 },
 
   providerScroll: {
     paddingHorizontal: 20,
     paddingTop: 30,
     paddingBottom: 40,
-    backgroundColor: "#F2FFF2",
+    backgroundColor: colors.background,
   },
   card: {
-    backgroundColor: "#ffffff",
+    backgroundColor: colors.surface,
     borderRadius: 12,
     padding: 16,
     marginBottom: 16,
@@ -7399,18 +7403,18 @@ skeletonLineShort: {
   profileTitle: {
     fontSize: 24,
     fontWeight: "700",
-    color: "#064E3B",
+    color: colors.textPrimary,
     marginBottom: 4,
   },
   subtitleSmall: {
     fontSize: 14,
-    color: "#4B5563",
+    color: colors.textSecondary,
     marginBottom: 16,
   },
   sectionTitle: {
     fontSize: 16,
     fontWeight: "600",
-    color: "#065F46",
+    color: colors.textPrimary,
     marginBottom: 8,
   },
   serviceRow: {
@@ -7418,32 +7422,32 @@ skeletonLineShort: {
     paddingHorizontal: 8,
     borderRadius: 8,
     marginBottom: 8,
-    backgroundColor: "#F9FAFB",
+    backgroundColor: colors.surfaceElevated,
     flexDirection: "row",
   },
   serviceName: {
     fontSize: 15,
     fontWeight: "600",
-    color: "#111827",
+    color: colors.textPrimary,
   },
   serviceMeta: {
     fontSize: 12,
-    color: "#6B7280",
+    color: colors.textSecondary,
     marginTop: 2,
   },
   servicePrice: {
     fontSize: 14,
     fontWeight: "700",
-    color: "#047857",
+    color: colors.primary,
   },
   serviceHint: {
     fontSize: 13,
-    color: "#6B7280",
+    color: colors.textSecondary,
     marginTop: 4,
   },
   errorText: {
     fontSize: 13,
-    color: "#DC2626",
+    color: colors.error,
     marginTop: 4,
   },
   datePill: {
@@ -7452,29 +7456,29 @@ skeletonLineShort: {
     marginRight: 8,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: "#D1D5DB",
+    borderColor: colors.border,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#ffffff",
+    backgroundColor: colors.surface,
   },
   datePillSelected: {
-    backgroundColor: "#059669",
-    borderColor: "#059669",
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
   },
   datePillDisabled: {
-    backgroundColor: "#E5E7EB",
-    borderColor: "#E5E7EB",
+    backgroundColor: colors.surfaceElevated,
+    borderColor: colors.border,
     opacity: 0.6,
   },
   datePillDow: {
     fontSize: 11,
-    color: "#4B5563",
+    color: colors.textSecondary,
   },
   datePillDay: {
     marginTop: 2,
     fontSize: 16,
     fontWeight: "700",
-    color: "#111827",
+    color: colors.textPrimary,
   },
   timesContainer: {
     flexDirection: "row",
@@ -7486,22 +7490,22 @@ skeletonLineShort: {
     paddingHorizontal: 12,
     borderRadius: 999,
     borderWidth: 1,
-    borderColor: "#D1D5DB",
+    borderColor: colors.border,
     marginRight: 8,
     marginBottom: 8,
-    backgroundColor: "#ffffff",
+    backgroundColor: colors.surface,
   },
   timeSlotLabel: {
     fontSize: 13,
-    color: "#111827",
+    color: colors.textPrimary,
   },
 
   timeSlotButtonSelected: {
-  backgroundColor: "#059669",
-  borderColor: "#059669",
+  backgroundColor: colors.primary,
+  borderColor: colors.primary,
 },
 timeSlotLabelSelected: {
-  color: "#ffffff",
+  color: colors.textPrimary,
 },
 
 bookButton: {
@@ -7510,15 +7514,15 @@ bookButton: {
   borderRadius: 999,
   alignItems: "center",
   justifyContent: "center",
-  backgroundColor: "#16a34a",
+  backgroundColor: colors.primary,
 },
 bookButtonDisabled: {
-  backgroundColor: "#9CA3AF",
+  backgroundColor: colors.textMuted,
 },
 bookButtonLabel: {
   fontSize: 15,
   fontWeight: "600",
-  color: "#ffffff",
+  color: colors.textPrimary,
   
 },
 
@@ -7533,21 +7537,21 @@ professionChip: {
   paddingVertical: 6,
   borderRadius: 999,
   borderWidth: 1,
-  borderColor: "#D1D5DB",
-  backgroundColor: "#F9FAFB",
+  borderColor: colors.border,
+  backgroundColor: colors.surfaceElevated,
   marginRight: 6,
   marginBottom: 6,
 },
 professionChipSelected: {
-  backgroundColor: "#16a34a",
-  borderColor: "#16a34a",
+  backgroundColor: colors.primarySoft,
+  borderColor: colors.primary,
 },
 professionChipText: {
   fontSize: 12,
-  color: "#374151",
+  color: colors.textSecondary,
 },
 professionChipTextSelected: {
-  color: "#ffffff",
+  color: colors.textPrimary,
   fontWeight: "600",
 },
 customProfessionRow: {
@@ -7561,10 +7565,10 @@ customProfessionAddButton: {
   paddingHorizontal: 12,
   paddingVertical: 8,
   borderRadius: 8,
-  backgroundColor: "#16a34a",
+  backgroundColor: colors.primary,
 },
 customProfessionAddText: {
-  color: "#ffffff",
+  color: colors.textPrimary,
   fontSize: 13,
   fontWeight: "600",
 },
@@ -7574,38 +7578,40 @@ radiusPill: {
   paddingVertical: 6,
   borderRadius: 999,
   borderWidth: 1,
-  borderColor: "#D1D5DB",
-  backgroundColor: "#ffffff",
+  borderColor: colors.border,
+  backgroundColor: colors.surface,
   marginRight: 8,
 },
 radiusPillSelected: {
-  backgroundColor: "#16a34a",
-  borderColor: "#16a34a",
+  backgroundColor: colors.primarySoft,
+  borderColor: colors.primary,
 },
 radiusPillText: {
   fontSize: 12,
-  color: "#374151",
+  color: colors.textSecondary,
 },
 radiusPillTextSelected: {
-  color: "#ffffff",
+  color: colors.textPrimary,
   fontWeight: "600",
 },
 
 hoursInput: {
   // whatever you already have
   borderWidth: 1,
-  borderColor: "#ccc",
+  borderColor: colors.border,
   borderRadius: 6,
   paddingHorizontal: 8,
   paddingVertical: 4,
+  backgroundColor: colors.surfaceElevated,
+  color: colors.textPrimary,
 },
 
 hoursInputFocused: {
-  borderColor: "#007AFF", // iOS blue
+  borderColor: colors.primary,
 },
 
 providerSummaryCard: {
-  backgroundColor: "#FFFFFF",
+  backgroundColor: colors.surface,
   borderRadius: 12,
   paddingHorizontal: 16,
   paddingVertical: 12,
@@ -7619,13 +7625,13 @@ providerSummaryCard: {
 
 providerSummaryLabel: {
   fontSize: 13,
-  color: "#666",
+  color: colors.textMuted,
 },
 
 providerSummaryValue: {
   fontSize: 17,
   fontWeight: "600",
-  color: "#111",
+  color: colors.textPrimary,
 },
 
 providerShareProfileLinkRow: {
@@ -7637,30 +7643,30 @@ providerShareProfileLinkButton: {
   paddingHorizontal: 12,
   paddingVertical: 6,
   borderRadius: 999,
-  backgroundColor: "#EFF6FF",
+  backgroundColor: colors.primarySoft,
   borderWidth: 1,
-  borderColor: "#BFDBFE",
+  borderColor: colors.primary,
 },
 providerShareProfileLinkButtonText: {
   fontSize: 12,
   fontWeight: "600",
-  color: "#1D4ED8",
+  color: colors.primary,
 },
 
 providerBillingScroll: {
   flexGrow: 1,
-  backgroundColor: "#f0fdf4",
+  backgroundColor: colors.background,
   padding: 20,
   paddingTop: 60,
 },
 
 billingCard: {
-  backgroundColor: "#ffffff",
+  backgroundColor: colors.surface,
   borderRadius: 12,
   padding: 16,
   marginBottom: 16,
   borderWidth: 1,
-  borderColor: "#e5e7eb",
+  borderColor: colors.border,
   shadowColor: "#000",
   shadowOpacity: 0.04,
   shadowRadius: 6,
@@ -7678,12 +7684,12 @@ billingHeaderRow: {
 billingMonth: {
   fontSize: 18,
   fontWeight: "700",
-  color: "#111827",
+  color: colors.textPrimary,
 },
 
 billingMeta: {
   fontSize: 13,
-  color: "#6b7280",
+  color: colors.textSecondary,
 },
 
 billingStatus: {
@@ -7695,30 +7701,30 @@ billingStatus: {
 },
 
 billingStatusReady: {
-  backgroundColor: "#ecfdf3",
-  color: "#166534",
-  borderColor: "#bbf7d0",
+  backgroundColor: colors.primarySoft,
+  color: colors.textPrimary,
+  borderColor: colors.primary,
   borderWidth: 1,
 },
 
 billingStatusPaid: {
-  backgroundColor: "#ecfdf3",
-  color: "#166534",
-  borderColor: "#bbf7d0",
+  backgroundColor: colors.primarySoft,
+  color: colors.textPrimary,
+  borderColor: colors.primary,
   borderWidth: 1,
 },
 
 billingStatusUnpaid: {
-  backgroundColor: "#fef2f2",
-  color: "#b91c1c",
-  borderColor: "#fecaca",
+  backgroundColor: colors.surfaceElevated,
+  color: colors.error,
+  borderColor: colors.error,
   borderWidth: 1,
 },
 
 billingStatusUpcoming: {
-  backgroundColor: "#eff6ff",
-  color: "#1d4ed8",
-  borderColor: "#bfdbfe",
+  backgroundColor: colors.surfaceElevated,
+  color: colors.textSecondary,
+  borderColor: colors.border,
   borderWidth: 1,
 },
 
@@ -7732,7 +7738,7 @@ billingToggleRow: {
 billingToggleText: {
   fontSize: 14,
   fontWeight: "700",
-  color: "#0B6BF2",
+  color: colors.primary,
   marginRight: 6,
 },
 
@@ -7740,7 +7746,7 @@ billingToggleText: {
 billingLineItems: {
   marginTop: 12,
   borderTopWidth: 1,
-  borderTopColor: "#e5e7eb",
+  borderTopColor: colors.border,
   paddingTop: 8,
 },
 
@@ -7750,20 +7756,20 @@ billingLineItem: {
   alignItems: "flex-start",
   paddingVertical: 8,
   borderBottomWidth: 1,
-  borderBottomColor: "#f3f4f6",
+  borderBottomColor: colors.border,
 },
 
 billingLineLabel: {
   fontSize: 15,
   fontWeight: "600",
-  color: "#111827",
+  color: colors.textPrimary,
   marginBottom: 2,
 },
 
 billingAmount: {
   fontSize: 15,
   fontWeight: "700",
-  color: "#111827",
+  color: colors.textPrimary,
   marginLeft: 12,
 },
 
@@ -7776,13 +7782,13 @@ billingTotalsRow: {
 
 billingTotalsLabel: {
   fontSize: 14,
-  color: "#374151",
+  color: colors.textSecondary,
 },
 
 billingTotalsValue: {
   fontSize: 16,
   fontWeight: "700",
-  color: "#111827",
+  color: colors.textPrimary,
 },
 
   providerAvatarSmall: {
@@ -7790,28 +7796,28 @@ billingTotalsValue: {
     height: 40,
     borderRadius: 20,
     marginRight: 10,
-    backgroundColor: "#dcfce7",
+    backgroundColor: colors.surfaceElevated,
   },
   providerAvatarSmallFallback: {
     width: 40,
     height: 40,
     borderRadius: 20,
     marginRight: 10,
-    backgroundColor: "#dcfce7",
+    backgroundColor: colors.surfaceElevated,
     alignItems: "center",
     justifyContent: "center",
   },
   providerAvatarSmallInitial: {
     fontSize: 18,
     fontWeight: "600",
-    color: "#166534",
+    color: colors.textPrimary,
   },
 
     profileAvatarWrapper: {
     width: 80,
     height: 80,
     borderRadius: 40,
-    backgroundColor: "#dcfce7",
+    backgroundColor: colors.surfaceElevated,
     alignItems: "center",
     justifyContent: "center",
     overflow: "hidden",
@@ -7824,18 +7830,18 @@ billingTotalsValue: {
     width: 80,
     height: 80,
     borderRadius: 40,
-    backgroundColor: "#dcfce7",
+    backgroundColor: colors.surfaceElevated,
     alignItems: "center",
     justifyContent: "center",
   },
   profileAvatarInitial: {
     fontSize: 28,
     fontWeight: "700",
-    color: "#166534",
+    color: colors.textPrimary,
   },
 
   authPrimaryButton: {
-  backgroundColor: "#16a34a",
+  backgroundColor: colors.primary,
   paddingVertical: 14,
   borderRadius: 6,
   alignItems: "center",
@@ -7848,16 +7854,18 @@ billingTotalsValue: {
 },
 
 authPrimaryButtonText: {
-  color: "#FFFFFF",
+  color: colors.textPrimary,
   fontSize: 16,
   fontWeight: "600",
 },
 
 authSecondaryButton: {
-  backgroundColor: "#166534",
+  backgroundColor: "transparent",
   paddingVertical: 14,
   borderRadius: 6,
   alignItems: "center",
+  borderWidth: 1,
+  borderColor: colors.primary,
   shadowColor: "#000",
   shadowOpacity: 0.15,
   shadowOffset: { width: 0, height: 2 },
@@ -7866,14 +7874,14 @@ authSecondaryButton: {
 },
 
 authSecondaryButtonText: {
-  color: "#FFFFFF",
+  color: colors.primary,
   fontSize: 16,
   fontWeight: "600",
 },
 
   avoider: {
     flex: 1,
-    backgroundColor: "#EAFDF4", // your light background
+    backgroundColor: colors.background,
   },
   scrollContent: {
     flexGrow: 1,
@@ -7896,7 +7904,7 @@ authSecondaryButtonText: {
   title: {
     fontSize: 28,
     fontWeight: "700",
-    color: "#16a34a",
+    color: colors.textPrimary,
     marginBottom: 16,
   },
 
@@ -7914,16 +7922,16 @@ authSecondaryButtonText: {
     width: "100%",
     aspectRatio: 3 / 4,
     borderRadius: 8,
-    backgroundColor: "#E5E7EB",
+    backgroundColor: colors.surfaceElevated,
   },
   catalogCaption: {
     fontSize: 11,
-    color: "#4B5563",
+    color: colors.textSecondary,
     marginTop: 4,
   },
   catalogDeleteText: {
     fontSize: 11,
-    color: "#DC2626",
+    color: colors.error,
     marginTop: 2,
   },
 
@@ -7936,7 +7944,7 @@ authSecondaryButtonText: {
     height: 180,
     borderRadius: 8,
     marginRight: 8,
-    backgroundColor: "#e5e7eb",
+    backgroundColor: colors.surfaceElevated,
   },
 
 

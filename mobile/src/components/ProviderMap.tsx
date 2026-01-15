@@ -1,5 +1,8 @@
 import React from "react";
 import { View, Text, StyleSheet } from "react-native";
+import { theme } from "../theme";
+
+const colors = theme.colors;
 
 type ProviderMapProps = {
   latitude: number;
@@ -28,8 +31,8 @@ const styles = StyleSheet.create({
     width: "100%",
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: "#e2e8f0",
-    backgroundColor: "#f8fafc",
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
     padding: 12,
     alignItems: "center",
     justifyContent: "center",
@@ -38,14 +41,15 @@ const styles = StyleSheet.create({
   title: {
     fontWeight: "600",
     marginBottom: 4,
+    color: colors.textPrimary,
   },
   coords: {
     fontSize: 12,
-    color: "#475569",
+    color: colors.textSecondary,
   },
   sub: {
     fontSize: 10,
-    color: "#94a3b8",
+    color: colors.textMuted,
     marginTop: 4,
     textAlign: "center",
   },

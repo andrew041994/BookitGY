@@ -1,6 +1,9 @@
 import React from "react";
 import { View, Text, StyleSheet, Image, TouchableOpacity } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { theme } from "../theme";
+
+const colors = theme.colors;
 
 const getInitials = (name) => {
   const cleaned = String(name || "").trim();
@@ -70,7 +73,7 @@ const ProviderCard = ({
           <Ionicons
             name={isFavorite ? "heart" : "heart-outline"}
             size={18}
-            color={isFavorite ? "#dc2626" : "#111827"}
+            color={isFavorite ? colors.error : colors.textPrimary}
           />
         </TouchableOpacity>
       ) : null}
@@ -125,11 +128,11 @@ const ProviderCard = ({
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: "#ffffff",
+    backgroundColor: colors.surface,
     borderRadius: 16,
     padding: 14,
     borderWidth: 1,
-    borderColor: "#eef2f7",
+    borderColor: colors.border,
     shadowColor: "#0f172a",
     shadowOpacity: 0.08,
     shadowRadius: 10,
@@ -137,8 +140,8 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
   cardSelected: {
-    borderColor: "#16a34a",
-    backgroundColor: "#f0fdf4",
+    borderColor: colors.primary,
+    backgroundColor: colors.primarySoft,
   },
   favoriteButton: {
     position: "absolute",
@@ -148,7 +151,7 @@ const styles = StyleSheet.create({
     width: 30,
     height: 30,
     borderRadius: 999,
-    backgroundColor: "rgba(255,255,255,0.95)",
+    backgroundColor: "rgba(17,24,39,0.95)",
     alignItems: "center",
     justifyContent: "center",
     shadowColor: "#0f172a",
@@ -166,7 +169,7 @@ const styles = StyleSheet.create({
     height: 52,
     borderRadius: 26,
     overflow: "hidden",
-    backgroundColor: "#e5e7eb",
+    backgroundColor: colors.surfaceElevated,
     marginRight: 12,
   },
   avatarImage: {
@@ -177,10 +180,10 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#16a34a",
+    backgroundColor: colors.primary,
   },
   avatarInitials: {
-    color: "#ffffff",
+    color: colors.textPrimary,
     fontSize: 18,
     fontWeight: "700",
   },
@@ -191,30 +194,30 @@ const styles = StyleSheet.create({
   name: {
     fontSize: 16,
     fontWeight: "700",
-    color: "#111827",
+    color: colors.textPrimary,
   },
   profession: {
     fontSize: 13,
-    color: "#6b7280",
+    color: colors.textSecondary,
     marginTop: 2,
   },
   distance: {
     fontSize: 12,
-    color: "#475569",
+    color: colors.textMuted,
     marginTop: 2,
   },
   ratingBadge: {
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 999,
-    backgroundColor: "#ecfdf3",
+    backgroundColor: colors.primarySoft,
     borderWidth: 1,
-    borderColor: "#bbf7d0",
+    borderColor: colors.primary,
   },
   ratingText: {
     fontSize: 12,
     fontWeight: "700",
-    color: "#166534",
+    color: colors.primary,
   },
   bottomRow: {
     marginTop: 12,
@@ -225,12 +228,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 8,
     borderRadius: 10,
-    backgroundColor: "#16a34a",
+    backgroundColor: colors.primary,
   },
   ctaText: {
     fontSize: 13,
     fontWeight: "700",
-    color: "#ffffff",
+    color: colors.textPrimary,
   },
 });
 
