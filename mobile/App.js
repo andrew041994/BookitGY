@@ -2554,18 +2554,9 @@ function AppointmentsScreen({ token, showFlash }) {
 
 
 
-function SearchScreen({
-  token,
-  showFlash,
-  navigation,
-  route,
-  toggleFavorite,
-  isFavorite,
-  syncFavoritesFromList,
-}) {
+function SearchScreen({ token, showFlash, navigation, route, toggleFavorite, isFavorite, syncFavoritesFromList }) {
   const incomingUsername = route?.params?.incomingUsername ?? null;
   const deeplinkNonce = route?.params?.deeplinkNonce ?? null;
-
   const [filteredProviders, setFilteredProviders] = useState([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [radiusKm, setRadiusKm] = useState(0); // 0 = any distance
@@ -2590,13 +2581,17 @@ function SearchScreen({
   const [bookingLoading, setBookingLoading] = useState(false);
   const [hasSearched, setHasSearched] = useState(false); // 👈 NEW
   const [refreshing, setRefreshing] = useState(false);
+  const [shouldScrollToResults, setShouldScrollToResults] = useState(false);
+  const scrollRef = useRef(null);
+  const resultsOffset = useRef(0);
   //Radius 
-  const radiusOptions = [0, 5, 10, 15, 20, 25, 30, 40, 50, 75, 100];
+  const distanceChips = [0, 5, 10, 15, 20];
 
   useEffect(() => {
     if (!incomingUsername) return;
     setSearchQuery(incomingUsername);
     setHasSearched(true);
+    setShouldScrollToResults(true);
   }, [incomingUsername, deeplinkNonce]);
 
   const haversineKm = (lat1, lon1, lat2, lon2) => {
@@ -2626,6 +2621,7 @@ function SearchScreen({
   const handleSearchSubmit = () => {
     // when the user hits enter/search on the keyboard
     setHasSearched(true);
+    setShouldScrollToResults(true);
   };
 
 
@@ -2814,6 +2810,26 @@ function SearchScreen({
       await ensureClientLocation();
     }
   };
+
+  const handleResultsLayout = (event) => {
+    resultsOffset.current = event.nativeEvent.layout.y;
+    if (shouldScrollToResults && scrollRef.current) {
+      scrollRef.current.scrollTo({
+        y: resultsOffset.current,
+        animated: true,
+      });
+      setShouldScrollToResults(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!shouldScrollToResults || !scrollRef.current) return;
+    scrollRef.current.scrollTo({
+      y: resultsOffset.current,
+      animated: true,
+    });
+    setShouldScrollToResults(false);
+  }, [shouldScrollToResults]);
 
 
   const loadAvailability = useCallback(
@@ -3059,144 +3075,154 @@ function SearchScreen({
   };
 
     return (
-              <ScrollView
-                contentContainerStyle={styles.providerScroll}
-                refreshControl={
-                  <RefreshControl
-                    refreshing={refreshing}
-                    onRefresh={handleRefresh}
-                  />
-                }
-              >
-                <Text style={styles.profileTitle}>Find a provider</Text>
-                <Text style={styles.subtitleSmall}>
-                  Search by profession and distance, then pick a service and time.
-                </Text>
-
-                {/* Filters */}
-                <View style={styles.card}>
-                  <Text style={styles.sectionTitle}>Search filters</Text>
-
-                  <TextInput
-                    style={styles.input}
-                    placeholder="Search by profession (e.g. Barber, Nail Tech)"
-                    value={searchQuery}
-                    onChangeText={setSearchQuery}
-                    onSubmitEditing={handleSearchSubmit}
-                  />
-
-                  <Text style={[styles.label, { marginTop: 8 }]}>Distance</Text>
-                  <ScrollView
-                    horizontal
-                    showsHorizontalScrollIndicator={false}
-                    style={{ marginTop: 8 }}
+      <SafeAreaView style={styles.searchSafeArea}>
+        <View style={styles.searchHeader}>
+          <Text style={styles.searchHeaderTitle}>Search providers</Text>
+          <View style={styles.searchBar}>
+            <Ionicons name="search-outline" size={18} color="#6b7280" />
+            <TextInput
+              style={styles.searchInput}
+              placeholder="Search by profession or provider…"
+              placeholderTextColor="#94a3b8"
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              onSubmitEditing={handleSearchSubmit}
+              returnKeyType="search"
+            />
+          </View>
+          <View style={styles.chipsRow}>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.chipsContent}
+            >
+              {distanceChips.map((km) => {
+                const selected = radiusKm === km;
+                const label = km === 0 ? "Any" : `${km}km`;
+                return (
+                  <TouchableOpacity
+                    key={km}
+                    style={[
+                      styles.filterChip,
+                      selected && styles.filterChipSelected,
+                    ]}
+                    onPress={() => handleRadiusChange(km)}
                   >
-                    {radiusOptions.map((km) => {
-                      const selected = radiusKm === km;
-                      const label = km === 0 ? "Any distance" : `${km} km`;
-                      return (
-                        <TouchableOpacity
-                          key={km}
-                          style={[
-                            styles.radiusPill,
-                            selected && styles.radiusPillSelected,
-                          ]}
-                          onPress={() => handleRadiusChange(km)}
-                        >
-                          <Text
-                            style={[
-                              styles.radiusPillText,
-                              selected && styles.radiusPillTextSelected,
-                            ]}
-                          >
-                            {label}
-                          </Text>
-                        </TouchableOpacity>
-                      );
-                    })}
-                  </ScrollView>
-
-                  {locationError ? (
-                    <Text style={[styles.errorText, { marginTop: 6 }]}>
-                      {locationError}
+                    <Text
+                      style={[
+                        styles.filterChipText,
+                        selected && styles.filterChipTextSelected,
+                      ]}
+                    >
+                      {label}
                     </Text>
-                  ) : null}
-                </View>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          </View>
+          {locationError ? (
+            <Text style={styles.locationErrorText}>{locationError}</Text>
+          ) : null}
+        </View>
 
-                {/* Providers list */}
-                      <View style={styles.card}>
-                        <Text style={styles.sectionTitle}>Providers</Text>
+        <ScrollView
+          ref={scrollRef}
+          contentContainerStyle={styles.searchContent}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={handleRefresh}
+            />
+          }
+        >
+          <View style={styles.resultsSection} onLayout={handleResultsLayout}>
+            <View style={styles.resultsHeader}>
+              <Text style={styles.sectionTitle}>Results</Text>
+              {hasSearched && !providersLoading ? (
+                <Text style={styles.resultsCount}>
+                  {filteredProviders.length} providers
+                </Text>
+              ) : null}
+            </View>
 
-                        {/* If user hasn't searched yet, show hint */}
-                        {!hasSearched && (
-                          <Text style={styles.serviceHint}>
-                            Type a profession and press enter to search.
-                          </Text>
-                        )}
+            {!hasSearched && (
+              <View style={styles.emptyStateCard}>
+                <Text style={styles.emptyStateTitle}>
+                  Ready to discover your next service?
+                </Text>
+                <Text style={styles.emptyStateText}>
+                  Search by profession or provider name to see who is available.
+                  Use the distance chips to filter nearby options.
+                </Text>
+              </View>
+            )}
 
-                        {/* Loading */}
-                        {providersLoading && hasSearched && (
-                          <View style={{ paddingVertical: 10 }}>
-                            <ActivityIndicator />
-                            <Text style={styles.serviceMeta}>Loading providers…</Text>
-                          </View>
-                        )}
+            {providersLoading && hasSearched && (
+              <View style={styles.skeletonList}>
+                {[0, 1, 2].map((item) => (
+                  <View key={item} style={styles.skeletonCard}>
+                    <View style={styles.skeletonAvatar} />
+                    <View style={styles.skeletonDetails}>
+                      <View style={styles.skeletonLine} />
+                      <View style={styles.skeletonLineShort} />
+                    </View>
+                  </View>
+                ))}
+              </View>
+            )}
 
-                        {/* Error */}
-                        {!providersLoading && providersError && hasSearched && (
-                          <Text style={styles.errorText}>{providersError}</Text>
-                        )}
+            {!providersLoading && providersError && hasSearched && (
+              <Text style={styles.errorText}>{providersError}</Text>
+            )}
 
-                        {/* No results */}
-                        {!providersLoading &&
-                          !providersError &&
-                          hasSearched &&
-                          filteredProviders.length === 0 && (
-                            <Text style={styles.errorText}>
-                              {incomingUsername
-                                ? "We couldn't find that provider. Please check the username."
-                                : "No providers found."}
-                            </Text>
-                          )}
+            {!providersLoading &&
+              !providersError &&
+              hasSearched &&
+              filteredProviders.length === 0 && (
+                <Text style={styles.emptyStateText}>
+                  {incomingUsername
+                    ? "We couldn't find that provider. Please check the username."
+                    : "No providers found. Try adjusting your search or distance filter."}
+                </Text>
+              )}
 
-                        {/* Results */}
-                        {!providersLoading &&
-                          !providersError &&
-                          hasSearched &&
-                          filteredProviders.length > 0 &&
-                          filteredProviders.map((p) => {
-                            const avatar = resolveImageUrl(
-                              p.avatar_url || p.profile_photo_url
-                            );
-                            const favorite = isFavorite(p);
-                            const distanceKm =
-                              typeof p.distance_km === "number" && clientLocation
-                                ? p.distance_km
-                                : null;
-                            const professionLabel = p.professions?.length
-                              ? p.professions.join(" · ")
-                              : p.profession || null;
-                    return (
-                              <ProviderCard
-                                key={getProviderId(p) || p.name}
-                                provider={p}
-                                avatarUrl={avatar}
-                                profession={professionLabel}
-                                distanceKm={distanceKm}
-                                isFavorite={favorite}
-                                onFavoriteToggle={() => toggleFavorite(p)}
-                                onPress={() => handleSelectProvider(p)}
-                                ctaLabel="Book"
-                                isSelected={
-                                  selectedProvider &&
-                                  getProviderId(selectedProvider) === getProviderId(p)
-                                }
-                                style={styles.providerCardList}
-                              />
-                            );
-                          })}
-                      </View>
-
+            {!providersLoading &&
+              !providersError &&
+              hasSearched &&
+              filteredProviders.length > 0 &&
+              filteredProviders.map((p) => {
+                const avatar = resolveImageUrl(
+                  p.avatar_url || p.profile_photo_url
+                );
+                const favorite = isFavorite(p);
+                const distanceKm =
+                  typeof p.distance_km === "number" && clientLocation
+                    ? p.distance_km
+                    : null;
+                const professionLabel = p.professions?.length
+                  ? p.professions.join(" · ")
+                  : p.profession || null;
+                return (
+                  <ProviderCard
+                    key={getProviderId(p) || p.name}
+                    provider={p}
+                    avatarUrl={avatar}
+                    profession={professionLabel}
+                    distanceKm={distanceKm}
+                    isFavorite={favorite}
+                    onFavoriteToggle={() => toggleFavorite(p)}
+                    onPress={() => handleSelectProvider(p)}
+                    ctaLabel="Book"
+                    isSelected={
+                      selectedProvider &&
+                      getProviderId(selectedProvider) === getProviderId(p)
+                    }
+                    style={styles.providerCardList}
+                  />
+                );
+              })}
+          </View>
 
                         {/* Services list for selected provider */}
                       {selectedProvider && (
@@ -3424,13 +3450,7 @@ function SearchScreen({
 
 
 
-// function AdminScreen() {
-//   return (
-//     <View style={styles.container}>
-//       <Text style={styles.title}>Provider</Text>
-//     </View>
-//   );
-// }
+
 
 function ProviderDashboardScreen({ apiClient, token, showFlash }) {
   // const providerLabel = profile?.full_name || "Provider";
@@ -7020,6 +7040,149 @@ mapContainer: {
   overflow: "hidden",
   borderWidth: 1,
   borderColor: "#bbf7d0",
+},
+
+searchSafeArea: {
+  flex: 1,
+  backgroundColor: "#F2FFF2",
+},
+searchHeader: {
+  paddingHorizontal: 16,
+  paddingTop: 8,
+  paddingBottom: 12,
+  backgroundColor: "#F2FFF2",
+  borderBottomWidth: 1,
+  borderBottomColor: "#E2E8F0",
+},
+searchHeaderTitle: {
+  fontSize: 16,
+  fontWeight: "600",
+  color: "#064E3B",
+  marginBottom: 8,
+},
+searchBar: {
+  flexDirection: "row",
+  alignItems: "center",
+  backgroundColor: "#ffffff",
+  borderRadius: 14,
+  paddingHorizontal: 12,
+  paddingVertical: 10,
+  borderWidth: 1,
+  borderColor: "#E2E8F0",
+  shadowColor: "#000",
+  shadowOpacity: 0.06,
+  shadowRadius: 6,
+  shadowOffset: { width: 0, height: 3 },
+  elevation: 2,
+},
+searchInput: {
+  flex: 1,
+  marginLeft: 8,
+  fontSize: 15,
+  color: "#0f172a",
+},
+chipsRow: {
+  marginTop: 10,
+},
+chipsContent: {
+  paddingVertical: 4,
+},
+filterChip: {
+  paddingHorizontal: 12,
+  paddingVertical: 6,
+  borderRadius: 999,
+  borderWidth: 1,
+  borderColor: "#cbd5e1",
+  backgroundColor: "#ffffff",
+  marginRight: 8,
+},
+filterChipSelected: {
+  backgroundColor: "#16a34a",
+  borderColor: "#16a34a",
+},
+filterChipText: {
+  fontSize: 12,
+  color: "#475569",
+  fontWeight: "600",
+},
+filterChipTextSelected: {
+  color: "#ffffff",
+},
+locationErrorText: {
+  marginTop: 6,
+  fontSize: 12,
+  color: "#DC2626",
+},
+searchContent: {
+  paddingHorizontal: 16,
+  paddingTop: 12,
+  paddingBottom: 32,
+},
+resultsSection: {
+  marginBottom: 16,
+},
+resultsHeader: {
+  flexDirection: "row",
+  alignItems: "center",
+  justifyContent: "space-between",
+  marginBottom: 8,
+},
+resultsCount: {
+  fontSize: 12,
+  color: "#64748b",
+  fontWeight: "600",
+},
+emptyStateCard: {
+  backgroundColor: "#ffffff",
+  borderRadius: 14,
+  padding: 16,
+  borderWidth: 1,
+  borderColor: "#E2E8F0",
+},
+emptyStateTitle: {
+  fontSize: 15,
+  fontWeight: "700",
+  color: "#0f172a",
+  marginBottom: 6,
+},
+emptyStateText: {
+  fontSize: 13,
+  color: "#64748b",
+  lineHeight: 18,
+},
+skeletonList: {
+  gap: 12,
+},
+skeletonCard: {
+  flexDirection: "row",
+  alignItems: "center",
+  backgroundColor: "#ffffff",
+  borderRadius: 14,
+  padding: 14,
+  borderWidth: 1,
+  borderColor: "#E2E8F0",
+},
+skeletonAvatar: {
+  width: 48,
+  height: 48,
+  borderRadius: 24,
+  backgroundColor: "#E2E8F0",
+},
+skeletonDetails: {
+  flex: 1,
+  marginLeft: 12,
+},
+skeletonLine: {
+  height: 12,
+  borderRadius: 6,
+  backgroundColor: "#E2E8F0",
+  marginBottom: 8,
+},
+skeletonLineShort: {
+  height: 10,
+  width: "60%",
+  borderRadius: 6,
+  backgroundColor: "#E2E8F0",
 },
 
   providerScroll: {
