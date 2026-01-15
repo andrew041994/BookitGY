@@ -6419,8 +6419,8 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   headerLogoWrapper: {
-    width: 56,
-    height: 56,
+    width: 100,
+    height: 100,
     borderRadius: 28,
     backgroundColor: "#1F2937",
     borderWidth: 1,
@@ -6429,8 +6429,8 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   headerLogo: {
-    width: 52,
-    height: 52,
+    width: 115,
+    height: 115,
     borderRadius: 26,
   },
   homeGreeting: {
