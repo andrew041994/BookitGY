@@ -27,6 +27,7 @@ import { enableScreens } from "react-native-screens";
 import axios from "axios";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { clearToken, loadToken, saveToken } from "./src/components/tokenStorage";
+import ProviderCard from "./src/components/ProviderCard";
 import { createApiClient } from "./src/api/client";
 import * as Location from "expo-location";
 import Constants from "expo-constants";
@@ -2055,7 +2056,10 @@ function ClientHomeScreen({
               contentContainerStyle={styles.carouselList}
             >
               {[0, 1, 2].map((index) => (
-                <View key={`nearby-skeleton-${index}`} style={styles.providerCard}>
+                <View
+                  key={`nearby-skeleton-${index}`}
+                  style={styles.providerCardSkeleton}
+                >
                   <View style={[styles.cardImageWrapper, styles.skeletonBlock]} />
                   <View style={styles.cardBody}>
                     <View style={[styles.skeletonLine, { width: "70%" }]} />
@@ -2088,122 +2092,29 @@ function ClientHomeScreen({
                 const avatar = resolveImageUrl(
                   provider.avatar_url || provider.profile_photo_url
                 );
-                const servicesLabel = (provider.services || []).join(" · ");
                 const saved = isFavorite(provider);
                 const providerId = getProviderId(provider) || provider.name;
+                const professionLabel = provider.professions?.length
+                  ? provider.professions.join(", ")
+                  : (provider.services || []).join(" · ");
+                const distanceKm =
+                  typeof provider.distance_km === "number"
+                    ? provider.distance_km
+                    : null;
 
                 return (
-                  <TouchableOpacity
-                    // key={provider.id || provider.name}
+                  <ProviderCard
                     key={providerId}
-                    style={styles.providerCard}
-                    activeOpacity={0.9}
+                    provider={provider}
+                    avatarUrl={avatar}
+                    profession={professionLabel}
+                    distanceKm={distanceKm}
+                    isFavorite={saved}
+                    onFavoriteToggle={() => toggleFavorite(provider)}
                     onPress={() => handleProviderPress(provider)}
-                  >
-                <View style={styles.cardImageWrapper}>
-                  <TouchableOpacity
-                    style={styles.cardHeartButton}
-                    onPress={(e) => {
-                      e.stopPropagation?.();
-                      toggleFavorite(provider);
-                    }}
-                    accessibilityLabel={
-                      saved ? "Remove from favorites" : "Save to favorites"
-                    }
-                  >
-                    <Ionicons
-                      name={saved ? "heart" : "heart-outline"}
-                      size={20}
-                      color={saved ? "#dc2626" : "#111827"}
-                    />
-                  </TouchableOpacity>
-                  <View
-                    style={{
-                      width: 72,
-                      height: 72,
-                      borderRadius: 36,
-                      overflow: "hidden",
-                      backgroundColor: "#e5e7eb",
-                      position: "absolute",
-                      top: 12,
-                      left: 12,
-                      zIndex: 10,
-                    }}
-                  >
-                    {avatar ? (
-                      <Image
-                        source={{ uri: avatar }}
-                        style={{ width: "100%", height: "100%" }}
-                        resizeMode="cover"
-                      />
-                    ) : (
-                      <View
-                        style={{
-                          flex: 1,
-                          alignItems: "center",
-                          justifyContent: "center",
-                          backgroundColor: "#16a34a",
-                        }}
-                      >
-                        <Ionicons name="person" size={32} color="#fff" />
-                      </View>
-                    )}
-                  </View>
-
-                  {/* Background placeholder behind the circle */}
-                  <View
-                    style={{
-                      width: "100%",
-                      height: "100%",
-                      backgroundColor: "#dcfce7",
-                    }}
+                    ctaLabel="View"
+                    style={styles.providerCardCarousel}
                   />
-              </View>
-
-
-                    <View style={styles.cardBody}>
-                      <Text style={styles.cardTitle} numberOfLines={2}>
-                        {provider.name}
-                      </Text>
-
-                      {provider.distance_km != null ? (
-                        <Text style={styles.cardMeta}>
-                          {provider.distance_km.toFixed(1)} km away
-                        </Text>
-                      ) : null}
-
-                      {provider.services?.length ? (
-                        <Text
-                          style={styles.cardMeta}
-                          numberOfLines={2}
-                        >
-                          {servicesLabel}
-                        </Text>
-                      ) : (
-                        <Text
-                          style={styles.cardMetaMuted}
-                          numberOfLines={1}
-                        >
-                          No services listed yet
-                        </Text>
-                      )}
-
-                      {provider.professions?.length ? (
-                        <Text style={styles.cardMeta} numberOfLines={1}>
-                          {provider.professions.join(", ")}
-                        </Text>
-                      ) : null}
-
-                      {provider.bio ? (
-                        <Text
-                          style={styles.cardDescription}
-                          numberOfLines={2}
-                        >
-                          {provider.bio}
-                        </Text>
-                      ) : null}
-                    </View>
-                  </TouchableOpacity>
                 );
               })}
             </ScrollView>
@@ -2266,109 +2177,29 @@ function ClientHomeScreen({
                 const avatar = resolveImageUrl(
                   provider.avatar_url || provider.profile_photo_url
                 );
-                const servicesLabel = (provider.services || []).join(" · ");
                 const saved = isFavorite(provider);
                 const providerId = getProviderId(provider) || provider.name;
+                const professionLabel = provider.professions?.length
+                  ? provider.professions.join(", ")
+                  : (provider.services || []).join(" · ");
+                const distanceKm =
+                  typeof provider.distance_km === "number"
+                    ? provider.distance_km
+                    : null;
 
                 return (
-                  <TouchableOpacity
+                  <ProviderCard
                     key={providerId}
-                    style={styles.providerCard}
-                    activeOpacity={0.9}
+                    provider={provider}
+                    avatarUrl={avatar}
+                    profession={professionLabel}
+                    distanceKm={distanceKm}
+                    isFavorite={saved}
+                    onFavoriteToggle={() => toggleFavorite(provider)}
                     onPress={() => handleProviderPress(provider)}
-                  >
-                    <View style={styles.cardImageWrapper}>
-                      <TouchableOpacity
-                        style={styles.cardHeartButton}
-                        onPress={(e) => {
-                          e.stopPropagation?.();
-                          toggleFavorite(provider);
-                        }}
-                        accessibilityLabel={
-                          saved
-                            ? "Remove from favorites"
-                            : "Save to favorites"
-                        }
-                      >
-                        <Ionicons
-                          name={saved ? "heart" : "heart-outline"}
-                          size={20}
-                          color={saved ? "#dc2626" : "#111827"}
-                        />
-                      </TouchableOpacity>
-
-                      <View
-                        style={{
-                          width: 72,
-                          height: 72,
-                          borderRadius: 36,
-                          overflow: "hidden",
-                          backgroundColor: "#e5e7eb",
-                          position: "absolute",
-                          top: 12,
-                          left: 12,
-                          zIndex: 10,
-                        }}
-                      >
-                        {avatar ? (
-                          <Image
-                            source={{ uri: avatar }}
-                            style={{ width: "100%", height: "100%" }}
-                            resizeMode="cover"
-                          />
-                        ) : (
-                          <View
-                            style={{
-                              flex: 1,
-                              alignItems: "center",
-                              justifyContent: "center",
-                              backgroundColor: "#16a34a",
-                            }}
-                          >
-                            <Ionicons name="person" size={32} color="#fff" />
-                          </View>
-                        )}
-                      </View>
-
-                      <View
-                        style={{
-                          width: "100%",
-                          height: "100%",
-                          backgroundColor: "#dcfce7",
-                        }}
-                      />
-                    </View>
-
-                    <View style={styles.cardBody}>
-                      <Text style={styles.cardTitle} numberOfLines={2}>
-                        {provider.name}
-                      </Text>
-
-                      {provider.location ? (
-                        <Text style={styles.cardMeta} numberOfLines={1}>
-                          {provider.location}
-                        </Text>
-                      ) : null}
-
-                      {provider.professions?.length ? (
-                        <Text style={styles.cardMeta} numberOfLines={1}>
-                          {provider.professions.join(", ")}
-                        </Text>
-                      ) : null}
-
-                      {servicesLabel ? (
-                        <Text style={styles.cardMeta} numberOfLines={2}>
-                          {servicesLabel}
-                        </Text>
-                      ) : null}
-
-                      {provider.bio ? (
-                        <Text style={styles.cardDescription} numberOfLines={2}>
-                          {provider.bio}
-                        </Text>
-                      ) : null}
-                    </View>
-                  </TouchableOpacity>
+                    ctaLabel="View"
+                    style={styles.providerCardCarousel}
+                  />
                 );
               })}
             </ScrollView>
@@ -3338,85 +3169,30 @@ function SearchScreen({
                               p.avatar_url || p.profile_photo_url
                             );
                             const favorite = isFavorite(p);
+                            const distanceKm =
+                              typeof p.distance_km === "number" && clientLocation
+                                ? p.distance_km
+                                : null;
+                            const professionLabel = p.professions?.length
+                              ? p.professions.join(" · ")
+                              : p.profession || null;
                     return (
-                              <TouchableOpacity
+                              <ProviderCard
                                 key={getProviderId(p) || p.name}
-                                style={[
-                                  styles.serviceRow,
-                                  selectedProvider &&
-                                    getProviderId(selectedProvider) === getProviderId(p) && {
-                                      backgroundColor: "#ecfdf3",
-                                    },
-                                ]}
+                                provider={p}
+                                avatarUrl={avatar}
+                                profession={professionLabel}
+                                distanceKm={distanceKm}
+                                isFavorite={favorite}
+                                onFavoriteToggle={() => toggleFavorite(p)}
                                 onPress={() => handleSelectProvider(p)}
-                              >
-                                <View
-                                  style={{
-                                    flexDirection: "row",
-                                    alignItems: "center",
-                                    flex: 1,
-                                  }}
-                                >
-                                  {/* Avatar (photo or initial) */}
-                                  {avatar ? (
-                                    <Image
-                                      source={{ uri: avatar }}
-                                      style={styles.providerAvatarSmall}
-                                    />
-                                  ) : (
-                                    <View style={styles.providerAvatarSmallFallback}>
-                                      <Text style={styles.providerAvatarSmallInitial}>
-                                        {(p.name || "P").charAt(0).toUpperCase()}
-                                      </Text>
-                                    </View>
-                                  )}
-
-                                  {/* Provider text info */}
-                                  <View style={{ flex: 1, paddingRight: 8 }}>
-                                    <Text style={styles.serviceName}>{p.name}</Text>
-
-                                    {p.location ? (
-                                      <Text style={styles.serviceMeta}>{p.location}</Text>
-                                    ) : null}
-
-                                    {(p.professions || []).length > 0 && (
-                                      <Text style={styles.serviceMeta}>
-                                        {p.professions.join(" · ")}
-                                      </Text>
-                                    )}
-
-                                    {typeof p.distance_km === "number" && clientLocation && (
-                                      <Text style={styles.serviceMeta}>
-                                        {p.distance_km.toFixed(1)} km away
-                                      </Text>
-                                    )}
-
-                                    {p.bio ? (
-                                      <Text numberOfLines={2} style={styles.serviceMeta}>
-                                        {p.bio}
-                                      </Text>
-                                    ) : null}
-                                  </View>
-                                </View>
-                                <TouchableOpacity
-                                  onPress={(e) => {
-                                    e.stopPropagation?.();
-                                    toggleFavorite(p);
-                                  }}
-                                  style={styles.favoriteToggleButton}
-                                  accessibilityLabel={
-                                    favorite
-                                      ? "Remove from favorites"
-                                      : "Save to favorites"
-                                  }
-                                >
-                                  <Ionicons
-                                    name={favorite ? "heart" : "heart-outline"}
-                                    size={20}
-                                    color={favorite ? "#dc2626" : "#111827"}
-                                  />
-                                </TouchableOpacity>
-                              </TouchableOpacity>
+                                ctaLabel="Book"
+                                isSelected={
+                                  selectedProvider &&
+                                  getProviderId(selectedProvider) === getProviderId(p)
+                                }
+                                style={styles.providerCardList}
+                              />
                             );
                           })}
                       </View>
@@ -6582,8 +6358,8 @@ const styles = StyleSheet.create({
     paddingRight: 12,
   },
 
-  providerCard: {
-    width: 280,
+  providerCardSkeleton: {
+    width: 270,
     borderRadius: 16,
     backgroundColor: "#ffffff",
     marginRight: 12,
@@ -6595,6 +6371,13 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     shadowOffset: { width: 0, height: 4 },
     elevation: 3,
+  },
+  providerCardCarousel: {
+    width: 270,
+    marginRight: 12,
+  },
+  providerCardList: {
+    marginBottom: 12,
   },
   cardImageWrapper: {
     height: 140,

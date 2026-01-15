@@ -1,0 +1,237 @@
+import React from "react";
+import { View, Text, StyleSheet, Image, TouchableOpacity } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
+
+const getInitials = (name) => {
+  const cleaned = String(name || "").trim();
+  if (!cleaned) return "?";
+  const parts = cleaned.split(/\s+/).slice(0, 2);
+  return parts
+    .map((part) => part.charAt(0).toUpperCase())
+    .join("");
+};
+
+const resolveRatingValue = (provider, ratingOverride) => {
+  const raw =
+    ratingOverride ??
+    provider?.rating ??
+    provider?.average_rating ??
+    provider?.avg_rating ??
+    provider?.rating_avg ??
+    provider?.rating_value;
+  if (raw == null) return null;
+  const numeric = Number(raw);
+  return Number.isFinite(numeric) ? numeric : null;
+};
+
+const ProviderCard = ({
+  provider,
+  avatarUrl,
+  onPress,
+  onFavoriteToggle,
+  isFavorite = false,
+  ctaLabel = "View",
+  onCtaPress,
+  distanceKm,
+  profession,
+  rating,
+  isSelected = false,
+  style,
+}) => {
+  const ratingValue = resolveRatingValue(provider, rating);
+  const ratingLabel =
+    typeof ratingValue === "number" ? ratingValue.toFixed(1) : null;
+  const distanceLabel =
+    typeof distanceKm === "number" ? `${distanceKm.toFixed(1)} km away` : null;
+  const professionLabel =
+    profession ||
+    provider?.profession ||
+    (provider?.professions || []).join(" · ") ||
+    (provider?.services || []).join(" · ");
+  const initials = getInitials(provider?.name);
+
+  return (
+    <TouchableOpacity
+      style={[styles.card, isSelected && styles.cardSelected, style]}
+      activeOpacity={0.9}
+      onPress={onPress}
+    >
+      {typeof onFavoriteToggle === "function" ? (
+        <TouchableOpacity
+          style={styles.favoriteButton}
+          onPress={(event) => {
+            event.stopPropagation?.();
+            onFavoriteToggle();
+          }}
+          accessibilityLabel={
+            isFavorite ? "Remove from favorites" : "Save to favorites"
+          }
+        >
+          <Ionicons
+            name={isFavorite ? "heart" : "heart-outline"}
+            size={18}
+            color={isFavorite ? "#dc2626" : "#111827"}
+          />
+        </TouchableOpacity>
+      ) : null}
+
+      <View style={styles.topRow}>
+        <View style={styles.avatarWrapper}>
+          {avatarUrl ? (
+            <Image source={{ uri: avatarUrl }} style={styles.avatarImage} />
+          ) : (
+            <View style={styles.avatarFallback}>
+              <Text style={styles.avatarInitials}>{initials}</Text>
+            </View>
+          )}
+        </View>
+
+        <View style={styles.middleColumn}>
+          <Text style={styles.name} numberOfLines={1}>
+            {provider?.name || "Provider"}
+          </Text>
+
+          {professionLabel ? (
+            <Text style={styles.profession} numberOfLines={1}>
+              {professionLabel}
+            </Text>
+          ) : null}
+
+          {distanceLabel ? (
+            <Text style={styles.distance} numberOfLines={1}>
+              {distanceLabel}
+            </Text>
+          ) : null}
+        </View>
+
+        {ratingLabel ? (
+          <View style={styles.ratingBadge}>
+            <Text style={styles.ratingText}>★ {ratingLabel}</Text>
+          </View>
+        ) : null}
+      </View>
+
+      <View style={styles.bottomRow}>
+        <TouchableOpacity
+          style={styles.ctaButton}
+          onPress={onCtaPress || onPress}
+        >
+          <Text style={styles.ctaText}>{ctaLabel}</Text>
+        </TouchableOpacity>
+      </View>
+    </TouchableOpacity>
+  );
+};
+
+const styles = StyleSheet.create({
+  card: {
+    backgroundColor: "#ffffff",
+    borderRadius: 16,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: "#eef2f7",
+    shadowColor: "#0f172a",
+    shadowOpacity: 0.08,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 3,
+  },
+  cardSelected: {
+    borderColor: "#16a34a",
+    backgroundColor: "#f0fdf4",
+  },
+  favoriteButton: {
+    position: "absolute",
+    top: 10,
+    right: 10,
+    zIndex: 2,
+    width: 30,
+    height: 30,
+    borderRadius: 999,
+    backgroundColor: "rgba(255,255,255,0.95)",
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#0f172a",
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
+  },
+  topRow: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  avatarWrapper: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    overflow: "hidden",
+    backgroundColor: "#e5e7eb",
+    marginRight: 12,
+  },
+  avatarImage: {
+    width: "100%",
+    height: "100%",
+  },
+  avatarFallback: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#16a34a",
+  },
+  avatarInitials: {
+    color: "#ffffff",
+    fontSize: 18,
+    fontWeight: "700",
+  },
+  middleColumn: {
+    flex: 1,
+    paddingRight: 8,
+  },
+  name: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: "#111827",
+  },
+  profession: {
+    fontSize: 13,
+    color: "#6b7280",
+    marginTop: 2,
+  },
+  distance: {
+    fontSize: 12,
+    color: "#475569",
+    marginTop: 2,
+  },
+  ratingBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+    backgroundColor: "#ecfdf3",
+    borderWidth: 1,
+    borderColor: "#bbf7d0",
+  },
+  ratingText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#166534",
+  },
+  bottomRow: {
+    marginTop: 12,
+    flexDirection: "row",
+    justifyContent: "flex-start",
+  },
+  ctaButton: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 10,
+    backgroundColor: "#16a34a",
+  },
+  ctaText: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: "#ffffff",
+  },
+});
+
+export default ProviderCard;
