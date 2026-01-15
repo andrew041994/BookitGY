@@ -2266,7 +2266,7 @@ function ClientHomeScreen({
           ) : null}
           </View>
         </ScrollView>
-      </SafeAreaView>
+        </View>      
     );
   }
 
@@ -5700,7 +5700,6 @@ function ProviderBillingScreen({ token, showFlash }) {
           </View>
         )})}
     </ScrollView>
-      </View>
   );
 }
 
@@ -6437,8 +6436,8 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   headerLogo: {
-    width: 115,
-    height: 115,
+    width: 100,
+    height: 100,
     borderRadius: 26,
   },
   homeGreeting: {
