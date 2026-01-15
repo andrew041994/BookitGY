@@ -3444,6 +3444,7 @@ function SearchScreen({ token, showFlash, navigation, route, toggleFavorite, isF
                   </View>
                 )}
               </ScrollView>
+              </SafeAreaView>
          );
       }
 
