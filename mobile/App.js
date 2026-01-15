@@ -5688,28 +5688,58 @@ function MainApp({ apiClient, authLoading, token, setToken, showFlash, navigatio
           screenOptions={({ route }) => ({
             headerShown: false,
             tabBarShowLabel: true,
-            tabBarActiveTintColor: "#0B6BF2",
-            tabBarInactiveTintColor: "#A1A1A1",
+            tabBarActiveTintColor: "#16a34a",
+            tabBarInactiveTintColor: "#9CA3AF",
             tabBarStyle: {
               backgroundColor: "#FFFFFF",
-              height: 70,
-              paddingBottom: 25,
+              height: 76,
+              paddingBottom: Platform.OS === "ios" ? 24 : 12,
               paddingTop: 8,
-              borderTopWidth: 0,
+              borderTopWidth: 1,
+              borderTopColor: "#E5E7EB",
               shadowColor: "#000",
-              shadowOpacity: 0.05,
-              shadowRadius: 8,
-              elevation: 4,
-              marginBottom: Platform.OS === "android" ? 8 : 0,
+              shadowOpacity: 0.08,
+              shadowRadius: 12,
+              shadowOffset: { width: 0, height: -2 },
+              elevation: 8,
             },
-            tabBarIcon: ({ color }) => {
+            tabBarLabel: ({ focused, color }) => (
+              <Text
+                style={{
+                  color,
+                  fontSize: 12,
+                  fontWeight: focused ? "700" : "500",
+                }}
+              >
+                {route.name}
+              </Text>
+            ),
+            tabBarIcon: ({ color, focused }) => {
               let iconName = "home-outline";
 
               if (route.name === "Dashboard") iconName = "speedometer-outline";
               else if (route.name === "Billing") iconName = "card-outline";
               else if (route.name === "Profile") iconName = "person-outline";
 
-              return <Ionicons name={iconName} size={24} color={color} />;
+              if (focused) {
+                iconName = iconName.replace("-outline", "");
+              }
+
+              return (
+                <View
+                  style={{
+                    padding: 6,
+                    borderRadius: 16,
+                    backgroundColor: focused ? "rgba(22, 163, 74, 0.12)" : "transparent",
+                  }}
+                >
+                  <Ionicons
+                    name={iconName}
+                    size={focused ? 26 : 22}
+                    color={color}
+                  />
+                </View>
+              );
             },
           })}
         >
@@ -5748,23 +5778,33 @@ function MainApp({ apiClient, authLoading, token, setToken, showFlash, navigatio
             screenOptions={({ route }) => ({
               headerShown: false,
               tabBarShowLabel: true,
-              tabBarActiveTintColor: "#0B6BF2",
-              tabBarInactiveTintColor: "#A1A1A1",
+              tabBarActiveTintColor: "#16a34a",
+              tabBarInactiveTintColor: "#9CA3AF",
               tabBarStyle: {
                 backgroundColor: "#FFFFFF",
-                height: 70,
-                paddingBottom: 25,
+                height: 76,
+                paddingBottom: Platform.OS === "ios" ? 24 : 12,
                 paddingTop: 8,
-                borderTopWidth: 0,
+                borderTopWidth: 1,
+                borderTopColor: "#E5E7EB",
                 shadowColor: "#000",
-                shadowOpacity: 0.05,
-                shadowRadius: 8,
-                elevation: 4,
-                marginBottom: Platform.OS === "android" ? 8 : 0, // ⬅️ lifts bar above system buttons
-
+                shadowOpacity: 0.08,
+                shadowRadius: 12,
+                shadowOffset: { width: 0, height: -2 },
+                elevation: 8,
               },
-
-              tabBarIcon: ({ color, size }) => {
+              tabBarLabel: ({ focused, color }) => (
+                <Text
+                  style={{
+                    color,
+                    fontSize: 12,
+                    fontWeight: focused ? "700" : "500",
+                  }}
+                >
+                  {route.name}
+                </Text>
+              ),
+              tabBarIcon: ({ color, focused }) => {
                 let iconName;
 
                 if (route.name === "Home") iconName = "home-outline";
@@ -5772,7 +5812,25 @@ function MainApp({ apiClient, authLoading, token, setToken, showFlash, navigatio
                 else if (route.name === "Appointments") iconName = "calendar-outline";
                 else if (route.name === "Profile") iconName = "person-outline";
 
-                return <Ionicons name={iconName} size={24} color={color} />;
+                if (focused) {
+                  iconName = iconName.replace("-outline", "");
+                }
+
+                return (
+                  <View
+                    style={{
+                      padding: 6,
+                      borderRadius: 16,
+                      backgroundColor: focused ? "rgba(22, 163, 74, 0.12)" : "transparent",
+                    }}
+                  >
+                    <Ionicons
+                      name={iconName}
+                      size={focused ? 26 : 22}
+                      color={color}
+                    />
+                  </View>
+                );
               },
             })}
             initialRouteName="Home"
