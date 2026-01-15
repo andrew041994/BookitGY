@@ -2033,14 +2033,8 @@ function ClientHomeScreen({
   }, [refreshFavoriteProviders]);
 
   return (
-      <SafeAreaView style={styles.homeWrapper}>
-      <ScrollView
-        contentContainerStyle={styles.homeScroll}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
-        }
-      >
-        <View style={styles.homeHeader}>
+      <View style={styles.homeWrapper}>
+        <SafeAreaView style={styles.pinnedHeader}>
           <View style={styles.headerLogoRow}>
             <View style={styles.headerLogoWrapper}>
               <Image
@@ -2049,6 +2043,14 @@ function ClientHomeScreen({
               />
             </View>
           </View>
+        </SafeAreaView>
+      <ScrollView
+        contentContainerStyle={styles.homeScroll}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
+        }
+      >
+        <View style={styles.homeHeader}>
           <Text style={styles.homeGreeting}>Hi, {greetingName}</Text>
           <Text style={styles.homeSubtitle}>
             What are you looking for today?
@@ -2262,8 +2264,8 @@ function ClientHomeScreen({
               })}
             </ScrollView>
           ) : null}
-        </View>
-      </ScrollView>
+          </View>
+        </ScrollView>
       </SafeAreaView>
     );
   }
@@ -4667,7 +4669,7 @@ const loadProviderSummary = async () => {
 };
 
   return (
-    <View style={{ flex: 1 }}>
+    <View style={styles.homeWrapper}>
       {hoursFlash && (
         <View
           style={[
@@ -4681,6 +4683,16 @@ const loadProviderSummary = async () => {
         </View>
       )}
 
+      <SafeAreaView style={styles.pinnedHeader}>
+        <View style={styles.headerLogoRow}>
+          <View style={styles.headerLogoWrapper}>
+            <Image
+              source={BookitGYLogoTransparent}
+              style={styles.headerLogo}
+            />
+          </View>
+        </View>
+      </SafeAreaView>
       <ScrollView
         contentContainerStyle={styles.providerScroll}
         refreshControl={
@@ -4688,14 +4700,6 @@ const loadProviderSummary = async () => {
         }
       >
         <View style={styles.homeHeader}>
-          <View style={styles.headerLogoRow}>
-            <View style={styles.headerLogoWrapper}>
-              <Image
-                source={BookitGYLogoTransparent}
-                style={styles.headerLogo}
-              />
-            </View>
-          </View>
           <Text style={styles.homeGreeting}>Provider dashboard</Text>
           <Text style={styles.homeSubtitle}>Welcome, {providerLabel}</Text>
         </View>
@@ -5696,6 +5700,7 @@ function ProviderBillingScreen({ token, showFlash }) {
           </View>
         )})}
     </ScrollView>
+      </View>
   );
 }
 
@@ -6408,7 +6413,10 @@ const styles = StyleSheet.create({
   },
   homeWrapper: {
     flex: 1,
-    backgroundColor: colors.background,
+    backgroundColor: "#0B1220",
+  },
+  pinnedHeader: {
+    backgroundColor: "#0B1220",
   },
   homeHeader: {
     marginBottom: 20,
