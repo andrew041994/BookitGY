@@ -1902,7 +1902,7 @@ function ClientHomeScreen({
   const [searchText, setSearchText] = useState("");
 
   const quickCategories = useMemo(
-    () => ["Barber", "Hair", "Nails", "Massage", "Makeup", "Lash"],
+    () => ["Barber", "Hair", "Nails", "Massage", "Makeup", "Lash", "Tutor"],
     []
   );
 
@@ -2033,17 +2033,15 @@ function ClientHomeScreen({
   }, [refreshFavoriteProviders]);
 
   return (
-      <View style={styles.homeWrapper}>
-        <SafeAreaView style={styles.pinnedHeader}>
-          <View style={styles.headerLogoRow}>
-            <View style={styles.headerLogoWrapper}>
-              <Image
-                source={BookitGYLogoTransparent}
-                style={styles.headerLogo}
-              />
-            </View>
-          </View>
-        </SafeAreaView>
+    <View style={styles.homeWrapper}>
+        <View style={styles.pinnedHeader}>
+          <SafeAreaView style={styles.pinnedHeaderSafeArea}>
+            <Image
+              source={BookitGYLogoTransparent}
+              style={styles.headerLogo}
+            />
+          </SafeAreaView>
+        </View>
       <ScrollView
         contentContainerStyle={styles.homeScroll}
         refreshControl={
@@ -4683,16 +4681,14 @@ const loadProviderSummary = async () => {
         </View>
       )}
 
-      <SafeAreaView style={styles.pinnedHeader}>
-        <View style={styles.headerLogoRow}>
-          <View style={styles.headerLogoWrapper}>
-            <Image
-              source={BookitGYLogoTransparent}
-              style={styles.headerLogo}
-            />
-          </View>
-        </View>
-      </SafeAreaView>
+      <View style={styles.pinnedHeader}>
+        <SafeAreaView style={styles.pinnedHeaderSafeArea}>
+          <Image
+            source={BookitGYLogoTransparent}
+            style={styles.headerLogo}
+          />
+        </SafeAreaView>
+      </View>
       <ScrollView
         contentContainerStyle={styles.providerScroll}
         refreshControl={
@@ -6405,7 +6401,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
     paddingHorizontal: 20,
     paddingBottom: 32,
-    paddingTop: 16,
+    paddingTop: 0
   },
   homeCard: {
     width: "100%",
@@ -6416,29 +6412,21 @@ const styles = StyleSheet.create({
   },
   pinnedHeader: {
     backgroundColor: "#0B1220",
+    minHeight: 100,
+  },
+  pinnedHeaderSafeArea: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
   },
   homeHeader: {
     marginBottom: 20,
   },
-  headerLogoRow: {
-    alignItems: "center",
-    paddingTop: 12,
-    marginBottom: 16,
-  },
-  headerLogoWrapper: {
-    width: 100,
-    height: 100,
-    borderRadius: 28,
-    backgroundColor: "#1F2937",
-    borderWidth: 1,
-    borderColor: "#2A3343",
-    alignItems: "center",
-    justifyContent: "center",
-  },
   headerLogo: {
-    width: 100,
-    height: 100,
-    borderRadius: 26,
+    width: 130,
+    height: 120,
+    // resizeMode: "contain",
+    transform: [{ translateY: -12 }],
   },
   homeGreeting: {
     fontSize: 26,
