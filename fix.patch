@@ -1,27 +1,203 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
-diff --git a/mobile/src/theme.js b/mobile/src/theme.js
-new file mode 100644
-index 0000000000000000000000000000000000000000..02d9403c8b3d0f4ce1ecd86055c246b1446e8012
---- /dev/null
-+++ b/mobile/src/theme.js
-@@ -0,0 +1,17 @@
-+export const theme = {
-+  colors: {
-+    background: "#0B1220",
-+    surface: "#111827",
-+    surfaceElevated: "#1F2937",
-+    border: "#2A3343",
-+    primary: "#22C55E",
-+    primaryPressed: "#16A34A",
-+    primarySoft: "rgba(34,197,94,0.15)",
-+    textPrimary: "#E5E7EB",
-+    textSecondary: "#9CA3AF",
-+    textMuted: "#6B7280",
-+    success: "#22C55E",
-+    warning: "#F59E0B",
-+    error: "#EF4444",
+diff --git a/mobile/App.js b/mobile/App.js
+index 5d70af2a192131c2dfdc34bd6419e92e47eae395..eb8bb584b858be5671fd1f4930bc597ea577c279 100644
+--- a/mobile/App.js
++++ b/mobile/App.js
+@@ -2019,50 +2019,59 @@ function ClientHomeScreen({
+ 
+   const handleSearchNavigate = useCallback(
+     (query) => {
+       const trimmed = String(query || "").trim();
+       const params = trimmed
+         ? { incomingUsername: trimmed, deeplinkNonce: Date.now() }
+         : undefined;
+       navigation.navigate("Search", params);
+     },
+     [navigation]
+   );
+ 
+   useEffect(() => {
+     refreshFavoriteProviders();
+   }, [refreshFavoriteProviders]);
+ 
+   return (
+       <SafeAreaView style={styles.homeWrapper}>
+       <ScrollView
+         contentContainerStyle={styles.homeScroll}
+         refreshControl={
+           <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
+         }
+       >
+         <View style={styles.homeHeader}>
++          <View style={styles.headerLogoRow}>
++            <View style={styles.headerLogoWrapper}>
++              <Image
++                source={BookitGYLogoTransparent}
++                style={styles.headerLogo}
++              />
++            </View>
++            <View style={styles.headerLogoSpacer} />
++          </View>
+           <Text style={styles.homeGreeting}>Hi, {greetingName}</Text>
+           <Text style={styles.homeSubtitle}>
+             What are you looking for today?
+           </Text>
+         </View>
+ 
+         <View style={styles.searchBar}>
+           <Ionicons name="search-outline" size={20} color={colors.textMuted} />
+           <TextInput
+             style={styles.searchInput}
+             placeholder="Search by profession, provider, or service"
+             placeholderTextColor={colors.textSecondary}
+             value={searchText}
+             onChangeText={setSearchText}
+             onFocus={() => handleSearchNavigate(searchText)}
+             onSubmitEditing={() => handleSearchNavigate(searchText)}
+             returnKeyType="search"
+           />
+         </View>
+ 
+         <View style={styles.quickCategorySection}>
+           <Text style={styles.sectionTitle}>Quick Categories</Text>
+           <ScrollView
+             horizontal
+             showsHorizontalScrollIndicator={false}
+@@ -4689,51 +4698,59 @@ const loadProviderSummary = async () => {
+           </View>
+         )}
+ 
+         
+       </View>
+       
+       {hoursFlash && (
+         <View
+           style={[
+             styles.hoursFlashGlobal,
+             hoursFlash.type === "error"
+               ? styles.hoursFlashError
+               : styles.hoursFlashSuccess,
+           ]}
+         >
+           <Text style={styles.hoursFlashText}>{hoursFlash.message}</Text>
+         </View>
+       )}
+ 
+       <ScrollView
+         contentContainerStyle={styles.providerScroll}
+         refreshControl={
+           <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
+         }
+       >
+-      
++        <View style={styles.headerLogoRow}>
++          <View style={styles.headerLogoWrapper}>
++            <Image
++              source={BookitGYLogoTransparent}
++              style={styles.headerLogo}
++            />
++          </View>
++          <View style={styles.headerLogoSpacer} />
++        </View>
+         <Text style={styles.profileTitle}>Provider dashboard</Text>
+         <Text style={styles.subtitleSmall}>Welcome, {providerLabel}</Text>
+     
+         {/*Account Info */}
+         {providerSummary && (
+           <View style={styles.providerSummaryCard}>
+             <Text style={styles.providerSummaryLabel}>Account number</Text>
+             <Text style={styles.providerSummaryValue}>
+               {providerSummary.account_number || "N/A"}
+             </Text>
+           </View>
+         )}
+ 
+         {/* TODAY overview */}
+         <View style={styles.card}>
+           <Text style={styles.label}>TODAY</Text>
+ 
+           {todayLoading && (
+             <View style={{ paddingVertical: 10 }}>
+               <ActivityIndicator />
+               <Text style={styles.serviceMeta}>Loading today&apos;s bookings…</Text>
+             </View>
+           )}
+ 
+           {!todayLoading && todayError ? (
+@@ -6406,50 +6423,73 @@ const styles = StyleSheet.create({
+     zIndex: 100,
+     shadowColor: "#000",
+     shadowOpacity: 0.1,
+     shadowRadius: 6,
+     shadowOffset: { width: 0, height: 3 },
+     elevation: 4,
+   },
+ 
+    homeScroll: {
+     flexGrow: 1,
+     backgroundColor: colors.background,
+     paddingHorizontal: 20,
+     paddingBottom: 32,
+     paddingTop: 16,
+   },
+   homeCard: {
+     width: "100%",
+   },
+   homeWrapper: {
+     flex: 1,
+     backgroundColor: colors.background,
+   },
+   homeHeader: {
+     marginBottom: 20,
+   },
++  headerLogoRow: {
++    flexDirection: "row",
++    alignItems: "center",
++    justifyContent: "space-between",
++    paddingTop: 8,
++    marginBottom: 12,
 +  },
-+};
++  headerLogoWrapper: {
++    width: 32,
++    height: 32,
++    borderRadius: 16,
++    backgroundColor: colors.surfaceElevated,
++    alignItems: "center",
++    justifyContent: "center",
++  },
++  headerLogo: {
++    width: 30,
++    height: 30,
++    borderRadius: 15,
++  },
++  headerLogoSpacer: {
++    flex: 1,
++  },
+   homeGreeting: {
+     fontSize: 26,
+     fontWeight: "700",
+     color: colors.textPrimary,
+   },
+   homeSubtitle: {
+     fontSize: 16,
+     color: colors.textSecondary,
+     marginTop: 6,
+   },
+   searchBar: {
+     flexDirection: "row",
+     alignItems: "center",
+     gap: 10,
+     backgroundColor: colors.surfaceElevated,
+     borderRadius: 16,
+     paddingHorizontal: 14,
+     paddingVertical: 12,
+     borderWidth: 1,
+     borderColor: colors.border,
+     shadowColor: "#0f172a",
+     shadowOpacity: 0.06,
+     shadowRadius: 6,
+     shadowOffset: { width: 0, height: 3 },
+     elevation: 2,
  
 EOF
 )

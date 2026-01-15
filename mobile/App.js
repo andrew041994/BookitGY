@@ -2041,6 +2041,15 @@ function ClientHomeScreen({
         }
       >
         <View style={styles.homeHeader}>
+          <View style={styles.headerLogoRow}>
+            <View style={styles.headerLogoWrapper}>
+              <Image
+                source={BookitGYLogoTransparent}
+                style={styles.headerLogo}
+              />
+            </View>
+            <View style={styles.headerLogoSpacer} />
+          </View>
           <Text style={styles.homeGreeting}>Hi, {greetingName}</Text>
           <Text style={styles.homeSubtitle}>
             What are you looking for today?
@@ -4660,38 +4669,6 @@ const loadProviderSummary = async () => {
 
   return (
     <View style={{ flex: 1 }}>
-      <View style={{ alignItems: "center", marginBottom: 16 }}>
-        {avatarUrl ? (
-          <Image
-            source={{ uri: avatarUrl }}
-            style={{
-              width: 96,
-              height: 96,
-              borderRadius: 48,
-              marginBottom: 8,
-            }}
-          />
-        ) : (
-          <View
-            style={{
-              width: 96,
-              height: 96,
-              borderRadius: 48,
-              backgroundColor: colors.surfaceElevated,
-              justifyContent: "center",
-              alignItems: "center",
-              marginBottom: 8,
-            }}
-          >
-            <Text style={{ fontSize: 32, color: colors.textPrimary }}>
-              {(profile.full_name || token?.email || "P")[0].toUpperCase()}
-            </Text>
-          </View>
-        )}
-
-        
-      </View>
-      
       {hoursFlash && (
         <View
           style={[
@@ -4711,9 +4688,24 @@ const loadProviderSummary = async () => {
           <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
         }
       >
-      
+<<<<<<< ours
+        <View style={styles.homeHeader}>
+          <Text style={styles.homeGreeting}>Provider dashboard</Text>
+          <Text style={styles.homeSubtitle}>Welcome, {providerLabel}</Text>
+        </View>
+=======
+        <View style={styles.headerLogoRow}>
+          <View style={styles.headerLogoWrapper}>
+            <Image
+              source={BookitGYLogoTransparent}
+              style={styles.headerLogo}
+            />
+          </View>
+          <View style={styles.headerLogoSpacer} />
+        </View>
         <Text style={styles.profileTitle}>Provider dashboard</Text>
         <Text style={styles.subtitleSmall}>Welcome, {providerLabel}</Text>
+>>>>>>> theirs
     
         {/*Account Info */}
         {providerSummary && (
@@ -6428,6 +6420,29 @@ const styles = StyleSheet.create({
   homeHeader: {
     marginBottom: 20,
   },
+  headerLogoRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingTop: 8,
+    marginBottom: 12,
+  },
+  headerLogoWrapper: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: colors.surfaceElevated,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  headerLogo: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+  },
+  headerLogoSpacer: {
+    flex: 1,
+  },
   homeGreeting: {
     fontSize: 26,
     fontWeight: "700",
@@ -6979,8 +6994,9 @@ cardHeartButton: {
     providerScroll: {
     flexGrow: 1,
     backgroundColor: colors.background,
-    padding: 20,
-    paddingTop: 60,
+    paddingHorizontal: 20,
+    paddingBottom: 32,
+    paddingTop: 16,
   },
   subtitleSmall: {
     fontSize: 14,
@@ -7384,10 +7400,11 @@ skeletonLineShort: {
 },
 
   providerScroll: {
-    paddingHorizontal: 20,
-    paddingTop: 30,
-    paddingBottom: 40,
+    flexGrow: 1,
     backgroundColor: colors.background,
+    paddingHorizontal: 20,
+    paddingBottom: 32,
+    paddingTop: 16,
   },
   card: {
     backgroundColor: colors.surface,
