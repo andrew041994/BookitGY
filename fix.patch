@@ -1,9 +1,9 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
 diff --git a/mobile/App.js b/mobile/App.js
-index 771c972d3d79fe5360a7c17cf744fe96fcf76320..4c9143cfd4ec4f0b72eec7dd7ee6cc81e0575568 100644
+index 373be66e867824a77ccf40565236f5094137ab7b..7078345c2df05d9e2aaa64f4cd2ce57b694e465e 100644
 --- a/mobile/App.js
 +++ b/mobile/App.js
-@@ -6078,113 +6078,118 @@ function App() {
+@@ -6078,118 +6078,123 @@ function App() {
        if (typeof text.detail === "string") return text.detail;
        if (typeof text.message === "string") return text.message;
        if (typeof text.msg === "string") return text.msg;
@@ -91,7 +91,8 @@ index 771c972d3d79fe5360a7c17cf744fe96fcf76320..4c9143cfd4ec4f0b72eec7dd7ee6cc81
      if (token.isProvider) {
        console.log(
          "[deeplink] provider user ignoring username",
-         pendingDeepLinkUsername
+-        pendingDeepLinkUsername
++        pendingDeepLinkUsername.username
        );
        if (showFlash) {
          showFlash("error", "Open as a client to view provider links.");
@@ -107,7 +108,8 @@ index 771c972d3d79fe5360a7c17cf744fe96fcf76320..4c9143cfd4ec4f0b72eec7dd7ee6cc81
      );
      console.log(
        "[deeplink] pending username",
-       pendingDeepLinkUsername,
+-      pendingDeepLinkUsername,
++      pendingDeepLinkUsername.username,
        "navigate",
        didNavigate
      );
@@ -128,6 +130,11 @@ index 771c972d3d79fe5360a7c17cf744fe96fcf76320..4c9143cfd4ec4f0b72eec7dd7ee6cc81
            getAuthToken(),
            AUTH_TOKEN_TIMEOUT_MS,
            "getAuthToken"
+         );
+         console.log("[auth] token loaded:", Boolean(restoredToken));
+ 
+         if (!restoredToken) {
+           if (isActive) setToken(null);
  
 EOF
 )

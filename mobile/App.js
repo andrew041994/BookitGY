@@ -6100,10 +6100,18 @@ function App() {
 
     Linking.getInitialURL().then((url) => {
       if (!isActive) return;
-      const didNavigate = false;
+      let didNavigate = false;
       console.log("[deeplink] received initial url", url);
       const username = extractUsernameFromUrl(url);
       console.log("[deeplink] extracted username", username);
+      if (username) {
+        if (tokenRef.current && !tokenRef.current.isProvider) {
+          didNavigate = navigateToClientSearch(username, navigationRef);
+          setPendingDeepLinkUsername(null);
+        } else {
+          setPendingDeepLinkUsername({ username, nonce: Date.now() });
+        }
+      }
       console.log(
         "[deeplink] initial url",
         url,
@@ -6112,9 +6120,6 @@ function App() {
         "immediateNavigate",
         didNavigate
       );
-      if (username) {
-        setPendingDeepLinkUsername(username);
-      }
     });
 
     const sub = Linking.addEventListener("url", ({ url }) => {
@@ -6127,7 +6132,7 @@ function App() {
           didNavigate = navigateToClientSearch(username, navigationRef);
           setPendingDeepLinkUsername(null);
         } else {
-          setPendingDeepLinkUsername(username);
+          setPendingDeepLinkUsername({ username, nonce: Date.now() });
         }
       }
       console.log(
@@ -6152,7 +6157,7 @@ function App() {
     if (token.isProvider) {
       console.log(
         "[deeplink] provider user ignoring username",
-        pendingDeepLinkUsername
+        pendingDeepLinkUsername.username
       );
       if (showFlash) {
         showFlash("error", "Open as a client to view provider links.");
@@ -6162,12 +6167,12 @@ function App() {
     }
 
     const didNavigate = navigateToClientSearch(
-      pendingDeepLinkUsername,
+      pendingDeepLinkUsername.username,
       navigationRef
     );
     console.log(
       "[deeplink] pending username",
-      pendingDeepLinkUsername,
+      pendingDeepLinkUsername.username,
       "navigate",
       didNavigate
     );
