@@ -1034,6 +1034,37 @@ function SignupScreen({ goToLogin, goBack, showFlash }) {
 
 
 
+const ListRow = ({
+  title,
+  onPress,
+  icon,
+  isLast = false,
+  disabled = false,
+}) => (
+  <TouchableOpacity
+    style={[
+      styles.listRow,
+      isLast && styles.listRowLast,
+      disabled && styles.listRowDisabled,
+    ]}
+    onPress={onPress}
+    disabled={disabled}
+  >
+    <View style={styles.listRowLeft}>
+      {icon ? (
+        <Ionicons
+          name={icon}
+          size={18}
+          color="#64748b"
+          style={styles.listRowIcon}
+        />
+      ) : null}
+      <Text style={styles.listRowTitle}>{title}</Text>
+    </View>
+    <Text style={styles.listRowChevron}>›</Text>
+  </TouchableOpacity>
+);
+
 // Placeholder screens so MainApp compiles — replace with your real ones
 function ProfileScreen({ apiClient, authLoading, setToken, showFlash, token }) {
   const [user, setUser] = useState(null);
@@ -1380,6 +1411,8 @@ function ProfileScreen({ apiClient, authLoading, setToken, showFlash, token }) {
   const isAdmin = user.is_admin;
   const isProvider = user.is_provider;
   const role = isAdmin ? "Admin" : isProvider ? "Provider" : "Client";
+  const hasContactDetails = Boolean(user.phone || user.location);
+  const showActivityBookings = !isProvider;
   const toggleMyBookings = async () => {
     const next = !showBookings;
     setShowBookings(next);
@@ -1545,54 +1578,51 @@ function ProfileScreen({ apiClient, authLoading, setToken, showFlash, token }) {
         <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
       }
     >
-      <View style={styles.profileHeader}>
-        {/* Avatar */}
-        <View style={{ alignItems: "center", marginBottom: 16 }}>
-          <View style={styles.profileAvatarWrapper}>
-            {displayAvatarUrl ? (
-              <Image
-                source={{ uri: displayAvatarUrl }}
-                style={{ width: "100%", height: "100%" }}
-                resizeMode="cover"
-              />
-            ) : (
-              <View style={styles.profileAvatarFallback}>
-                <Text style={styles.profileAvatarInitial}>
-                  {(user.full_name || user.email || "C").charAt(0).toUpperCase()}
-                </Text>
-              </View>
-            )}
+      <View style={styles.profileHeaderCard}>
+        <View style={styles.profileIdentityRow}>
+          <View style={styles.profileAvatarColumn}>
+            <Pressable onPress={pickClientAvatar} style={styles.profileAvatarWrapper}>
+              {displayAvatarUrl ? (
+                <Image
+                  source={{ uri: displayAvatarUrl }}
+                  style={styles.profileAvatarImage}
+                  resizeMode="cover"
+                />
+              ) : (
+                <View style={styles.profileAvatarFallback}>
+                  <Text style={styles.profileAvatarInitial}>
+                    {(user.full_name || user.email || "C").charAt(0).toUpperCase()}
+                  </Text>
+                </View>
+              )}
+            </Pressable>
+            <TouchableOpacity
+              onPress={pickClientAvatar}
+              style={styles.profileAvatarLink}
+            >
+              <Text style={styles.profileAvatarLinkText}>
+                Change profile picture
+              </Text>
+            </TouchableOpacity>
           </View>
 
-          <TouchableOpacity onPress={pickClientAvatar} style={{ marginTop: 8 }}>
-            <Text
-              style={{
-                color: "#007AFF",
-                fontWeight: "500",
-              }}
-            >
-              Change profile picture
+          <View style={styles.profileIdentityText}>
+            <Text style={styles.profileName}>
+              {user.full_name || "My Profile"}
             </Text>
-          </TouchableOpacity>
-        </View>
-
-
-        {/* Name + role */}
-        <View style={{ flex: 1, marginLeft: 12 }}>
-          <Text style={styles.profileTitle}>
-            {user.full_name || "My Profile"}
-          </Text>
-          <View
-            style={[
-              styles.roleBadge,
-              isAdmin
-                ? styles.roleBadgeAdmin
-                : isProvider
-                ? styles.roleBadgeProvider
-                : styles.roleBadgeClient,
-            ]}
-          >
-            <Text style={styles.roleBadgeText}>{role}</Text>
+            <Text style={styles.profileEmail}>{user.email}</Text>
+            <View
+              style={[
+                styles.roleBadge,
+                isAdmin
+                  ? styles.roleBadgeAdmin
+                  : isProvider
+                  ? styles.roleBadgeProvider
+                  : styles.roleBadgeClient,
+              ]}
+            >
+              <Text style={styles.roleBadgeText}>{role}</Text>
+            </View>
           </View>
         </View>
       </View>
@@ -1649,36 +1679,51 @@ function ProfileScreen({ apiClient, authLoading, setToken, showFlash, token }) {
         </View>
       )}
 
-      <View style={styles.card}>
-        <Text style={styles.label}>Email</Text>
-        <Text style={styles.value}>{user.email}</Text>
+      {hasContactDetails && (
+        <View style={styles.card}>
+          <Text style={styles.sectionTitle}>Contact</Text>
+          {user.phone && (
+            <>
+              <Text style={styles.label}>Phone</Text>
+              <Text style={styles.value}>{user.phone}</Text>
+            </>
+          )}
 
-        {user.phone && (
-          <>
-            <Text style={[styles.label, { marginTop: 16 }]}>Phone</Text>
-            <Text style={styles.value}>{user.phone}</Text>
-          </>
-        )}
-
-        {user.location && (
-          <>
-            <Text style={[styles.label, { marginTop: 16 }]}>Location</Text>
-            <Text style={styles.value}>{user.location}</Text>
-          </>
-        )}
-      </View>
-
-      {isAdmin && (
-        <View style={styles.adminBox}>
-          <Text style={styles.adminTitle}>Admin tools</Text>
-          <Text style={styles.adminText}>
-            You are logged in as an admin. In future versions, this area will
-            let you manage users, providers and bookings.
-          </Text>
+          {user.location && (
+            <>
+              <Text style={[styles.label, { marginTop: 12 }]}>Location</Text>
+              <Text style={styles.value}>{user.location}</Text>
+            </>
+          )}
         </View>
       )}
 
-            {showEdit && (
+      <View style={styles.profileSection}>
+        <Text style={styles.profileSectionTitle}>Account</Text>
+        <View style={styles.sectionCard}>
+          <ListRow
+            title={showEdit ? "Hide edit profile" : "Edit profile"}
+            icon="person-outline"
+            onPress={toggleEditProfile}
+          />
+          <ListRow
+            title="Payment methods"
+            icon="card-outline"
+            onPress={() => handleComingSoon("Payment methods")}
+            isLast={!isAdmin}
+          />
+          {isAdmin && (
+            <ListRow
+              title="Admin dashboard"
+              icon="shield-checkmark-outline"
+              onPress={() => handleComingSoon("Admin dashboard")}
+              isLast
+            />
+          )}
+        </View>
+      </View>
+
+      {showEdit && (
         <View style={styles.card}>
           <Text style={styles.sectionTitle}>Edit profile</Text>
 
@@ -1727,12 +1772,32 @@ function ProfileScreen({ apiClient, authLoading, setToken, showFlash, token }) {
         </View>
       )}
 
-              {showBookings && (
-            <View style={styles.card}>
-              <Text style={styles.sectionTitle}>My bookings</Text>
+      <View style={styles.profileSection}>
+        <Text style={styles.profileSectionTitle}>Activity</Text>
+        <View style={styles.sectionCard}>
+          {showActivityBookings && (
+            <ListRow
+              title={showBookings ? "Hide my bookings" : "My bookings"}
+              icon="calendar-outline"
+              onPress={toggleMyBookings}
+              isLast={false}
+            />
+          )}
+          <ListRow
+            title="Favorites"
+            icon="heart-outline"
+            onPress={() => handleComingSoon("Favorites")}
+            isLast
+          />
+        </View>
+      </View>
 
-              {!bookingsLoading &&
-                !bookingsError &&
+      {showBookings && (
+        <View style={styles.card}>
+          <Text style={styles.sectionTitle}>My bookings</Text>
+
+          {!bookingsLoading &&
+            !bookingsError &&
             bookings.length > 0 && (
               <>
                 {bookings.map((b) => (
@@ -1747,7 +1812,6 @@ function ProfileScreen({ apiClient, authLoading, setToken, showFlash, token }) {
 
                     {b.status === "confirmed" && (
                       <View style={styles.myBookingActions}>
-                        {/* Centered pill button */}
                         <View style={styles.navigateButtonContainer}>
                           <TouchableOpacity
                             style={styles.navigateButton}
@@ -1757,7 +1821,6 @@ function ProfileScreen({ apiClient, authLoading, setToken, showFlash, token }) {
                           </TouchableOpacity>
                         </View>
 
-                        {/* Cancel text under the button */}
                         <TouchableOpacity
                           style={styles.myBookingCancelWrapper}
                           onPress={() => handleClientCancelBooking(b.id)}
@@ -1770,60 +1833,44 @@ function ProfileScreen({ apiClient, authLoading, setToken, showFlash, token }) {
                 ))}
               </>
             )}
-          </View>
+        </View>
       )}
 
-
-
-
-
-      <View style={styles.actionsContainer}>
-        <Text style={styles.sectionTitle}>Actions</Text>
-
-        {/* Edit profile */}
-        <TouchableOpacity
-          style={styles.actionButton}
-          onPress={toggleEditProfile}
-        >
-          <Text style={styles.actionButtonText}>
-            {showEdit ? "Hide edit profile" : "Edit profile"}
-          </Text>
-        </TouchableOpacity>
-
-        {/* My bookings – only for clients (non-providers) */}
-        {!isProvider && (
-          <TouchableOpacity
-            style={styles.actionButton}
-            onPress={toggleMyBookings}
-          >
-            <Text style={styles.actionButtonText}>
-              {showBookings ? "Hide my bookings" : "My bookings"}
-            </Text>
-          </TouchableOpacity>
-        )}
-
-        {/* Admin tools */}
-        {isAdmin && (
-          <TouchableOpacity
-              style={styles.actionButton}
-              onPress={() => handleComingSoon("Admin dashboard")}
-            >
-            <Text style={styles.actionButtonText}>Admin dashboard</Text>
-          
-          
-          </TouchableOpacity>
-        )}
-
-        {/* Logout */}
-        <TouchableOpacity
-          style={[styles.actionButton, styles.logoutButton]}
-          onPress={logout}
-        >
-          <Text style={[styles.actionButtonText, styles.logoutButtonText]}>
-            Logout
-          </Text>
-        </TouchableOpacity>
+      <View style={styles.profileSection}>
+        <Text style={styles.profileSectionTitle}>Support</Text>
+        <View style={styles.sectionCard}>
+          <ListRow
+            title="Help"
+            icon="help-circle-outline"
+            onPress={() => handleComingSoon("Help")}
+          />
+          <ListRow
+            title="Terms of service"
+            icon="document-text-outline"
+            onPress={() => handleComingSoon("Terms of service")}
+          />
+          <ListRow
+            title="Privacy policy"
+            icon="lock-closed-outline"
+            onPress={() => handleComingSoon("Privacy policy")}
+            isLast
+          />
+        </View>
       </View>
+
+      {isAdmin && (
+        <View style={styles.adminBox}>
+          <Text style={styles.adminTitle}>Admin tools</Text>
+          <Text style={styles.adminText}>
+            You are logged in as an admin. In future versions, this area will
+            let you manage users, providers and bookings.
+          </Text>
+        </View>
+      )}
+
+      <TouchableOpacity style={styles.logoutRow} onPress={logout}>
+        <Text style={styles.logoutRowText}>Logout</Text>
+      </TouchableOpacity>
 
     </ScrollView>
     
@@ -6582,20 +6629,47 @@ cardHeartButton: {
   },
   profileScroll: {
     flexGrow: 1,
-    backgroundColor: "#f0fdf4",
+    backgroundColor: "#f8fafc",
     padding: 20,
-    paddingTop: 60,
+    paddingTop: 32,
   },
-  profileHeader: {
+  profileHeaderCard: {
+    backgroundColor: "#ffffff",
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: "#e5e7eb",
+  },
+  profileIdentityRow: {
     flexDirection: "row",
-    justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 20,
   },
-  profileTitle: {
-    fontSize: 28,
+  profileAvatarColumn: {
+    alignItems: "center",
+    marginRight: 16,
+  },
+  profileIdentityText: {
+    flex: 1,
+  },
+  profileName: {
+    fontSize: 22,
     fontWeight: "700",
-    color: "#166534",
+    color: "#0f172a",
+  },
+  profileEmail: {
+    fontSize: 14,
+    color: "#64748b",
+    marginTop: 4,
+    marginBottom: 8,
+  },
+  profileAvatarLink: {
+    marginTop: 8,
+  },
+  profileAvatarLinkText: {
+    fontSize: 12,
+    fontWeight: "500",
+    color: "#2563eb",
   },
   roleBadge: {
     paddingHorizontal: 10,
@@ -6619,6 +6693,53 @@ cardHeartButton: {
     fontSize: 12,
     fontWeight: "600",
     color: "#111827",
+  },
+  profileSection: {
+    marginBottom: 16,
+  },
+  profileSectionTitle: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#0f172a",
+    marginBottom: 10,
+  },
+  sectionCard: {
+    backgroundColor: "#ffffff",
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "#e5e7eb",
+    overflow: "hidden",
+  },
+  listRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: "#e5e7eb",
+  },
+  listRowLast: {
+    borderBottomWidth: 0,
+  },
+  listRowDisabled: {
+    opacity: 0.6,
+  },
+  listRowLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  listRowIcon: {
+    marginRight: 10,
+  },
+  listRowTitle: {
+    fontSize: 15,
+    fontWeight: "500",
+    color: "#111827",
+  },
+  listRowChevron: {
+    fontSize: 18,
+    color: "#94a3b8",
   },
   card: {
     backgroundColor: "#ffffff",
@@ -6799,6 +6920,20 @@ cardHeartButton: {
     marginTop: 10,
   },
   logoutButtonText: {
+    color: "#b91c1c",
+  },
+  logoutRow: {
+    marginTop: 8,
+    paddingVertical: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#fecaca",
+    backgroundColor: "#ffffff",
+    alignItems: "center",
+  },
+  logoutRowText: {
+    fontSize: 15,
+    fontWeight: "600",
     color: "#b91c1c",
   },
 
@@ -7673,9 +7808,9 @@ billingTotalsValue: {
   },
 
     profileAvatarWrapper: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
+    width: 80,
+    height: 80,
+    borderRadius: 40,
     backgroundColor: "#dcfce7",
     alignItems: "center",
     justifyContent: "center",
@@ -7686,15 +7821,15 @@ billingTotalsValue: {
     height: "100%",
   },
   profileAvatarFallback: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
+    width: 80,
+    height: 80,
+    borderRadius: 40,
     backgroundColor: "#dcfce7",
     alignItems: "center",
     justifyContent: "center",
   },
   profileAvatarInitial: {
-    fontSize: 26,
+    fontSize: 28,
     fontWeight: "700",
     color: "#166534",
   },
