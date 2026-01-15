@@ -1,112 +1,133 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
 diff --git a/mobile/App.js b/mobile/App.js
-index 844728b3f3dca1f205ff0aa81e45d5791da0fc10..94a7e81559126e08be4832e0b6f320bb6e1ac0f8 100644
+index 771c972d3d79fe5360a7c17cf744fe96fcf76320..4c9143cfd4ec4f0b72eec7dd7ee6cc81e0575568 100644
 --- a/mobile/App.js
 +++ b/mobile/App.js
-@@ -4227,65 +4227,99 @@ const to24Hour = (time12) => {
-     // Reset form + close add UI
-     resetForm();
-     setAdding(false);
- 
-     // Optional: background refresh to stay in sync with backend
-     loadServices();
-   } catch (err) {
-     console.log("Error creating service", err.response?.data || err.message);
-     if (showFlash) {
-       const detail =
-         err.response?.data?.detail || "Could not create service.";
-       showFlash("error", detail);
+@@ -6078,113 +6078,118 @@ function App() {
+       if (typeof text.detail === "string") return text.detail;
+       if (typeof text.message === "string") return text.message;
+       if (typeof text.msg === "string") return text.msg;
+       return JSON.stringify(text);
      }
-   }
- };
  
+     return String(text);
+   };
  
-   const handleDeleteService = async (serviceId) => {
-     try {
-       const authToken = await getAuthToken(token);
-       if (!authToken) {
-         if (showFlash) showFlash("error", "No access token found.");
+   const showFlash = (type, text) => {
+     setFlash({ type, text: formatFlashText(text) });
+     setTimeout(() => {
+       setFlash(null);
+     }, 4500);
+   };
+ 
+   useEffect(() => {
+     tokenRef.current = token;
+   }, [token]);
+ 
+   useEffect(() => {
+     let isActive = true;
+ 
+     Linking.getInitialURL().then((url) => {
+       if (!isActive) return;
+-      const didNavigate = false;
++      let didNavigate = false;
+       console.log("[deeplink] received initial url", url);
+       const username = extractUsernameFromUrl(url);
+       console.log("[deeplink] extracted username", username);
++      if (username) {
++        if (tokenRef.current && !tokenRef.current.isProvider) {
++          didNavigate = navigateToClientSearch(username, navigationRef);
++          setPendingDeepLinkUsername(null);
++        } else {
++          setPendingDeepLinkUsername({ username, nonce: Date.now() });
++        }
++      }
+       console.log(
+         "[deeplink] initial url",
+         url,
+         "username",
+         username,
+         "immediateNavigate",
+         didNavigate
+       );
+-      if (username) {
+-        setPendingDeepLinkUsername(username);
+-      }
+     });
+ 
+     const sub = Linking.addEventListener("url", ({ url }) => {
+       let didNavigate = false;
+       console.log("[deeplink] received url event", url);
+       const username = extractUsernameFromUrl(url);
+       console.log("[deeplink] extracted username", username);
+       if (username) {
+         if (tokenRef.current && !tokenRef.current.isProvider) {
+           didNavigate = navigateToClientSearch(username, navigationRef);
+           setPendingDeepLinkUsername(null);
+         } else {
+-          setPendingDeepLinkUsername(username);
++          setPendingDeepLinkUsername({ username, nonce: Date.now() });
+         }
+       }
+       console.log(
+         "[deeplink] url event",
+         url,
+         "username",
+         username,
+         "immediateNavigate",
+         didNavigate
+       );
+     });
+ 
+     return () => {
+       isActive = false;
+       sub.remove();
+     };
+   }, []);
+ 
+   useEffect(() => {
+     if (!pendingDeepLinkUsername || !token) return;
+ 
+     if (token.isProvider) {
+       console.log(
+         "[deeplink] provider user ignoring username",
+         pendingDeepLinkUsername
+       );
+       if (showFlash) {
+         showFlash("error", "Open as a client to view provider links.");
+       }
+       setPendingDeepLinkUsername(null);
+       return;
+     }
+ 
+     const didNavigate = navigateToClientSearch(
+-      pendingDeepLinkUsername,
++      pendingDeepLinkUsername.username,
+       navigationRef
+     );
+     console.log(
+       "[deeplink] pending username",
+       pendingDeepLinkUsername,
+       "navigate",
+       didNavigate
+     );
+     setPendingDeepLinkUsername(null);
+   }, [pendingDeepLinkUsername, token, showFlash]);
+ 
+   useEffect(() => {
+     let isActive = true;
+     const restoreSession = async () => {
+       if (authBootstrapRef.current.inFlight || authBootstrapRef.current.completed) {
          return;
        }
- 
--      await axios.delete(`${API}/providers/me/services/${serviceId}`, {
-+      const res = await axios.delete(`${API}/providers/me/services/${serviceId}`, {
-         headers: {
-           Authorization: `Bearer ${authToken}`,
-         },
-       });
- 
-+      const responseData = res?.data || {};
-+      const responseStatus = `${responseData.status || responseData.result || ""}`.toLowerCase();
-+      const responseMessage =
-+        responseData.detail || responseData.message || responseData.error || "";
-+      const responseText = `${responseStatus} ${responseMessage}`.toLowerCase();
-+      const hasBookings = responseText.includes("booking");
-+
-       if (showFlash) {
--        showFlash("success", "Service deleted");
-+        if (hasBookings) {
-+          showFlash(
-+            "info",
-+            "This service has bookings and was archived instead."
-+          );
-+        } else {
-+          showFlash("success", "Service removed from your list.");
-+        }
-       }
- 
--      setServices((prev) => prev.filter((s) => s.id !== serviceId));
-+      await loadServices();
-     } catch (err) {
-       console.log("Error deleting service", err.response?.data || err.message);
-+      const status = err.response?.status;
-+      const detail =
-+        err.response?.data?.detail ||
-+        err.response?.data?.message ||
-+        err.response?.data?.error ||
-+        "";
-+      const hasBookings =
-+        status === 409 || String(detail).toLowerCase().includes("booking");
-+
-+      if (hasBookings) {
-+        if (showFlash) {
-+          showFlash(
-+            "info",
-+            "This service has bookings and was archived instead."
-+          );
-+        }
-+        await loadServices();
-+        return;
-+      }
-+
-       if (showFlash) {
--        showFlash("error", "Could not delete service.");
-+        showFlash("error", detail || "Could not delete service.");
-       }
-     }
-   };
- 
- 
-   const todayBookingsCount = () => {
-     if (!bookings || bookings.length === 0) return 0;
- 
-     const now = new Date();
-     const y = now.getFullYear();
-     const m = now.getMonth();
-     const d = now.getDate();
- 
-     return bookings.filter((b) => {
-       const start = new Date(b.start_time);
-       return (
-         start.getFullYear() === y &&
-         start.getMonth() === m &&
-         start.getDate() === d
-       );
-     }).length;
-   };
- 
- const loadProviderProfile = async () => {
-   try {
+       authBootstrapRef.current.inFlight = true;
+       const bootstrapStartedAt = Date.now();
+       console.log("[auth] bootstrap start");
+       try {
+         const restoredToken = await withTimeout(
+           getAuthToken(),
+           AUTH_TOKEN_TIMEOUT_MS,
+           "getAuthToken"
  
 EOF
 )
