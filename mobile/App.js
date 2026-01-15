@@ -4688,24 +4688,19 @@ const loadProviderSummary = async () => {
           <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
         }
       >
-<<<<<<< ours
         <View style={styles.homeHeader}>
+          <View style={styles.headerLogoRow}>
+            <View style={styles.headerLogoWrapper}>
+              <Image
+                source={BookitGYLogoTransparent}
+                style={styles.headerLogo}
+              />
+            </View>
+            <View style={styles.headerLogoSpacer} />
+          </View>
           <Text style={styles.homeGreeting}>Provider dashboard</Text>
           <Text style={styles.homeSubtitle}>Welcome, {providerLabel}</Text>
         </View>
-=======
-        <View style={styles.headerLogoRow}>
-          <View style={styles.headerLogoWrapper}>
-            <Image
-              source={BookitGYLogoTransparent}
-              style={styles.headerLogo}
-            />
-          </View>
-          <View style={styles.headerLogoSpacer} />
-        </View>
-        <Text style={styles.profileTitle}>Provider dashboard</Text>
-        <Text style={styles.subtitleSmall}>Welcome, {providerLabel}</Text>
->>>>>>> theirs
     
         {/*Account Info */}
         {providerSummary && (
