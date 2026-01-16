@@ -1,124 +1,93 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
 diff --git a/mobile/App.js b/mobile/App.js
-index 3792d7ccf3b34ad39e1fc16e6c8f6952b14ed014..083ddf5655c1fa3fad463b549226bd9ea7e4d720 100644
+index 083ddf5655c1fa3fad463b549226bd9ea7e4d720..cdd0c646fa080ea1e71aed86fc5857da06bad41c 100644
 --- a/mobile/App.js
 +++ b/mobile/App.js
-@@ -1929,55 +1929,57 @@ function ProfileScreen({ apiClient, authLoading, setToken, showFlash, token }) {
+@@ -1311,66 +1311,69 @@ function ProfileScreen({ apiClient, authLoading, setToken, showFlash, token }) {
+       console.log("[profile] save changes pressed");
+       setEditSaving(true);
+       const storedToken = await loadToken();
+       console.log("[profile] API base URL", API);
+       if (!storedToken) {
+         if (showFlash) showFlash("error", "No access token found. Please log in again.");
+         return;
+       }
  
- function ClientHomeScreen({
-   navigation,
-   token,
-   favoriteProviders,
-   favoriteIds,
-   favoritesLoading,
-   toggleFavorite,
-   isFavorite,
-   syncFavoritesFromList,
-   refreshFavoriteProviders,
-   }) {
-  const [nearbyProviders, setNearbyProviders] = useState([]);
-   const [currentProvider, setCurrentProvider] = useState(null);
-   const [nearbyLoading, setNearbyLoading] = useState(true);
-   const [nearbyError, setNearbyError] = useState("");
-   const [refreshing, setRefreshing] = useState(false);
-   const [searchText, setSearchText] = useState("");
+       const payload = {
+         full_name: editProfile.full_name,
+         phone: editProfile.phone,
+         whatsapp: editProfile.whatsapp,
+         location: editProfile.location,
+       };
  
-   const quickCategories = useMemo(
-     () => ["Barber", "Hair", "Nails", "Massage", "Makeup", "Lash", "Tutor"],
-     []
-   );
+       console.log("[profile] save payload", payload);
+       console.log("[profile] auth token present", Boolean(storedToken));
+       const res = await apiClient.put("/users/me", payload, {
+         headers: {
+           Authorization: `Bearer ${storedToken}`,
+         },
+       });
+       console.log("[profile] save response status", res?.status);
  
-   const greetingName = useMemo(() => {
--    const firstName = token?.firstName || token?.first_name;
--    if (firstName) return firstName;
--    if (token?.email) return token.email;
--    return "there";
--  }, [token?.email, token?.firstName, token?.first_name]);
-+    const username = token?.user?.username || token?.username;
-+    if (username?.trim()) return username.trim();
-+    const emailPrefix = token?.email?.split("@")?.[0];
-+    return emailPrefix?.trim() || "";
-+  }, [token?.email, token?.user?.username, token?.username]);
-+
-+  const greetingText = greetingName ? `Hi, ${greetingName}` : "Hi";
++      const meRes = await apiClient.get("/users/me");
++      console.log("[profile] refresh response status", meRes?.status);
  
-   const haversineKm = (lat1, lon1, lat2, lon2) => {
-     if (
-       lat1 == null ||
-       lon1 == null ||
-       lat2 == null ||
-       lon2 == null
-     ) {
-       return null;
+-      // Refresh local user state so top card updates
+-      const updatedProfile = {
+-        full_name: res.data?.full_name ?? payload.full_name,
+-        phone: res.data?.phone ?? payload.phone,
+-        whatsapp: res.data?.whatsapp ?? payload.whatsapp,
+-        location: res.data?.location ?? payload.location,
+-      };
+-      setUser((prev) => ({
+-        ...prev,
+-        ...updatedProfile,
+-      }));
+-      setEditProfile((prev) => ({
+-        ...prev,
+-        ...updatedProfile,
+-      }));
++      setUser(meRes.data);
++      setEditProfile({
++        full_name: meRes.data?.full_name || "",
++        phone: meRes.data?.phone || "",
++        whatsapp: meRes.data?.whatsapp || "",
++        location: meRes.data?.location || "",
++      });
++      if (setToken) {
++        setToken((prev) => ({
++          ...(prev || {}),
++          email: meRes.data?.email,
++          username: meRes.data?.username,
++          isProvider: !!meRes.data?.is_provider,
++          isAdmin: !!meRes.data?.is_admin,
++        }));
++      }
+ 
+       if (showFlash) showFlash("success", "Profile updated");
+       setShowEdit(false);
+     } catch (err) {
+       console.log("[profile] error saving profile", {
+         status: err.response?.status,
+         data: err.response?.data,
+         message: err.message,
+       });
+       const detail =
+         err.response?.data?.detail || "Could not save profile changes.";
+       if (showFlash) showFlash("error", detail);
+     } finally {
+       setEditSaving(false);
      }
-     const toRad = (v) => (v * Math.PI) / 180;
-     const R = 6371; // km
-     const dLat = toRad(lat2 - lat1);
-     const dLon = toRad(lon2 - lon1);
-     const a =
-       Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-       Math.cos(toRad(lat1)) *
-         Math.cos(toRad(lat2)) *
-         Math.sin(dLon / 2) *
-         Math.sin(dLon / 2);
-     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-     return R * c;
    };
  
-   const loadNearbyProviders = useCallback(async () => {
-@@ -2071,51 +2073,51 @@ function ClientHomeScreen({
-     },
-     [navigation]
-   );
  
-   useEffect(() => {
-     refreshFavoriteProviders();
-   }, [refreshFavoriteProviders]);
+   const handleComingSoon = (label) => {
+     if (showFlash) {
+       showFlash("info", `${label} coming soon`);
+     }
+   };
  
-   return (
-     <View style={styles.homeWrapper}>
-         <View style={styles.pinnedHeader}>
-           <SafeAreaView style={styles.pinnedHeaderSafeArea}>
-             <Image
-               source={BookitGYLogoTransparent}
-               style={styles.headerLogo}
-             />
-           </SafeAreaView>
-         </View>
-       <ScrollView
-         contentContainerStyle={styles.homeScroll}
-         refreshControl={
-           <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
-         }
-       >
-         <View style={styles.homeHeader}>
--          <Text style={styles.homeGreeting}>Hi, {greetingName}</Text>
-+          <Text style={styles.homeGreeting}>{greetingText}</Text>
-           <Text style={styles.homeSubtitle}>
-             What are you looking for today?
-           </Text>
-         </View>
- 
-         <View style={styles.searchBar}>
-           <Ionicons name="search-outline" size={20} color={colors.textMuted} />
-           <TextInput
-             style={styles.searchInput}
-             placeholder="Search by profession, provider, or service"
-             placeholderTextColor={colors.textSecondary}
-             value={searchText}
-             onChangeText={setSearchText}
-             onFocus={() => handleSearchNavigate(searchText)}
-             onSubmitEditing={() => handleSearchNavigate(searchText)}
-             returnKeyType="search"
-           />
-         </View>
- 
-         <View style={styles.quickCategorySection}>
-           <Text style={styles.sectionTitle}>Quick Categories</Text>
-           <ScrollView
-             horizontal
-             showsHorizontalScrollIndicator={false}
-             contentContainerStyle={styles.quickCategoryList}
+   const formatBookingDate = (iso) => {
  
 EOF
 )

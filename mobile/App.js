@@ -1333,22 +1333,25 @@ function ProfileScreen({ apiClient, authLoading, setToken, showFlash, token }) {
       });
       console.log("[profile] save response status", res?.status);
 
+      const meRes = await apiClient.get("/users/me");
+      console.log("[profile] refresh response status", meRes?.status);
 
-      // Refresh local user state so top card updates
-      const updatedProfile = {
-        full_name: res.data?.full_name ?? payload.full_name,
-        phone: res.data?.phone ?? payload.phone,
-        whatsapp: res.data?.whatsapp ?? payload.whatsapp,
-        location: res.data?.location ?? payload.location,
-      };
-      setUser((prev) => ({
-        ...prev,
-        ...updatedProfile,
-      }));
-      setEditProfile((prev) => ({
-        ...prev,
-        ...updatedProfile,
-      }));
+      setUser(meRes.data);
+      setEditProfile({
+        full_name: meRes.data?.full_name || "",
+        phone: meRes.data?.phone || "",
+        whatsapp: meRes.data?.whatsapp || "",
+        location: meRes.data?.location || "",
+      });
+      if (setToken) {
+        setToken((prev) => ({
+          ...(prev || {}),
+          email: meRes.data?.email,
+          username: meRes.data?.username,
+          isProvider: !!meRes.data?.is_provider,
+          isAdmin: !!meRes.data?.is_admin,
+        }));
+      }
 
       if (showFlash) showFlash("success", "Profile updated");
       setShowEdit(false);
