@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
-import { useFocusEffect } from "@react-navigation/native";
 import {
   Text,
   View,
@@ -22,7 +21,13 @@ import {
   Share,
   AppState,
 } from "react-native";
-import { NavigationContainer } from "@react-navigation/native";
+import {
+  NavigationContainer,
+  CommonActions,
+  TabActions,
+  useFocusEffect,
+  useIsFocused,
+} from "@react-navigation/native";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { enableScreens } from "react-native-screens";
 import axios from "axios";
@@ -207,12 +212,21 @@ function buildProviderPublicLink(username) {
   return `https://bookitgy.com/u/${encodeURIComponent(trimmed)}`;
 }
 
-function navigateToClientSearch(username, navigationRef) {
+function navigateToClientSearch(username, navigationRef, nonce) {
   if (!navigationRef?.current) return false;
 
   const params = { incomingUsername: username, deeplinkNonce: Date.now() };
-  console.log("[deeplink] navigateToClientSearch", username, params.deeplinkNonce);
-  navigationRef.current.navigate("Search", params);
+
+  navigationRef.current.reset({
+    index: 1,
+    routes: [
+      { name: "Home" },
+      { name: "Search", params },
+      { name: "Appointments" },
+      { name: "Profile" },
+    ],
+  });
+
   return true;
 }
 
@@ -2737,17 +2751,24 @@ function SearchScreen({ token, showFlash, navigation, route, toggleFavorite, isF
   const [hasSearched, setHasSearched] = useState(false); // 👈 NEW
   const [refreshing, setRefreshing] = useState(false);
   const [shouldScrollToResults, setShouldScrollToResults] = useState(false);
+  const isFocused = useIsFocused();
   const scrollRef = useRef(null);
   const resultsOffset = useRef(0);
   //Radius 
   const distanceChips = [0, 5, 10, 15, 20];
 
   useEffect(() => {
+    if (!isFocused) return;
     if (!incomingUsername) return;
+    console.log(
+      "[deeplink] consumed in SearchScreen",
+      incomingUsername,
+      deeplinkNonce
+    );
     setSearchQuery(incomingUsername);
     setHasSearched(true);
     setShouldScrollToResults(true);
-  }, [incomingUsername, deeplinkNonce]);
+  }, [isFocused, incomingUsername, deeplinkNonce]);
 
   const haversineKm = (lat1, lon1, lat2, lon2) => {
     if (
@@ -6105,7 +6126,7 @@ function App() {
   const navigationRef = useRef(null);
   const authBootstrapRef = useRef({ inFlight: false, completed: false });
   const tokenRef = useRef(token);
-  const lastHandledUrlRef = useRef(null);
+  const lastDeeplinkHandledAtRef = useRef(0);
 
   const [flash, setFlash] = useState(null);
   const handleUnauthorized = useCallback(async () => {
@@ -6194,28 +6215,16 @@ function App() {
       return false;
     }
     if (DEEPLINK_DEBUG) showFlash("success", `[DL] user: ${username}`);
-    if (url) {
-      lastHandledUrlRef.current = url;
-    }
+    lastDeeplinkHandledAtRef.current = Date.now();
 
     if (tokenRef.current?.isProvider === true) {
       showFlash("error", "Open as a client to view provider links.");
       return true;
     }
 
-    if (
-      tokenRef.current &&
-      tokenRef.current.isProvider === false &&
-      navReadyRef.current === true &&
-      navigationRef.current
-    ) {
-      if (DEEPLINK_DEBUG) showFlash("success", `[DL] nav Search: ${username}`);
-      navigateToClientSearch(username, navigationRef);
-      setPendingDeepLinkUsername(null);
-      return true;
-    }
-
-    setPendingDeepLinkUsername({ username, nonce: Date.now() });
+    const queued = { username, nonce: Date.now() };
+    console.log("[deeplink] queued", queued.username, queued.nonce);
+    setPendingDeepLinkUsername(queued);
     return true;
   }, [showFlash]);
 
@@ -6228,12 +6237,11 @@ function App() {
       if (DEEPLINK_DEBUG) {
         showFlash("info", `[DL] getInitialURL: ${url || "(null)"}`);
       }
-      if (url && url !== lastHandledUrlRef.current) {
-        handleIncomingUrl(url, "initial");
-      }
+      if (url) handleIncomingUrl(url, "initial");
     });
 
     const sub = Linking.addEventListener("url", ({ url }) => {
+      console.log("[deeplink] url event", url);
       handleIncomingUrl(url, "event");
     });
 
@@ -6246,14 +6254,12 @@ function App() {
   useEffect(() => {
     const sub = AppState.addEventListener("change", (nextState) => {
       if (nextState !== "active") return;
-      console.log("[deeplink] AppState active handler");
       Linking.getInitialURL().then((url) => {
         console.log("[deeplink] getInitialURL (active)", url);
         if (DEEPLINK_DEBUG) {
           showFlash("info", `[DL] getInitialURL(active): ${url || "(null)"}`);
         }
-        const username = extractUsernameFromUrl(url);
-        if (!username) return;
+        if (!url || url === lastHandledUrlRef.current) return;
         handleIncomingUrl(url, "appstate-active");
       });
     });
@@ -6276,7 +6282,8 @@ function App() {
 
     const ok = navigateToClientSearch(
       pendingDeepLinkUsername.username,
-      navigationRef
+      navigationRef,
+      pendingDeepLinkUsername.nonce
     );
     console.log(
       "[deeplink] pending navigate attempt",
