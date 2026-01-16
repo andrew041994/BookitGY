@@ -205,36 +205,14 @@ function navigateToClientSearch(username, navigationRef) {
 
   const params = { incomingUsername: username, deeplinkNonce: Date.now() };
 
-  const rootState = navigationRef.current.getRootState?.();
-  const routeNames = rootState?.routeNames || [];
-
-  // If we have ClientTabs in the navigator tree, reset directly into it
-  // and land on Search with fresh params (forces navigation every time).
-  if (routeNames.includes("ClientTabs")) {
-    navigationRef.current.reset({
-      index: 0,
-      routes: [
-        {
-          name: "ClientTabs",
-          state: {
-            index: 1, // <-- put Search tab index here (0-based)
-            routes: [
-              { name: "Home" },
-              { name: "Search", params },
-              { name: "Appointments" },
-              { name: "Profile" },
-            ],
-          },
-        },
-      ],
-    });
-    return true;
-  }
-
-  // If not in tabs yet (e.g., auth stack), reset to Search directly.
   navigationRef.current.reset({
-    index: 0,
-    routes: [{ name: "Search", params }],
+    index: 1,
+    routes: [
+      { name: "Home" },
+      { name: "Search", params },
+      { name: "Appointments" },
+      { name: "Profile" },
+    ],
   });
 
   return true;
@@ -5841,7 +5819,15 @@ function ProviderBillingScreen({ token, showFlash }) {
 
 
 // Tabs after login
-function MainApp({ apiClient, authLoading, token, setToken, showFlash, navigationRef }) {
+function MainApp({
+  apiClient,
+  authLoading,
+  token,
+  setToken,
+  showFlash,
+  navigationRef,
+  setNavReady,
+}) {
   const {
     favoriteIds,
     favoriteProviders,
@@ -5855,6 +5841,7 @@ function MainApp({ apiClient, authLoading, token, setToken, showFlash, navigatio
 
     <NavigationContainer
       ref={navigationRef}
+      onReady={() => setNavReady(true)}
     >
       {token.isProvider ? (
         // 👇 Provider view: Dashboard + Billing + Profile
@@ -6103,6 +6090,7 @@ function App() {
   const [authMode, setAuthMode] = useState("landing"); // 'landing' | 'login' | 'signup' | 'forgot'
   const [isAdmin, setIsAdmin] = useState(false);
   const [pendingDeepLinkUsername, setPendingDeepLinkUsername] = useState(null);
+  const [navReady, setNavReady] = useState(false);
   const navigationRef = useRef(null);
   const authBootstrapRef = useRef({ inFlight: false, completed: false });
   const tokenRef = useRef(token);
@@ -6131,7 +6119,7 @@ function App() {
 
 
 
-  const formatFlashText = (text) => {
+  const formatFlashText = useCallback((text) => {
     if (typeof text === "string") return text;
     if (text == null) return "Something went wrong.";
 
@@ -6163,17 +6151,21 @@ function App() {
     }
 
     return String(text);
-  };
+  }, []);
 
-  const showFlash = (type, text) => {
+  const showFlash = useCallback((type, text) => {
     setFlash({ type, text: formatFlashText(text) });
     setTimeout(() => {
       setFlash(null);
     }, 4500);
-  };
+  }, [formatFlashText]);
 
   useEffect(() => {
     tokenRef.current = token;
+  }, [token]);
+
+  useEffect(() => {
+    if (!token) setNavReady(false);
   }, [token]);
 
   useEffect(() => {
@@ -6181,84 +6173,105 @@ function App() {
 
     Linking.getInitialURL().then((url) => {
       if (!isActive) return;
-      let didNavigate = false;
       console.log("[deeplink] received initial url", url);
       const username = extractUsernameFromUrl(url);
-      console.log("[deeplink] extracted username", username);
-      if (username) {
-        if (tokenRef.current && !tokenRef.current.isProvider) {
-          didNavigate = navigateToClientSearch(username, navigationRef);
-          setPendingDeepLinkUsername(null);
+      console.log(
+        "[deeplink] parsed username",
+        username,
+        "hasToken",
+        !!tokenRef.current,
+        "isProvider",
+        tokenRef.current?.isProvider,
+        "navReady",
+        navReady
+      );
+      if (!username) return;
+      if (tokenRef.current?.isProvider === true) {
+        showFlash("error", "Open as a client to view provider links.");
+        setPendingDeepLinkUsername(null);
+        return;
+      }
+      if (tokenRef.current && tokenRef.current.isProvider === false) {
+        if (navReady) {
+          const ok = navigateToClientSearch(username, navigationRef);
+          if (!ok) {
+            setPendingDeepLinkUsername({ username, nonce: Date.now() });
+          } else {
+            setPendingDeepLinkUsername(null);
+          }
         } else {
           setPendingDeepLinkUsername({ username, nonce: Date.now() });
         }
+        return;
       }
-      console.log(
-        "[deeplink] initial url",
-        url,
-        "username",
-        username,
-        "immediateNavigate",
-        didNavigate
-      );
+      setPendingDeepLinkUsername({ username, nonce: Date.now() });
     });
 
     const sub = Linking.addEventListener("url", ({ url }) => {
-      let didNavigate = false;
       console.log("[deeplink] received url event", url);
       const username = extractUsernameFromUrl(url);
-      console.log("[deeplink] extracted username", username);
-      if (username) {
-        if (tokenRef.current && !tokenRef.current.isProvider) {
-          didNavigate = navigateToClientSearch(username, navigationRef);
-          setPendingDeepLinkUsername(null);
+      console.log(
+        "[deeplink] parsed username",
+        username,
+        "hasToken",
+        !!tokenRef.current,
+        "isProvider",
+        tokenRef.current?.isProvider,
+        "navReady",
+        navReady
+      );
+      if (!username) return;
+      if (tokenRef.current?.isProvider === true) {
+        showFlash("error", "Open as a client to view provider links.");
+        setPendingDeepLinkUsername(null);
+        return;
+      }
+      if (tokenRef.current && tokenRef.current.isProvider === false) {
+        if (navReady) {
+          const ok = navigateToClientSearch(username, navigationRef);
+          if (!ok) {
+            setPendingDeepLinkUsername({ username, nonce: Date.now() });
+          } else {
+            setPendingDeepLinkUsername(null);
+          }
         } else {
           setPendingDeepLinkUsername({ username, nonce: Date.now() });
         }
+        return;
       }
-      console.log(
-        "[deeplink] url event",
-        url,
-        "username",
-        username,
-        "immediateNavigate",
-        didNavigate
-      );
+      setPendingDeepLinkUsername({ username, nonce: Date.now() });
     });
 
     return () => {
       isActive = false;
       sub.remove();
     };
-  }, []);
+  }, [navReady, showFlash]);
 
   useEffect(() => {
-    if (!pendingDeepLinkUsername || !token) return;
+    if (!pendingDeepLinkUsername) return;
+    if (!token) return;
+    if (!navReady) return;
+    if (!navigationRef.current) return;
 
     if (token.isProvider) {
-      console.log(
-        "[deeplink] provider user ignoring username",
-        pendingDeepLinkUsername.username
-      );
-      if (showFlash) {
-        showFlash("error", "Open as a client to view provider links.");
-      }
+      showFlash("error", "Open as a client to view provider links.");
       setPendingDeepLinkUsername(null);
       return;
     }
 
-    const didNavigate = navigateToClientSearch(
+    const ok = navigateToClientSearch(
       pendingDeepLinkUsername.username,
       navigationRef
     );
     console.log(
-      "[deeplink] pending username",
+      "[deeplink] pending navigate attempt",
       pendingDeepLinkUsername.username,
-      "navigate",
-      didNavigate
+      "ok",
+      ok
     );
-    setPendingDeepLinkUsername(null);
-  }, [pendingDeepLinkUsername, token, showFlash]);
+    if (ok) setPendingDeepLinkUsername(null);
+  }, [pendingDeepLinkUsername, token, navReady, showFlash]);
 
   useEffect(() => {
     let isActive = true;
@@ -6452,6 +6465,7 @@ function App() {
             setToken={setToken}
             showFlash={showFlash}
             navigationRef={navigationRef}
+            setNavReady={setNavReady}
           />
         )}
       </SafeAreaView>
