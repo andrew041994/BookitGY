@@ -1,130 +1,309 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
 diff --git a/mobile/App.js b/mobile/App.js
-index 126c4837736f627d16c9c3753b49696524e51789..81be0e080bb228b4fdd91134212f8bab023b9472 100644
+index 81be0e080bb228b4fdd91134212f8bab023b9472..6a7068ef5f73c30439ac20c88031c8e926aab769 100644
 --- a/mobile/App.js
 +++ b/mobile/App.js
-@@ -6061,50 +6061,52 @@ function FlashMessage({ flash }) {
+@@ -1,50 +1,50 @@
+ import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
+ import { useFocusEffect } from "@react-navigation/native";
+ import {
+   Text,
+   View,
+   StyleSheet,
+   TextInput,
+   Button,
+   Alert,
+   ActivityIndicator,
+   ScrollView,
+   TouchableOpacity,
+   Switch,
+   Linking,
+   Platform,
+   Image,
+   KeyboardAvoidingView,
+   TouchableWithoutFeedback,
+   Keyboard,
+   Pressable,
+   RefreshControl,
+   Share,
+   AppState,
+ } from "react-native";
+-import { NavigationContainer } from "@react-navigation/native";
++import { NavigationContainer, StackActions } from "@react-navigation/native";
+ import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
+ import { enableScreens } from "react-native-screens";
+ import axios from "axios";
+ import AsyncStorage from "@react-native-async-storage/async-storage";
+ import { clearToken, loadToken, saveToken } from "./src/components/tokenStorage";
+ import ProviderCard from "./src/components/ProviderCard";
+ import { createApiClient } from "./src/api/client";
+ import * as Location from "expo-location";
+ import Constants from "expo-constants";
+ import * as ImagePicker from "expo-image-picker";
+ import { Ionicons } from "@expo/vector-icons";
+ import { SafeAreaProvider,SafeAreaView } from "react-native-safe-area-context";
+ import BookitGYLogoTransparent from "./assets/bookitgy-logo-transparent.png"
+ import { theme } from "./src/theme";
+ // import * as Sentry from "sentry-expo";
  
-   const isError = flash.type === "error";
+ let Clipboard = null;
+ try {
+   Clipboard = require("expo-clipboard");
+ } catch (e) {}
  
-   const backgroundColor = isError ? colors.error : colors.success;
-   const borderColor = isError ? colors.error : colors.primaryPressed;
-   const textColor = colors.textPrimary;
+ enableScreens(false);
  
-   return (
  
-     <View
-       style={[
-         styles.flashContainer,
-         { backgroundColor, borderColor },
-       ]}
-     >
-       <Text style={[styles.flashText, { color: textColor }]}>
-         {flash.text}
-       </Text>
-     </View>
-   );
+ 
+@@ -72,50 +72,56 @@ const withTimeout = (promise, ms, label) => {
+       error.code = "ETIMEDOUT";
+       reject(error);
+     }, ms);
+   });
+ 
+   return Promise.race([promise, timeout]).finally(() => {
+     clearTimeout(timeoutId);
+   });
+ };
+ 
+ const AUTH_BOOTSTRAP_WATCHDOG_MS = 15000;
+ const AUTH_TOKEN_TIMEOUT_MS = 2000;
+ const AUTH_ME_TIMEOUT_MS = 12000;
+   const isValidEmail = (value) => {
+   const trimmed = value.trim();
+   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+   return emailRegex.test(trimmed);
+ };
+ 
+ const isValidUsername = (value) => {
+   const trimmed = String(value || "").trim();
+   if (!trimmed) return false;
+   return /^[a-zA-Z0-9._-]+$/.test(trimmed);
+ };
+ 
++const normalizeSearchValue = (value) =>
++  String(value || "")
++    .replace(/[\u200B-\u200D\uFEFF]/g, "")
++    .trim()
++    .toLowerCase();
++
+ const resolveImageUrl = (url) => {
+     if (!url || typeof url !== "string") return null;
+     if (url.startsWith("http")) return url;
+     if (url.startsWith("//")) return `https:${url}`;
+     const normalizedPath = url.startsWith("/") ? url : `/${url}`;
+     return `${API}${normalizedPath}`;
+   };
+ 
+ const LEGACY_ACCESS_TOKEN_KEY = "accessToken";
+ 
+ const getAuthToken = async (tokenState) => {
+   if (tokenState?.token) return tokenState.token;
+ 
+   try {
+     const secure = await withTimeout(loadToken(), 1500, "loadToken");
+     if (secure) return secure;
+   } catch (error) {
+     console.log("[auth] Failed to load secure token", error?.message || error);
+   }
+ 
+   try {
+     const legacy = await withTimeout(
+       AsyncStorage.getItem(LEGACY_ACCESS_TOKEN_KEY),
+       1500,
+       "loadLegacyToken"
+@@ -183,61 +189,67 @@ function extractUsernameFromUrl(url) {
+ 
+   if (!username) return null;
+ 
+   let decoded = username;
+   try {
+     decoded = decodeURIComponent(username);
+   } catch (error) {
+     decoded = username;
+   }
+ 
+   const cleaned = decoded.trim().replace(/^@/, "");
+   if (!cleaned || !isValidUsername(cleaned)) return null;
+   return cleaned;
+ }
+ 
+ function buildProviderPublicLink(username) {
+   const trimmed = String(username || "").trim();
+   if (!trimmed) return null;
+   return `https://bookitgy.com/u/${encodeURIComponent(trimmed)}`;
+ }
+ 
+ function navigateToClientSearch(username, navigationRef) {
+   if (!navigationRef?.current) return false;
+ 
+   const params = { incomingUsername: username, deeplinkNonce: Date.now() };
++  console.log("[deeplink] navigateToClientSearch", username, params.deeplinkNonce);
++  const navigation = navigationRef.current;
++  const rootState = navigation.getRootState?.();
++  const tabRouteNames = ["Home", "Search", "Appointments", "Profile"];
++  const rootRouteNames = rootState?.routes?.map((route) => route.name) || [];
++  const hasClientTabs = tabRouteNames.every((name) =>
++    rootRouteNames.includes(name)
++  );
+ 
+-  navigationRef.current.reset({
+-    index: 1,
+-    routes: [
+-      { name: "Home" },
+-      { name: "Search", params },
+-      { name: "Appointments" },
+-      { name: "Profile" },
+-    ],
+-  });
++  if (hasClientTabs) {
++    navigation.navigate("Search", params);
++    navigation.dispatch(StackActions.popToTop());
++    return true;
++  }
+ 
++  navigation.navigate("Search", params);
++  navigation.dispatch(StackActions.popToTop());
+   return true;
  }
  
  
- // 🔹 App orchestrates landing/login/signup/forgot-password vs main app
+ function useFavoriteProviders(userKey) {
+   const storageKey = FAVORITES_STORAGE_KEY(userKey);
+   const [favoriteIds, setFavoriteIds] = useState([]);
+   const [favoriteProviders, setFavoriteProviders] = useState([]);
+   const [favoritesLoading, setFavoritesLoading] = useState(true);
  
-+const DEEPLINK_DEBUG = true;
-+
- function App() {
- 
-   const mountIdRef = useRef(Math.random().toString(16).slice(2));
-   console.log("APP MOUNT ID:", mountIdRef.current);
-   useEffect(() => console.log("APP useEffect ran for mount", mountIdRef.current), []);
- 
-   const [token, setToken] = useState(null);
-   const [authLoading, setAuthLoading] = useState(true);
-   const [authMode, setAuthMode] = useState("landing"); // 'landing' | 'login' | 'signup' | 'forgot'
-   const [isAdmin, setIsAdmin] = useState(false);
-   const [pendingDeepLinkUsername, setPendingDeepLinkUsername] = useState(null);
-   const [navReady, setNavReady] = useState(false);
-   const navReadyRef = useRef(false);
-   const navigationRef = useRef(null);
-   const authBootstrapRef = useRef({ inFlight: false, completed: false });
-   const tokenRef = useRef(token);
-   const lastHandledUrlRef = useRef(null);
- 
-   const [flash, setFlash] = useState(null);
-   const handleUnauthorized = useCallback(async () => {
+   const persistIds = useCallback(async (ids) => {
      try {
-       await AsyncStorage.removeItem(LEGACY_ACCESS_TOKEN_KEY);
-     } catch (storageError) {
-       console.log(
-         "[auth] Failed to clear legacy token",
-@@ -6158,103 +6160,115 @@ function App() {
+       await AsyncStorage.setItem(storageKey, JSON.stringify(ids));
+     } catch (err) {
+       console.log("Error saving favorites", err?.message || err);
+     }
+   }, [storageKey]);
  
-     return String(text);
-   }, []);
+   const loadFavoritesFromStorage = useCallback(async () => {
+     try {
+       setFavoritesLoading(true);
+       const raw = await AsyncStorage.getItem(storageKey);
+       const parsed = raw ? JSON.parse(raw) : [];
+       setFavoriteIds(Array.isArray(parsed) ? parsed : []);
+     } catch (err) {
+@@ -2813,88 +2825,95 @@ function SearchScreen({ token, showFlash, navigation, route, toggleFavorite, isF
+   }, [showFlash, syncFavoritesFromList]);
  
-   const showFlash = useCallback((type, text) => {
-     setFlash({ type, text: formatFlashText(text) });
-     setTimeout(() => {
-       setFlash(null);
-     }, 4500);
-   }, [formatFlashText]);
+   // Load providers on mount
+   useEffect(() => {
+     loadProviders();
+   }, [loadProviders]);
  
    useEffect(() => {
-     tokenRef.current = token;
-   }, [token]);
+     const providerFromNav = route?.params?.provider;
+     if (!providerFromNav) return;
  
+     const incomingId = getProviderId(providerFromNav);
+     const currentId = getProviderId(selectedProvider);
+     if (incomingId && incomingId === currentId) return;
+ 
+     setSearchQuery(providerFromNav.name || "");
+     setHasSearched(true);
+     setFilteredProviders([providerFromNav]);
+     handleSelectProvider(providerFromNav);
+   }, [route?.params?.provider, selectedProvider, handleSelectProvider]);
+ 
+   // Add a useEffect that recomputes filteredProviders
+   // whenever providers/search/radius/location changes:
    useEffect(() => {
-     navReadyRef.current = navReady;
-   }, [navReady]);
- 
-   useEffect(() => {
-     if (!token) setNavReady(false);
-   }, [token]);
- 
-   const handleIncomingUrl = useCallback((url, source) => {
-     console.log("[deeplink] handleIncomingUrl", source, url);
-+    if (DEEPLINK_DEBUG) showFlash("info", `[DL] ${source}: ${url || "(null)"}`);
-     const username = extractUsernameFromUrl(url);
-     console.log("[deeplink] extracted username", username);
--    if (!username) return false;
-+    if (!username) {
-+      if (DEEPLINK_DEBUG) showFlash("error", "[DL] parse failed");
-+      return false;
-+    }
-+    if (DEEPLINK_DEBUG) showFlash("success", `[DL] user: ${username}`);
-     if (url) {
-       lastHandledUrlRef.current = url;
+     // 👇 do nothing until the user actually searches or if the query is empty
+-    const trimmedQuery = searchQuery.trim();
+-    if (!hasSearched || !trimmedQuery) {
++    const normalizedQuery = normalizeSearchValue(searchQuery);
++    if (!hasSearched || !normalizedQuery) {
+       setFilteredProviders([]);
+       return;
      }
  
-     if (tokenRef.current?.isProvider === true) {
-       showFlash("error", "Open as a client to view provider links.");
-       return true;
-     }
- 
+     const providerList = Array.isArray(providers) ? providers : [];
+-    const deeplinkUsername = (incomingUsername || "").trim().toLowerCase();
++    const deeplinkUsername = normalizeSearchValue(incomingUsername);
      if (
-       tokenRef.current &&
-       tokenRef.current.isProvider === false &&
-       navReadyRef.current === true &&
-       navigationRef.current
+       deeplinkUsername &&
+-      trimmedQuery.toLowerCase() === deeplinkUsername
++      normalizedQuery === deeplinkUsername
      ) {
-+      if (DEEPLINK_DEBUG) showFlash("success", `[DL] nav Search: ${username}`);
-       navigateToClientSearch(username, navigationRef);
-       setPendingDeepLinkUsername(null);
-       return true;
++      console.log(
++        "[search] deeplink exact attempt",
++        deeplinkUsername
++      );
+       const exact = providerList.filter((p) => {
+-        const u1 = (p.username || "").trim().toLowerCase();
+-        const u2 = (p.user?.username || "").trim().toLowerCase();
++        const u1 = normalizeSearchValue(p.username);
++        const u2 = normalizeSearchValue(p.user?.username);
+         return u1 === deeplinkUsername || u2 === deeplinkUsername;
+       });
+       console.log(
+         "[search] deeplink exact username",
+         deeplinkUsername,
+         "matches",
+         exact.length
+       );
+-      setFilteredProviders(exact);
+-      return;
++      if (exact.length > 0) {
++        setFilteredProviders(exact);
++        return;
++      }
++      console.log("[search] deeplink exact miss, falling back to fuzzy");
      }
  
-     setPendingDeepLinkUsername({ username, nonce: Date.now() });
-     return true;
-   }, [showFlash]);
+-    const q = trimmedQuery.toLowerCase();
++    const q = normalizedQuery;
+     const providerFromNav = route?.params?.provider;
+     const navProviderId = getProviderId(providerFromNav);
+-    const navProviderName = (providerFromNav?.name || "").trim().toLowerCase();
++    const navProviderName = normalizeSearchValue(providerFromNav?.name);
  
-   useEffect(() => {
-     let isActive = true;
+     // If we navigated in with a specific provider, keep the results scoped
+     // to that provider ID so namesakes don't appear.
+     if (
+       navProviderId &&
+       navProviderName &&
+-      trimmedQuery.toLowerCase() === navProviderName
++      normalizedQuery === navProviderName
+     ) {
+       const exactMatch = providerList.find(
+         (p) => getProviderId(p) === navProviderId
+       );
+ 
+       setFilteredProviders([exactMatch || providerFromNav]);
+       return;
+     }
+ 
+     let list = providerList.map((p) => {
+       let distance_km = null;
+       if (clientLocation && p.lat != null && p.long != null) {
+         distance_km = haversineKm(
+           clientLocation.lat,
+           clientLocation.long,
+           p.lat,
+           p.long
+         );
+       }
+       return { ...p, distance_km };
+     });
+ 
+     // text filter (profession/name/location)
+     if (q) {
+       list = list.filter((p) => {
+@@ -6220,56 +6239,58 @@ function App() {
  
      Linking.getInitialURL().then((url) => {
        if (!isActive) return;
        console.log("[deeplink] getInitialURL", url);
-+      if (DEEPLINK_DEBUG) {
-+        showFlash("info", `[DL] getInitialURL: ${url || "(null)"}`);
-+      }
+       if (DEEPLINK_DEBUG) {
+         showFlash("info", `[DL] getInitialURL: ${url || "(null)"}`);
+       }
        if (url && url !== lastHandledUrlRef.current) {
          handleIncomingUrl(url, "initial");
        }
@@ -143,12 +322,15 @@ index 126c4837736f627d16c9c3753b49696524e51789..81be0e080bb228b4fdd91134212f8bab
    useEffect(() => {
      const sub = AppState.addEventListener("change", (nextState) => {
        if (nextState !== "active") return;
++      console.log("[deeplink] AppState active handler");
        Linking.getInitialURL().then((url) => {
          console.log("[deeplink] getInitialURL (active)", url);
-+        if (DEEPLINK_DEBUG) {
-+          showFlash("info", `[DL] getInitialURL(active): ${url || "(null)"}`);
-+        }
-         if (!url || url === lastHandledUrlRef.current) return;
+         if (DEEPLINK_DEBUG) {
+           showFlash("info", `[DL] getInitialURL(active): ${url || "(null)"}`);
+         }
+-        if (!url || url === lastHandledUrlRef.current) return;
++        const username = extractUsernameFromUrl(url);
++        if (!username) return;
          handleIncomingUrl(url, "appstate-active");
        });
      });
@@ -173,6 +355,7 @@ index 126c4837736f627d16c9c3753b49696524e51789..81be0e080bb228b4fdd91134212f8bab
        pendingDeepLinkUsername.username,
        navigationRef
      );
+     console.log(
  
 EOF
 )

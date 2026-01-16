@@ -22,7 +22,7 @@ import {
   Share,
   AppState,
 } from "react-native";
-import { NavigationContainer } from "@react-navigation/native";
+import { NavigationContainer, StackActions } from "@react-navigation/native";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { enableScreens } from "react-native-screens";
 import axios from "axios";
@@ -93,6 +93,12 @@ const isValidUsername = (value) => {
   if (!trimmed) return false;
   return /^[a-zA-Z0-9._-]+$/.test(trimmed);
 };
+
+const normalizeSearchValue = (value) =>
+  String(value || "")
+    .replace(/[\u200B-\u200D\uFEFF]/g, "")
+    .trim()
+    .toLowerCase();
 
 const resolveImageUrl = (url) => {
     if (!url || typeof url !== "string") return null;
@@ -205,17 +211,23 @@ function navigateToClientSearch(username, navigationRef) {
   if (!navigationRef?.current) return false;
 
   const params = { incomingUsername: username, deeplinkNonce: Date.now() };
+  console.log("[deeplink] navigateToClientSearch", username, params.deeplinkNonce);
+  const navigation = navigationRef.current;
+  const rootState = navigation.getRootState?.();
+  const tabRouteNames = ["Home", "Search", "Appointments", "Profile"];
+  const rootRouteNames = rootState?.routes?.map((route) => route.name) || [];
+  const hasClientTabs = tabRouteNames.every((name) =>
+    rootRouteNames.includes(name)
+  );
 
-  navigationRef.current.reset({
-    index: 1,
-    routes: [
-      { name: "Home" },
-      { name: "Search", params },
-      { name: "Appointments" },
-      { name: "Profile" },
-    ],
-  });
+  if (hasClientTabs) {
+    navigation.navigate("Search", params);
+    navigation.dispatch(StackActions.popToTop());
+    return true;
+  }
 
+  navigation.navigate("Search", params);
+  navigation.dispatch(StackActions.popToTop());
   return true;
 }
 
@@ -2835,21 +2847,25 @@ function SearchScreen({ token, showFlash, navigation, route, toggleFavorite, isF
   // whenever providers/search/radius/location changes:
   useEffect(() => {
     // 👇 do nothing until the user actually searches or if the query is empty
-    const trimmedQuery = searchQuery.trim();
-    if (!hasSearched || !trimmedQuery) {
+    const normalizedQuery = normalizeSearchValue(searchQuery);
+    if (!hasSearched || !normalizedQuery) {
       setFilteredProviders([]);
       return;
     }
 
     const providerList = Array.isArray(providers) ? providers : [];
-    const deeplinkUsername = (incomingUsername || "").trim().toLowerCase();
+    const deeplinkUsername = normalizeSearchValue(incomingUsername);
     if (
       deeplinkUsername &&
-      trimmedQuery.toLowerCase() === deeplinkUsername
+      normalizedQuery === deeplinkUsername
     ) {
+      console.log(
+        "[search] deeplink exact attempt",
+        deeplinkUsername
+      );
       const exact = providerList.filter((p) => {
-        const u1 = (p.username || "").trim().toLowerCase();
-        const u2 = (p.user?.username || "").trim().toLowerCase();
+        const u1 = normalizeSearchValue(p.username);
+        const u2 = normalizeSearchValue(p.user?.username);
         return u1 === deeplinkUsername || u2 === deeplinkUsername;
       });
       console.log(
@@ -2858,21 +2874,24 @@ function SearchScreen({ token, showFlash, navigation, route, toggleFavorite, isF
         "matches",
         exact.length
       );
-      setFilteredProviders(exact);
-      return;
+      if (exact.length > 0) {
+        setFilteredProviders(exact);
+        return;
+      }
+      console.log("[search] deeplink exact miss, falling back to fuzzy");
     }
 
-    const q = trimmedQuery.toLowerCase();
+    const q = normalizedQuery;
     const providerFromNav = route?.params?.provider;
     const navProviderId = getProviderId(providerFromNav);
-    const navProviderName = (providerFromNav?.name || "").trim().toLowerCase();
+    const navProviderName = normalizeSearchValue(providerFromNav?.name);
 
     // If we navigated in with a specific provider, keep the results scoped
     // to that provider ID so namesakes don't appear.
     if (
       navProviderId &&
       navProviderName &&
-      trimmedQuery.toLowerCase() === navProviderName
+      normalizedQuery === navProviderName
     ) {
       const exactMatch = providerList.find(
         (p) => getProviderId(p) === navProviderId
@@ -6242,12 +6261,14 @@ function App() {
   useEffect(() => {
     const sub = AppState.addEventListener("change", (nextState) => {
       if (nextState !== "active") return;
+      console.log("[deeplink] AppState active handler");
       Linking.getInitialURL().then((url) => {
         console.log("[deeplink] getInitialURL (active)", url);
         if (DEEPLINK_DEBUG) {
           showFlash("info", `[DL] getInitialURL(active): ${url || "(null)"}`);
         }
-        if (!url || url === lastHandledUrlRef.current) return;
+        const username = extractUsernameFromUrl(url);
+        if (!username) return;
         handleIncomingUrl(url, "appstate-active");
       });
     });
