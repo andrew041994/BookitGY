@@ -1,9 +1,11 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
 diff --git a/mobile/App.js b/mobile/App.js
-index cdd0c646fa080ea1e71aed86fc5857da06bad41c..eaa3fd8a824258783bdb20d493703cbab5a5c53b 100644
+index 0fefe5967bb72a3be03c472c72e2f136b3d1b2fd..9f11a2a82ca16f74a173255b2f668454f5ec5b46 100644
 --- a/mobile/App.js
 +++ b/mobile/App.js
-@@ -496,59 +496,79 @@ function LoginScreen({
+@@ -494,61 +494,75 @@ function LoginScreen({
+ 
+     try {
        await saveToken(res.data.access_token);
        const persistedToken = await loadToken();
        console.log("[auth] login success -> token saved:", Boolean(persistedToken));
@@ -27,23 +29,20 @@ index cdd0c646fa080ea1e71aed86fc5857da06bad41c..eaa3fd8a824258783bdb20d493703cba
        );
      }
  
-     // Successful login
-       // Successful login
-+      let meData = null;
-+      try {
-+        const meRes = await axios.get(`${API}/users/me`, {
-+          headers: {
-+            Authorization: `Bearer ${res.data.access_token}`,
-+          },
-+        });
-+        meData = meRes?.data || null;
-+      } catch (meError) {
-+        console.log(
-+          "[auth] login /users/me failed",
-+          meError?.response?.status || meError?.message || meError
-+        );
-+      }
++    let meData = null;
++    try {
++      const meRes = await axios.get(`${API}/users/me`, {
++        headers: {
++          Authorization: `Bearer ${res.data.access_token}`,
++        },
++      });
++      meData = meRes.data;
++    } catch (meError) {
++      console.log("[auth] Failed to fetch /users/me after login", meError?.message || meError);
++    }
 +
+     // Successful login
+-      // Successful login
        setToken({
          token: res.data.access_token,
 -        userId: res.data.user_id,
@@ -53,16 +52,14 @@ index cdd0c646fa080ea1e71aed86fc5857da06bad41c..eaa3fd8a824258783bdb20d493703cba
 +        userId: meData?.id || meData?.user_id || res.data.user_id,
 +        email: meData?.email || res.data.email,
 +        username: meData?.username,
-+        isProvider:
-+          meData?.is_provider !== undefined
-+            ? meData?.is_provider
-+            : res.data.is_provider,
-+        isAdmin:
-+          meData?.is_admin !== undefined ? meData?.is_admin : res.data.is_admin,
++        isProvider: typeof meData?.is_provider === "boolean" ? meData?.is_provider : res.data.is_provider,
++        isAdmin: typeof meData?.is_admin === "boolean" ? meData?.is_admin : res.data.is_admin,
        });
  
 -      setIsAdmin(!!res.data.is_admin);
-+      setIsAdmin(Boolean(meData?.is_admin ?? res.data.is_admin));
++      setIsAdmin(
++        typeof meData?.is_admin === "boolean" ? meData?.is_admin : !!res.data.is_admin
++      );
  
      if (showFlash) {
          showFlash("success", "Logged in successfully");
@@ -88,7 +85,7 @@ index cdd0c646fa080ea1e71aed86fc5857da06bad41c..eaa3fd8a824258783bdb20d493703cba
  
      >
        <ScrollView
-@@ -6184,50 +6204,51 @@ function App() {
+@@ -6192,50 +6206,51 @@ function App() {
            AUTH_TOKEN_TIMEOUT_MS,
            "getAuthToken"
          );

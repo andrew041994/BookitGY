@@ -516,17 +516,31 @@ function LoginScreen({
       );
     }
 
+    let meData = null;
+    try {
+      const meRes = await axios.get(`${API}/users/me`, {
+        headers: {
+          Authorization: `Bearer ${res.data.access_token}`,
+        },
+      });
+      meData = meRes.data;
+    } catch (meError) {
+      console.log("[auth] Failed to fetch /users/me after login", meError?.message || meError);
+    }
+
     // Successful login
-      // Successful login
       setToken({
         token: res.data.access_token,
-        userId: res.data.user_id,
-        email: res.data.email,
-        isProvider: res.data.is_provider,
-        isAdmin: res.data.is_admin,
+        userId: meData?.id || meData?.user_id || res.data.user_id,
+        email: meData?.email || res.data.email,
+        username: meData?.username,
+        isProvider: typeof meData?.is_provider === "boolean" ? meData?.is_provider : res.data.is_provider,
+        isAdmin: typeof meData?.is_admin === "boolean" ? meData?.is_admin : res.data.is_admin,
       });
 
-      setIsAdmin(!!res.data.is_admin);
+      setIsAdmin(
+        typeof meData?.is_admin === "boolean" ? meData?.is_admin : !!res.data.is_admin
+      );
 
     if (showFlash) {
         showFlash("success", "Logged in successfully");
@@ -6214,6 +6228,7 @@ function App() {
                 token: restoredToken,
                 userId: meRes.data?.id || meRes.data?.user_id,
                 email: meRes.data?.email,
+                username: meRes.data?.username,
                 isProvider: Boolean(meRes.data?.is_provider),
                 isAdmin: Boolean(meRes.data?.is_admin),
               });
