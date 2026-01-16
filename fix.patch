@@ -1,93 +1,145 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
 diff --git a/mobile/App.js b/mobile/App.js
-index 083ddf5655c1fa3fad463b549226bd9ea7e4d720..cdd0c646fa080ea1e71aed86fc5857da06bad41c 100644
+index cdd0c646fa080ea1e71aed86fc5857da06bad41c..eaa3fd8a824258783bdb20d493703cbab5a5c53b 100644
 --- a/mobile/App.js
 +++ b/mobile/App.js
-@@ -1311,66 +1311,69 @@ function ProfileScreen({ apiClient, authLoading, setToken, showFlash, token }) {
-       console.log("[profile] save changes pressed");
-       setEditSaving(true);
-       const storedToken = await loadToken();
-       console.log("[profile] API base URL", API);
-       if (!storedToken) {
-         if (showFlash) showFlash("error", "No access token found. Please log in again.");
-         return;
+@@ -496,59 +496,79 @@ function LoginScreen({
+       await saveToken(res.data.access_token);
+       const persistedToken = await loadToken();
+       console.log("[auth] login success -> token saved:", Boolean(persistedToken));
+       if (!persistedToken) {
+         Alert.alert(
+           "Save issue",
+           "We couldn't save your login securely. You'll stay logged in for now."
+         );
        }
- 
-       const payload = {
-         full_name: editProfile.full_name,
-         phone: editProfile.phone,
-         whatsapp: editProfile.whatsapp,
-         location: editProfile.location,
-       };
- 
-       console.log("[profile] save payload", payload);
-       console.log("[profile] auth token present", Boolean(storedToken));
-       const res = await apiClient.put("/users/me", payload, {
-         headers: {
-           Authorization: `Bearer ${storedToken}`,
-         },
-       });
-       console.log("[profile] save response status", res?.status);
- 
-+      const meRes = await apiClient.get("/users/me");
-+      console.log("[profile] refresh response status", meRes?.status);
- 
--      // Refresh local user state so top card updates
--      const updatedProfile = {
--        full_name: res.data?.full_name ?? payload.full_name,
--        phone: res.data?.phone ?? payload.phone,
--        whatsapp: res.data?.whatsapp ?? payload.whatsapp,
--        location: res.data?.location ?? payload.location,
--      };
--      setUser((prev) => ({
--        ...prev,
--        ...updatedProfile,
--      }));
--      setEditProfile((prev) => ({
--        ...prev,
--        ...updatedProfile,
--      }));
-+      setUser(meRes.data);
-+      setEditProfile({
-+        full_name: meRes.data?.full_name || "",
-+        phone: meRes.data?.phone || "",
-+        whatsapp: meRes.data?.whatsapp || "",
-+        location: meRes.data?.location || "",
-+      });
-+      if (setToken) {
-+        setToken((prev) => ({
-+          ...(prev || {}),
-+          email: meRes.data?.email,
-+          username: meRes.data?.username,
-+          isProvider: !!meRes.data?.is_provider,
-+          isAdmin: !!meRes.data?.is_admin,
-+        }));
-+      }
- 
-       if (showFlash) showFlash("success", "Profile updated");
-       setShowEdit(false);
      } catch (err) {
-       console.log("[profile] error saving profile", {
-         status: err.response?.status,
-         data: err.response?.data,
-         message: err.message,
+       console.error(
+         "[LOGIN_NATIVE_CRASH_GUARD] Failed to persist access token",
+         err
+       );
+       // Sentry.Native.captureException(err, {
+       //   extra: { scope: "token-persistence" },
+       // });
+       Alert.alert(
+         "Save issue",
+         "We couldn't save your login securely. You'll stay logged in for now."
+       );
+     }
+ 
+     // Successful login
+       // Successful login
++      let meData = null;
++      try {
++        const meRes = await axios.get(`${API}/users/me`, {
++          headers: {
++            Authorization: `Bearer ${res.data.access_token}`,
++          },
++        });
++        meData = meRes?.data || null;
++      } catch (meError) {
++        console.log(
++          "[auth] login /users/me failed",
++          meError?.response?.status || meError?.message || meError
++        );
++      }
++
+       setToken({
+         token: res.data.access_token,
+-        userId: res.data.user_id,
+-        email: res.data.email,
+-        isProvider: res.data.is_provider,
+-        isAdmin: res.data.is_admin,
++        userId: meData?.id || meData?.user_id || res.data.user_id,
++        email: meData?.email || res.data.email,
++        username: meData?.username,
++        isProvider:
++          meData?.is_provider !== undefined
++            ? meData?.is_provider
++            : res.data.is_provider,
++        isAdmin:
++          meData?.is_admin !== undefined ? meData?.is_admin : res.data.is_admin,
        });
-       const detail =
-         err.response?.data?.detail || "Could not save profile changes.";
-       if (showFlash) showFlash("error", detail);
-     } finally {
-       setEditSaving(false);
-     }
-   };
  
+-      setIsAdmin(!!res.data.is_admin);
++      setIsAdmin(Boolean(meData?.is_admin ?? res.data.is_admin));
  
-   const handleComingSoon = (label) => {
      if (showFlash) {
-       showFlash("info", `${label} coming soon`);
+         showFlash("success", "Logged in successfully");
+       }
+     } catch (e) {
+       console.log("Login error:", e.response?.data || e.message);
+       if (showFlash) {
+         showFlash(
+           "error",
+           "Login failed: wrong email/password or server unreachable"
+         );
+       }
+     } finally {
+       setLoading(false);
      }
    };
  
-   const formatBookingDate = (iso) => {
+ return (
+     <KeyboardAvoidingView
+       style={styles.avoider}
+       behavior={Platform.OS === "ios" ? "padding" : "height"}
+       keyboardVerticalOffset={Platform.OS === "ios" ? 40 : 0} // tweak if needed
+ 
+     >
+       <ScrollView
+@@ -6184,50 +6204,51 @@ function App() {
+           AUTH_TOKEN_TIMEOUT_MS,
+           "getAuthToken"
+         );
+         console.log("[auth] token loaded:", Boolean(restoredToken));
+ 
+         if (!restoredToken) {
+           if (isActive) setToken(null);
+         } else {
+           try {
+             const meRes = await withTimeout(
+               apiClient.get("/users/me", {
+                 headers: {
+                   Authorization: `Bearer ${restoredToken}`,
+                 },
+                 timeout: AUTH_ME_TIMEOUT_MS,
+               }),
+               AUTH_ME_TIMEOUT_MS,
+               "/users/me"
+             );
+             console.log("[auth] /users/me success", meRes?.status);
+             if (isActive) {
+               setToken({
+                 token: restoredToken,
+                 userId: meRes.data?.id || meRes.data?.user_id,
+                 email: meRes.data?.email,
++                username: meRes.data?.username,
+                 isProvider: Boolean(meRes.data?.is_provider),
+                 isAdmin: Boolean(meRes.data?.is_admin),
+               });
+               setIsAdmin(Boolean(meRes.data?.is_admin));
+             }
+           } catch (err) {
+             console.log(
+               "[auth] Failed to load user info during bootstrap",
+               err?.message || err
+             );
+             console.log(
+               "[auth] /users/me failed",
+               err?.response?.status || err?.code || "unknown"
+             );
+             if (err?.response?.status === 401 || err?.response?.status === 403) {
+               try {
+                 await withTimeout(clearToken(), 1500, "clearToken");
+               } catch (storageError) {
+                 console.log(
+                   "[auth] Failed to clear secure token",
+                   storageError?.message || storageError
+                 );
+               }
+ 
+               try {
  
 EOF
 )

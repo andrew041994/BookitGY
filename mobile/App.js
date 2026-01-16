@@ -1953,6 +1953,14 @@ function ClientHomeScreen({
     []
   );
 
+  // adding console log
+  console.log("[home] token username fields", {
+  tokenUsername: token?.username,
+  tokenUserUsername: token?.user?.username,
+  tokenEmail: token?.email,
+  tokenKeys: token ? Object.keys(token) : null,
+  tokenUserKeys: token?.user ? Object.keys(token.user) : null,
+});
   const greetingName = useMemo(() => {
     const username = token?.user?.username || token?.username;
     if (username?.trim()) return username.trim();
