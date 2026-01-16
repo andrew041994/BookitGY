@@ -1406,6 +1406,15 @@ function ProfileScreen({ apiClient, authLoading, setToken, showFlash, token }) {
     }
   };
 
+  const openExternal = async (url) => {
+    try {
+      await Linking.openURL(url);
+    } catch (err) {
+      console.log("Error opening external link", err);
+      showFlash?.("error", "Could not open link. Please try again.");
+    }
+  };
+
   const formatBookingDate = (iso) => {
     const d = new Date(iso);
     return d.toLocaleDateString("en-US", {
@@ -1925,17 +1934,17 @@ function ProfileScreen({ apiClient, authLoading, setToken, showFlash, token }) {
           <ListRow
             title="Help"
             icon="help-circle-outline"
-            onPress={() => handleComingSoon("Help")}
+            onPress={() => openExternal("https://bookitgy.com/support")}
           />
           <ListRow
             title="Terms of service"
             icon="document-text-outline"
-            onPress={() => handleComingSoon("Terms of service")}
+            onPress={() => openExternal("https://bookitgy.com/termsofservice")}
           />
           <ListRow
             title="Privacy policy"
             icon="lock-closed-outline"
-            onPress={() => handleComingSoon("Privacy policy")}
+            onPress={() => openExternal("https://bookitgy.com/privacy")}
             isLast
           />
         </View>

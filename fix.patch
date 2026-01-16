@@ -1,9 +1,9 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
 diff --git a/mobile/App.js b/mobile/App.js
-index 3724e4ffe8176e67203cfb7b01f2cfc59748dd4f..933bbf95691e0df832ea1c7f73f660cd85583cd1 100644
+index ccb255f3d040987718783d00bab73314d3d9772e..fca9aaadb7ab8e9ae7e2b6ec1df011025432a926 100644
 --- a/mobile/App.js
 +++ b/mobile/App.js
-@@ -1384,50 +1384,61 @@ function ProfileScreen({ apiClient, authLoading, setToken, showFlash, token }) {
+@@ -1384,50 +1384,59 @@ function ProfileScreen({ apiClient, authLoading, setToken, showFlash, token }) {
        }
  
        if (showFlash) showFlash("success", "Profile updated");
@@ -34,9 +34,7 @@ index 3724e4ffe8176e67203cfb7b01f2cfc59748dd4f..933bbf95691e0df832ea1c7f73f660cd
 +      await Linking.openURL(url);
 +    } catch (err) {
 +      console.log("Error opening external link", err);
-+      if (showFlash) {
-+        showFlash("error", "Could not open link. Please try again.");
-+      }
++      showFlash?.("error", "Could not open link. Please try again.");
 +    }
 +  };
 +
@@ -65,7 +63,7 @@ index 3724e4ffe8176e67203cfb7b01f2cfc59748dd4f..933bbf95691e0df832ea1c7f73f660cd
  
        const authToken = await getAuthToken(token);
        if (!authToken) {
-@@ -1912,61 +1923,61 @@ function ProfileScreen({ apiClient, authLoading, setToken, showFlash, token }) {
+@@ -1903,61 +1912,61 @@ function ProfileScreen({ apiClient, authLoading, setToken, showFlash, token }) {
                              <Text style={styles.navigateButtonText}>Navigate</Text>
                            </TouchableOpacity>
                          </View>
