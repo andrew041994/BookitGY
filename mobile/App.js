@@ -212,22 +212,7 @@ function navigateToClientSearch(username, navigationRef) {
 
   const params = { incomingUsername: username, deeplinkNonce: Date.now() };
   console.log("[deeplink] navigateToClientSearch", username, params.deeplinkNonce);
-  const navigation = navigationRef.current;
-  const rootState = navigation.getRootState?.();
-  const tabRouteNames = ["Home", "Search", "Appointments", "Profile"];
-  const rootRouteNames = rootState?.routes?.map((route) => route.name) || [];
-  const hasClientTabs = tabRouteNames.every((name) =>
-    rootRouteNames.includes(name)
-  );
-
-  if (hasClientTabs) {
-    navigation.navigate("Search", params);
-    navigation.dispatch(StackActions.popToTop());
-    return true;
-  }
-
-  navigation.navigate("Search", params);
-  navigation.dispatch(StackActions.popToTop());
+  navigationRef.current.navigate("Search", params);
   return true;
 }
 

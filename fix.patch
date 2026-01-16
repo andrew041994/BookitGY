@@ -1,60 +1,8 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
 diff --git a/mobile/App.js b/mobile/App.js
-index 81be0e080bb228b4fdd91134212f8bab023b9472..6a7068ef5f73c30439ac20c88031c8e926aab769 100644
+index 81be0e080bb228b4fdd91134212f8bab023b9472..dc10ea7fb5b00db5706ff5a16b25f724d018a4c7 100644
 --- a/mobile/App.js
 +++ b/mobile/App.js
-@@ -1,50 +1,50 @@
- import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
- import { useFocusEffect } from "@react-navigation/native";
- import {
-   Text,
-   View,
-   StyleSheet,
-   TextInput,
-   Button,
-   Alert,
-   ActivityIndicator,
-   ScrollView,
-   TouchableOpacity,
-   Switch,
-   Linking,
-   Platform,
-   Image,
-   KeyboardAvoidingView,
-   TouchableWithoutFeedback,
-   Keyboard,
-   Pressable,
-   RefreshControl,
-   Share,
-   AppState,
- } from "react-native";
--import { NavigationContainer } from "@react-navigation/native";
-+import { NavigationContainer, StackActions } from "@react-navigation/native";
- import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
- import { enableScreens } from "react-native-screens";
- import axios from "axios";
- import AsyncStorage from "@react-native-async-storage/async-storage";
- import { clearToken, loadToken, saveToken } from "./src/components/tokenStorage";
- import ProviderCard from "./src/components/ProviderCard";
- import { createApiClient } from "./src/api/client";
- import * as Location from "expo-location";
- import Constants from "expo-constants";
- import * as ImagePicker from "expo-image-picker";
- import { Ionicons } from "@expo/vector-icons";
- import { SafeAreaProvider,SafeAreaView } from "react-native-safe-area-context";
- import BookitGYLogoTransparent from "./assets/bookitgy-logo-transparent.png"
- import { theme } from "./src/theme";
- // import * as Sentry from "sentry-expo";
- 
- let Clipboard = null;
- try {
-   Clipboard = require("expo-clipboard");
- } catch (e) {}
- 
- enableScreens(false);
- 
- 
- 
 @@ -72,50 +72,56 @@ const withTimeout = (promise, ms, label) => {
        error.code = "ETIMEDOUT";
        reject(error);
@@ -112,7 +60,7 @@ index 81be0e080bb228b4fdd91134212f8bab023b9472..6a7068ef5f73c30439ac20c88031c8e9
        AsyncStorage.getItem(LEGACY_ACCESS_TOKEN_KEY),
        1500,
        "loadLegacyToken"
-@@ -183,61 +189,67 @@ function extractUsernameFromUrl(url) {
+@@ -183,61 +189,52 @@ function extractUsernameFromUrl(url) {
  
    if (!username) return null;
  
@@ -138,15 +86,7 @@ index 81be0e080bb228b4fdd91134212f8bab023b9472..6a7068ef5f73c30439ac20c88031c8e9
    if (!navigationRef?.current) return false;
  
    const params = { incomingUsername: username, deeplinkNonce: Date.now() };
-+  console.log("[deeplink] navigateToClientSearch", username, params.deeplinkNonce);
-+  const navigation = navigationRef.current;
-+  const rootState = navigation.getRootState?.();
-+  const tabRouteNames = ["Home", "Search", "Appointments", "Profile"];
-+  const rootRouteNames = rootState?.routes?.map((route) => route.name) || [];
-+  const hasClientTabs = tabRouteNames.every((name) =>
-+    rootRouteNames.includes(name)
-+  );
- 
+-
 -  navigationRef.current.reset({
 -    index: 1,
 -    routes: [
@@ -156,14 +96,9 @@ index 81be0e080bb228b4fdd91134212f8bab023b9472..6a7068ef5f73c30439ac20c88031c8e9
 -      { name: "Profile" },
 -    ],
 -  });
-+  if (hasClientTabs) {
-+    navigation.navigate("Search", params);
-+    navigation.dispatch(StackActions.popToTop());
-+    return true;
-+  }
- 
-+  navigation.navigate("Search", params);
-+  navigation.dispatch(StackActions.popToTop());
+-
++  console.log("[deeplink] navigateToClientSearch", username, params.deeplinkNonce);
++  navigationRef.current.navigate("Search", params);
    return true;
  }
  
@@ -189,7 +124,7 @@ index 81be0e080bb228b4fdd91134212f8bab023b9472..6a7068ef5f73c30439ac20c88031c8e9
        const parsed = raw ? JSON.parse(raw) : [];
        setFavoriteIds(Array.isArray(parsed) ? parsed : []);
      } catch (err) {
-@@ -2813,88 +2825,95 @@ function SearchScreen({ token, showFlash, navigation, route, toggleFavorite, isF
+@@ -2813,88 +2810,95 @@ function SearchScreen({ token, showFlash, navigation, route, toggleFavorite, isF
    }, [showFlash, syncFavoritesFromList]);
  
    // Load providers on mount
@@ -296,7 +231,7 @@ index 81be0e080bb228b4fdd91134212f8bab023b9472..6a7068ef5f73c30439ac20c88031c8e9
      // text filter (profession/name/location)
      if (q) {
        list = list.filter((p) => {
-@@ -6220,56 +6239,58 @@ function App() {
+@@ -6220,56 +6224,58 @@ function App() {
  
      Linking.getInitialURL().then((url) => {
        if (!isActive) return;
