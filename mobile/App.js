@@ -1114,6 +1114,7 @@ function ProfileScreen({ apiClient, authLoading, setToken, showFlash, token }) {
   const [editSaving, setEditSaving] = useState(false);
   const [editProfile, setEditProfile] = useState({
     full_name: "",
+    username: "",
     phone: "",
     whatsapp: "",
     location: "",
@@ -1264,6 +1265,7 @@ function ProfileScreen({ apiClient, authLoading, setToken, showFlash, token }) {
         }
         setEditProfile({
           full_name: res.data.full_name || "",
+          username: res.data.username || "",
           phone: res.data.phone || "",
           whatsapp: res.data.whatsapp || "",
           location: res.data.location || "",
@@ -1312,6 +1314,7 @@ function ProfileScreen({ apiClient, authLoading, setToken, showFlash, token }) {
     if (user && !showEdit) {
       setEditProfile({
         full_name: user.full_name || "",
+        username: user.username || "",
         phone: user.phone || "",
         whatsapp: user.whatsapp || "",
         location: user.location || "",
@@ -1331,8 +1334,20 @@ function ProfileScreen({ apiClient, authLoading, setToken, showFlash, token }) {
         return;
       }
 
+      const trimmedUsername = String(editProfile.username || "").trim();
+      if (trimmedUsername && !isValidUsername(trimmedUsername)) {
+        if (showFlash) {
+          showFlash(
+            "error",
+            "Username can only contain letters, numbers, dots, underscores, or dashes (no spaces)."
+          );
+        }
+        return;
+      }
+
       const payload = {
         full_name: editProfile.full_name,
+        username: trimmedUsername,
         phone: editProfile.phone,
         whatsapp: editProfile.whatsapp,
         location: editProfile.location,
@@ -1353,6 +1368,7 @@ function ProfileScreen({ apiClient, authLoading, setToken, showFlash, token }) {
       setUser(meRes.data);
       setEditProfile({
         full_name: meRes.data?.full_name || "",
+        username: meRes.data?.username || "",
         phone: meRes.data?.phone || "",
         whatsapp: meRes.data?.whatsapp || "",
         location: meRes.data?.location || "",
@@ -1798,6 +1814,18 @@ function ProfileScreen({ apiClient, authLoading, setToken, showFlash, token }) {
             onChangeText={(text) =>
               setEditProfile((prev) => ({ ...prev, full_name: text }))
             }
+          />
+          <TextInput
+            style={styles.input}
+            placeholder="Username"
+            value={editProfile.username}
+            onChangeText={(text) =>
+              setEditProfile((prev) => ({
+                ...prev,
+                username: text.replace(/\s+/g, ""),
+              }))
+            }
+            autoCapitalize="none"
           />
           <TextInput
             style={styles.input}
