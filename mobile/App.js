@@ -202,22 +202,44 @@ function buildProviderPublicLink(username) {
 
 function navigateToClientSearch(username, navigationRef) {
   if (!navigationRef?.current) return false;
-  const deeplinkNonce = Date.now();
-  const params = { incomingUsername: username, deeplinkNonce };
+
+  const params = { incomingUsername: username, deeplinkNonce: Date.now() };
+
   const rootState = navigationRef.current.getRootState?.();
   const routeNames = rootState?.routeNames || [];
 
+  // If we have ClientTabs in the navigator tree, reset directly into it
+  // and land on Search with fresh params (forces navigation every time).
   if (routeNames.includes("ClientTabs")) {
-    navigationRef.current.navigate("ClientTabs", {
-      screen: "Search",
-      params,
+    navigationRef.current.reset({
+      index: 0,
+      routes: [
+        {
+          name: "ClientTabs",
+          state: {
+            index: 1, // <-- put Search tab index here (0-based)
+            routes: [
+              { name: "Home" },
+              { name: "Search", params },
+              { name: "Appointments" },
+              { name: "Profile" },
+            ],
+          },
+        },
+      ],
     });
     return true;
   }
 
-  navigationRef.current.navigate("Search", params);
+  // If not in tabs yet (e.g., auth stack), reset to Search directly.
+  navigationRef.current.reset({
+    index: 0,
+    routes: [{ name: "Search", params }],
+  });
+
   return true;
 }
+
 
 function useFavoriteProviders(userKey) {
   const storageKey = FAVORITES_STORAGE_KEY(userKey);
