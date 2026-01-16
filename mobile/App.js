@@ -1951,11 +1951,13 @@ function ClientHomeScreen({
   );
 
   const greetingName = useMemo(() => {
-    const firstName = token?.firstName || token?.first_name;
-    if (firstName) return firstName;
-    if (token?.email) return token.email;
-    return "there";
-  }, [token?.email, token?.firstName, token?.first_name]);
+    const username = token?.user?.username || token?.username;
+    if (username?.trim()) return username.trim();
+    const emailPrefix = token?.email?.split("@")?.[0];
+    return emailPrefix?.trim() || "";
+  }, [token?.email, token?.user?.username, token?.username]);
+
+  const greetingText = greetingName ? `Hi, ${greetingName}` : "Hi";
 
   const haversineKm = (lat1, lon1, lat2, lon2) => {
     if (
@@ -2093,7 +2095,7 @@ function ClientHomeScreen({
         }
       >
         <View style={styles.homeHeader}>
-          <Text style={styles.homeGreeting}>Hi, {greetingName}</Text>
+          <Text style={styles.homeGreeting}>{greetingText}</Text>
           <Text style={styles.homeSubtitle}>
             What are you looking for today?
           </Text>

@@ -1,221 +1,124 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
 diff --git a/mobile/App.js b/mobile/App.js
-index 81463f90019557d562f13978a4bcc704fbeeda20..3792d7ccf3b34ad39e1fc16e6c8f6952b14ed014 100644
+index 3792d7ccf3b34ad39e1fc16e6c8f6952b14ed014..083ddf5655c1fa3fad463b549226bd9ea7e4d720 100644
 --- a/mobile/App.js
 +++ b/mobile/App.js
-@@ -1286,80 +1286,100 @@ function ProfileScreen({ apiClient, authLoading, setToken, showFlash, token }) {
-       }
+@@ -1929,55 +1929,57 @@ function ProfileScreen({ apiClient, authLoading, setToken, showFlash, token }) {
+ 
+ function ClientHomeScreen({
+   navigation,
+   token,
+   favoriteProviders,
+   favoriteIds,
+   favoritesLoading,
+   toggleFavorite,
+   isFavorite,
+   syncFavoritesFromList,
+   refreshFavoriteProviders,
+   }) {
+  const [nearbyProviders, setNearbyProviders] = useState([]);
+   const [currentProvider, setCurrentProvider] = useState(null);
+   const [nearbyLoading, setNearbyLoading] = useState(true);
+   const [nearbyError, setNearbyError] = useState("");
+   const [refreshing, setRefreshing] = useState(false);
+   const [searchText, setSearchText] = useState("");
+ 
+   const quickCategories = useMemo(
+     () => ["Barber", "Hair", "Nails", "Massage", "Makeup", "Lash", "Tutor"],
+     []
+   );
+ 
+   const greetingName = useMemo(() => {
+-    const firstName = token?.firstName || token?.first_name;
+-    if (firstName) return firstName;
+-    if (token?.email) return token.email;
+-    return "there";
+-  }, [token?.email, token?.firstName, token?.first_name]);
++    const username = token?.user?.username || token?.username;
++    if (username?.trim()) return username.trim();
++    const emailPrefix = token?.email?.split("@")?.[0];
++    return emailPrefix?.trim() || "";
++  }, [token?.email, token?.user?.username, token?.username]);
++
++  const greetingText = greetingName ? `Hi, ${greetingName}` : "Hi";
+ 
+   const haversineKm = (lat1, lon1, lat2, lon2) => {
+     if (
+       lat1 == null ||
+       lon1 == null ||
+       lat2 == null ||
+       lon2 == null
+     ) {
+       return null;
+     }
+     const toRad = (v) => (v * Math.PI) / 180;
+     const R = 6371; // km
+     const dLat = toRad(lat2 - lat1);
+     const dLon = toRad(lon2 - lon1);
+     const a =
+       Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+       Math.cos(toRad(lat1)) *
+         Math.cos(toRad(lat2)) *
+         Math.sin(dLon / 2) *
+         Math.sin(dLon / 2);
+     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+     return R * c;
+   };
+ 
+   const loadNearbyProviders = useCallback(async () => {
+@@ -2071,51 +2073,51 @@ function ClientHomeScreen({
      },
-     [apiClient, showFlash, token]
+     [navigation]
    );
  
    useEffect(() => {
-     if (authLoading || !token?.token) return;
-     loadProfile();
-   }, [authLoading, loadProfile, token?.token]);
+     refreshFavoriteProviders();
+   }, [refreshFavoriteProviders]);
  
-     const toggleEditProfile = () => {
-     // ensure form reflects current user
-     if (user && !showEdit) {
-       setEditProfile({
-         full_name: user.full_name || "",
-         phone: user.phone || "",
-         whatsapp: user.whatsapp || "",
-         location: user.location || "",
-       });
-     }
-     setShowEdit((prev) => !prev);
-   };
- 
-   const saveProfileChanges = async () => {
-     try {
-+      console.log("[profile] save changes pressed");
-       setEditSaving(true);
-       const storedToken = await loadToken();
-+      console.log("[profile] API base URL", API);
-       if (!storedToken) {
-         if (showFlash) showFlash("error", "No access token found. Please log in again.");
-         return;
-       }
- 
-       const payload = {
-         full_name: editProfile.full_name,
-         phone: editProfile.phone,
-         whatsapp: editProfile.whatsapp,
-         location: editProfile.location,
-       };
- 
--        const res = await apiClient.put("/users/me", payload);
-+      console.log("[profile] save payload", payload);
-+      console.log("[profile] auth token present", Boolean(storedToken));
-+      const res = await apiClient.put("/users/me", payload, {
-+        headers: {
-+          Authorization: `Bearer ${storedToken}`,
-+        },
-+      });
-+      console.log("[profile] save response status", res?.status);
- 
- 
-       // Refresh local user state so top card updates
-+      const updatedProfile = {
-+        full_name: res.data?.full_name ?? payload.full_name,
-+        phone: res.data?.phone ?? payload.phone,
-+        whatsapp: res.data?.whatsapp ?? payload.whatsapp,
-+        location: res.data?.location ?? payload.location,
-+      };
-       setUser((prev) => ({
-         ...prev,
--        full_name: res.data.full_name,
--        phone: res.data.phone,
--        whatsapp: res.data.whatsapp,
--        location: res.data.location,
-+        ...updatedProfile,
-+      }));
-+      setEditProfile((prev) => ({
-+        ...prev,
-+        ...updatedProfile,
-       }));
- 
-       if (showFlash) showFlash("success", "Profile updated");
-       setShowEdit(false);
-     } catch (err) {
--      console.log("Error saving profile", err.response?.data || err.message);
-+      console.log("[profile] error saving profile", {
-+        status: err.response?.status,
-+        data: err.response?.data,
-+        message: err.message,
-+      });
-       const detail =
-         err.response?.data?.detail || "Could not save profile changes.";
-       if (showFlash) showFlash("error", detail);
-     } finally {
-       setEditSaving(false);
-     }
-   };
- 
- 
-   const handleComingSoon = (label) => {
-     if (showFlash) {
-       showFlash("info", `${label} coming soon`);
-     }
-   };
- 
-   const formatBookingDate = (iso) => {
-     const d = new Date(iso);
-     return d.toLocaleDateString("en-US", {
-       weekday: "short",
-       month: "short",
-       day: "numeric",
-     });
-   };
- 
-   const formatBookingTime = (iso) => {
-@@ -1509,50 +1529,52 @@ function ProfileScreen({ apiClient, authLoading, setToken, showFlash, token }) {
-         const q = encodeURIComponent(booking.provider_location);
-         url = `https://www.google.com/maps/search/?api=1&query=${q}`;
-       } else {
-         if (showFlash) {
-           showFlash(
-             "error",
-             "No location is available yet for this booking."
-           );
+   return (
+     <View style={styles.homeWrapper}>
+         <View style={styles.pinnedHeader}>
+           <SafeAreaView style={styles.pinnedHeaderSafeArea}>
+             <Image
+               source={BookitGYLogoTransparent}
+               style={styles.headerLogo}
+             />
+           </SafeAreaView>
+         </View>
+       <ScrollView
+         contentContainerStyle={styles.homeScroll}
+         refreshControl={
+           <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
          }
-         return;
-       }
- 
-       Linking.openURL(url);
-     } catch (err) {
-       console.log("Error opening maps", err);
-       if (showFlash) {
-         showFlash("error", "Could not open maps on this device.");
-       }
-     }
-   };
- 
-   const displayAvatarUrl = resolveImageUrl(avatarUrl || user?.avatar_url);
-   const isProviderPublic =
-     user?.is_provider === true || token?.is_provider === true;
-   const providerPublicLink = buildProviderPublicLink(user?.username);
-+  const isProfileValid = Boolean(editProfile.full_name?.trim());
-+  const isSaveDisabled = editSaving || !isProfileValid;
- 
-   const handleShareProviderLink = async () => {
-     if (!providerPublicLink) {
-       if (showFlash) {
-         showFlash("error", "Set a username to enable your profile link.");
-       }
-       return;
-     }
- 
-     try {
-       await Share.share({
-         message: `Book with me on BookitGY:`,
-         url: providerPublicLink,
-       });
-     } catch (err) {
-       console.log("Error sharing provider link", err?.message || err);
-       if (showFlash) {
-         showFlash("error", "Could not share your profile link.");
-       }
-     }
-   };
- 
-   const handleCopyProviderLink = async () => {
-     if (!providerPublicLink) {
-       if (showFlash) {
-@@ -1769,51 +1791,51 @@ function ProfileScreen({ apiClient, authLoading, setToken, showFlash, token }) {
-               setEditProfile((prev) => ({ ...prev, phone: text }))
-             }
-           />
-           <TextInput
-             style={styles.input}
-             placeholder="WhatsApp (optional)"
-             value={editProfile.whatsapp}
-             onChangeText={(text) =>
-               setEditProfile((prev) => ({ ...prev, whatsapp: text }))
-             }
-           />
-           <TextInput
-             style={styles.input}
-             placeholder="Location (e.g. Georgetown)"
-             value={editProfile.location}
-             onChangeText={(text) =>
-               setEditProfile((prev) => ({ ...prev, location: text }))
-             }
-           />
- 
-           <View style={{ width: "100%", marginTop: 8 }}>
-             <Button
-               title={editSaving ? "Saving..." : "Save changes"}
-               onPress={saveProfileChanges}
-               color={colors.primary}
--              disabled={editSaving}
-+              disabled={isSaveDisabled}
-             />
-           </View>
+       >
+         <View style={styles.homeHeader}>
+-          <Text style={styles.homeGreeting}>Hi, {greetingName}</Text>
++          <Text style={styles.homeGreeting}>{greetingText}</Text>
+           <Text style={styles.homeSubtitle}>
+             What are you looking for today?
+           </Text>
          </View>
-       )}
  
-       <View style={styles.profileSection}>
-         <Text style={styles.profileSectionTitle}>Activity</Text>
-         <View style={styles.sectionCard}>
-           {showActivityBookings && (
-             <ListRow
-               title={showBookings ? "Hide my bookings" : "My bookings"}
-               icon="calendar-outline"
-               onPress={toggleMyBookings}
-               isLast={false}
-             />
-           )}
-           <ListRow
-             title="Favorites"
-             icon="heart-outline"
-             onPress={() => handleComingSoon("Favorites")}
-             isLast
+         <View style={styles.searchBar}>
+           <Ionicons name="search-outline" size={20} color={colors.textMuted} />
+           <TextInput
+             style={styles.searchInput}
+             placeholder="Search by profession, provider, or service"
+             placeholderTextColor={colors.textSecondary}
+             value={searchText}
+             onChangeText={setSearchText}
+             onFocus={() => handleSearchNavigate(searchText)}
+             onSubmitEditing={() => handleSearchNavigate(searchText)}
+             returnKeyType="search"
            />
          </View>
-       </View>
  
+         <View style={styles.quickCategorySection}>
+           <Text style={styles.sectionTitle}>Quick Categories</Text>
+           <ScrollView
+             horizontal
+             showsHorizontalScrollIndicator={false}
+             contentContainerStyle={styles.quickCategoryList}
  
 EOF
 )
