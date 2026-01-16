@@ -6083,6 +6083,8 @@ function FlashMessage({ flash }) {
 
 // 🔹 App orchestrates landing/login/signup/forgot-password vs main app
 
+const DEEPLINK_DEBUG = true;
+
 function App() {
 
   const mountIdRef = useRef(Math.random().toString(16).slice(2));
@@ -6180,9 +6182,14 @@ function App() {
 
   const handleIncomingUrl = useCallback((url, source) => {
     console.log("[deeplink] handleIncomingUrl", source, url);
+    if (DEEPLINK_DEBUG) showFlash("info", `[DL] ${source}: ${url || "(null)"}`);
     const username = extractUsernameFromUrl(url);
     console.log("[deeplink] extracted username", username);
-    if (!username) return false;
+    if (!username) {
+      if (DEEPLINK_DEBUG) showFlash("error", "[DL] parse failed");
+      return false;
+    }
+    if (DEEPLINK_DEBUG) showFlash("success", `[DL] user: ${username}`);
     if (url) {
       lastHandledUrlRef.current = url;
     }
@@ -6198,6 +6205,7 @@ function App() {
       navReadyRef.current === true &&
       navigationRef.current
     ) {
+      if (DEEPLINK_DEBUG) showFlash("success", `[DL] nav Search: ${username}`);
       navigateToClientSearch(username, navigationRef);
       setPendingDeepLinkUsername(null);
       return true;
@@ -6213,6 +6221,9 @@ function App() {
     Linking.getInitialURL().then((url) => {
       if (!isActive) return;
       console.log("[deeplink] getInitialURL", url);
+      if (DEEPLINK_DEBUG) {
+        showFlash("info", `[DL] getInitialURL: ${url || "(null)"}`);
+      }
       if (url && url !== lastHandledUrlRef.current) {
         handleIncomingUrl(url, "initial");
       }
@@ -6233,6 +6244,9 @@ function App() {
       if (nextState !== "active") return;
       Linking.getInitialURL().then((url) => {
         console.log("[deeplink] getInitialURL (active)", url);
+        if (DEEPLINK_DEBUG) {
+          showFlash("info", `[DL] getInitialURL(active): ${url || "(null)"}`);
+        }
         if (!url || url === lastHandledUrlRef.current) return;
         handleIncomingUrl(url, "appstate-active");
       });
