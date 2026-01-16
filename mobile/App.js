@@ -1308,8 +1308,10 @@ function ProfileScreen({ apiClient, authLoading, setToken, showFlash, token }) {
 
   const saveProfileChanges = async () => {
     try {
+      console.log("[profile] save changes pressed");
       setEditSaving(true);
       const storedToken = await loadToken();
+      console.log("[profile] API base URL", API);
       if (!storedToken) {
         if (showFlash) showFlash("error", "No access token found. Please log in again.");
         return;
@@ -1322,22 +1324,40 @@ function ProfileScreen({ apiClient, authLoading, setToken, showFlash, token }) {
         location: editProfile.location,
       };
 
-        const res = await apiClient.put("/users/me", payload);
+      console.log("[profile] save payload", payload);
+      console.log("[profile] auth token present", Boolean(storedToken));
+      const res = await apiClient.put("/users/me", payload, {
+        headers: {
+          Authorization: `Bearer ${storedToken}`,
+        },
+      });
+      console.log("[profile] save response status", res?.status);
 
 
       // Refresh local user state so top card updates
+      const updatedProfile = {
+        full_name: res.data?.full_name ?? payload.full_name,
+        phone: res.data?.phone ?? payload.phone,
+        whatsapp: res.data?.whatsapp ?? payload.whatsapp,
+        location: res.data?.location ?? payload.location,
+      };
       setUser((prev) => ({
         ...prev,
-        full_name: res.data.full_name,
-        phone: res.data.phone,
-        whatsapp: res.data.whatsapp,
-        location: res.data.location,
+        ...updatedProfile,
+      }));
+      setEditProfile((prev) => ({
+        ...prev,
+        ...updatedProfile,
       }));
 
       if (showFlash) showFlash("success", "Profile updated");
       setShowEdit(false);
     } catch (err) {
-      console.log("Error saving profile", err.response?.data || err.message);
+      console.log("[profile] error saving profile", {
+        status: err.response?.status,
+        data: err.response?.data,
+        message: err.message,
+      });
       const detail =
         err.response?.data?.detail || "Could not save profile changes.";
       if (showFlash) showFlash("error", detail);
@@ -1531,6 +1551,8 @@ function ProfileScreen({ apiClient, authLoading, setToken, showFlash, token }) {
   const isProviderPublic =
     user?.is_provider === true || token?.is_provider === true;
   const providerPublicLink = buildProviderPublicLink(user?.username);
+  const isProfileValid = Boolean(editProfile.full_name?.trim());
+  const isSaveDisabled = editSaving || !isProfileValid;
 
   const handleShareProviderLink = async () => {
     if (!providerPublicLink) {
@@ -1791,7 +1813,7 @@ function ProfileScreen({ apiClient, authLoading, setToken, showFlash, token }) {
               title={editSaving ? "Saving..." : "Save changes"}
               onPress={saveProfileChanges}
               color={colors.primary}
-              disabled={editSaving}
+              disabled={isSaveDisabled}
             />
           </View>
         </View>
