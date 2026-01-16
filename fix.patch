@@ -1,125 +1,9 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
 diff --git a/mobile/App.js b/mobile/App.js
-index ccb255f3d040987718783d00bab73314d3d9772e..fca9aaadb7ab8e9ae7e2b6ec1df011025432a926 100644
+index fca9aaadb7ab8e9ae7e2b6ec1df011025432a926..9127725b5eb89109732ea896d0fa036074cb8ac3 100644
 --- a/mobile/App.js
 +++ b/mobile/App.js
-@@ -1384,50 +1384,59 @@ function ProfileScreen({ apiClient, authLoading, setToken, showFlash, token }) {
-       }
- 
-       if (showFlash) showFlash("success", "Profile updated");
-       setShowEdit(false);
-     } catch (err) {
-       console.log("[profile] error saving profile", {
-         status: err.response?.status,
-         data: err.response?.data,
-         message: err.message,
-       });
-       const detail =
-         err.response?.data?.detail || "Could not save profile changes.";
-       if (showFlash) showFlash("error", detail);
-     } finally {
-       setEditSaving(false);
-     }
-   };
- 
- 
-   const handleComingSoon = (label) => {
-     if (showFlash) {
-       showFlash("info", `${label} coming soon`);
-     }
-   };
- 
-+  const openExternal = async (url) => {
-+    try {
-+      await Linking.openURL(url);
-+    } catch (err) {
-+      console.log("Error opening external link", err);
-+      showFlash?.("error", "Could not open link. Please try again.");
-+    }
-+  };
-+
-   const formatBookingDate = (iso) => {
-     const d = new Date(iso);
-     return d.toLocaleDateString("en-US", {
-       weekday: "short",
-       month: "short",
-       day: "numeric",
-     });
-   };
- 
-   const formatBookingTime = (iso) => {
-     const d = new Date(iso);
-     let h = d.getHours();
-     const m = d.getMinutes();
-     const suffix = h >= 12 ? "PM" : "AM";
-     h = h % 12 || 12;
-     return `${h}:${m.toString().padStart(2, "0")} ${suffix}`;
-   };
- 
-   const loadMyBookings = useCallback(async () => {
-     try {
-       setBookingsLoading(true);
-       setBookingsError("");
- 
-       const authToken = await getAuthToken(token);
-       if (!authToken) {
-@@ -1903,61 +1912,61 @@ function ProfileScreen({ apiClient, authLoading, setToken, showFlash, token }) {
-                             <Text style={styles.navigateButtonText}>Navigate</Text>
-                           </TouchableOpacity>
-                         </View>
- 
-                         <TouchableOpacity
-                           style={styles.myBookingCancelWrapper}
-                           onPress={() => handleClientCancelBooking(b.id)}
-                         >
-                           <Text style={styles.bookingCancel}>Cancel</Text>
-                         </TouchableOpacity>
-                       </View>
-                     )}
-                   </View>
-                 ))}
-               </>
-             )}
-         </View>
-       )}
- 
-       <View style={styles.profileSection}>
-         <Text style={styles.profileSectionTitle}>Support</Text>
-         <View style={styles.sectionCard}>
-           <ListRow
-             title="Help"
-             icon="help-circle-outline"
--            onPress={() => handleComingSoon("Help")}
-+            onPress={() => openExternal("https://bookitgy.com/support")}
-           />
-           <ListRow
-             title="Terms of service"
-             icon="document-text-outline"
--            onPress={() => handleComingSoon("Terms of service")}
-+            onPress={() => openExternal("https://bookitgy.com/termsofservice")}
-           />
-           <ListRow
-             title="Privacy policy"
-             icon="lock-closed-outline"
--            onPress={() => handleComingSoon("Privacy policy")}
-+            onPress={() => openExternal("https://bookitgy.com/privacy")}
-             isLast
-           />
-         </View>
-       </View>
- 
-       {isAdmin && (
-         <View style={styles.adminBox}>
-           <Text style={styles.adminTitle}>Admin tools</Text>
-           <Text style={styles.adminText}>
-             You are logged in as an admin. In future versions, this area will
-             let you manage users, providers and bookings.
-           </Text>
-         </View>
-       )}
- 
-       <TouchableOpacity style={styles.logoutRow} onPress={logout}>
-         <Text style={styles.logoutRowText}>Logout</Text>
+@@ -1965,50 +1965,51 @@ function ProfileScreen({ apiClient, authLoading, setToken, showFlash, token }) {
        </TouchableOpacity>
  
      </ScrollView>
@@ -128,6 +12,268 @@ index ccb255f3d040987718783d00bab73314d3d9772e..fca9aaadb7ab8e9ae7e2b6ec1df01102
    
  }
  
+ 
+ 
+ function ClientHomeScreen({
+   navigation,
+   token,
+   favoriteProviders,
+   favoriteIds,
+   favoritesLoading,
+   toggleFavorite,
+   isFavorite,
+   syncFavoritesFromList,
+   refreshFavoriteProviders,
+   }) {
+  const [nearbyProviders, setNearbyProviders] = useState([]);
+   const [currentProvider, setCurrentProvider] = useState(null);
+   const [nearbyLoading, setNearbyLoading] = useState(true);
+   const [nearbyError, setNearbyError] = useState("");
++  const [locationDenied, setLocationDenied] = useState(false);
+   const [refreshing, setRefreshing] = useState(false);
+   const [searchText, setSearchText] = useState("");
+ 
+   const quickCategories = useMemo(
+     () => ["Barber", "Hair", "Nails", "Massage", "Makeup", "Lash", "Tutor"],
+     []
+   );
+ 
+   // adding console log
+   console.log("[home] token username fields", {
+   tokenUsername: token?.username,
+   tokenUserUsername: token?.user?.username,
+   tokenEmail: token?.email,
+   tokenKeys: token ? Object.keys(token) : null,
+   tokenUserKeys: token?.user ? Object.keys(token.user) : null,
+ });
+   const greetingName = useMemo(() => {
+     const username = token?.user?.username || token?.username;
+     if (username?.trim()) return username.trim();
+     const emailPrefix = token?.email?.split("@")?.[0];
+     return emailPrefix?.trim() || "";
+   }, [token?.email, token?.user?.username, token?.username]);
+ 
+   const greetingText = greetingName ? `Hi, ${greetingName}` : "Hi";
+ 
+@@ -2017,56 +2018,57 @@ function ClientHomeScreen({
+       lat1 == null ||
+       lon1 == null ||
+       lat2 == null ||
+       lon2 == null
+     ) {
+       return null;
+     }
+     const toRad = (v) => (v * Math.PI) / 180;
+     const R = 6371; // km
+     const dLat = toRad(lat2 - lat1);
+     const dLon = toRad(lon2 - lon1);
+     const a =
+       Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+       Math.cos(toRad(lat1)) *
+         Math.cos(toRad(lat2)) *
+         Math.sin(dLon / 2) *
+         Math.sin(dLon / 2);
+     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+     return R * c;
+   };
+ 
+   const loadNearbyProviders = useCallback(async () => {
+     try {
+       setNearbyLoading(true);
+       setNearbyError("");
++      setLocationDenied(false);
+ 
+       const { status } = await Location.requestForegroundPermissionsAsync();
+       if (status !== "granted") {
+-        setNearbyError(
+-          "Location permission is required to show nearby providers."
+-        );
++        setLocationDenied(true);
++        setNearbyProviders([]);
++        setCurrentProvider(null);
+         return;
+       }
+ 
+       const loc = await Location.getCurrentPositionAsync({});
+       const coords = {
+         lat: loc.coords.latitude,
+         long: loc.coords.longitude,
+       };
+ 
+       const res = await axios.get(`${API}/providers`);
+       const list = Array.isArray(res.data)
+         ? res.data
+         : res.data?.providers || [];
+ 
+       const withinRadius = list
+         .map((p) => ({
+           ...p,
+           distance_km: haversineKm(coords.lat, coords.long, p.lat, p.long),
+         }))
+         .filter((p) => typeof p.distance_km === "number" && p.distance_km <= 15)
+         .sort(
+           (a, b) => (a.distance_km ?? Infinity) - (b.distance_km ?? Infinity)
+         );
+ 
+       setNearbyProviders(withinRadius);
+@@ -2210,54 +2212,75 @@ function ClientHomeScreen({
+             <ScrollView
+               horizontal
+               showsHorizontalScrollIndicator={false}
+               contentContainerStyle={styles.carouselList}
+             >
+               {[0, 1, 2].map((index) => (
+                 <View
+                   key={`nearby-skeleton-${index}`}
+                   style={styles.providerCardSkeleton}
+                 >
+                   <View style={[styles.cardImageWrapper, styles.skeletonBlock]} />
+                   <View style={styles.cardBody}>
+                     <View style={[styles.skeletonLine, { width: "70%" }]} />
+                     <View style={[styles.skeletonLine, { width: "45%" }]} />
+                     <View style={[styles.skeletonLine, { width: "60%" }]} />
+                   </View>
+                 </View>
+               ))}
+             </ScrollView>
+           ) : null}
+ 
+           {!nearbyLoading && nearbyError ? (
+             <Text style={styles.errorText}>{nearbyError}</Text>
+           ) : null}
+ 
+-          {!nearbyLoading && !nearbyError && !hasCarousel ? (
+-            <Text style={styles.serviceHint}>
+-              No providers found within 15 km yet.
+-            </Text>
++          {!nearbyLoading && !nearbyError && locationDenied ? (
++            <View style={styles.nearbyEmptyCard}>
++              <Text style={styles.nearbyEmptyTitle}>
++                Enable location to see providers near you.
++              </Text>
++              <Text style={styles.nearbyEmptyBody}>
++                Turn on location permissions to view nearby providers.
++              </Text>
++            </View>
++          ) : null}
++
++          {!nearbyLoading && !nearbyError && !locationDenied && !hasCarousel ? (
++            <View style={styles.nearbyEmptyCard}>
++              <Text style={styles.nearbyEmptyTitle}>
++                No providers nearby yet
++              </Text>
++              <Text style={styles.nearbyEmptyBody}>
++                There aren’t any providers available in your area right now.
++                More providers are being added constantly and will be available
++                near you soon.
++              </Text>
++              <Text style={styles.nearbyEmptyHint}>
++                Try again soon, or use Search to explore other areas.
++              </Text>
++            </View>
+           ) : null}
+ 
+           {!nearbyLoading && !nearbyError && hasCarousel ? (
+             <ScrollView
+               horizontal
+               showsHorizontalScrollIndicator={false}
+               contentContainerStyle={styles.carouselList}
+               onMomentumScrollEnd={handleCarouselScroll}
+             >
+               {nearbyProviders.map((provider) => {
+                 const avatar = resolveImageUrl(
+                   provider.avatar_url || provider.profile_photo_url
+                 );
+                 const saved = isFavorite(provider);
+                 const providerId = getProviderId(provider) || provider.name;
+                 const professionLabel = provider.professions?.length
+                   ? provider.professions.join(", ")
+                   : (provider.services || []).join(" · ");
+                 const distanceKm =
+                   typeof provider.distance_km === "number"
+                     ? provider.distance_km
+                     : null;
+ 
+                 return (
+                   <ProviderCard
+@@ -7102,50 +7125,77 @@ favoriteToggleButton: {
+     borderRadius: 999,
+     backgroundColor: colors.surfaceElevated,
+     alignItems: "center",
+     justifyContent: "center",
+   },
+ 
+   serviceName: {
+     fontSize: 15,
+     fontWeight: "600",
+     color: colors.textPrimary,
+   },
+   serviceMeta: {
+     fontSize: 13,
+     color: colors.textSecondary,
+   },
+   servicePrice: {
+     fontSize: 14,
+     fontWeight: "600",
+     color: colors.primary,
+   },
+   serviceHint: {
+     fontSize: 12,
+     color: colors.textMuted,
+     marginTop: 8,
+   },
++  nearbyEmptyCard: {
++    backgroundColor: colors.surfaceElevated,
++    borderRadius: 14,
++    padding: 16,
++    borderWidth: 1,
++    borderColor: colors.border,
++    alignItems: "center",
++  },
++  nearbyEmptyTitle: {
++    fontSize: 15,
++    fontWeight: "700",
++    color: colors.textPrimary,
++    textAlign: "center",
++    marginBottom: 6,
++  },
++  nearbyEmptyBody: {
++    fontSize: 13,
++    color: colors.textSecondary,
++    textAlign: "center",
++    lineHeight: 18,
++  },
++  nearbyEmptyHint: {
++    fontSize: 12,
++    color: colors.textMuted,
++    textAlign: "center",
++    marginTop: 8,
++  },
+ 
+     workingHoursRow: {
+     flexDirection: "row",
+     justifyContent: "space-between",
+     alignItems: "center",
+     paddingVertical: 8,
+     borderBottomWidth: 1,
+     borderBottomColor: colors.border,
+   },
+   hoursInput: {
+     borderWidth: 1,
+     borderColor: colors.border,
+     borderRadius: 6,
+     paddingHorizontal: 8,
+     paddingVertical: 4,
+     minWidth: 60,
+     textAlign: "center",
+     marginHorizontal: 4,
+     backgroundColor: colors.surfaceElevated,
+     color: colors.textPrimary,
+   },
+ 
+   hoursFlashGlobal: {
+     position: "absolute",
+     top: 50,
  
 EOF
 )

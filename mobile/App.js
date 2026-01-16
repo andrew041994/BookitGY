@@ -1987,6 +1987,7 @@ function ClientHomeScreen({
   const [currentProvider, setCurrentProvider] = useState(null);
   const [nearbyLoading, setNearbyLoading] = useState(true);
   const [nearbyError, setNearbyError] = useState("");
+  const [locationDenied, setLocationDenied] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [searchText, setSearchText] = useState("");
 
@@ -2039,12 +2040,13 @@ function ClientHomeScreen({
     try {
       setNearbyLoading(true);
       setNearbyError("");
+      setLocationDenied(false);
 
       const { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== "granted") {
-        setNearbyError(
-          "Location permission is required to show nearby providers."
-        );
+        setLocationDenied(true);
+        setNearbyProviders([]);
+        setCurrentProvider(null);
         return;
       }
 
@@ -2232,10 +2234,31 @@ function ClientHomeScreen({
             <Text style={styles.errorText}>{nearbyError}</Text>
           ) : null}
 
-          {!nearbyLoading && !nearbyError && !hasCarousel ? (
-            <Text style={styles.serviceHint}>
-              No providers found within 15 km yet.
-            </Text>
+          {!nearbyLoading && !nearbyError && locationDenied ? (
+            <View style={styles.nearbyEmptyCard}>
+              <Text style={styles.nearbyEmptyTitle}>
+                Enable location to see providers near you.
+              </Text>
+              <Text style={styles.nearbyEmptyBody}>
+                Turn on location permissions to view nearby providers.
+              </Text>
+            </View>
+          ) : null}
+
+          {!nearbyLoading && !nearbyError && !locationDenied && !hasCarousel ? (
+            <View style={styles.nearbyEmptyCard}>
+              <Text style={styles.nearbyEmptyTitle}>
+                No providers nearby yet
+              </Text>
+              <Text style={styles.nearbyEmptyBody}>
+                There aren’t any providers available in your area right now.
+                More providers are being added constantly and will be available
+                near you soon.
+              </Text>
+              <Text style={styles.nearbyEmptyHint}>
+                Try again soon, or use Search to explore other areas.
+              </Text>
+            </View>
           ) : null}
 
           {!nearbyLoading && !nearbyError && hasCarousel ? (
@@ -7122,6 +7145,33 @@ favoriteToggleButton: {
   serviceHint: {
     fontSize: 12,
     color: colors.textMuted,
+    marginTop: 8,
+  },
+  nearbyEmptyCard: {
+    backgroundColor: colors.surfaceElevated,
+    borderRadius: 14,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignItems: "center",
+  },
+  nearbyEmptyTitle: {
+    fontSize: 15,
+    fontWeight: "700",
+    color: colors.textPrimary,
+    textAlign: "center",
+    marginBottom: 6,
+  },
+  nearbyEmptyBody: {
+    fontSize: 13,
+    color: colors.textSecondary,
+    textAlign: "center",
+    lineHeight: 18,
+  },
+  nearbyEmptyHint: {
+    fontSize: 12,
+    color: colors.textMuted,
+    textAlign: "center",
     marginTop: 8,
   },
 
