@@ -1,202 +1,9 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
 diff --git a/mobile/App.js b/mobile/App.js
-index 9f11a2a82ca16f74a173255b2f668454f5ec5b46..3724e4ffe8176e67203cfb7b01f2cfc59748dd4f 100644
+index 3724e4ffe8176e67203cfb7b01f2cfc59748dd4f..933bbf95691e0df832ea1c7f73f660cd85583cd1 100644
 --- a/mobile/App.js
 +++ b/mobile/App.js
-@@ -1092,50 +1092,51 @@ const ListRow = ({
-     <View style={styles.listRowLeft}>
-       {icon ? (
-         <Ionicons
-           name={icon}
-           size={18}
-           color={colors.textMuted}
-           style={styles.listRowIcon}
-         />
-       ) : null}
-       <Text style={styles.listRowTitle}>{title}</Text>
-     </View>
-     <Text style={styles.listRowChevron}>›</Text>
-   </TouchableOpacity>
- );
- 
- // Placeholder screens so MainApp compiles — replace with your real ones
- function ProfileScreen({ apiClient, authLoading, setToken, showFlash, token }) {
-   const [user, setUser] = useState(null);
-   const [loading, setLoading] = useState(true);
-   const [error, setError] = useState("");
-    // NEW state for editing profile
-   const [showEdit, setShowEdit] = useState(false);
-   const [editSaving, setEditSaving] = useState(false);
-   const [editProfile, setEditProfile] = useState({
-     full_name: "",
-+    username: "",
-     phone: "",
-     whatsapp: "",
-     location: "",
-   });
-   // NEW state for "My bookings"
-   const [showBookings, setShowBookings] = useState(false);
-   const [bookings, setBookings] = useState([]);
-   const [bookingsLoading, setBookingsLoading] = useState(false);
-   const [bookingsError, setBookingsError] = useState("");
-   const [avatarUrl, setAvatarUrl] = useState(null);
-   const [refreshing, setRefreshing] = useState(false);
-   const [isProviderUser, setIsProviderUser] = useState(null);
-   const canUseClipboard = Boolean(Clipboard?.setStringAsync);
- 
- 
-   const uploadAvatar = async (uri) => {
-     try {
-       const storedToken = await loadToken();
-       if (!storedToken) {
-         alert("No access token found. Please log in again.");
-         return;
-       }
- 
-       const filename = uri.split("/").pop() || "avatar.jpg";
-       const match = /\.(\w+)$/.exec(filename);
-@@ -1242,139 +1243,154 @@ function ProfileScreen({ apiClient, authLoading, setToken, showFlash, token }) {
- 
-   const loadProfile = useCallback(
-     async (useRefresh = false) => {
-       try {
-         if (useRefresh) setRefreshing(true);
-         setLoading(true);
-         setError("");
- 
-         const storedToken = await loadToken();
-         console.log("[profile] token present?", Boolean(storedToken));
-         if (!storedToken) {
-           setError("No access token found. Please log in again.");
-           setLoading(false);
-           return;
-         }
- 
-         // 1) Load base user info
-         const res = await apiClient.get("/users/me");
- 
-         setUser(res.data);
-         if (typeof res.data.is_provider === "boolean") {
-           setIsProviderUser(res.data.is_provider);
-         }
-         setEditProfile({
-           full_name: res.data.full_name || "",
-+          username: res.data.username || "",
-           phone: res.data.phone || "",
-           whatsapp: res.data.whatsapp || "",
-           location: res.data.location || "",
-         });
- 
-         // 2) Try to get avatar
-         let avatar = res.data.avatar_url || null;
- 
-         // If this user is a provider, also check provider profile
-         if ((token && token.isProvider) || res.data.is_provider) {
-           try {
-             const provRes = await apiClient.get("/providers/me/profile");
-             if (provRes.data.avatar_url) {
-               avatar = provRes.data.avatar_url;
-             }
-           } catch (err) {
-             console.log(
-               "Error loading provider avatar for profile",
-               err.response?.data || err.message
-             );
-           }
-         }
- 
-         setAvatarUrl(avatar);
-       } catch (err) {
-         console.error("Error loading profile", err);
-         setError("Could not load profile.");
-         if (showFlash) {
-           showFlash("error", "Could not load profile information.");
-         }
-       } finally {
-         setLoading(false);
-         if (useRefresh) setRefreshing(false);
-       }
-     },
-     [apiClient, showFlash, token]
-   );
- 
-   useEffect(() => {
-     if (authLoading || !token?.token) return;
-     loadProfile();
-   }, [authLoading, loadProfile, token?.token]);
- 
-     const toggleEditProfile = () => {
-     // ensure form reflects current user
-     if (user && !showEdit) {
-       setEditProfile({
-         full_name: user.full_name || "",
-+        username: user.username || "",
-         phone: user.phone || "",
-         whatsapp: user.whatsapp || "",
-         location: user.location || "",
-       });
-     }
-     setShowEdit((prev) => !prev);
-   };
- 
-   const saveProfileChanges = async () => {
-     try {
-       console.log("[profile] save changes pressed");
-       setEditSaving(true);
-       const storedToken = await loadToken();
-       console.log("[profile] API base URL", API);
-       if (!storedToken) {
-         if (showFlash) showFlash("error", "No access token found. Please log in again.");
-         return;
-       }
- 
-+      const trimmedUsername = String(editProfile.username || "").trim();
-+      if (trimmedUsername && !isValidUsername(trimmedUsername)) {
-+        if (showFlash) {
-+          showFlash(
-+            "error",
-+            "Username can only contain letters, numbers, dots, underscores, or dashes (no spaces)."
-+          );
-+        }
-+        return;
-+      }
-+
-       const payload = {
-         full_name: editProfile.full_name,
-+        username: trimmedUsername,
-         phone: editProfile.phone,
-         whatsapp: editProfile.whatsapp,
-         location: editProfile.location,
-       };
- 
-       console.log("[profile] save payload", payload);
-       console.log("[profile] auth token present", Boolean(storedToken));
-       const res = await apiClient.put("/users/me", payload, {
-         headers: {
-           Authorization: `Bearer ${storedToken}`,
-         },
-       });
-       console.log("[profile] save response status", res?.status);
- 
-       const meRes = await apiClient.get("/users/me");
-       console.log("[profile] refresh response status", meRes?.status);
- 
-       setUser(meRes.data);
-       setEditProfile({
-         full_name: meRes.data?.full_name || "",
-+        username: meRes.data?.username || "",
-         phone: meRes.data?.phone || "",
-         whatsapp: meRes.data?.whatsapp || "",
-         location: meRes.data?.location || "",
-       });
-       if (setToken) {
-         setToken((prev) => ({
-           ...(prev || {}),
-           email: meRes.data?.email,
-           username: meRes.data?.username,
-           isProvider: !!meRes.data?.is_provider,
-           isAdmin: !!meRes.data?.is_admin,
-         }));
+@@ -1384,50 +1384,61 @@ function ProfileScreen({ apiClient, authLoading, setToken, showFlash, token }) {
        }
  
        if (showFlash) showFlash("success", "Profile updated");
@@ -210,69 +17,119 @@ index 9f11a2a82ca16f74a173255b2f668454f5ec5b46..3724e4ffe8176e67203cfb7b01f2cfc5
        const detail =
          err.response?.data?.detail || "Could not save profile changes.";
        if (showFlash) showFlash("error", detail);
-@@ -1777,50 +1793,62 @@ function ProfileScreen({ apiClient, authLoading, setToken, showFlash, token }) {
-             isLast={!isAdmin}
+     } finally {
+       setEditSaving(false);
+     }
+   };
+ 
+ 
+   const handleComingSoon = (label) => {
+     if (showFlash) {
+       showFlash("info", `${label} coming soon`);
+     }
+   };
+ 
++  const openExternal = async (url) => {
++    try {
++      await Linking.openURL(url);
++    } catch (err) {
++      console.log("Error opening external link", err);
++      if (showFlash) {
++        showFlash("error", "Could not open link. Please try again.");
++      }
++    }
++  };
++
+   const formatBookingDate = (iso) => {
+     const d = new Date(iso);
+     return d.toLocaleDateString("en-US", {
+       weekday: "short",
+       month: "short",
+       day: "numeric",
+     });
+   };
+ 
+   const formatBookingTime = (iso) => {
+     const d = new Date(iso);
+     let h = d.getHours();
+     const m = d.getMinutes();
+     const suffix = h >= 12 ? "PM" : "AM";
+     h = h % 12 || 12;
+     return `${h}:${m.toString().padStart(2, "0")} ${suffix}`;
+   };
+ 
+   const loadMyBookings = useCallback(async () => {
+     try {
+       setBookingsLoading(true);
+       setBookingsError("");
+ 
+       const authToken = await getAuthToken(token);
+       if (!authToken) {
+@@ -1912,61 +1923,61 @@ function ProfileScreen({ apiClient, authLoading, setToken, showFlash, token }) {
+                             <Text style={styles.navigateButtonText}>Navigate</Text>
+                           </TouchableOpacity>
+                         </View>
+ 
+                         <TouchableOpacity
+                           style={styles.myBookingCancelWrapper}
+                           onPress={() => handleClientCancelBooking(b.id)}
+                         >
+                           <Text style={styles.bookingCancel}>Cancel</Text>
+                         </TouchableOpacity>
+                       </View>
+                     )}
+                   </View>
+                 ))}
+               </>
+             )}
+         </View>
+       )}
+ 
+       <View style={styles.profileSection}>
+         <Text style={styles.profileSectionTitle}>Support</Text>
+         <View style={styles.sectionCard}>
+           <ListRow
+             title="Help"
+             icon="help-circle-outline"
+-            onPress={() => handleComingSoon("Help")}
++            onPress={() => openExternal("https://bookitgy.com/support")}
            />
-           {isAdmin && (
-             <ListRow
-               title="Admin dashboard"
-               icon="shield-checkmark-outline"
-               onPress={() => handleComingSoon("Admin dashboard")}
-               isLast
-             />
-           )}
+           <ListRow
+             title="Terms of service"
+             icon="document-text-outline"
+-            onPress={() => handleComingSoon("Terms of service")}
++            onPress={() => openExternal("https://bookitgy.com/termsofservice")}
+           />
+           <ListRow
+             title="Privacy policy"
+             icon="lock-closed-outline"
+-            onPress={() => handleComingSoon("Privacy policy")}
++            onPress={() => openExternal("https://bookitgy.com/privacy")}
+             isLast
+           />
          </View>
        </View>
  
-       {showEdit && (
-         <View style={styles.card}>
-           <Text style={styles.sectionTitle}>Edit profile</Text>
+       {isAdmin && (
+         <View style={styles.adminBox}>
+           <Text style={styles.adminTitle}>Admin tools</Text>
+           <Text style={styles.adminText}>
+             You are logged in as an admin. In future versions, this area will
+             let you manage users, providers and bookings.
+           </Text>
+         </View>
+       )}
  
-           <TextInput
-             style={styles.input}
-             placeholder="Full name"
-             value={editProfile.full_name}
-             onChangeText={(text) =>
-               setEditProfile((prev) => ({ ...prev, full_name: text }))
-             }
-           />
-+          <TextInput
-+            style={styles.input}
-+            placeholder="Username"
-+            value={editProfile.username}
-+            onChangeText={(text) =>
-+              setEditProfile((prev) => ({
-+                ...prev,
-+                username: text.replace(/\s+/g, ""),
-+              }))
-+            }
-+            autoCapitalize="none"
-+          />
-           <TextInput
-             style={styles.input}
-             placeholder="Phone"
-             keyboardType="phone-pad"
-             value={editProfile.phone}
-             onChangeText={(text) =>
-               setEditProfile((prev) => ({ ...prev, phone: text }))
-             }
-           />
-           <TextInput
-             style={styles.input}
-             placeholder="WhatsApp (optional)"
-             value={editProfile.whatsapp}
-             onChangeText={(text) =>
-               setEditProfile((prev) => ({ ...prev, whatsapp: text }))
-             }
-           />
-           <TextInput
-             style={styles.input}
-             placeholder="Location (e.g. Georgetown)"
-             value={editProfile.location}
-             onChangeText={(text) =>
-               setEditProfile((prev) => ({ ...prev, location: text }))
-             }
-           />
+       <TouchableOpacity style={styles.logoutRow} onPress={logout}>
+         <Text style={styles.logoutRowText}>Logout</Text>
+       </TouchableOpacity>
+ 
+     </ScrollView>
+     
+   );
+   
+ }
+ 
  
 EOF
 )

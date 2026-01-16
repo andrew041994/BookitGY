@@ -1806,15 +1806,6 @@ function ProfileScreen({ apiClient, authLoading, setToken, showFlash, token }) {
       {showEdit && (
         <View style={styles.card}>
           <Text style={styles.sectionTitle}>Edit profile</Text>
-
-          <TextInput
-            style={styles.input}
-            placeholder="Full name"
-            value={editProfile.full_name}
-            onChangeText={(text) =>
-              setEditProfile((prev) => ({ ...prev, full_name: text }))
-            }
-          />
           <TextInput
             style={styles.input}
             placeholder="Username"
