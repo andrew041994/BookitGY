@@ -22,7 +22,7 @@ import {
   Share,
   AppState,
 } from "react-native";
-import { NavigationContainer, StackActions } from "@react-navigation/native";
+import { NavigationContainer } from "@react-navigation/native";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { enableScreens } from "react-native-screens";
 import axios from "axios";
