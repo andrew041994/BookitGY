@@ -2862,9 +2862,28 @@ function SearchScreen({ token, showFlash, navigation, route, toggleFavorite, isF
       return;
     }
 
-    const q = trimmedQuery.toLowerCase();
-
     const providerList = Array.isArray(providers) ? providers : [];
+    const deeplinkUsername = (incomingUsername || "").trim().toLowerCase();
+    if (
+      deeplinkUsername &&
+      trimmedQuery.toLowerCase() === deeplinkUsername
+    ) {
+      const exact = providerList.filter((p) => {
+        const u1 = (p.username || "").trim().toLowerCase();
+        const u2 = (p.user?.username || "").trim().toLowerCase();
+        return u1 === deeplinkUsername || u2 === deeplinkUsername;
+      });
+      console.log(
+        "[search] deeplink exact username",
+        deeplinkUsername,
+        "matches",
+        exact.length
+      );
+      setFilteredProviders(exact);
+      return;
+    }
+
+    const q = trimmedQuery.toLowerCase();
     const providerFromNav = route?.params?.provider;
     const navProviderId = getProviderId(providerFromNav);
     const navProviderName = (providerFromNav?.name || "").trim().toLowerCase();

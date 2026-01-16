@@ -1,9 +1,15 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
 diff --git a/mobile/App.js b/mobile/App.js
-index 9127725b5eb89109732ea896d0fa036074cb8ac3..d7e3a54932e38dac9d72d30f40f015c539c686b1 100644
+index 1142d394d997eebccb50f9d916f999e4f4451d59..1d4b54138fdb5b7073e6a45a1e25aa808c318e15 100644
 --- a/mobile/App.js
 +++ b/mobile/App.js
-@@ -2847,50 +2847,68 @@ function SearchScreen({ token, showFlash, navigation, route, toggleFavorite, isF
+@@ -2840,53 +2840,72 @@ function SearchScreen({ token, showFlash, navigation, route, toggleFavorite, isF
+ 
+   useEffect(() => {
+     const providerFromNav = route?.params?.provider;
+     if (!providerFromNav) return;
+ 
+     const incomingId = getProviderId(providerFromNav);
      const currentId = getProviderId(selectedProvider);
      if (incomingId && incomingId === currentId) return;
  
@@ -23,21 +29,19 @@ index 9127725b5eb89109732ea896d0fa036074cb8ac3..d7e3a54932e38dac9d72d30f40f015c5
        return;
      }
  
-     const q = trimmedQuery.toLowerCase();
- 
+-    const q = trimmedQuery.toLowerCase();
+-
      const providerList = Array.isArray(providers) ? providers : [];
-     const providerFromNav = route?.params?.provider;
-     const navProviderId = getProviderId(providerFromNav);
-     const navProviderName = (providerFromNav?.name || "").trim().toLowerCase();
 +    const deeplinkUsername = (incomingUsername || "").trim().toLowerCase();
-+
-+    if (deeplinkUsername && trimmedQuery.toLowerCase() === deeplinkUsername) {
++    if (
++      deeplinkUsername &&
++      trimmedQuery.toLowerCase() === deeplinkUsername
++    ) {
 +      const exact = providerList.filter((p) => {
 +        const u1 = (p.username || "").trim().toLowerCase();
 +        const u2 = (p.user?.username || "").trim().toLowerCase();
 +        return u1 === deeplinkUsername || u2 === deeplinkUsername;
 +      });
-+
 +      console.log(
 +        "[search] deeplink exact username",
 +        deeplinkUsername,
@@ -47,6 +51,11 @@ index 9127725b5eb89109732ea896d0fa036074cb8ac3..d7e3a54932e38dac9d72d30f40f015c5
 +      setFilteredProviders(exact);
 +      return;
 +    }
++
++    const q = trimmedQuery.toLowerCase();
+     const providerFromNav = route?.params?.provider;
+     const navProviderId = getProviderId(providerFromNav);
+     const navProviderName = (providerFromNav?.name || "").trim().toLowerCase();
  
      // If we navigated in with a specific provider, keep the results scoped
      // to that provider ID so namesakes don't appear.
@@ -69,9 +78,6 @@ index 9127725b5eb89109732ea896d0fa036074cb8ac3..d7e3a54932e38dac9d72d30f40f015c5
          distance_km = haversineKm(
            clientLocation.lat,
            clientLocation.long,
-           p.lat,
-           p.long
-         );
  
 EOF
 )
