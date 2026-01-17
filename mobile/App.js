@@ -24,7 +24,6 @@ import * as ExpoLinking from "expo-linking";
 import {
   NavigationContainer,
   CommonActions,
-  TabActions,
   useFocusEffect,
   useIsFocused,
 } from "@react-navigation/native";
@@ -6226,28 +6225,18 @@ function App() {
         currentRouteBefore?.name,
         currentRouteBefore?.key
       );
-      const rootState = navRef.current.getRootState?.();
-      const targetKey = findSearchTabNavigatorKey(rootState);
-      if (targetKey) {
-        console.log("[deeplink] jumpTo Search target", targetKey);
-        navRef.current.dispatch({
-          ...TabActions.jumpTo("Search", params),
-          target: targetKey,
-        });
-        console.log("[deeplink] jumpTo dispatched", params);
-      } else {
-        console.log("[deeplink] missing tabs key; jumpTo skipped");
-      }
-
-      setTimeout(() => {
-        navRef.current?.navigate("Search", params);
-        const currentRouteAfter = navRef.current?.getCurrentRoute?.();
-        console.log(
-          "[deeplink] after navigate",
-          currentRouteAfter?.name,
-          currentRouteAfter?.key
-        );
-      }, 0);
+      console.log("[deeplink] navigate to Search", params);
+      navRef.current.navigate({
+        name: "Search",
+        params,
+        merge: false,
+      });
+      const currentRouteAfter = navRef.current?.getCurrentRoute?.();
+      console.log(
+        "[deeplink] after navigate",
+        currentRouteAfter?.name,
+        currentRouteAfter?.key
+      );
 
       return true;
     },
