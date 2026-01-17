@@ -212,26 +212,40 @@ function buildProviderPublicLink(username) {
   return `https://bookitgy.com/u/${encodeURIComponent(trimmed)}`;
 }
 
+// function navigateToClientSearch(username, navigationRef, nonce) {
+//   if (!navigationRef?.current) return false;
+
+//   const params = { incomingUsername: username, deeplinkNonce: nonce };
+
+//   navigationRef.current.dispatch(
+//     CommonActions.reset({
+//       index: 1,
+//       routes: [
+//         { name: "Home" },
+//         { name: "Search", params },
+//         { name: "Appointments" },
+//         { name: "Profile" },
+//       ],
+//     })
+//   );
+
+//   return true;
+// }
+
+
 function navigateToClientSearch(username, navigationRef, nonce) {
   if (!navigationRef?.current) return false;
 
   const params = { incomingUsername: username, deeplinkNonce: nonce };
 
-  navigationRef.current.dispatch(
-    CommonActions.reset({
-      index: 1,
-      routes: [
-        { name: "Home" },
-        { name: "Search", params },
-        { name: "Appointments" },
-        { name: "Profile" },
-      ],
-    })
-  );
+  // Force switch to the Search tab (works reliably when app is already running)
+  navigationRef.current.dispatch(TabActions.jumpTo("Search", params));
+
+  // Belt-and-suspenders: ensure params land even if jumpTo ignores them on some builds
+  navigationRef.current.navigate("Search", params);
 
   return true;
 }
-
 
 function useFavoriteProviders(userKey) {
   const storageKey = FAVORITES_STORAGE_KEY(userKey);
