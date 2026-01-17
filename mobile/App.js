@@ -233,22 +233,18 @@ function buildProviderPublicLink(username) {
 // }
 
 
-function navigateToClientSearch(username, navigationRef, nonce) {
-  if (!navigationRef?.current) return false;
-
-  const params = { incomingUsername: username, deeplinkNonce: nonce };
-
-  // 1️⃣ Always force the tab switch
-  navigationRef.current.dispatch(TabActions.jumpTo("Search"));
-
-  // 2️⃣ Explicitly update params on Search route
-  navigationRef.current.dispatch(
-    CommonActions.setParams(params)
+function findClientTabsKey(state) {
+  if (!state || !Array.isArray(state.routes)) return null;
+  const routeNames = state.routes.map((route) => route?.name);
+  const hasClientTabs = ["Home", "Search", "Appointments", "Profile"].every(
+    (name) => routeNames.includes(name)
   );
-
-  console.log("[deeplink] forced Search tab + params", params);
-
-  return true;
+  if (hasClientTabs && state.key) return state.key;
+  for (const route of state.routes) {
+    const nestedKey = findClientTabsKey(route?.state);
+    if (nestedKey) return nestedKey;
+  }
+  return null;
 }
 
 
@@ -5876,6 +5872,7 @@ function MainApp({
   setToken,
   showFlash,
   navigationRef,
+  clientTabsKeyRef,
   setNavReady,
 }) {
   const {
@@ -5894,6 +5891,17 @@ function MainApp({
       onReady={() => {
         console.log("[nav] ready");
         setNavReady(true);
+        if (!token.isProvider) {
+          const rootState = navigationRef.current?.getRootState();
+          clientTabsKeyRef.current = findClientTabsKey(rootState);
+          console.log("[nav] tabs key (ready)", clientTabsKeyRef.current);
+         }
+      }}
+      onStateChange={() => {
+        if (token.isProvider) return;
+        const rootState = navigationRef.current?.getRootState();
+        clientTabsKeyRef.current = findClientTabsKey(rootState);
+        console.log("[nav] tabs key", clientTabsKeyRef.current);
       }}
     >
       {token.isProvider ? (
@@ -6148,6 +6156,7 @@ function App() {
   const [navReady, setNavReady] = useState(false);
   const navReadyRef = useRef(false);
   const navigationRef = useRef(null);
+  const clientTabsKeyRef = useRef(null);
   const authBootstrapRef = useRef({ inFlight: false, completed: false });
   const tokenRef = useRef(token);
   const lastDeeplinkHandledAtRef = useRef(0);
@@ -6230,6 +6239,29 @@ function App() {
   useEffect(() => {
     if (!token) setNavReady(false);
   }, [token]);
+
+  const navigateToClientSearch = useCallback(
+    (username, navRef, nonce) => {
+      if (!navRef?.current) return false;
+
+      const params = { incomingUsername: username, deeplinkNonce: nonce };
+      const targetKey = clientTabsKeyRef.current;
+      if (!targetKey) {
+        console.log("[deeplink] missing tabs key; jumpTo skipped");
+        return false;
+      }
+
+      console.log("[deeplink] jumpTo Search target", targetKey);
+      navRef.current.dispatch({
+        ...TabActions.jumpTo("Search", params),
+        target: targetKey,
+      });
+      console.log("[deeplink] jumpTo dispatched", params);
+
+      return true;
+    },
+    []
+  );
 
   const handleIncomingUrl = useCallback((url, source) => {
     console.log("[deeplink] handleIncomingUrl", source, url);
@@ -6516,6 +6548,7 @@ function App() {
             setToken={setToken}
             showFlash={showFlash}
             navigationRef={navigationRef}
+            clientTabsKeyRef={clientTabsKeyRef}
             setNavReady={setNavReady}
           />
         )}
