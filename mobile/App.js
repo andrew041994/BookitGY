@@ -19,8 +19,8 @@ import {
   Pressable,
   RefreshControl,
   Share,
-  AppState,
 } from "react-native";
+import * as ExpoLinking from "expo-linking";
 import {
   NavigationContainer,
   CommonActions,
@@ -2763,12 +2763,14 @@ function SearchScreen({ token, showFlash, navigation, route, toggleFavorite, isF
     console.log(
       "[deeplink] consumed in SearchScreen",
       incomingUsername,
-      deeplinkNonce
+      deeplinkNonce,
+      "focused",
+      isFocused
     );
     setSearchQuery(incomingUsername);
     setHasSearched(true);
     setShouldScrollToResults(true);
-  }, [isFocused, incomingUsername, deeplinkNonce]);
+  }, [incomingUsername, deeplinkNonce, isFocused]);
 
   const haversineKm = (lat1, lon1, lat2, lon2) => {
     if (
@@ -6127,6 +6129,8 @@ function App() {
   const authBootstrapRef = useRef({ inFlight: false, completed: false });
   const tokenRef = useRef(token);
   const lastDeeplinkHandledAtRef = useRef(0);
+  const lastHandledUrlRef = useRef(null);
+  const url = ExpoLinking.useURL();
 
   const [flash, setFlash] = useState(null);
   const handleUnauthorized = useCallback(async () => {
@@ -6208,6 +6212,10 @@ function App() {
   const handleIncomingUrl = useCallback((url, source) => {
     console.log("[deeplink] handleIncomingUrl", source, url);
     if (DEEPLINK_DEBUG) showFlash("info", `[DL] ${source}: ${url || "(null)"}`);
+    if (url && url === lastHandledUrlRef.current) {
+      console.log("[deeplink] duplicate url ignored", url);
+      return false;
+    }
     const username = extractUsernameFromUrl(url);
     console.log("[deeplink] extracted username", username);
     if (!username) {
@@ -6215,12 +6223,13 @@ function App() {
       return false;
     }
     if (DEEPLINK_DEBUG) showFlash("success", `[DL] user: ${username}`);
-    lastDeeplinkHandledAtRef.current = Date.now();
-
     if (tokenRef.current?.isProvider === true) {
       showFlash("error", "Open as a client to view provider links.");
       return true;
     }
+
+    lastHandledUrlRef.current = url;
+    lastDeeplinkHandledAtRef.current = Date.now();
 
     const queued = { username, nonce: Date.now() };
     console.log("[deeplink] queued", queued.username, queued.nonce);
@@ -6252,25 +6261,24 @@ function App() {
   }, [handleIncomingUrl]);
 
   useEffect(() => {
-    const sub = AppState.addEventListener("change", (nextState) => {
-      if (nextState !== "active") return;
-      Linking.getInitialURL().then((url) => {
-        console.log("[deeplink] getInitialURL (active)", url);
-        if (DEEPLINK_DEBUG) {
-          showFlash("info", `[DL] getInitialURL(active): ${url || "(null)"}`);
-        }
-        if (!url || url === lastHandledUrlRef.current) return;
-        handleIncomingUrl(url, "appstate-active");
-      });
-    });
-
-    return () => {
-      sub.remove();
-    };
-  }, [handleIncomingUrl]);
+    if (!url) return;
+    console.log("[deeplink] useURL update", url);
+    handleIncomingUrl(url, "useURL");
+  }, [handleIncomingUrl, url]);
 
   useEffect(() => {
     if (!pendingDeepLinkUsername) return;
+    console.log(
+      "[deeplink] pending checks",
+      "hasToken",
+      Boolean(token),
+      "isProvider",
+      token?.isProvider,
+      "navReady",
+      navReady,
+      "navRef",
+      Boolean(navigationRef.current)
+    );
     if (!token) return;
     if (token.isProvider) {
       showFlash("error", "Open as a client to view provider links.");
