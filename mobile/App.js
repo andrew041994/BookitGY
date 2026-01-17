@@ -238,11 +238,15 @@ function navigateToClientSearch(username, navigationRef, nonce) {
 
   const params = { incomingUsername: username, deeplinkNonce: nonce };
 
-  // Force switch to the Search tab (works reliably when app is already running)
+  // 1️⃣ Always force the tab switch
   navigationRef.current.dispatch(TabActions.jumpTo("Search"));
 
-  // Belt-and-suspenders: ensure params land even if jumpTo ignores them on some builds
-  navigationRef.current.navigate("Search", params);
+  // 2️⃣ Explicitly update params on Search route
+  navigationRef.current.dispatch(
+    CommonActions.setParams(params)
+  );
+
+  console.log("[deeplink] forced Search tab + params", params);
 
   return true;
 }
