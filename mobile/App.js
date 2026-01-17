@@ -215,17 +215,19 @@ function buildProviderPublicLink(username) {
 function navigateToClientSearch(username, navigationRef, nonce) {
   if (!navigationRef?.current) return false;
 
-  const params = { incomingUsername: username, deeplinkNonce: Date.now() };
+  const params = { incomingUsername: username, deeplinkNonce: nonce };
 
-  navigationRef.current.reset({
-    index: 1,
-    routes: [
-      { name: "Home" },
-      { name: "Search", params },
-      { name: "Appointments" },
-      { name: "Profile" },
-    ],
-  });
+  navigationRef.current.dispatch(
+    CommonActions.reset({
+      index: 1,
+      routes: [
+        { name: "Home" },
+        { name: "Search", params },
+        { name: "Appointments" },
+        { name: "Profile" },
+      ],
+    })
+  );
 
   return true;
 }

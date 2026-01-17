@@ -1,76 +1,83 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
-diff --git a/mobile/ios/BookitGY/AppDelegate.swift b/mobile/ios/BookitGY/AppDelegate.swift
-index 54e40367b4c17e8dca44e549d19fd2fdde9527ba..78003725a6a7a08c763b57d54fc703e05de6dab0 100644
---- a/mobile/ios/BookitGY/AppDelegate.swift
-+++ b/mobile/ios/BookitGY/AppDelegate.swift
-@@ -20,43 +20,67 @@ public class AppDelegate: ExpoAppDelegate {
-   ) -> Bool {
-     let delegate = ReactNativeDelegate()
-     let factory = ExpoReactNativeFactory(delegate: delegate)
-     delegate.dependencyProvider = RCTAppDependencyProvider()
- 
-     reactNativeDelegate = delegate
-     reactNativeFactory = factory
-     bindReactNativeFactory(factory)
- 
- #if os(iOS) || os(tvOS)
-     window = UIWindow(frame: UIScreen.main.bounds)
-     factory.startReactNative(
-       withModuleName: "main",
-       in: window,
-       launchOptions: launchOptions)
- #endif
- 
- // @generated begin react-native-maps-init - expo prebuild (DO NOT MODIFY) sync-001d8ce0c176b2a0f2e649d849dac0806af3a551
- #if canImport(GoogleMaps)
- GMSServices.provideAPIKey("AIzaSyDif7VfeWmBgax6MrIyOh3ebblieZtKE8I")
- #endif
- // @generated end react-native-maps-init
-     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
+diff --git a/mobile/App.js b/mobile/App.js
+index 25fcef144831fc564d0090d8979008dd6e64f0f1..cc0c145a8e7abb050b13f8a503bb2ae8fb05ba93 100644
+--- a/mobile/App.js
++++ b/mobile/App.js
+@@ -193,61 +193,63 @@ function extractUsernameFromUrl(url) {
    }
  
-+  public override func application(
-+    _ application: UIApplication,
-+    open url: URL,
-+    options: [UIApplication.OpenURLOptionsKey: Any] = [:]
-+  ) -> Bool {
-+    return RCTLinkingManager.application(application, open: url, options: options)
-+      || super.application(application, open: url, options: options)
-+  }
+   if (!username) return null;
+ 
+   let decoded = username;
+   try {
+     decoded = decodeURIComponent(username);
+   } catch (error) {
+     decoded = username;
+   }
+ 
+   const cleaned = decoded.trim().replace(/^@/, "");
+   if (!cleaned || !isValidUsername(cleaned)) return null;
+   return cleaned;
+ }
+ 
+ function buildProviderPublicLink(username) {
+   const trimmed = String(username || "").trim();
+   if (!trimmed) return null;
+   return `https://bookitgy.com/u/${encodeURIComponent(trimmed)}`;
+ }
+ 
+ function navigateToClientSearch(username, navigationRef, nonce) {
+   if (!navigationRef?.current) return false;
+ 
+-  const params = { incomingUsername: username, deeplinkNonce: Date.now() };
+-
+-  navigationRef.current.reset({
+-    index: 1,
+-    routes: [
+-      { name: "Home" },
+-      { name: "Search", params },
+-      { name: "Appointments" },
+-      { name: "Profile" },
+-    ],
+-  });
++  const params = { incomingUsername: username, deeplinkNonce: nonce };
 +
-+  public override func application(
-+    _ application: UIApplication,
-+    continue userActivity: NSUserActivity,
-+    restorationHandler: @escaping ([UIUserActivityRestoring]?) -> Void
-+  ) -> Bool {
-+    return RCTLinkingManager.application(
-+      application,
-+      continue: userActivity,
-+      restorationHandler: restorationHandler
-+    ) || super.application(
-+      application,
-+      continue: userActivity,
-+      restorationHandler: restorationHandler
-+    )
-+  }
++  navigationRef.current.dispatch(
++    CommonActions.reset({
++      index: 1,
++      routes: [
++        { name: "Home" },
++        { name: "Search", params },
++        { name: "Appointments" },
++        { name: "Profile" },
++      ],
++    })
++  );
+ 
+   return true;
  }
  
- class ReactNativeDelegate: ExpoReactNativeFactoryDelegate {
-   // Extension point for config-plugins
  
-   override func sourceURL(for bridge: RCTBridge) -> URL? {
-     // needed to return the correct URL for expo-dev-client.
-     bridge.bundleURL ?? bundleURL()
-   }
+ function useFavoriteProviders(userKey) {
+   const storageKey = FAVORITES_STORAGE_KEY(userKey);
+   const [favoriteIds, setFavoriteIds] = useState([]);
+   const [favoriteProviders, setFavoriteProviders] = useState([]);
+   const [favoritesLoading, setFavoritesLoading] = useState(true);
  
-   override func bundleURL() -> URL? {
- #if DEBUG
-     return RCTBundleURLProvider.sharedSettings().jsBundleURL(forBundleRoot: ".expo/.virtual-metro-entry")
- #else
-     return Bundle.main.url(forResource: "main", withExtension: "jsbundle")
- #endif
-   }
- }
+   const persistIds = useCallback(async (ids) => {
+     try {
+       await AsyncStorage.setItem(storageKey, JSON.stringify(ids));
+     } catch (err) {
+       console.log("Error saving favorites", err?.message || err);
+     }
+   }, [storageKey]);
+ 
+   const loadFavoritesFromStorage = useCallback(async () => {
+     try {
+       setFavoritesLoading(true);
+       const raw = await AsyncStorage.getItem(storageKey);
+       const parsed = raw ? JSON.parse(raw) : [];
+       setFavoriteIds(Array.isArray(parsed) ? parsed : []);
  
 EOF
 )
