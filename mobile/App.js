@@ -212,41 +212,28 @@ function buildProviderPublicLink(username) {
   return `https://bookitgy.com/u/${encodeURIComponent(trimmed)}`;
 }
 
-// function navigateToClientSearch(username, navigationRef, nonce) {
-//   if (!navigationRef?.current) return false;
-
-//   const params = { incomingUsername: username, deeplinkNonce: nonce };
-
-//   navigationRef.current.dispatch(
-//     CommonActions.reset({
-//       index: 1,
-//       routes: [
-//         { name: "Home" },
-//         { name: "Search", params },
-//         { name: "Appointments" },
-//         { name: "Profile" },
-//       ],
-//     })
-//   );
-
-//   return true;
-// }
 
 
 function findSearchTabNavigatorKey(state) {
   if (!state || !Array.isArray(state.routes)) return null;
-  if (
-    state.type === "tab" &&
-    state.routes.some((route) => route?.name === "Search")
-  ) {
-    return state.key || null;
-  }
+
+  const routeNames = state.routes.map((r) => r?.name).filter(Boolean);
+
+  const looksLikeClientTabs =
+    routeNames.includes("Home") &&
+    routeNames.includes("Search") &&
+    routeNames.includes("Appointments") &&
+    routeNames.includes("Profile");
+
+  if (looksLikeClientTabs && state.key) return state.key;
+
   for (const route of state.routes) {
     const nestedKey = findSearchTabNavigatorKey(route?.state);
     if (nestedKey) return nestedKey;
   }
   return null;
 }
+
 
 
 
