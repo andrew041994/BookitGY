@@ -42,6 +42,30 @@ GMSServices.provideAPIKey("AIzaSyDif7VfeWmBgax6MrIyOh3ebblieZtKE8I")
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
   }
 
+  public override func application(
+    _ application: UIApplication,
+    open url: URL,
+    options: [UIApplication.OpenURLOptionsKey: Any] = [:]
+  ) -> Bool {
+    return RCTLinkingManager.application(application, open: url, options: options)
+      || super.application(application, open: url, options: options)
+  }
+
+  public override func application(
+    _ application: UIApplication,
+    continue userActivity: NSUserActivity,
+    restorationHandler: @escaping ([UIUserActivityRestoring]?) -> Void
+  ) -> Bool {
+    return RCTLinkingManager.application(
+      application,
+      continue: userActivity,
+      restorationHandler: restorationHandler
+    ) || super.application(
+      application,
+      continue: userActivity,
+      restorationHandler: restorationHandler
+    )
+  }
 }
 
 class ReactNativeDelegate: ExpoReactNativeFactoryDelegate {
