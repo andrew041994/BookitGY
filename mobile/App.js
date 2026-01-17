@@ -239,13 +239,15 @@ function navigateToClientSearch(username, navigationRef, nonce) {
   const params = { incomingUsername: username, deeplinkNonce: nonce };
 
   // Force switch to the Search tab (works reliably when app is already running)
-  navigationRef.current.dispatch(TabActions.jumpTo("Search", params));
+  navigationRef.current.dispatch(TabActions.jumpTo("Search"));
 
   // Belt-and-suspenders: ensure params land even if jumpTo ignores them on some builds
   navigationRef.current.navigate("Search", params);
 
   return true;
 }
+
+
 
 function useFavoriteProviders(userKey) {
   const storageKey = FAVORITES_STORAGE_KEY(userKey);
