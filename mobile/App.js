@@ -2155,20 +2155,21 @@ function ClientHomeScreen({
         <Pressable
           style={styles.searchBar}
           onPress={() => handleSearchNavigate(searchText)}
-        >
+          >
           <Ionicons name="search-outline" size={20} color={colors.textMuted} />
           <TextInput
+            pointerEvents="none"
             style={styles.searchInput}
             placeholder="Search by profession, provider, or service"
             placeholderTextColor={colors.textSecondary}
             value={searchText}
-            onChangeText={setSearchText}
             editable={false}
             showSoftInputOnFocus={false}
             caretHidden={true}
             returnKeyType="search"
           />
-        </Pressable>
+          </Pressable>
+
 
         <View style={styles.quickCategorySection}>
           <Text style={styles.sectionTitle}>Quick Categories</Text>
