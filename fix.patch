@@ -1,145 +1,80 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
 diff --git a/mobile/App.js b/mobile/App.js
-index 2ce5dd709fc5ec4a9a0d7058b50bfd3ae104efc0..d08d5f431b70f3d78f0fad867e77dab67fece5ed 100644
+index fa873a59b31217e3670d824733b260783cc9cd58..7e285f23e76d46152482e24bcf4eb63b8256d800 100644
 --- a/mobile/App.js
 +++ b/mobile/App.js
-@@ -2,51 +2,50 @@ import React, { useState, useEffect, useCallback, useMemo, useRef } from "react"
- import {
-   Text,
-   View,
-   StyleSheet,
-   TextInput,
-   Button,
-   Alert,
-   ActivityIndicator,
-   ScrollView,
-   TouchableOpacity,
-   Switch,
-   Linking,
-   Platform,
-   Image,
-   KeyboardAvoidingView,
-   TouchableWithoutFeedback,
-   Keyboard,
-   Pressable,
-   RefreshControl,
-   Share,
- } from "react-native";
- import * as ExpoLinking from "expo-linking";
- import {
-   NavigationContainer,
-   CommonActions,
--  TabActions,
-   useFocusEffect,
-   useIsFocused,
- } from "@react-navigation/native";
- import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
- import { enableScreens } from "react-native-screens";
- import axios from "axios";
- import AsyncStorage from "@react-native-async-storage/async-storage";
- import { clearToken, loadToken, saveToken } from "./src/components/tokenStorage";
- import ProviderCard from "./src/components/ProviderCard";
- import { createApiClient } from "./src/api/client";
- import * as Location from "expo-location";
- import Constants from "expo-constants";
- import * as ImagePicker from "expo-image-picker";
- import { Ionicons } from "@expo/vector-icons";
- import { SafeAreaProvider,SafeAreaView } from "react-native-safe-area-context";
- import BookitGYLogoTransparent from "./assets/bookitgy-logo-transparent.png"
- import { theme } from "./src/theme";
- // import * as Sentry from "sentry-expo";
+@@ -2130,63 +2130,67 @@ function ClientHomeScreen({
+   }, [refreshFavoriteProviders]);
  
- let Clipboard = null;
- try {
-   Clipboard = require("expo-clipboard");
- } catch (e) {}
+   return (
+     <View style={styles.homeWrapper}>
+         <View style={styles.pinnedHeader}>
+           <SafeAreaView style={styles.pinnedHeaderSafeArea}>
+             <Image
+               source={BookitGYLogoTransparent}
+               style={styles.headerLogo}
+             />
+           </SafeAreaView>
+         </View>
+       <ScrollView
+         contentContainerStyle={styles.homeScroll}
+         refreshControl={
+           <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
+         }
+       >
+         <View style={styles.homeHeader}>
+           <Text style={styles.homeGreeting}>{greetingText}</Text>
+           <Text style={styles.homeSubtitle}>
+             What are you looking for today?
+           </Text>
+         </View>
  
- enableScreens(false);
-@@ -6204,72 +6203,62 @@ function App() {
-   }, [formatFlashText]);
+-        <View style={styles.searchBar}>
++        <Pressable
++          style={styles.searchBar}
++          onPress={() => handleSearchNavigate(searchText)}
++        >
+           <Ionicons name="search-outline" size={20} color={colors.textMuted} />
+           <TextInput
+             style={styles.searchInput}
+             placeholder="Search by profession, provider, or service"
+             placeholderTextColor={colors.textSecondary}
+             value={searchText}
+             onChangeText={setSearchText}
+-            onFocus={() => handleSearchNavigate(searchText)}
+-            onSubmitEditing={() => handleSearchNavigate(searchText)}
++            editable={false}
++            showSoftInputOnFocus={false}
++            caretHidden={true}
+             returnKeyType="search"
+           />
+-        </View>
++        </Pressable>
  
-   useEffect(() => {
-     tokenRef.current = token;
-   }, [token]);
+         <View style={styles.quickCategorySection}>
+           <Text style={styles.sectionTitle}>Quick Categories</Text>
+           <ScrollView
+             horizontal
+             showsHorizontalScrollIndicator={false}
+             contentContainerStyle={styles.quickCategoryList}
+           >
+             {quickCategories.map((category) => (
+               <Pressable
+                 key={category}
+                 style={styles.quickCategoryChip}
+                 onPress={() => handleSearchNavigate(category)}
+               >
+                 <Text style={styles.quickCategoryText}>{category}</Text>
+               </Pressable>
+             ))}
+           </ScrollView>
+         </View>
  
-   useEffect(() => {
-     navReadyRef.current = navReady;
-   }, [navReady]);
  
-   useEffect(() => {
-     if (!token) setNavReady(false);
-   }, [token]);
- 
-   const navigateToClientSearch = useCallback(
-     (username, navRef, nonce) => {
-       if (!navRef?.current) return false;
- 
-       const params = { incomingUsername: username, deeplinkNonce: nonce };
-       const currentRouteBefore = navRef.current.getCurrentRoute?.();
-       console.log(
-         "[deeplink] before navigate",
-         currentRouteBefore?.name,
-         currentRouteBefore?.key
-       );
--      const rootState = navRef.current.getRootState?.();
--      const targetKey = findSearchTabNavigatorKey(rootState);
--      if (targetKey) {
--        console.log("[deeplink] jumpTo Search target", targetKey);
--        navRef.current.dispatch({
--          ...TabActions.jumpTo("Search", params),
--          target: targetKey,
--        });
--        console.log("[deeplink] jumpTo dispatched", params);
--      } else {
--        console.log("[deeplink] missing tabs key; jumpTo skipped");
--      }
--
--      setTimeout(() => {
--        navRef.current?.navigate("Search", params);
--        const currentRouteAfter = navRef.current?.getCurrentRoute?.();
--        console.log(
--          "[deeplink] after navigate",
--          currentRouteAfter?.name,
--          currentRouteAfter?.key
--        );
--      }, 0);
-+      console.log("[deeplink] navigate to Search", params);
-+      navRef.current.navigate({
-+        name: "Search",
-+        params,
-+        merge: false,
-+      });
-+      const currentRouteAfter = navRef.current?.getCurrentRoute?.();
-+      console.log(
-+        "[deeplink] after navigate",
-+        currentRouteAfter?.name,
-+        currentRouteAfter?.key
-+      );
- 
-       return true;
-     },
-     []
-   );
- 
-   const handleIncomingUrl = useCallback((url, source) => {
-     console.log("[deeplink] handleIncomingUrl", source, url);
-     if (DEEPLINK_DEBUG) showFlash("info", `[DL] ${source}: ${url || "(null)"}`);
-     if (url && url === lastHandledUrlRef.current) {
-       console.log("[deeplink] duplicate url ignored", url);
-       return false;
-     }
-     const username = extractUsernameFromUrl(url);
-     console.log("[deeplink] extracted username", username);
-     if (!username) {
-       if (DEEPLINK_DEBUG) showFlash("error", "[DL] parse failed");
-       return false;
-     }
-     if (DEEPLINK_DEBUG) showFlash("success", `[DL] user: ${username}`);
-     if (tokenRef.current?.isProvider === true) {
-       showFlash("error", "Open as a client to view provider links.");
-       return true;
-     }
- 
+         <View style={[styles.card, styles.homeCard]}>
+           <View style={styles.carouselHeader}>
+             <View>
+               <Text style={styles.sectionTitle}>Nearby Providers</Text>
  
 EOF
 )
