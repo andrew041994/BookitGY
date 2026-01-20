@@ -1711,7 +1711,9 @@ function ProfileScreen({ apiClient, authLoading, setToken, showFlash, token }) {
         </View>
       </View>
 
-      {isProviderPublic && (
+      {/* comment out profile links */}
+
+      {/* {isProviderPublic && (
         <View style={styles.card}>
           <Text style={styles.sectionTitle}>Profile Link</Text>
           {providerPublicLink ? (
@@ -1761,7 +1763,7 @@ function ProfileScreen({ apiClient, authLoading, setToken, showFlash, token }) {
             </TouchableOpacity>
           </View>
         </View>
-      )}
+      )}  */}
 
       {hasContactDetails && (
         <View style={styles.card}>
