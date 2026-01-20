@@ -6121,7 +6121,7 @@ function FlashMessage({ flash }) {
 
 // 🔹 App orchestrates landing/login/signup/forgot-password vs main app
 
-const DEEPLINK_DEBUG = true;
+const DEEPLINK_DEBUG = false;
 
 function App() {
 
@@ -6221,68 +6221,62 @@ function App() {
   }, [token]);
 
   const navigateToClientSearch = useCallback(
-    (username, navRef, nonce) => {
-      if (!navRef?.current) return false;
+  (username, navRef, nonce) => {
+    if (!navRef?.current) return false;
 
-      const params = { incomingUsername: username, deeplinkNonce: nonce };
-      const currentRouteBefore = navRef.current.getCurrentRoute?.();
-      console.log(
-        "[deeplink] before navigate",
-        currentRouteBefore?.name,
-        currentRouteBefore?.key
-      );
-      console.log("[deeplink] navigate to Search", params);
-      navRef.current.navigate({
-        name: "Search",
-        params,
-        merge: false,
-      });
-      const currentRouteAfter = navRef.current?.getCurrentRoute?.();
-      console.log(
-        "[deeplink] after navigate",
-        currentRouteAfter?.name,
-        currentRouteAfter?.key
-      );
+    const params = { incomingUsername: username, deeplinkNonce: nonce };
 
-      return true;
-    },
-    []
-  );
+    navRef.current.navigate({
+      name: "Search",
+      params,
+      merge: false,
+    });
+
+    return true;
+  },
+  []
+);
+
 
   const handleIncomingUrl = useCallback((url, source) => {
-    console.log("[deeplink] handleIncomingUrl", source, url);
-    if (DEEPLINK_DEBUG) showFlash("info", `[DL] ${source}: ${url || "(null)"}`);
-    if (url && url === lastHandledUrlRef.current) {
-      console.log("[deeplink] duplicate url ignored", url);
-      return false;
-    }
-    const username = extractUsernameFromUrl(url);
-    console.log("[deeplink] extracted username", username);
-    if (!username) {
-      if (DEEPLINK_DEBUG) showFlash("error", "[DL] parse failed");
-      return false;
-    }
-    if (DEEPLINK_DEBUG) showFlash("success", `[DL] user: ${username}`);
-    if (tokenRef.current?.isProvider === true) {
-      showFlash("error", "Open as a client to view provider links.");
-      return true;
-    }
+    return false; // disable deep links for now
+  }, []); 
 
-    lastHandledUrlRef.current = url;
-    lastDeeplinkHandledAtRef.current = Date.now();
 
-    const queued = { username, nonce: Date.now() };
-    console.log("[deeplink] queued", queued.username, queued.nonce);
-    setPendingDeepLinkUsername(queued);
-    return true;
-  }, [showFlash]);
+  // const handleIncomingUrl = useCallback((url, source) => {
+  //   // console.log("[deeplink] handleIncomingUrl", source, url);
+  //   if (DEEPLINK_DEBUG) showFlash("info", `[DL] ${source}: ${url || "(null)"}`);
+  //   if (url && url === lastHandledUrlRef.current) {
+  //     // console.log("[deeplink] duplicate url ignored", url);
+  //     return false;
+  //   }
+  //   const username = extractUsernameFromUrl(url);
+  //   // console.log("[deeplink] extracted username", username);
+  //   if (!username) {
+  //     if (DEEPLINK_DEBUG) showFlash("error", "[DL] parse failed");
+  //     return false;
+  //   }
+  //   if (DEEPLINK_DEBUG) showFlash("success", `[DL] user: ${username}`);
+  //   if (tokenRef.current?.isProvider === true) {
+  //     showFlash("error", "Open as a client to view provider links.");
+  //     return true;
+  //   }
+
+  //   lastHandledUrlRef.current = url;
+  //   lastDeeplinkHandledAtRef.current = Date.now();
+
+  //   const queued = { username, nonce: Date.now() };
+  //   // console.log("[deeplink] queued", queued.username, queued.nonce);
+  //   setPendingDeepLinkUsername(queued);
+  //   return true;
+  // }, [showFlash]);
 
   useEffect(() => {
     let isActive = true;
 
     Linking.getInitialURL().then((url) => {
       if (!isActive) return;
-      console.log("[deeplink] getInitialURL", url);
+      // console.log("[deeplink] getInitialURL", url);
       if (DEEPLINK_DEBUG) {
         showFlash("info", `[DL] getInitialURL: ${url || "(null)"}`);
       }
@@ -6290,7 +6284,7 @@ function App() {
     });
 
     const sub = Linking.addEventListener("url", ({ url }) => {
-      console.log("[deeplink] url event", url);
+      // console.log("[deeplink] url event", url);
       handleIncomingUrl(url, "event");
     });
 
@@ -6302,13 +6296,13 @@ function App() {
 
   useEffect(() => {
     if (!url) return;
-    console.log("[deeplink] useURL update", url);
+    // console.log("[deeplink] useURL update", url);
     handleIncomingUrl(url, "useURL");
   }, [handleIncomingUrl, url]);
 
   useEffect(() => {
     if (!pendingDeepLinkUsername) return;
-    console.log(
+    {/*} console.log(
       "[deeplink] pending checks",
       "hasToken",
       Boolean(token),
@@ -6318,7 +6312,7 @@ function App() {
       navReady,
       "navRef",
       Boolean(navigationRef.current)
-    );
+    );*/}
     if (!token) return;
     if (token.isProvider) {
       showFlash("error", "Open as a client to view provider links.");
