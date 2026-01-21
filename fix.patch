@@ -1,15 +1,216 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
 diff --git a/mobile/App.js b/mobile/App.js
-index fa873a59b31217e3670d824733b260783cc9cd58..7e285f23e76d46152482e24bcf4eb63b8256d800 100644
+index 700f312a06ec7e919c84ae01520fee0e4a3c58bb..a59f2f625ff71d0f87a139ba1cbaf0339f9930a5 100644
 --- a/mobile/App.js
 +++ b/mobile/App.js
-@@ -2130,63 +2130,67 @@ function ClientHomeScreen({
+@@ -16,51 +16,55 @@ import {
+   KeyboardAvoidingView,
+   TouchableWithoutFeedback,
+   Keyboard,
+   Pressable,
+   RefreshControl,
+   Share,
+ } from "react-native";
+ import * as ExpoLinking from "expo-linking";
+ import {
+   NavigationContainer,
+   CommonActions,
+   useFocusEffect,
+   useIsFocused,
+ } from "@react-navigation/native";
+ import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
+ import { enableScreens } from "react-native-screens";
+ import axios from "axios";
+ import AsyncStorage from "@react-native-async-storage/async-storage";
+ import { clearToken, loadToken, saveToken } from "./src/components/tokenStorage";
+ import ProviderCard from "./src/components/ProviderCard";
+ import { createApiClient } from "./src/api/client";
+ import * as Location from "expo-location";
+ import Constants from "expo-constants";
+ import * as ImagePicker from "expo-image-picker";
+ import { Ionicons } from "@expo/vector-icons";
+-import { SafeAreaProvider,SafeAreaView } from "react-native-safe-area-context";
++import {
++  SafeAreaProvider,
++  SafeAreaView,
++  useSafeAreaInsets,
++} from "react-native-safe-area-context";
+ import BookitGYLogoTransparent from "./assets/bookitgy-logo-transparent.png"
+ import { theme } from "./src/theme";
+ // import * as Sentry from "sentry-expo";
+ 
+ let Clipboard = null;
+ try {
+   Clipboard = require("expo-clipboard");
+ } catch (e) {}
+ 
+ enableScreens(false);
+ 
+ 
+ 
+ 
+ // import { API } from "./App"; // wherever you define your base URL
+ 
+ 
+ 
+ 
+ 
+ const API =
+   Constants.expoConfig?.extra?.API_URL ||
+   Constants.manifest?.extra?.API_URL ||
+   "https://bookitgy.onrender.com";
+ 
+@@ -599,51 +603,58 @@ return (
+           textContentType="password"
+           autoComplete="password"
+           importantForAutofill="yes"
+           secureTextEntry={true}
+           keyboardType="default"
+           autoCapitalize="none"
+           autoCorrect={false}
+           spellCheck={false}
+           underlineColorAndroid="transparent"
+           selectionColor={colors.primary}
+           cursorColor={colors.primary}
+         />
+ 
+           {goToSignup && (
+             <View style={{ width: "100%", marginBottom: 10 }}>
+                {loading ? (
+                 <ActivityIndicator size="large" color={colors.primary} />
+               ) : (
+                 <Button title="Login" onPress={login} color={colors.primary} />
+               )}
+             </View>
+           )}
+ 
+           {goToForgot && (
+             <TouchableOpacity onPress={goToForgot} style={styles.forgotLink}>
+-              <Text style={styles.forgotLinkText}>Forgot password?</Text>
++              <Text
++                style={styles.forgotLinkText}
++                numberOfLines={1}
++                adjustsFontSizeToFit
++                minimumFontScale={0.85}
++              >
++                Forgot password?
++              </Text>
+             </TouchableOpacity>
+           )}
+ 
+             {goToSignup && (
+               <View style={{ width: "100%", marginBottom: 10 }}>
+                 <Button
+                   title="Need an account? Sign Up"
+                   onPress={goToSignup}
+                   color={colors.primary}
+                 />
+               </View>
+             )}
+ 
+             {goBack && (
+               <View style={{ width: "100%" }}>
+                 <Button title="Back" onPress={goBack} color={colors.textMuted} />
+               </View>
+             )}
+           </View>
+         </TouchableWithoutFeedback>
+       </ScrollView>
+     </KeyboardAvoidingView>
+   );
+ 
+ }
+@@ -1958,50 +1969,51 @@ function ProfileScreen({ apiClient, authLoading, setToken, showFlash, token }) {
+       )}
+ 
+       <TouchableOpacity style={styles.logoutRow} onPress={logout}>
+         <Text style={styles.logoutRowText}>Logout</Text>
+       </TouchableOpacity>
+ 
+     </ScrollView>
+     
+   );
+   
+ }
+ 
+ 
+ 
+ function ClientHomeScreen({
+   navigation,
+   token,
+   favoriteProviders,
+   favoriteIds,
+   favoritesLoading,
+   toggleFavorite,
+   isFavorite,
+   syncFavoritesFromList,
+   refreshFavoriteProviders,
+   }) {
++  const insets = useSafeAreaInsets();
+  const [nearbyProviders, setNearbyProviders] = useState([]);
+   const [currentProvider, setCurrentProvider] = useState(null);
+   const [nearbyLoading, setNearbyLoading] = useState(true);
+   const [nearbyError, setNearbyError] = useState("");
+   const [locationDenied, setLocationDenied] = useState(false);
+   const [refreshing, setRefreshing] = useState(false);
+   const [searchText, setSearchText] = useState("");
+ 
+   const quickCategories = useMemo(
+     () => ["Barber", "Hair", "Nails", "Massage", "Makeup", "Lash", "Tutor"],
+     []
+   );
+ 
+   // adding console log
+   console.log("[home] token username fields", {
+   tokenUsername: token?.username,
+   tokenEmail: token?.email,
+   tokenKeys: token ? Object.keys(token) : null,
+   tokenUserKeys: token?.user ? Object.keys(token.user) : null,
+ });
+   const greetingName = useMemo(() => {
+     const username = token?.user?.username || token?.username;
+     if (username?.trim()) return username.trim();
+     const emailPrefix = token?.email?.split("@")?.[0];
+     return emailPrefix?.trim() || "";
+@@ -2107,54 +2119,62 @@ function ClientHomeScreen({
+     );
+ 
+     setCurrentProvider(nearbyProviders[index] || null);
+   };
+ 
+   const handleProviderPress = (provider) => {
+     if (!provider) return;
+     navigation.navigate("Search", { provider });
+   };
+ 
+   const handleSearchNavigate = useCallback(
+     (query) => {
+       const trimmed = String(query || "").trim();
+       const params = trimmed
+         ? { incomingUsername: trimmed, deeplinkNonce: Date.now() }
+         : undefined;
+       navigation.navigate("Search", params);
+     },
+     [navigation]
+   );
+ 
+   useEffect(() => {
+     refreshFavoriteProviders();
    }, [refreshFavoriteProviders]);
  
++  const headerTopPadding = Math.max(insets.top, 12);
++
    return (
      <View style={styles.homeWrapper}>
          <View style={styles.pinnedHeader}>
-           <SafeAreaView style={styles.pinnedHeaderSafeArea}>
+-          <SafeAreaView style={styles.pinnedHeaderSafeArea}>
++          <SafeAreaView
++            edges={[]}
++            style={[
++              styles.pinnedHeaderSafeArea,
++              { paddingTop: headerTopPadding },
++            ]}
++          >
              <Image
                source={BookitGYLogoTransparent}
                style={styles.headerLogo}
@@ -29,52 +230,64 @@ index fa873a59b31217e3670d824733b260783cc9cd58..7e285f23e76d46152482e24bcf4eb63b
            </Text>
          </View>
  
--        <View style={styles.searchBar}>
-+        <Pressable
-+          style={styles.searchBar}
-+          onPress={() => handleSearchNavigate(searchText)}
-+        >
+         <Pressable
+           style={styles.searchBar}
+           onPress={() => handleSearchNavigate(searchText)}
+           >
            <Ionicons name="search-outline" size={20} color={colors.textMuted} />
            <TextInput
-             style={styles.searchInput}
-             placeholder="Search by profession, provider, or service"
-             placeholderTextColor={colors.textSecondary}
-             value={searchText}
-             onChangeText={setSearchText}
--            onFocus={() => handleSearchNavigate(searchText)}
--            onSubmitEditing={() => handleSearchNavigate(searchText)}
-+            editable={false}
-+            showSoftInputOnFocus={false}
-+            caretHidden={true}
-             returnKeyType="search"
-           />
--        </View>
-+        </Pressable>
+@@ -6572,50 +6592,51 @@ const styles = StyleSheet.create({
+       },
+     }),
+   },
+   inputError: {
+     borderColor: colors.error,
+     borderWidth: 2,
+   },
+   inputErrorText: {
+     color: colors.error,
+     fontSize: 12,
+     marginTop: -6,
+     marginBottom: 12,
+   },
+   inputPlaceholder: {
+     color: colors.textMuted,
+   },
+   forgotLink: {
+     marginBottom: 6,
+     alignSelf: "center",
+     paddingVertical: 4,
+   },
+   forgotLinkText: {
+     color: colors.textSecondary,
+     textDecorationLine: "underline",
+     textAlign: "center",
++    flexShrink: 1,
+   },
+   subtitle: { fontSize: 22, color: colors.textSecondary, marginTop: 20, textAlign: "center" },
+   text: { fontSize: 18, color: colors.textSecondary, marginTop: 15, textAlign: "center" },
  
-         <View style={styles.quickCategorySection}>
-           <Text style={styles.sectionTitle}>Quick Categories</Text>
-           <ScrollView
-             horizontal
-             showsHorizontalScrollIndicator={false}
-             contentContainerStyle={styles.quickCategoryList}
-           >
-             {quickCategories.map((category) => (
-               <Pressable
-                 key={category}
-                 style={styles.quickCategoryChip}
-                 onPress={() => handleSearchNavigate(category)}
-               >
-                 <Text style={styles.quickCategoryText}>{category}</Text>
-               </Pressable>
-             ))}
-           </ScrollView>
-         </View>
+     flashContainer: {
+     position: "absolute",
+     top: 40,
+     left: 20,
+     right: 20,
+     paddingVertical: 10,
+     paddingHorizontal: 12,
+     borderRadius: 8,
+     borderWidth: 1,
+     zIndex: 100,
+     shadowColor: "#000",
+     shadowOpacity: 0.1,
+     shadowRadius: 6,
+     shadowOffset: { width: 0, height: 3 },
+     elevation: 4,
+   },
  
- 
-         <View style={[styles.card, styles.homeCard]}>
-           <View style={styles.carouselHeader}>
-             <View>
-               <Text style={styles.sectionTitle}>Nearby Providers</Text>
+    homeScroll: {
+     flexGrow: 1,
+     backgroundColor: colors.background,
+     paddingHorizontal: 20,
  
 EOF
 )

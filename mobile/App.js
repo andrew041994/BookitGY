@@ -38,7 +38,11 @@ import * as Location from "expo-location";
 import Constants from "expo-constants";
 import * as ImagePicker from "expo-image-picker";
 import { Ionicons } from "@expo/vector-icons";
-import { SafeAreaProvider,SafeAreaView } from "react-native-safe-area-context";
+import {
+  SafeAreaProvider,
+  SafeAreaView,
+  useSafeAreaInsets,
+} from "react-native-safe-area-context";
 import BookitGYLogoTransparent from "./assets/bookitgy-logo-transparent.png"
 import { theme } from "./src/theme";
 // import * as Sentry from "sentry-expo";
@@ -621,7 +625,14 @@ return (
 
           {goToForgot && (
             <TouchableOpacity onPress={goToForgot} style={styles.forgotLink}>
-              <Text style={styles.forgotLinkText}>Forgot password?</Text>
+              <Text
+                style={styles.forgotLinkText}
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={0.85}
+              >
+                Forgot password?
+              </Text>
             </TouchableOpacity>
           )}
 
@@ -1980,6 +1991,7 @@ function ClientHomeScreen({
   syncFavoritesFromList,
   refreshFavoriteProviders,
   }) {
+  const insets = useSafeAreaInsets();
  const [nearbyProviders, setNearbyProviders] = useState([]);
   const [currentProvider, setCurrentProvider] = useState(null);
   const [nearbyLoading, setNearbyLoading] = useState(true);
@@ -2129,10 +2141,18 @@ function ClientHomeScreen({
     refreshFavoriteProviders();
   }, [refreshFavoriteProviders]);
 
+  const headerTopPadding = Math.max(insets.top, 12);
+
   return (
     <View style={styles.homeWrapper}>
         <View style={styles.pinnedHeader}>
-          <SafeAreaView style={styles.pinnedHeaderSafeArea}>
+          <SafeAreaView
+            edges={[]}
+            style={[
+              styles.pinnedHeaderSafeArea,
+              { paddingTop: headerTopPadding },
+            ]}
+          >
             <Image
               source={BookitGYLogoTransparent}
               style={styles.headerLogo}
@@ -6594,6 +6614,7 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     textDecorationLine: "underline",
     textAlign: "center",
+    flexShrink: 1,
   },
   subtitle: { fontSize: 22, color: colors.textSecondary, marginTop: 20, textAlign: "center" },
   text: { fontSize: 18, color: colors.textSecondary, marginTop: 15, textAlign: "center" },
