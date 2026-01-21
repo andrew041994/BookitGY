@@ -1,9 +1,9 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
 diff --git a/mobile/App.js b/mobile/App.js
-index 89ff47265868231d97074f714251e76b74cf61fb..4462e1c5b0883b6c083902a43f377440cc80d629 100644
+index 4462e1c5b0883b6c083902a43f377440cc80d629..43ccd467a342a29265bc7a2651a6f49f7cab1589 100644
 --- a/mobile/App.js
 +++ b/mobile/App.js
-@@ -19,51 +19,50 @@ import {
+@@ -19,79 +19,83 @@ import {
    Pressable,
    RefreshControl,
    Share,
@@ -29,7 +29,7 @@ index 89ff47265868231d97074f714251e76b74cf61fb..4462e1c5b0883b6c083902a43f377440
  import {
    SafeAreaProvider,
    SafeAreaView,
--  useSafeAreaInsets,
++  useSafeAreaInsets,
  } from "react-native-safe-area-context";
  import BookitGYLogoTransparent from "./assets/bookitgy-logo-transparent.png"
  import { theme } from "./src/theme";
@@ -55,14 +55,39 @@ index 89ff47265868231d97074f714251e76b74cf61fb..4462e1c5b0883b6c083902a43f377440
    Constants.expoConfig?.extra?.API_URL ||
    Constants.manifest?.extra?.API_URL ||
    "https://bookitgy.onrender.com";
-@@ -1973,51 +1972,50 @@ function ProfileScreen({ apiClient, authLoading, setToken, showFlash, token }) {
-       )}
  
-       <TouchableOpacity style={styles.logoutRow} onPress={logout}>
-         <Text style={styles.logoutRowText}>Logout</Text>
-       </TouchableOpacity>
+   console.log("### API base URL =", API);
  
-     </ScrollView>
+ const colors = theme.colors;
++const HEADER_LOGO_WIDTH = 130;
++const HEADER_LOGO_HEIGHT = 120;
++const HEADER_VERTICAL_PADDING = 12;
+ 
+ const withTimeout = (promise, ms, label) => {
+   let timeoutId;
+   const timeout = new Promise((_, reject) => {
+     timeoutId = setTimeout(() => {
+       const error = new Error(`${label || "Operation"} timed out after ${ms}ms`);
+       error.code = "ETIMEDOUT";
+       reject(error);
+     }, ms);
+   });
+ 
+   return Promise.race([promise, timeout]).finally(() => {
+     clearTimeout(timeoutId);
+   });
+ };
+ 
+ const AUTH_BOOTSTRAP_WATCHDOG_MS = 15000;
+ const AUTH_TOKEN_TIMEOUT_MS = 2000;
+ const AUTH_ME_TIMEOUT_MS = 12000;
+   const isValidEmail = (value) => {
+   const trimmed = value.trim();
+   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+   return emailRegex.test(trimmed);
+ };
+ 
+@@ -1979,50 +1983,56 @@ function ProfileScreen({ apiClient, authLoading, setToken, showFlash, token }) {
      
    );
    
@@ -81,7 +106,6 @@ index 89ff47265868231d97074f714251e76b74cf61fb..4462e1c5b0883b6c083902a43f377440
    syncFavoritesFromList,
    refreshFavoriteProviders,
    }) {
--  const insets = useSafeAreaInsets();
   const [nearbyProviders, setNearbyProviders] = useState([]);
    const [currentProvider, setCurrentProvider] = useState(null);
    const [nearbyLoading, setNearbyLoading] = useState(true);
@@ -89,6 +113,12 @@ index 89ff47265868231d97074f714251e76b74cf61fb..4462e1c5b0883b6c083902a43f377440
    const [locationDenied, setLocationDenied] = useState(false);
    const [refreshing, setRefreshing] = useState(false);
    const [searchText, setSearchText] = useState("");
++  const insets = useSafeAreaInsets();
++  const headerMinHeight =
++    Platform.OS === "android"
++      ? insets.top + HEADER_LOGO_HEIGHT + HEADER_VERTICAL_PADDING * 2
++      : undefined;
++  const headerPaddingVertical = Platform.OS === "android" ? HEADER_VERTICAL_PADDING : 0;
  
    const quickCategories = useMemo(
      () => ["Barber", "Hair", "Nails", "Massage", "Makeup", "Lash", "Tutor"],
@@ -107,9 +137,14 @@ index 89ff47265868231d97074f714251e76b74cf61fb..4462e1c5b0883b6c083902a43f377440
      if (username?.trim()) return username.trim();
      const emailPrefix = token?.email?.split("@")?.[0];
      return emailPrefix?.trim() || "";
-@@ -2123,65 +2121,61 @@ function ClientHomeScreen({
-     );
+   }, [token?.email, token?.user?.username, token?.username]);
  
+   const greetingText = greetingName ? `Hi, ${greetingName}` : "Hi";
+ 
+   const haversineKm = (lat1, lon1, lat2, lon2) => {
+     if (
+       lat1 == null ||
+@@ -2123,54 +2133,65 @@ function ClientHomeScreen({
      setCurrentProvider(nearbyProviders[index] || null);
    };
  
@@ -133,24 +168,30 @@ index 89ff47265868231d97074f714251e76b74cf61fb..4462e1c5b0883b6c083902a43f377440
      refreshFavoriteProviders();
    }, [refreshFavoriteProviders]);
  
--  const headerTopPadding = Math.max(insets.top, 12);
--
    return (
      <View style={styles.homeWrapper}>
-         <View style={styles.pinnedHeader}>
+-        <View style={styles.pinnedHeader}>
++        <View
++          style={[
++            styles.pinnedHeader,
++            headerMinHeight ? { minHeight: headerMinHeight } : null,
++          ]}
++        >
            <SafeAreaView
--            edges={[]}
--            style={[
--              styles.pinnedHeaderSafeArea,
--              { paddingTop: headerTopPadding },
--            ]}
-+            edges={["top"]}
-+            style={styles.pinnedHeaderSafeArea}
+             edges={["top"]}
+-            style={styles.pinnedHeaderSafeArea}
++            style={[
++              styles.pinnedHeaderSafeArea,
++              {
++                paddingTop: headerPaddingVertical,
++                paddingBottom: headerPaddingVertical,
++              },
++            ]}
            >
              <Image
                source={BookitGYLogoTransparent}
                style={styles.headerLogo}
-+              resizeMode="contain"
+               resizeMode="contain"
              />
            </SafeAreaView>
          </View>
@@ -171,12 +212,23 @@ index 89ff47265868231d97074f714251e76b74cf61fb..4462e1c5b0883b6c083902a43f377440
            style={styles.searchBar}
            onPress={() => handleSearchNavigate(searchText)}
            >
-           <Ionicons name="search-outline" size={20} color={colors.textMuted} />
-           <TextInput
-             pointerEvents="none"
-             style={styles.searchInput}
-             placeholder="Search by profession, provider, or service"
-@@ -4842,54 +4836,55 @@ const loadProviderSummary = async () => {
+@@ -4820,67 +4841,88 @@ const loadProviderLocation = async () => {
+     }
+   } catch (err) {
+     console.log("Error loading provider location", err.response?.data || err.message);
+   }
+ };
+ 
+ const loadProviderSummary = async () => {
+   try {
+     const authToken = await getAuthToken(token);
+     if (!authToken) return;
+ 
+     const res = await axios.get(`${API}/providers/me/summary`, {
+       headers: {
+         Authorization: `Bearer ${authToken}`,
+       },
+     });
      setProviderSummary(res.data);
    } catch (err) {
      console.log(
@@ -186,6 +238,13 @@ index 89ff47265868231d97074f714251e76b74cf61fb..4462e1c5b0883b6c083902a43f377440
    }
  };
  
++  const insets = useSafeAreaInsets();
++  const headerMinHeight =
++    Platform.OS === "android"
++      ? insets.top + HEADER_LOGO_HEIGHT + HEADER_VERTICAL_PADDING * 2
++      : undefined;
++  const headerPaddingVertical = Platform.OS === "android" ? HEADER_VERTICAL_PADDING : 0;
++
    return (
      <View style={styles.homeWrapper}>
        {hoursFlash && (
@@ -201,13 +260,28 @@ index 89ff47265868231d97074f714251e76b74cf61fb..4462e1c5b0883b6c083902a43f377440
          </View>
        )}
  
-       <View style={styles.pinnedHeader}>
--        <SafeAreaView style={styles.pinnedHeaderSafeArea}>
-+        <SafeAreaView style={styles.pinnedHeaderSafeArea} edges={["top"]}>
+-      <View style={styles.pinnedHeader}>
+-        <SafeAreaView style={styles.pinnedHeaderSafeArea} edges={["top"]}>
++      <View
++        style={[
++          styles.pinnedHeader,
++          headerMinHeight ? { minHeight: headerMinHeight } : null,
++        ]}
++      >
++        <SafeAreaView
++          style={[
++            styles.pinnedHeaderSafeArea,
++            {
++              paddingTop: headerPaddingVertical,
++              paddingBottom: headerPaddingVertical,
++            },
++          ]}
++          edges={["top"]}
++        >
            <Image
              source={BookitGYLogoTransparent}
              style={styles.headerLogo}
-+            resizeMode="contain"
+             resizeMode="contain"
            />
          </SafeAreaView>
        </View>
@@ -229,11 +303,9 @@ index 89ff47265868231d97074f714251e76b74cf61fb..4462e1c5b0883b6c083902a43f377440
              <Text style={styles.providerSummaryValue}>
                {providerSummary.account_number || "N/A"}
              </Text>
-           </View>
-         )}
- 
-         {/* TODAY overview */}
-@@ -6659,52 +6654,50 @@ const styles = StyleSheet.create({
+@@ -6652,52 +6694,52 @@ const styles = StyleSheet.create({
+     backgroundColor: colors.background,
+     paddingHorizontal: 20,
      paddingBottom: 32,
      paddingTop: 0
    },
@@ -257,10 +329,10 @@ index 89ff47265868231d97074f714251e76b74cf61fb..4462e1c5b0883b6c083902a43f377440
      marginBottom: 20,
    },
    headerLogo: {
-     width: 130,
-     height: 120,
--    // resizeMode: "contain",
--    transform: [{ translateY: -12 }],
+-    width: 130,
+-    height: 120,
++    width: HEADER_LOGO_WIDTH,
++    height: HEADER_LOGO_HEIGHT,
    },
    homeGreeting: {
      fontSize: 26,

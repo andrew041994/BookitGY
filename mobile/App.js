@@ -41,6 +41,7 @@ import { Ionicons } from "@expo/vector-icons";
 import {
   SafeAreaProvider,
   SafeAreaView,
+  useSafeAreaInsets,
 } from "react-native-safe-area-context";
 import BookitGYLogoTransparent from "./assets/bookitgy-logo-transparent.png"
 import { theme } from "./src/theme";
@@ -70,6 +71,9 @@ const API =
   console.log("### API base URL =", API);
 
 const colors = theme.colors;
+const HEADER_LOGO_WIDTH = 150;
+const HEADER_LOGO_HEIGHT = 120;
+const HEADER_VERTICAL_PADDING = 12;
 
 const withTimeout = (promise, ms, label) => {
   let timeoutId;
@@ -2001,6 +2005,12 @@ function ClientHomeScreen({
   const [locationDenied, setLocationDenied] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [searchText, setSearchText] = useState("");
+  const insets = useSafeAreaInsets();
+  const headerMinHeight =
+    Platform.OS === "android"
+      ? insets.top + HEADER_LOGO_HEIGHT + HEADER_VERTICAL_PADDING * 2
+      : undefined;
+  const headerPaddingVertical = Platform.OS === "android" ? HEADER_VERTICAL_PADDING : 0;
 
   const quickCategories = useMemo(
     () => ["Barber", "Hair", "Nails", "Massage", "Makeup", "Lash", "Tutor"],
@@ -2145,10 +2155,21 @@ function ClientHomeScreen({
 
   return (
     <View style={styles.homeWrapper}>
-        <View style={styles.pinnedHeader}>
+        <View
+          style={[
+            styles.pinnedHeader,
+            headerMinHeight ? { minHeight: headerMinHeight } : null,
+          ]}
+        >
           <SafeAreaView
             edges={["top"]}
-            style={styles.pinnedHeaderSafeArea}
+            style={[
+              styles.pinnedHeaderSafeArea,
+              {
+                paddingTop: headerPaddingVertical,
+                paddingBottom: headerPaddingVertical,
+              },
+            ]}
           >
             <Image
               source={BookitGYLogoTransparent}
@@ -4842,6 +4863,13 @@ const loadProviderSummary = async () => {
   }
 };
 
+  const insets = useSafeAreaInsets();
+  const headerMinHeight =
+    Platform.OS === "android"
+      ? insets.top + HEADER_LOGO_HEIGHT + HEADER_VERTICAL_PADDING * 2
+      : undefined;
+  const headerPaddingVertical = Platform.OS === "android" ? HEADER_VERTICAL_PADDING : 0;
+
   return (
     <View style={styles.homeWrapper}>
       {hoursFlash && (
@@ -4857,8 +4885,22 @@ const loadProviderSummary = async () => {
         </View>
       )}
 
-      <View style={styles.pinnedHeader}>
-        <SafeAreaView style={styles.pinnedHeaderSafeArea} edges={["top"]}>
+      <View
+        style={[
+          styles.pinnedHeader,
+          headerMinHeight ? { minHeight: headerMinHeight } : null,
+        ]}
+      >
+        <SafeAreaView
+          style={[
+            styles.pinnedHeaderSafeArea,
+            {
+              paddingTop: headerPaddingVertical,
+              paddingBottom: headerPaddingVertical,
+            },
+          ]}
+          edges={["top"]}
+        >
           <Image
             source={BookitGYLogoTransparent}
             style={styles.headerLogo}
@@ -6674,8 +6716,8 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   headerLogo: {
-    width: 130,
-    height: 120,
+    width: HEADER_LOGO_WIDTH,
+    height: HEADER_LOGO_HEIGHT,
   },
   homeGreeting: {
     fontSize: 26,
