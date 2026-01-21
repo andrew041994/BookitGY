@@ -1826,6 +1826,7 @@ function ProfileScreen({ apiClient, authLoading, setToken, showFlash, token }) {
           <TextInput
             style={styles.input}
             placeholder="Username"
+            placeholderTextColor={colors.textSecondary}
             value={editProfile.username}
             onChangeText={(text) =>
               setEditProfile((prev) => ({
@@ -1838,6 +1839,7 @@ function ProfileScreen({ apiClient, authLoading, setToken, showFlash, token }) {
           <TextInput
             style={styles.input}
             placeholder="Phone"
+            placeholderTextColor={colors.textSecondary}
             keyboardType="phone-pad"
             value={editProfile.phone}
             onChangeText={(text) =>
@@ -1846,7 +1848,8 @@ function ProfileScreen({ apiClient, authLoading, setToken, showFlash, token }) {
           />
           <TextInput
             style={styles.input}
-            placeholder="WhatsApp (optional)"
+            placeholder="WhatsApp"
+            placeholderTextColor={colors.textSecondary}
             value={editProfile.whatsapp}
             onChangeText={(text) =>
               setEditProfile((prev) => ({ ...prev, whatsapp: text }))
@@ -1855,6 +1858,7 @@ function ProfileScreen({ apiClient, authLoading, setToken, showFlash, token }) {
           <TextInput
             style={styles.input}
             placeholder="Location (e.g. Georgetown)"
+            placeholderTextColor={colors.textSecondary}
             value={editProfile.location}
             onChangeText={(text) =>
               setEditProfile((prev) => ({ ...prev, location: text }))
@@ -5068,6 +5072,7 @@ const loadProviderSummary = async () => {
                   serviceErrors.name ? styles.inputError : null,
                 ]}
                 placeholder="Service name"
+                placeholderTextColor={colors.textSecondary}
                 value={newName}
                 onChangeText={setNewName}
               />
@@ -5082,6 +5087,7 @@ const loadProviderSummary = async () => {
                   serviceErrors.price ? styles.inputError : null,
                 ]}
                 placeholder="Price (GYD)"
+                placeholderTextColor={colors.textSecondary}
                 value={newPrice}
                 onChangeText={setNewPrice}
                 keyboardType="numeric"
@@ -5097,6 +5103,7 @@ const loadProviderSummary = async () => {
                   serviceErrors.duration ? styles.inputError : null,
                 ]}
                 placeholder="Duration (minutes)"
+                placeholderTextColor={colors.textSecondary}
                 value={newDuration}
                 onChangeText={setNewDuration}
                 keyboardType="numeric"
@@ -5109,6 +5116,7 @@ const loadProviderSummary = async () => {
               <TextInput
                 style={[styles.input, { height: 80 }]}
                 placeholder="Description"
+                placeholderTextColor={colors.textSecondary}
                 value={newDescription}
                 onChangeText={setNewDescription}
                 multiline
@@ -5265,6 +5273,7 @@ const loadProviderSummary = async () => {
                               setFocusedHoursField(null);
                             }}
                             placeholder="9:00 AM"
+                            placeholderTextColor={colors.textSecondary}
                           />
                          <Text style={styles.serviceMeta}> - </Text>
 
@@ -5301,6 +5310,7 @@ const loadProviderSummary = async () => {
                               setFocusedHoursField(null);
                             }}
                             placeholder="5:00 PM"
+                            placeholderTextColor={colors.textSecondary}
                           />
                         </View>
                       </View>
@@ -5343,6 +5353,7 @@ const loadProviderSummary = async () => {
                 <TextInput
                   style={styles.input}
                   placeholder="Business / display name"
+                  placeholderTextColor={colors.textSecondary}
                   value={profile.full_name}
                   onChangeText={(text) =>
                     setProfile((prev) => ({ ...prev, full_name: text }))
@@ -5351,6 +5362,7 @@ const loadProviderSummary = async () => {
                 <TextInput
                   style={styles.input}
                   placeholder="Phone"
+                  placeholderTextColor={colors.textSecondary}
                   value={profile.phone}
                   onChangeText={(text) =>
                     setProfile((prev) => ({ ...prev, phone: text }))
@@ -5359,7 +5371,8 @@ const loadProviderSummary = async () => {
                 />
                 <TextInput
                   style={styles.input}
-                  placeholder="WhatsApp (optional)"
+                  placeholder="WhatsApp"
+                  placeholderTextColor={colors.textSecondary}
                   value={profile.whatsapp}
                   onChangeText={(text) =>
                     setProfile((prev) => ({ ...prev, whatsapp: text }))
@@ -5368,6 +5381,7 @@ const loadProviderSummary = async () => {
                 <TextInput
                   style={styles.input}
                   placeholder="Location (e.g. Georgetown)"
+                  placeholderTextColor={colors.textSecondary}
                   value={profile.location}
                   onChangeText={(text) =>
                     setProfile((prev) => ({ ...prev, location: text }))
@@ -5376,6 +5390,7 @@ const loadProviderSummary = async () => {
                 <TextInput
                   style={[styles.input, { height: 80 }]}
                   placeholder="Short bio / description"
+                  placeholderTextColor={colors.textSecondary}
                   value={profile.bio}
                   onChangeText={(text) =>
                     setProfile((prev) => ({ ...prev, bio: text }))
@@ -5434,6 +5449,7 @@ const loadProviderSummary = async () => {
                   <TextInput
                     style={[styles.input, { flex: 1, marginBottom: 0 }]}
                     placeholder="Add another profession (e.g. Tattoo Artist)"
+                    placeholderTextColor={colors.textSecondary}
                     value={customProfession}
                     onChangeText={setCustomProfession}
                   />
