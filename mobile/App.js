@@ -2006,9 +2006,9 @@ function ClientHomeScreen({
   const [refreshing, setRefreshing] = useState(false);
   const [searchText, setSearchText] = useState("");
   const insets = useSafeAreaInsets();
-  const headerPaddingVertical = 8;
+  const headerPaddingVertical = HEADER_VERTICAL_PADDING;
   const headerMinHeight =
-    insets.top + HEADER_LOGO_HEIGHT + headerPaddingVertical * 2;
+    insets.top + HEADER_LOGO_HEIGHT + HEADER_VERTICAL_PADDING * 2;
 
   const quickCategories = useMemo(
     () => ["Barber", "Hair", "Nails", "Massage", "Makeup", "Lash", "Tutor"],
@@ -4863,10 +4863,8 @@ const loadProviderSummary = async () => {
 
   const insets = useSafeAreaInsets();
   const headerMinHeight =
-    Platform.OS === "android"
-      ? insets.top + HEADER_LOGO_HEIGHT + HEADER_VERTICAL_PADDING * 2
-      : undefined;
-  const headerPaddingVertical = Platform.OS === "android" ? HEADER_VERTICAL_PADDING : 0;
+    insets.top + HEADER_LOGO_HEIGHT + HEADER_VERTICAL_PADDING * 2;
+  const headerPaddingVertical = HEADER_VERTICAL_PADDING;
 
   return (
     <View style={styles.homeWrapper}>

@@ -1,9 +1,9 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
 diff --git a/mobile/App.js b/mobile/App.js
-index e9fc34432cddbec5a897d3fafbdf63dadfbf65da..e53dab4185a7c2853c981305b20a0f8c9fce388a 100644
+index e53dab4185a7c2853c981305b20a0f8c9fce388a..a7ebf9d8117caed9eb0bba79aa2e1aab3ffbe5cf 100644
 --- a/mobile/App.js
 +++ b/mobile/App.js
-@@ -1984,55 +1984,53 @@ function ProfileScreen({ apiClient, authLoading, setToken, showFlash, token }) {
+@@ -1984,53 +1984,53 @@ function ProfileScreen({ apiClient, authLoading, setToken, showFlash, token }) {
    );
    
  }
@@ -29,13 +29,11 @@ index e9fc34432cddbec5a897d3fafbdf63dadfbf65da..e53dab4185a7c2853c981305b20a0f8c
    const [refreshing, setRefreshing] = useState(false);
    const [searchText, setSearchText] = useState("");
    const insets = useSafeAreaInsets();
-+  const headerPaddingVertical = 8;
+-  const headerPaddingVertical = 8;
++  const headerPaddingVertical = HEADER_VERTICAL_PADDING;
    const headerMinHeight =
--    Platform.OS === "android"
--      ? insets.top + HEADER_LOGO_HEIGHT + HEADER_VERTICAL_PADDING * 2
--      : undefined;
--  const headerPaddingVertical = Platform.OS === "android" ? HEADER_VERTICAL_PADDING : 0;
-+    insets.top + HEADER_LOGO_HEIGHT + headerPaddingVertical * 2;
+-    insets.top + HEADER_LOGO_HEIGHT + headerPaddingVertical * 2;
++    insets.top + HEADER_LOGO_HEIGHT + HEADER_VERTICAL_PADDING * 2;
  
    const quickCategories = useMemo(
      () => ["Barber", "Hair", "Nails", "Massage", "Makeup", "Lash", "Tutor"],
@@ -61,64 +59,63 @@ index e9fc34432cddbec5a897d3fafbdf63dadfbf65da..e53dab4185a7c2853c981305b20a0f8c
    const haversineKm = (lat1, lon1, lat2, lon2) => {
      if (
        lat1 == null ||
-@@ -6683,56 +6681,54 @@ const styles = StyleSheet.create({
-     borderWidth: 1,
-     zIndex: 100,
-     shadowColor: "#000",
-     shadowOpacity: 0.1,
-     shadowRadius: 6,
-     shadowOffset: { width: 0, height: 3 },
-     elevation: 4,
-   },
+@@ -4841,54 +4841,52 @@ const loadProviderLocation = async () => {
+     console.log("Error loading provider location", err.response?.data || err.message);
+   }
+ };
  
-    homeScroll: {
-     flexGrow: 1,
-     backgroundColor: colors.background,
-     paddingHorizontal: 20,
-     paddingBottom: 32,
-     paddingTop: 0
-   },
-   homeCard: {
-     width: "100%",
-   },
-   homeWrapper: {
-     flex: 1,
-     backgroundColor: "#0B1220",
-   },
-   pinnedHeader: {
-     backgroundColor: "#0B1220",
--    minHeight: 100,
-   },
-   pinnedHeaderSafeArea: {
--    flex: 1,
-     alignItems: "center",
--    justifyContent: "center",
-+    justifyContent: "flex-start",
-   },
-   homeHeader: {
-     marginBottom: 20,
-   },
-   headerLogo: {
-     width: HEADER_LOGO_WIDTH,
-     height: HEADER_LOGO_HEIGHT,
-   },
-   homeGreeting: {
-     fontSize: 26,
-     fontWeight: "700",
-     color: colors.textPrimary,
-   },
-   homeSubtitle: {
-     fontSize: 16,
-     color: colors.textSecondary,
-     marginTop: 6,
-   },
-   searchBar: {
-     flexDirection: "row",
-     alignItems: "center",
-     gap: 10,
-     backgroundColor: colors.surfaceElevated,
-     borderRadius: 16,
-     paddingHorizontal: 14,
+ const loadProviderSummary = async () => {
+   try {
+     const authToken = await getAuthToken(token);
+     if (!authToken) return;
+ 
+     const res = await axios.get(`${API}/providers/me/summary`, {
+       headers: {
+         Authorization: `Bearer ${authToken}`,
+       },
+     });
+     setProviderSummary(res.data);
+   } catch (err) {
+     console.log(
+       "Error loading provider summary",
+       err.response?.data || err.message
+     );
+   }
+ };
+ 
+   const insets = useSafeAreaInsets();
+   const headerMinHeight =
+-    Platform.OS === "android"
+-      ? insets.top + HEADER_LOGO_HEIGHT + HEADER_VERTICAL_PADDING * 2
+-      : undefined;
+-  const headerPaddingVertical = Platform.OS === "android" ? HEADER_VERTICAL_PADDING : 0;
++    insets.top + HEADER_LOGO_HEIGHT + HEADER_VERTICAL_PADDING * 2;
++  const headerPaddingVertical = HEADER_VERTICAL_PADDING;
+ 
+   return (
+     <View style={styles.homeWrapper}>
+       {hoursFlash && (
+         <View
+           style={[
+             styles.hoursFlashGlobal,
+             hoursFlash.type === "error"
+               ? styles.hoursFlashError
+               : styles.hoursFlashSuccess,
+           ]}
+         >
+           <Text style={styles.hoursFlashText}>{hoursFlash.message}</Text>
+         </View>
+       )}
+ 
+       <View
+         style={[
+           styles.pinnedHeader,
+           headerMinHeight ? { minHeight: headerMinHeight } : null,
+         ]}
+       >
+         <SafeAreaView
+           style={[
+             styles.pinnedHeaderSafeArea,
  
 EOF
 )
