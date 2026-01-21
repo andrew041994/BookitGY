@@ -1083,12 +1083,12 @@ function SignupScreen({ goToLogin, goBack, showFlash }) {
 
 
 const ListRow = ({
-  title,
-  onPress,
-  icon,
-  isLast = false,
-  disabled = false,
-}) => (
+   title,
+   onPress,
+   icon,
+   isLast = false,
+   disabled = false,
+  }) => (
   <TouchableOpacity
     style={[
       styles.listRow,
