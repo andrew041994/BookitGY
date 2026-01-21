@@ -1,9 +1,9 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
 diff --git a/mobile/App.js b/mobile/App.js
-index e9fc34432cddbec5a897d3fafbdf63dadfbf65da..9c58e52a876b2c02cc1d2dd1b48d55ed8e13f7a5 100644
+index e9fc34432cddbec5a897d3fafbdf63dadfbf65da..e53dab4185a7c2853c981305b20a0f8c9fce388a 100644
 --- a/mobile/App.js
 +++ b/mobile/App.js
-@@ -1984,55 +1984,54 @@ function ProfileScreen({ apiClient, authLoading, setToken, showFlash, token }) {
+@@ -1984,55 +1984,53 @@ function ProfileScreen({ apiClient, authLoading, setToken, showFlash, token }) {
    );
    
  }
@@ -29,15 +29,13 @@ index e9fc34432cddbec5a897d3fafbdf63dadfbf65da..9c58e52a876b2c02cc1d2dd1b48d55ed
    const [refreshing, setRefreshing] = useState(false);
    const [searchText, setSearchText] = useState("");
    const insets = useSafeAreaInsets();
--  const headerMinHeight =
++  const headerPaddingVertical = 8;
+   const headerMinHeight =
 -    Platform.OS === "android"
 -      ? insets.top + HEADER_LOGO_HEIGHT + HEADER_VERTICAL_PADDING * 2
 -      : undefined;
 -  const headerPaddingVertical = Platform.OS === "android" ? HEADER_VERTICAL_PADDING : 0;
-+  const headerHeight =
-+    insets.top + HEADER_LOGO_HEIGHT + HEADER_VERTICAL_PADDING * 2;
-+  const headerTopPadding = insets.top + 8;
-+  const headerPaddingBottom = HEADER_VERTICAL_PADDING;
++    insets.top + HEADER_LOGO_HEIGHT + headerPaddingVertical * 2;
  
    const quickCategories = useMemo(
      () => ["Barber", "Hair", "Nails", "Massage", "Makeup", "Lash", "Tutor"],
@@ -63,161 +61,6 @@ index e9fc34432cddbec5a897d3fafbdf63dadfbf65da..9c58e52a876b2c02cc1d2dd1b48d55ed
    const haversineKm = (lat1, lon1, lat2, lon2) => {
      if (
        lat1 == null ||
-@@ -2136,60 +2135,60 @@ function ClientHomeScreen({
-   const handleProviderPress = (provider) => {
-     if (!provider) return;
-     navigation.navigate("Search", { provider });
-   };
- 
-   const handleSearchNavigate = useCallback(
-     (query) => {
-       const trimmed = String(query || "").trim();
-       const params = trimmed
-         ? { incomingUsername: trimmed, deeplinkNonce: Date.now() }
-         : undefined;
-       navigation.navigate("Search", params);
-     },
-     [navigation]
-   );
- 
-   useEffect(() => {
-     refreshFavoriteProviders();
-   }, [refreshFavoriteProviders]);
- 
-   return (
-     <View style={styles.homeWrapper}>
-         <View
-           style={[
-             styles.pinnedHeader,
--            headerMinHeight ? { minHeight: headerMinHeight } : null,
-+            { minHeight: headerHeight },
-           ]}
-         >
-           <SafeAreaView
-             edges={["top"]}
-             style={[
-               styles.pinnedHeaderSafeArea,
-               {
--                paddingTop: headerPaddingVertical,
--                paddingBottom: headerPaddingVertical,
-+                paddingTop: headerTopPadding,
-+                paddingBottom: headerPaddingBottom,
-               },
-             ]}
-           >
-             <Image
-               source={BookitGYLogoTransparent}
-               style={styles.headerLogo}
-               resizeMode="contain"
-             />
-           </SafeAreaView>
-         </View>
-       <ScrollView
-         contentContainerStyle={styles.homeScroll}
-         refreshControl={
-           <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
-         }
-       >
-         <View style={styles.homeHeader}>
-           <Text style={styles.homeGreeting}>{greetingText}</Text>
-           <Text style={styles.homeSubtitle}>
-             What are you looking for today?
-           </Text>
-         </View>
- 
-         <Pressable
-           style={styles.searchBar}
-@@ -4842,83 +4841,82 @@ const loadProviderLocation = async () => {
-   } catch (err) {
-     console.log("Error loading provider location", err.response?.data || err.message);
-   }
- };
- 
- const loadProviderSummary = async () => {
-   try {
-     const authToken = await getAuthToken(token);
-     if (!authToken) return;
- 
-     const res = await axios.get(`${API}/providers/me/summary`, {
-       headers: {
-         Authorization: `Bearer ${authToken}`,
-       },
-     });
-     setProviderSummary(res.data);
-   } catch (err) {
-     console.log(
-       "Error loading provider summary",
-       err.response?.data || err.message
-     );
-   }
- };
- 
-   const insets = useSafeAreaInsets();
--  const headerMinHeight =
--    Platform.OS === "android"
--      ? insets.top + HEADER_LOGO_HEIGHT + HEADER_VERTICAL_PADDING * 2
--      : undefined;
--  const headerPaddingVertical = Platform.OS === "android" ? HEADER_VERTICAL_PADDING : 0;
-+  const headerHeight =
-+    insets.top + HEADER_LOGO_HEIGHT + HEADER_VERTICAL_PADDING * 2;
-+  const headerTopPadding = insets.top + 8;
-+  const headerPaddingBottom = HEADER_VERTICAL_PADDING;
- 
-   return (
-     <View style={styles.homeWrapper}>
-       {hoursFlash && (
-         <View
-           style={[
-             styles.hoursFlashGlobal,
-             hoursFlash.type === "error"
-               ? styles.hoursFlashError
-               : styles.hoursFlashSuccess,
-           ]}
-         >
-           <Text style={styles.hoursFlashText}>{hoursFlash.message}</Text>
-         </View>
-       )}
- 
-       <View
-         style={[
-           styles.pinnedHeader,
--          headerMinHeight ? { minHeight: headerMinHeight } : null,
-+          { minHeight: headerHeight },
-         ]}
-       >
-         <SafeAreaView
-           style={[
-             styles.pinnedHeaderSafeArea,
-             {
--              paddingTop: headerPaddingVertical,
--              paddingBottom: headerPaddingVertical,
-+              paddingTop: headerTopPadding,
-+              paddingBottom: headerPaddingBottom,
-             },
-           ]}
-           edges={["top"]}
-         >
-           <Image
-             source={BookitGYLogoTransparent}
-             style={styles.headerLogo}
-             resizeMode="contain"
-           />
-         </SafeAreaView>
-       </View>
-       <ScrollView
-         contentContainerStyle={styles.providerScroll}
-         refreshControl={
-           <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
-         }
-       >
-         <View style={styles.homeHeader}>
-           <Text style={styles.homeGreeting}>Provider dashboard</Text>
-           <Text style={styles.homeSubtitle}>Welcome, {providerLabel}</Text>
-         </View>
-     
-         {/*Account Info */}
-         {providerSummary && (
-           <View style={styles.providerSummaryCard}>
 @@ -6683,56 +6681,54 @@ const styles = StyleSheet.create({
      borderWidth: 1,
      zIndex: 100,

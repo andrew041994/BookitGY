@@ -2006,11 +2006,9 @@ function ClientHomeScreen({
   const [refreshing, setRefreshing] = useState(false);
   const [searchText, setSearchText] = useState("");
   const insets = useSafeAreaInsets();
+  const headerPaddingVertical = 8;
   const headerMinHeight =
-    Platform.OS === "android"
-      ? insets.top + HEADER_LOGO_HEIGHT + HEADER_VERTICAL_PADDING * 2
-      : undefined;
-  const headerPaddingVertical = Platform.OS === "android" ? HEADER_VERTICAL_PADDING : 0;
+    insets.top + HEADER_LOGO_HEIGHT + headerPaddingVertical * 2;
 
   const quickCategories = useMemo(
     () => ["Barber", "Hair", "Nails", "Massage", "Makeup", "Lash", "Tutor"],
@@ -6705,12 +6703,10 @@ const styles = StyleSheet.create({
   },
   pinnedHeader: {
     backgroundColor: "#0B1220",
-    minHeight: 100,
   },
   pinnedHeaderSafeArea: {
-    flex: 1,
     alignItems: "center",
-    justifyContent: "center",
+    justifyContent: "flex-start",
   },
   homeHeader: {
     marginBottom: 20,
