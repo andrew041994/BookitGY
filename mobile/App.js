@@ -71,7 +71,7 @@ const API =
   console.log("### API base URL =", API);
 
 const colors = theme.colors;
-const HEADER_LOGO_WIDTH = 150;
+const HEADER_LOGO_WIDTH = 120;
 const HEADER_LOGO_HEIGHT = 120;
 const HEADER_VERTICAL_PADDING = 0;
 
@@ -2163,7 +2163,7 @@ function ClientHomeScreen({
             style={[
               styles.pinnedHeaderSafeArea,
               {
-                paddingTop: insets.top,
+                paddingTop: Platform.OS === "ios" ? 6 : 6,
                 paddingBottom: 1,
               },
             ]}
@@ -4890,7 +4890,7 @@ const loadProviderSummary = async () => {
           style={[
             styles.pinnedHeaderSafeArea,
             {
-              paddingTop: insets.top,
+              paddingTop: Platform.OS === "ios" ? 6 : 6,
               paddingBottom: headerPaddingVertical,
             },
           ]}
