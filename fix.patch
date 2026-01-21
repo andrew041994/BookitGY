@@ -1,96 +1,82 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
 diff --git a/mobile/App.js b/mobile/App.js
-index e53dab4185a7c2853c981305b20a0f8c9fce388a..a7ebf9d8117caed9eb0bba79aa2e1aab3ffbe5cf 100644
+index 0dee0af18ef6eb1744d0913866d904839acc57fd..d569a3c35e6e6804505192c83d654d40457f42e4 100644
 --- a/mobile/App.js
 +++ b/mobile/App.js
-@@ -1984,53 +1984,53 @@ function ProfileScreen({ apiClient, authLoading, setToken, showFlash, token }) {
-   );
-   
- }
+@@ -2137,66 +2137,65 @@ function ClientHomeScreen({
+   };
  
- 
- 
- function ClientHomeScreen({
-   navigation,
-   token,
-   favoriteProviders,
-   favoriteIds,
-   favoritesLoading,
-   toggleFavorite,
-   isFavorite,
-   syncFavoritesFromList,
-   refreshFavoriteProviders,
-   }) {
-  const [nearbyProviders, setNearbyProviders] = useState([]);
-   const [currentProvider, setCurrentProvider] = useState(null);
-   const [nearbyLoading, setNearbyLoading] = useState(true);
-   const [nearbyError, setNearbyError] = useState("");
-   const [locationDenied, setLocationDenied] = useState(false);
-   const [refreshing, setRefreshing] = useState(false);
-   const [searchText, setSearchText] = useState("");
-   const insets = useSafeAreaInsets();
--  const headerPaddingVertical = 8;
-+  const headerPaddingVertical = HEADER_VERTICAL_PADDING;
-   const headerMinHeight =
--    insets.top + HEADER_LOGO_HEIGHT + headerPaddingVertical * 2;
-+    insets.top + HEADER_LOGO_HEIGHT + HEADER_VERTICAL_PADDING * 2;
- 
-   const quickCategories = useMemo(
-     () => ["Barber", "Hair", "Nails", "Massage", "Makeup", "Lash", "Tutor"],
-     []
+   const handleSearchNavigate = useCallback(
+     (query) => {
+       const trimmed = String(query || "").trim();
+       const params = trimmed
+         ? { incomingUsername: trimmed, deeplinkNonce: Date.now() }
+         : undefined;
+       navigation.navigate("Search", params);
+     },
+     [navigation]
    );
  
-   // adding console log
-   console.log("[home] token username fields", {
-   tokenUsername: token?.username,
-   tokenEmail: token?.email,
-   tokenKeys: token ? Object.keys(token) : null,
-   tokenUserKeys: token?.user ? Object.keys(token.user) : null,
- });
-   const greetingName = useMemo(() => {
-     const username = token?.user?.username || token?.username;
-     if (username?.trim()) return username.trim();
-     const emailPrefix = token?.email?.split("@")?.[0];
-     return emailPrefix?.trim() || "";
-   }, [token?.email, token?.user?.username, token?.username]);
+   useEffect(() => {
+     refreshFavoriteProviders();
+   }, [refreshFavoriteProviders]);
  
-   const greetingText = greetingName ? `Hi, ${greetingName}` : "Hi";
+   return (
+     <View style={styles.homeWrapper}>
+         <View
+           style={[
+             styles.pinnedHeader,
+             // headerMinHeight ? { minHeight: headerMinHeight } : null,
+           ]}
+         >
+-          <SafeAreaView
+-            edges={["top"]}
++          <View
+             style={[
+               styles.pinnedHeaderSafeArea,
+               {
+-                paddingTop: 1,
++                paddingTop: insets.top,
+                 paddingBottom: 1,
+               },
+             ]}
+           >
+             <Image
+               source={BookitGYLogoTransparent}
+               style={styles.headerLogo}
+               resizeMode="contain"
+             />
+-          </SafeAreaView>
++          </View>
+         </View>
+       <ScrollView
+         contentContainerStyle={styles.homeScroll}
+         refreshControl={
+           <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
+         }
+       >
+         <View style={styles.homeHeader}>
+           <Text style={styles.homeGreeting}>{greetingText}</Text>
+           <Text style={styles.homeSubtitle}>
+             What are you looking for today?
+           </Text>
+         </View>
  
-   const haversineKm = (lat1, lon1, lat2, lon2) => {
-     if (
-       lat1 == null ||
-@@ -4841,54 +4841,52 @@ const loadProviderLocation = async () => {
-     console.log("Error loading provider location", err.response?.data || err.message);
-   }
- };
- 
- const loadProviderSummary = async () => {
-   try {
-     const authToken = await getAuthToken(token);
-     if (!authToken) return;
- 
-     const res = await axios.get(`${API}/providers/me/summary`, {
-       headers: {
-         Authorization: `Bearer ${authToken}`,
-       },
-     });
-     setProviderSummary(res.data);
-   } catch (err) {
-     console.log(
-       "Error loading provider summary",
-       err.response?.data || err.message
-     );
-   }
- };
- 
-   const insets = useSafeAreaInsets();
-   const headerMinHeight =
--    Platform.OS === "android"
--      ? insets.top + HEADER_LOGO_HEIGHT + HEADER_VERTICAL_PADDING * 2
--      : undefined;
--  const headerPaddingVertical = Platform.OS === "android" ? HEADER_VERTICAL_PADDING : 0;
-+    insets.top + HEADER_LOGO_HEIGHT + HEADER_VERTICAL_PADDING * 2;
-+  const headerPaddingVertical = HEADER_VERTICAL_PADDING;
+         <Pressable
+           style={styles.searchBar}
+           onPress={() => handleSearchNavigate(searchText)}
+           >
+           <Ionicons name="search-outline" size={20} color={colors.textMuted} />
+           <TextInput
+             pointerEvents="none"
+             style={styles.searchInput}
+             placeholder="Search by profession, provider, or service"
+             placeholderTextColor={colors.textSecondary}
+             value={searchText}
+@@ -4865,66 +4864,65 @@ const loadProviderSummary = async () => {
+   // const headerMinHeight =
+   //   insets.top + HEADER_LOGO_HEIGHT + HEADER_VERTICAL_PADDING * 2;
+   const headerPaddingVertical = HEADER_VERTICAL_PADDING;
  
    return (
      <View style={styles.homeWrapper}>
@@ -110,12 +96,53 @@ index e53dab4185a7c2853c981305b20a0f8c9fce388a..a7ebf9d8117caed9eb0bba79aa2e1aab
        <View
          style={[
            styles.pinnedHeader,
-           headerMinHeight ? { minHeight: headerMinHeight } : null,
+           // headerMinHeight ? { minHeight: headerMinHeight } : null,
          ]}
        >
-         <SafeAreaView
+-        <SafeAreaView
++        <View
            style={[
              styles.pinnedHeaderSafeArea,
+             {
+-              paddingTop: 10,
++              paddingTop: insets.top,
+               paddingBottom: headerPaddingVertical,
+             },
+           ]}
+-          edges={["top"]}
+         >
+           <Image
+             source={BookitGYLogoTransparent}
+             style={styles.headerLogo}
+             resizeMode="contain"
+           />
+-        </SafeAreaView>
++        </View>
+       </View>
+       <ScrollView
+         contentContainerStyle={styles.providerScroll}
+         refreshControl={
+           <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
+         }
+       >
+         <View style={styles.homeHeader}>
+           <Text style={styles.homeGreeting}>Provider dashboard</Text>
+           <Text style={styles.homeSubtitle}>Welcome, {providerLabel}</Text>
+         </View>
+     
+         {/*Account Info */}
+         {providerSummary && (
+           <View style={styles.providerSummaryCard}>
+             <Text style={styles.providerSummaryLabel}>Account number</Text>
+             <Text style={styles.providerSummaryValue}>
+               {providerSummary.account_number || "N/A"}
+             </Text>
+           </View>
+         )}
+ 
+         {/* TODAY overview */}
+         <View style={styles.card}>
+           <Text style={styles.label}>TODAY</Text>
  
 EOF
 )

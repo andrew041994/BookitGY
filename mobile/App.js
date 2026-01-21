@@ -2159,12 +2159,11 @@ function ClientHomeScreen({
             // headerMinHeight ? { minHeight: headerMinHeight } : null,
           ]}
         >
-          <SafeAreaView
-            edges={["top"]}
+          <View
             style={[
               styles.pinnedHeaderSafeArea,
               {
-                paddingTop: 1,
+                paddingTop: insets.top,
                 paddingBottom: 1,
               },
             ]}
@@ -2174,7 +2173,7 @@ function ClientHomeScreen({
               style={styles.headerLogo}
               resizeMode="contain"
             />
-          </SafeAreaView>
+          </View>
         </View>
       <ScrollView
         contentContainerStyle={styles.homeScroll}
@@ -4887,22 +4886,21 @@ const loadProviderSummary = async () => {
           // headerMinHeight ? { minHeight: headerMinHeight } : null,
         ]}
       >
-        <SafeAreaView
+        <View
           style={[
             styles.pinnedHeaderSafeArea,
             {
-              paddingTop: 10,
+              paddingTop: insets.top,
               paddingBottom: headerPaddingVertical,
             },
           ]}
-          edges={["top"]}
         >
           <Image
             source={BookitGYLogoTransparent}
             style={styles.headerLogo}
             resizeMode="contain"
           />
-        </SafeAreaView>
+        </View>
       </View>
       <ScrollView
         contentContainerStyle={styles.providerScroll}
