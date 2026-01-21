@@ -41,7 +41,6 @@ import { Ionicons } from "@expo/vector-icons";
 import {
   SafeAreaProvider,
   SafeAreaView,
-  useSafeAreaInsets,
 } from "react-native-safe-area-context";
 import BookitGYLogoTransparent from "./assets/bookitgy-logo-transparent.png"
 import { theme } from "./src/theme";
@@ -1995,7 +1994,6 @@ function ClientHomeScreen({
   syncFavoritesFromList,
   refreshFavoriteProviders,
   }) {
-  const insets = useSafeAreaInsets();
  const [nearbyProviders, setNearbyProviders] = useState([]);
   const [currentProvider, setCurrentProvider] = useState(null);
   const [nearbyLoading, setNearbyLoading] = useState(true);
@@ -2145,21 +2143,17 @@ function ClientHomeScreen({
     refreshFavoriteProviders();
   }, [refreshFavoriteProviders]);
 
-  const headerTopPadding = Math.max(insets.top, 12);
-
   return (
     <View style={styles.homeWrapper}>
         <View style={styles.pinnedHeader}>
           <SafeAreaView
-            edges={[]}
-            style={[
-              styles.pinnedHeaderSafeArea,
-              { paddingTop: headerTopPadding },
-            ]}
+            edges={["top"]}
+            style={styles.pinnedHeaderSafeArea}
           >
             <Image
               source={BookitGYLogoTransparent}
               style={styles.headerLogo}
+              resizeMode="contain"
             />
           </SafeAreaView>
         </View>
@@ -4864,10 +4858,11 @@ const loadProviderSummary = async () => {
       )}
 
       <View style={styles.pinnedHeader}>
-        <SafeAreaView style={styles.pinnedHeaderSafeArea}>
+        <SafeAreaView style={styles.pinnedHeaderSafeArea} edges={["top"]}>
           <Image
             source={BookitGYLogoTransparent}
             style={styles.headerLogo}
+            resizeMode="contain"
           />
         </SafeAreaView>
       </View>
@@ -6681,8 +6676,6 @@ const styles = StyleSheet.create({
   headerLogo: {
     width: 130,
     height: 120,
-    // resizeMode: "contain",
-    transform: [{ translateY: -12 }],
   },
   homeGreeting: {
     fontSize: 26,
