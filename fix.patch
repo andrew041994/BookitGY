@@ -1,94 +1,9 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
 diff --git a/mobile/App.js b/mobile/App.js
-index 4462e1c5b0883b6c083902a43f377440cc80d629..43ccd467a342a29265bc7a2651a6f49f7cab1589 100644
+index e9fc34432cddbec5a897d3fafbdf63dadfbf65da..9c58e52a876b2c02cc1d2dd1b48d55ed8e13f7a5 100644
 --- a/mobile/App.js
 +++ b/mobile/App.js
-@@ -19,79 +19,83 @@ import {
-   Pressable,
-   RefreshControl,
-   Share,
- } from "react-native";
- import * as ExpoLinking from "expo-linking";
- import {
-   NavigationContainer,
-   CommonActions,
-   useFocusEffect,
-   useIsFocused,
- } from "@react-navigation/native";
- import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
- import { enableScreens } from "react-native-screens";
- import axios from "axios";
- import AsyncStorage from "@react-native-async-storage/async-storage";
- import { clearToken, loadToken, saveToken } from "./src/components/tokenStorage";
- import ProviderCard from "./src/components/ProviderCard";
- import { createApiClient } from "./src/api/client";
- import * as Location from "expo-location";
- import Constants from "expo-constants";
- import * as ImagePicker from "expo-image-picker";
- import { Ionicons } from "@expo/vector-icons";
- import {
-   SafeAreaProvider,
-   SafeAreaView,
-+  useSafeAreaInsets,
- } from "react-native-safe-area-context";
- import BookitGYLogoTransparent from "./assets/bookitgy-logo-transparent.png"
- import { theme } from "./src/theme";
- // import * as Sentry from "sentry-expo";
- 
- let Clipboard = null;
- try {
-   Clipboard = require("expo-clipboard");
- } catch (e) {}
- 
- enableScreens(false);
- 
- 
- 
- 
- // import { API } from "./App"; // wherever you define your base URL
- 
- 
- 
- 
- 
- const API =
-   Constants.expoConfig?.extra?.API_URL ||
-   Constants.manifest?.extra?.API_URL ||
-   "https://bookitgy.onrender.com";
- 
-   console.log("### API base URL =", API);
- 
- const colors = theme.colors;
-+const HEADER_LOGO_WIDTH = 130;
-+const HEADER_LOGO_HEIGHT = 120;
-+const HEADER_VERTICAL_PADDING = 12;
- 
- const withTimeout = (promise, ms, label) => {
-   let timeoutId;
-   const timeout = new Promise((_, reject) => {
-     timeoutId = setTimeout(() => {
-       const error = new Error(`${label || "Operation"} timed out after ${ms}ms`);
-       error.code = "ETIMEDOUT";
-       reject(error);
-     }, ms);
-   });
- 
-   return Promise.race([promise, timeout]).finally(() => {
-     clearTimeout(timeoutId);
-   });
- };
- 
- const AUTH_BOOTSTRAP_WATCHDOG_MS = 15000;
- const AUTH_TOKEN_TIMEOUT_MS = 2000;
- const AUTH_ME_TIMEOUT_MS = 12000;
-   const isValidEmail = (value) => {
-   const trimmed = value.trim();
-   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-   return emailRegex.test(trimmed);
- };
- 
-@@ -1979,50 +1983,56 @@ function ProfileScreen({ apiClient, authLoading, setToken, showFlash, token }) {
-     
+@@ -1984,55 +1984,54 @@ function ProfileScreen({ apiClient, authLoading, setToken, showFlash, token }) {
    );
    
  }
@@ -113,12 +28,16 @@ index 4462e1c5b0883b6c083902a43f377440cc80d629..43ccd467a342a29265bc7a2651a6f49f
    const [locationDenied, setLocationDenied] = useState(false);
    const [refreshing, setRefreshing] = useState(false);
    const [searchText, setSearchText] = useState("");
-+  const insets = useSafeAreaInsets();
-+  const headerMinHeight =
-+    Platform.OS === "android"
-+      ? insets.top + HEADER_LOGO_HEIGHT + HEADER_VERTICAL_PADDING * 2
-+      : undefined;
-+  const headerPaddingVertical = Platform.OS === "android" ? HEADER_VERTICAL_PADDING : 0;
+   const insets = useSafeAreaInsets();
+-  const headerMinHeight =
+-    Platform.OS === "android"
+-      ? insets.top + HEADER_LOGO_HEIGHT + HEADER_VERTICAL_PADDING * 2
+-      : undefined;
+-  const headerPaddingVertical = Platform.OS === "android" ? HEADER_VERTICAL_PADDING : 0;
++  const headerHeight =
++    insets.top + HEADER_LOGO_HEIGHT + HEADER_VERTICAL_PADDING * 2;
++  const headerTopPadding = insets.top + 8;
++  const headerPaddingBottom = HEADER_VERTICAL_PADDING;
  
    const quickCategories = useMemo(
      () => ["Barber", "Hair", "Nails", "Massage", "Makeup", "Lash", "Tutor"],
@@ -144,10 +63,7 @@ index 4462e1c5b0883b6c083902a43f377440cc80d629..43ccd467a342a29265bc7a2651a6f49f
    const haversineKm = (lat1, lon1, lat2, lon2) => {
      if (
        lat1 == null ||
-@@ -2123,54 +2133,65 @@ function ClientHomeScreen({
-     setCurrentProvider(nearbyProviders[index] || null);
-   };
- 
+@@ -2136,60 +2135,60 @@ function ClientHomeScreen({
    const handleProviderPress = (provider) => {
      if (!provider) return;
      navigation.navigate("Search", { provider });
@@ -170,23 +86,24 @@ index 4462e1c5b0883b6c083902a43f377440cc80d629..43ccd467a342a29265bc7a2651a6f49f
  
    return (
      <View style={styles.homeWrapper}>
--        <View style={styles.pinnedHeader}>
-+        <View
-+          style={[
-+            styles.pinnedHeader,
-+            headerMinHeight ? { minHeight: headerMinHeight } : null,
-+          ]}
-+        >
+         <View
+           style={[
+             styles.pinnedHeader,
+-            headerMinHeight ? { minHeight: headerMinHeight } : null,
++            { minHeight: headerHeight },
+           ]}
+         >
            <SafeAreaView
              edges={["top"]}
--            style={styles.pinnedHeaderSafeArea}
-+            style={[
-+              styles.pinnedHeaderSafeArea,
-+              {
-+                paddingTop: headerPaddingVertical,
-+                paddingBottom: headerPaddingVertical,
-+              },
-+            ]}
+             style={[
+               styles.pinnedHeaderSafeArea,
+               {
+-                paddingTop: headerPaddingVertical,
+-                paddingBottom: headerPaddingVertical,
++                paddingTop: headerTopPadding,
++                paddingBottom: headerPaddingBottom,
+               },
+             ]}
            >
              <Image
                source={BookitGYLogoTransparent}
@@ -210,10 +127,7 @@ index 4462e1c5b0883b6c083902a43f377440cc80d629..43ccd467a342a29265bc7a2651a6f49f
  
          <Pressable
            style={styles.searchBar}
-           onPress={() => handleSearchNavigate(searchText)}
-           >
-@@ -4820,67 +4841,88 @@ const loadProviderLocation = async () => {
-     }
+@@ -4842,83 +4841,82 @@ const loadProviderLocation = async () => {
    } catch (err) {
      console.log("Error loading provider location", err.response?.data || err.message);
    }
@@ -238,13 +152,17 @@ index 4462e1c5b0883b6c083902a43f377440cc80d629..43ccd467a342a29265bc7a2651a6f49f
    }
  };
  
-+  const insets = useSafeAreaInsets();
-+  const headerMinHeight =
-+    Platform.OS === "android"
-+      ? insets.top + HEADER_LOGO_HEIGHT + HEADER_VERTICAL_PADDING * 2
-+      : undefined;
-+  const headerPaddingVertical = Platform.OS === "android" ? HEADER_VERTICAL_PADDING : 0;
-+
+   const insets = useSafeAreaInsets();
+-  const headerMinHeight =
+-    Platform.OS === "android"
+-      ? insets.top + HEADER_LOGO_HEIGHT + HEADER_VERTICAL_PADDING * 2
+-      : undefined;
+-  const headerPaddingVertical = Platform.OS === "android" ? HEADER_VERTICAL_PADDING : 0;
++  const headerHeight =
++    insets.top + HEADER_LOGO_HEIGHT + HEADER_VERTICAL_PADDING * 2;
++  const headerTopPadding = insets.top + 8;
++  const headerPaddingBottom = HEADER_VERTICAL_PADDING;
+ 
    return (
      <View style={styles.homeWrapper}>
        {hoursFlash && (
@@ -260,24 +178,25 @@ index 4462e1c5b0883b6c083902a43f377440cc80d629..43ccd467a342a29265bc7a2651a6f49f
          </View>
        )}
  
--      <View style={styles.pinnedHeader}>
--        <SafeAreaView style={styles.pinnedHeaderSafeArea} edges={["top"]}>
-+      <View
-+        style={[
-+          styles.pinnedHeader,
-+          headerMinHeight ? { minHeight: headerMinHeight } : null,
-+        ]}
-+      >
-+        <SafeAreaView
-+          style={[
-+            styles.pinnedHeaderSafeArea,
-+            {
-+              paddingTop: headerPaddingVertical,
-+              paddingBottom: headerPaddingVertical,
-+            },
-+          ]}
-+          edges={["top"]}
-+        >
+       <View
+         style={[
+           styles.pinnedHeader,
+-          headerMinHeight ? { minHeight: headerMinHeight } : null,
++          { minHeight: headerHeight },
+         ]}
+       >
+         <SafeAreaView
+           style={[
+             styles.pinnedHeaderSafeArea,
+             {
+-              paddingTop: headerPaddingVertical,
+-              paddingBottom: headerPaddingVertical,
++              paddingTop: headerTopPadding,
++              paddingBottom: headerPaddingBottom,
+             },
+           ]}
+           edges={["top"]}
+         >
            <Image
              source={BookitGYLogoTransparent}
              style={styles.headerLogo}
@@ -299,11 +218,18 @@ index 4462e1c5b0883b6c083902a43f377440cc80d629..43ccd467a342a29265bc7a2651a6f49f
          {/*Account Info */}
          {providerSummary && (
            <View style={styles.providerSummaryCard}>
-             <Text style={styles.providerSummaryLabel}>Account number</Text>
-             <Text style={styles.providerSummaryValue}>
-               {providerSummary.account_number || "N/A"}
-             </Text>
-@@ -6652,52 +6694,52 @@ const styles = StyleSheet.create({
+@@ -6683,56 +6681,54 @@ const styles = StyleSheet.create({
+     borderWidth: 1,
+     zIndex: 100,
+     shadowColor: "#000",
+     shadowOpacity: 0.1,
+     shadowRadius: 6,
+     shadowOffset: { width: 0, height: 3 },
+     elevation: 4,
+   },
+ 
+    homeScroll: {
+     flexGrow: 1,
      backgroundColor: colors.background,
      paddingHorizontal: 20,
      paddingBottom: 32,
@@ -318,21 +244,20 @@ index 4462e1c5b0883b6c083902a43f377440cc80d629..43ccd467a342a29265bc7a2651a6f49f
    },
    pinnedHeader: {
      backgroundColor: "#0B1220",
-     minHeight: 100,
+-    minHeight: 100,
    },
    pinnedHeaderSafeArea: {
-     flex: 1,
+-    flex: 1,
      alignItems: "center",
-     justifyContent: "center",
+-    justifyContent: "center",
++    justifyContent: "flex-start",
    },
    homeHeader: {
      marginBottom: 20,
    },
    headerLogo: {
--    width: 130,
--    height: 120,
-+    width: HEADER_LOGO_WIDTH,
-+    height: HEADER_LOGO_HEIGHT,
+     width: HEADER_LOGO_WIDTH,
+     height: HEADER_LOGO_HEIGHT,
    },
    homeGreeting: {
      fontSize: 26,
@@ -351,13 +276,6 @@ index 4462e1c5b0883b6c083902a43f377440cc80d629..43ccd467a342a29265bc7a2651a6f49f
      backgroundColor: colors.surfaceElevated,
      borderRadius: 16,
      paddingHorizontal: 14,
-     paddingVertical: 12,
-     borderWidth: 1,
-     borderColor: colors.border,
-     shadowColor: "#0f172a",
-     shadowOpacity: 0.06,
-     shadowRadius: 6,
-     shadowOffset: { width: 0, height: 3 },
  
 EOF
 )
