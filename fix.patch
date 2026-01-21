@@ -1,9 +1,78 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
 diff --git a/mobile/src/components/ProviderCard.js b/mobile/src/components/ProviderCard.js
-index fe4f32e17d38ad84ea176ad5522a563fed850e41..fb42934c3022bc05ce1417d39c3a54ab2305d356 100644
+index fb42934c3022bc05ce1417d39c3a54ab2305d356..8cf7e4887e730a36b6d0b21334aee414a0dc3771 100644
 --- a/mobile/src/components/ProviderCard.js
 +++ b/mobile/src/components/ProviderCard.js
-@@ -92,58 +92,60 @@ const ProviderCard = ({
+@@ -29,99 +29,111 @@ const resolveRatingValue = (provider, ratingOverride) => {
+ 
+ const ProviderCard = ({
+   provider,
+   avatarUrl,
+   onPress,
+   onFavoriteToggle,
+   isFavorite = false,
+   ctaLabel = "View",
+   onCtaPress,
+   distanceKm,
+   profession,
+   rating,
+   isSelected = false,
+   style,
+ }) => {
+   const ratingValue = resolveRatingValue(provider, rating);
+   const ratingLabel =
+     typeof ratingValue === "number" ? ratingValue.toFixed(1) : null;
+   const distanceLabel =
+     typeof distanceKm === "number" ? `${distanceKm.toFixed(1)} km away` : null;
+   const professionLabel =
+     profession ||
+     provider?.profession ||
+     (provider?.professions || []).join(" · ") ||
+     (provider?.services || []).join(" · ");
++  const locationLabel =
++    provider?.location ||
++    provider?.city ||
++    provider?.address ||
++    provider?.area ||
++    null;
+   const initials = getInitials(provider?.name);
+ 
+   return (
+     <TouchableOpacity
+       style={[styles.card, isSelected && styles.cardSelected, style]}
+       activeOpacity={0.9}
+       onPress={onPress}
+     >
+       {typeof onFavoriteToggle === "function" ? (
+         <TouchableOpacity
+           style={styles.favoriteButton}
+           onPress={(event) => {
+             event.stopPropagation?.();
+             onFavoriteToggle();
+           }}
+           accessibilityLabel={
+             isFavorite ? "Remove from favorites" : "Save to favorites"
+           }
+         >
+           <Ionicons
+             name={isFavorite ? "heart" : "heart-outline"}
+             size={18}
+             color={isFavorite ? colors.error : colors.textPrimary}
+           />
+         </TouchableOpacity>
+       ) : null}
+ 
+       <View style={styles.topRow}>
+         <View style={styles.avatarWrapper}>
+           {avatarUrl ? (
+             <Image source={{ uri: avatarUrl }} style={styles.avatarImage} />
+           ) : (
+             <View style={styles.avatarFallback}>
+               <Text style={styles.avatarInitials}>{initials}</Text>
+             </View>
+           )}
+         </View>
+ 
          <View style={styles.middleColumn}>
            <Text style={styles.name} numberOfLines={1}>
              {provider?.name || "Provider"}
@@ -15,6 +84,12 @@ index fe4f32e17d38ad84ea176ad5522a563fed850e41..fb42934c3022bc05ce1417d39c3a54ab
              </Text>
            ) : null}
  
++          {locationLabel ? (
++            <Text style={styles.distance} numberOfLines={1}>
++              {locationLabel}
++            </Text>
++          ) : null}
++
            {distanceLabel ? (
              <Text style={styles.distance} numberOfLines={1}>
                {distanceLabel}
@@ -29,49 +104,17 @@ index fe4f32e17d38ad84ea176ad5522a563fed850e41..fb42934c3022bc05ce1417d39c3a54ab
          ) : null}
        </View>
  
--      <View style={styles.bottomRow}>
--        <TouchableOpacity
--          style={styles.ctaButton}
--          onPress={onCtaPress || onPress}
--        >
--          <Text style={styles.ctaText}>{ctaLabel}</Text>
--        </TouchableOpacity>
--      </View>
-+      {ctaLabel ? (
-+        <View style={styles.bottomRow}>
-+          <TouchableOpacity
-+            style={styles.ctaButton}
-+            onPress={onCtaPress || onPress}
-+          >
-+            <Text style={styles.ctaText}>{ctaLabel}</Text>
-+          </TouchableOpacity>
-+        </View>
-+      ) : null}
+       {ctaLabel ? (
+         <View style={styles.bottomRow}>
+           <TouchableOpacity
+             style={styles.ctaButton}
+             onPress={onCtaPress || onPress}
+           >
+             <Text style={styles.ctaText}>{ctaLabel}</Text>
+           </TouchableOpacity>
+         </View>
+       ) : null}
      </TouchableOpacity>
-   );
- };
- 
- const styles = StyleSheet.create({
-   card: {
-     backgroundColor: colors.surface,
-     borderRadius: 16,
-     padding: 14,
-     borderWidth: 1,
-     borderColor: colors.border,
-     shadowColor: "#0f172a",
-     shadowOpacity: 0.08,
-     shadowRadius: 10,
-     shadowOffset: { width: 0, height: 4 },
-     elevation: 3,
-   },
-   cardSelected: {
-     borderColor: colors.primary,
-     backgroundColor: colors.primarySoft,
-   },
-   favoriteButton: {
-     position: "absolute",
-     top: 10,
-     right: 10,
  
 EOF
 )

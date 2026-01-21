@@ -51,6 +51,12 @@ const ProviderCard = ({
     provider?.profession ||
     (provider?.professions || []).join(" · ") ||
     (provider?.services || []).join(" · ");
+  const locationLabel =
+    provider?.location ||
+    provider?.city ||
+    provider?.address ||
+    provider?.area ||
+    null;
   const initials = getInitials(provider?.name);
 
   return (
@@ -97,6 +103,12 @@ const ProviderCard = ({
           {professionLabel ? (
             <Text style={styles.profession} numberOfLines={1}>
               {professionLabel}
+            </Text>
+          ) : null}
+
+          {locationLabel ? (
+            <Text style={styles.distance} numberOfLines={1}>
+              {locationLabel}
             </Text>
           ) : null}
 
