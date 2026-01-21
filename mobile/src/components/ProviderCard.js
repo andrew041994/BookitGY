@@ -114,14 +114,16 @@ const ProviderCard = ({
         ) : null}
       </View>
 
-      <View style={styles.bottomRow}>
-        <TouchableOpacity
-          style={styles.ctaButton}
-          onPress={onCtaPress || onPress}
-        >
-          <Text style={styles.ctaText}>{ctaLabel}</Text>
-        </TouchableOpacity>
-      </View>
+      {ctaLabel ? (
+        <View style={styles.bottomRow}>
+          <TouchableOpacity
+            style={styles.ctaButton}
+            onPress={onCtaPress || onPress}
+          >
+            <Text style={styles.ctaText}>{ctaLabel}</Text>
+          </TouchableOpacity>
+        </View>
+      ) : null}
     </TouchableOpacity>
   );
 };

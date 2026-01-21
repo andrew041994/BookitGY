@@ -2329,7 +2329,7 @@ function ClientHomeScreen({
                     isFavorite={saved}
                     onFavoriteToggle={() => toggleFavorite(provider)}
                     onPress={() => handleProviderPress(provider)}
-                    ctaLabel="View"
+                    ctaLabel={null}
                     style={styles.providerCardCarousel}
                   />
                 );
@@ -2414,7 +2414,7 @@ function ClientHomeScreen({
                     isFavorite={saved}
                     onFavoriteToggle={() => toggleFavorite(provider)}
                     onPress={() => handleProviderPress(provider)}
-                    ctaLabel="View"
+                    ctaLabel={null}
                     style={styles.providerCardCarousel}
                   />
                 );
@@ -3465,7 +3465,7 @@ function SearchScreen({ token, showFlash, navigation, route, toggleFavorite, isF
                     isFavorite={favorite}
                     onFavoriteToggle={() => toggleFavorite(p)}
                     onPress={() => handleSelectProvider(p)}
-                    ctaLabel="Book"
+                    ctaLabel={null}
                     isSelected={
                       selectedProvider &&
                       getProviderId(selectedProvider) === getProviderId(p)
