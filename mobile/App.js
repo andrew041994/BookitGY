@@ -73,7 +73,7 @@ const API =
 const colors = theme.colors;
 const HEADER_LOGO_WIDTH = 150;
 const HEADER_LOGO_HEIGHT = 120;
-const HEADER_VERTICAL_PADDING = 12;
+const HEADER_VERTICAL_PADDING = 0;
 
 const withTimeout = (promise, ms, label) => {
   let timeoutId;
@@ -2007,8 +2007,8 @@ function ClientHomeScreen({
   const [searchText, setSearchText] = useState("");
   const insets = useSafeAreaInsets();
   const headerPaddingVertical = HEADER_VERTICAL_PADDING;
-  const headerMinHeight =
-    insets.top + HEADER_LOGO_HEIGHT + HEADER_VERTICAL_PADDING * 2;
+  // const headerMinHeight =
+  //   insets.top + HEADER_LOGO_HEIGHT + HEADER_VERTICAL_PADDING * 2;
 
   const quickCategories = useMemo(
     () => ["Barber", "Hair", "Nails", "Massage", "Makeup", "Lash", "Tutor"],
@@ -2156,7 +2156,7 @@ function ClientHomeScreen({
         <View
           style={[
             styles.pinnedHeader,
-            headerMinHeight ? { minHeight: headerMinHeight } : null,
+            // headerMinHeight ? { minHeight: headerMinHeight } : null,
           ]}
         >
           <SafeAreaView
@@ -2164,8 +2164,8 @@ function ClientHomeScreen({
             style={[
               styles.pinnedHeaderSafeArea,
               {
-                paddingTop: headerPaddingVertical,
-                paddingBottom: headerPaddingVertical,
+                paddingTop: 1,
+                paddingBottom: 1,
               },
             ]}
           >
@@ -4862,8 +4862,8 @@ const loadProviderSummary = async () => {
 };
 
   const insets = useSafeAreaInsets();
-  const headerMinHeight =
-    insets.top + HEADER_LOGO_HEIGHT + HEADER_VERTICAL_PADDING * 2;
+  // const headerMinHeight =
+  //   insets.top + HEADER_LOGO_HEIGHT + HEADER_VERTICAL_PADDING * 2;
   const headerPaddingVertical = HEADER_VERTICAL_PADDING;
 
   return (
@@ -4884,14 +4884,14 @@ const loadProviderSummary = async () => {
       <View
         style={[
           styles.pinnedHeader,
-          headerMinHeight ? { minHeight: headerMinHeight } : null,
+          // headerMinHeight ? { minHeight: headerMinHeight } : null,
         ]}
       >
         <SafeAreaView
           style={[
             styles.pinnedHeaderSafeArea,
             {
-              paddingTop: headerPaddingVertical,
+              paddingTop: 10,
               paddingBottom: headerPaddingVertical,
             },
           ]}
