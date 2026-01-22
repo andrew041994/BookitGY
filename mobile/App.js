@@ -154,16 +154,17 @@ const getProviderCoords = (provider) => {
     return { lat, lng };
   };
 
-  const fromUser = getCoordsFrom(provider?.user);
-  if (fromUser) return fromUser;
+  const fromPinned = getCoordsFrom(pinnedLocation);
+  if (fromPinned) return fromPinned;
+
+  const fromLocation = getCoordsFrom(location);
+  if (fromLocation) return fromLocation;
 
   const fromProvider = getCoordsFrom(provider);
   if (fromProvider) return fromProvider;
 
-  const fromLocation = getCoordsFrom(location);
-  if (fromLocation) return fromLocation;
-  const fromPinned = getCoordsFrom(pinnedLocation);
-  if (fromPinned) return fromPinned;
+  const fromUser = getCoordsFrom(provider?.user);
+  if (fromUser) return fromUser;
   const fromCoords = getCoordsFrom(coords);
   if (fromCoords) return fromCoords;
 

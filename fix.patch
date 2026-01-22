@@ -1,14 +1,9 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
 diff --git a/mobile/App.js b/mobile/App.js
-index 1a4e2aa906986fbdb1a8a57778b00d5ad48f4598..62ebac929ce94df0fa51b6d68783dfaf0da6ada2 100644
+index 62ebac929ce94df0fa51b6d68783dfaf0da6ada2..f0f61959d95ae47e88dc50fafd12cdf688598aa2 100644
 --- a/mobile/App.js
 +++ b/mobile/App.js
-@@ -127,87 +127,86 @@ const toNum = (value) => {
- const getDistanceKm = (lat1, lon1, lat2, lon2) => {
-   if (lat1 == null || lon1 == null || lat2 == null || lon2 == null) {
-     return null;
-   }
-   const toRad = (value) => (value * Math.PI) / 180;
+@@ -132,60 +132,61 @@ const getDistanceKm = (lat1, lon1, lat2, lon2) => {
    const R = 6371;
    const dLat = toRad(lat2 - lat1);
    const dLon = toRad(lon2 - lon1);
@@ -29,90 +24,53 @@ index 1a4e2aa906986fbdb1a8a57778b00d5ad48f4598..62ebac929ce94df0fa51b6d68783dfaf
    const coords = provider?.coords;
    const getCoordsFrom = (source) => {
      const lat = toNum(source?.lat ?? source?.latitude);
--    const lng = toNum(source?.lng ?? source?.long ?? source?.longitude);
-+    const lng = toNum(source?.long ?? source?.lng ?? source?.longitude);
+     const lng = toNum(source?.long ?? source?.lng ?? source?.longitude);
      if (lat == null || lng == null) return null;
      return { lat, lng };
    };
--  const lat = toNum(
--    provider?.user?.lat ??
--      provider?.user?.latitude ??
--      provider?.lat ??
--      provider?.latitude ??
--      provider?.pinned_lat ??
-+
-+  const fromUser = getCoordsFrom(provider?.user);
-+  if (fromUser) return fromUser;
-+
-+  const fromProvider = getCoordsFrom(provider);
-+  if (fromProvider) return fromProvider;
+ 
+-  const fromUser = getCoordsFrom(provider?.user);
+-  if (fromUser) return fromUser;
++  const fromPinned = getCoordsFrom(pinnedLocation);
++  if (fromPinned) return fromPinned;
 +
 +  const fromLocation = getCoordsFrom(location);
 +  if (fromLocation) return fromLocation;
-+  const fromPinned = getCoordsFrom(pinnedLocation);
-+  if (fromPinned) return fromPinned;
-+  const fromCoords = getCoordsFrom(coords);
-+  if (fromCoords) return fromCoords;
-+
-+  const legacyLat = toNum(
-+    provider?.pinned_lat ??
+ 
+   const fromProvider = getCoordsFrom(provider);
+   if (fromProvider) return fromProvider;
+ 
+-  const fromLocation = getCoordsFrom(location);
+-  if (fromLocation) return fromLocation;
+-  const fromPinned = getCoordsFrom(pinnedLocation);
+-  if (fromPinned) return fromPinned;
++  const fromUser = getCoordsFrom(provider?.user);
++  if (fromUser) return fromUser;
+   const fromCoords = getCoordsFrom(coords);
+   if (fromCoords) return fromCoords;
+ 
+   const legacyLat = toNum(
+     provider?.pinned_lat ??
        provider?.pinnedLatitude ??
        provider?.location_lat ??
        provider?.locationLat
    );
--  const lng = toNum(
--    provider?.user?.long ??
--      provider?.user?.lng ??
--      provider?.user?.longitude ??
--      provider?.long ??
--      provider?.lng ??
--      provider?.longitude ??
-+  const legacyLng = toNum(
-+    provider?.pinned_long ??
+   const legacyLng = toNum(
+     provider?.pinned_long ??
        provider?.pinned_lng ??
--      provider?.pinned_long ??
        provider?.pinnedLongitude ??
        provider?.location_lng ??
        provider?.locationLng ??
        provider?.lon
    );
--  if (lat != null && lng != null) {
--    return { lat, lng };
-+  if (legacyLat != null && legacyLng != null) {
-+    return { lat: legacyLat, lng: legacyLng };
+   if (legacyLat != null && legacyLng != null) {
+     return { lat: legacyLat, lng: legacyLng };
    }
--  const fromLocation = getCoordsFrom(location);
--  if (fromLocation) return fromLocation;
--  const fromPinned = getCoordsFrom(pinnedLocation);
--  if (fromPinned) return fromPinned;
--  const fromCoords = getCoordsFrom(coords);
--  if (fromCoords) return fromCoords;
-+
+ 
    return null;
  };
  
  const LEGACY_ACCESS_TOKEN_KEY = "accessToken";
- 
- const getAuthToken = async (tokenState) => {
-   if (tokenState?.token) return tokenState.token;
- 
-   try {
-     const secure = await withTimeout(loadToken(), 1500, "loadToken");
-     if (secure) return secure;
-   } catch (error) {
-     console.log("[auth] Failed to load secure token", error?.message || error);
-   }
- 
-   try {
-     const legacy = await withTimeout(
-       AsyncStorage.getItem(LEGACY_ACCESS_TOKEN_KEY),
-       1500,
-       "loadLegacyToken"
-     );
-     return legacy || null;
-   } catch (error) {
-     console.log("[auth] Failed to load legacy token", error?.message || error);
-     return null;
  
 EOF
 )
