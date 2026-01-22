@@ -1672,7 +1672,7 @@ function ProfileScreen({ apiClient, authLoading, setToken, showFlash, token }) {
   const isProviderPublic =
     user?.is_provider === true || token?.is_provider === true;
   const providerPublicLink = buildProviderPublicLink(user?.username);
-  const isProfileValid = Boolean(editProfile.full_name?.trim());
+  const isProfileValid = Boolean(String(editProfile.username || "").trim());
   const isSaveDisabled = editSaving || !isProfileValid;
 
   const handleShareProviderLink = async () => {
