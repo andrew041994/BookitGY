@@ -147,17 +147,17 @@ const getProviderCoords = (provider) => {
   const location = provider?.location;
   const pinnedLocation = provider?.pinned_location ?? provider?.pinnedLocation;
   const coords = provider?.coords;
+  const getCoordsFrom = (source) => {
+    const lat = toNum(source?.lat ?? source?.latitude);
+    const lng = toNum(source?.lng ?? source?.long ?? source?.longitude);
+    if (lat == null || lng == null) return null;
+    return { lat, lng };
+  };
   const lat = toNum(
     provider?.pinned_lat ??
       provider?.pinnedLatitude ??
-      pinnedLocation?.lat ??
-      pinnedLocation?.latitude ??
-      location?.lat ??
-      location?.latitude ??
       provider?.location_lat ??
       provider?.locationLat ??
-      coords?.lat ??
-      coords?.latitude ??
       provider?.latitude ??
       provider?.lat
   );
@@ -165,24 +165,23 @@ const getProviderCoords = (provider) => {
     provider?.pinned_lng ??
       provider?.pinned_long ??
       provider?.pinnedLongitude ??
-      pinnedLocation?.lng ??
-      pinnedLocation?.long ??
-      pinnedLocation?.longitude ??
-      location?.lng ??
-      location?.long ??
-      location?.longitude ??
       provider?.location_lng ??
       provider?.locationLng ??
-      coords?.lng ??
-      coords?.long ??
-      coords?.longitude ??
       provider?.longitude ??
       provider?.lng ??
       provider?.lon ??
       provider?.long
   );
-  if (lat == null || lng == null) return null;
-  return { lat, lng };
+  if (lat != null && lng != null) {
+    return { lat, lng };
+  }
+  const fromLocation = getCoordsFrom(location);
+  if (fromLocation) return fromLocation;
+  const fromPinned = getCoordsFrom(pinnedLocation);
+  if (fromPinned) return fromPinned;
+  const fromCoords = getCoordsFrom(coords);
+  if (fromCoords) return fromCoords;
+  return null;
 };
 
 const LEGACY_ACCESS_TOKEN_KEY = "accessToken";

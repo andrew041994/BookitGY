@@ -1,12 +1,9 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
 diff --git a/mobile/App.js b/mobile/App.js
-index 35da6a451758713da5112a7e2f3787fd8888dd81..39943a86e693841225bbee7ae4cad1bd2aec089a 100644
+index a54fbaf5652e0f6e6cc35947d9d90a965baf5433..2e6354797c788910ca21bca1dc3a5542a22ff896 100644
 --- a/mobile/App.js
 +++ b/mobile/App.js
-@@ -122,63 +122,81 @@ const resolveImageUrl = (url) => {
- const toNum = (value) => {
-   const n = typeof value === "string" ? parseFloat(value) : value;
-   return Number.isFinite(n) ? n : null;
+@@ -125,86 +125,85 @@ const toNum = (value) => {
  };
  
  const getDistanceKm = (lat1, lon1, lat2, lon2) => {
@@ -29,43 +26,61 @@ index 35da6a451758713da5112a7e2f3787fd8888dd81..39943a86e693841225bbee7ae4cad1bd
  };
  
  const getProviderCoords = (provider) => {
-+  const location = provider?.location;
-+  const pinnedLocation = provider?.pinned_location ?? provider?.pinnedLocation;
-+  const coords = provider?.coords;
+   const location = provider?.location;
+   const pinnedLocation = provider?.pinned_location ?? provider?.pinnedLocation;
+   const coords = provider?.coords;
++  const getCoordsFrom = (source) => {
++    const lat = toNum(source?.lat ?? source?.latitude);
++    const lng = toNum(source?.lng ?? source?.long ?? source?.longitude);
++    if (lat == null || lng == null) return null;
++    return { lat, lng };
++  };
    const lat = toNum(
      provider?.pinned_lat ??
        provider?.pinnedLatitude ??
-+      pinnedLocation?.lat ??
-+      pinnedLocation?.latitude ??
-+      location?.lat ??
-+      location?.latitude ??
+-      pinnedLocation?.lat ??
+-      pinnedLocation?.latitude ??
+-      location?.lat ??
+-      location?.latitude ??
        provider?.location_lat ??
        provider?.locationLat ??
-+      coords?.lat ??
-+      coords?.latitude ??
+-      coords?.lat ??
+-      coords?.latitude ??
        provider?.latitude ??
        provider?.lat
    );
    const lng = toNum(
      provider?.pinned_lng ??
+       provider?.pinned_long ??
        provider?.pinnedLongitude ??
-+      pinnedLocation?.lng ??
-+      pinnedLocation?.long ??
-+      pinnedLocation?.longitude ??
-+      location?.lng ??
-+      location?.long ??
-+      location?.longitude ??
+-      pinnedLocation?.lng ??
+-      pinnedLocation?.long ??
+-      pinnedLocation?.longitude ??
+-      location?.lng ??
+-      location?.long ??
+-      location?.longitude ??
        provider?.location_lng ??
        provider?.locationLng ??
-+      coords?.lng ??
-+      coords?.long ??
-+      coords?.longitude ??
+-      coords?.lng ??
+-      coords?.long ??
+-      coords?.longitude ??
        provider?.longitude ??
        provider?.lng ??
-       provider?.lon
+       provider?.lon ??
+       provider?.long
    );
-   if (lat == null || lng == null) return null;
-   return { lat, lng };
+-  if (lat == null || lng == null) return null;
+-  return { lat, lng };
++  if (lat != null && lng != null) {
++    return { lat, lng };
++  }
++  const fromLocation = getCoordsFrom(location);
++  if (fromLocation) return fromLocation;
++  const fromPinned = getCoordsFrom(pinnedLocation);
++  if (fromPinned) return fromPinned;
++  const fromCoords = getCoordsFrom(coords);
++  if (fromCoords) return fromCoords;
++  return null;
  };
  
  const LEGACY_ACCESS_TOKEN_KEY = "accessToken";
@@ -85,86 +100,12 @@ index 35da6a451758713da5112a7e2f3787fd8888dd81..39943a86e693841225bbee7ae4cad1bd
        AsyncStorage.getItem(LEGACY_ACCESS_TOKEN_KEY),
        1500,
        "loadLegacyToken"
-@@ -2966,50 +2984,79 @@ function SearchScreen({ token, showFlash, navigation, route, toggleFavorite, isF
-     }
-     const toRad = (v) => (v * Math.PI) / 180;
-     const R = 6371; // km
-     const dLat = toRad(lat2 - lat1);
-     const dLon = toRad(lon2 - lon1);
-     const a =
-       Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-       Math.cos(toRad(lat1)) *
-         Math.cos(toRad(lat2)) *
-         Math.sin(dLon / 2) *
-         Math.sin(dLon / 2);
-     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-     return R * c;
-   };
- 
-   const getClientCoords = () => {
-     if (!clientLocation) return null;
-     const lat = toNum(clientLocation.lat ?? clientLocation.latitude);
-     const lng = toNum(
-       clientLocation.lng ?? clientLocation.long ?? clientLocation.longitude
      );
-     if (lat == null || lng == null) return null;
-     return { lat, lng };
-   };
- 
-+  useEffect(() => {
-+    if (clientLocation) return;
-+    let isMounted = true;
-+
-+    const loadStoredClientLocation = async () => {
-+      try {
-+        const stored = await AsyncStorage.getItem("clientLocation");
-+        if (!stored) return;
-+        const parsed = JSON.parse(stored);
-+        const lat = toNum(parsed?.lat ?? parsed?.latitude);
-+        const long = toNum(
-+          parsed?.long ?? parsed?.lng ?? parsed?.longitude
-+        );
-+        if (lat == null || long == null) return;
-+        if (isMounted) {
-+          setClientLocation({ lat, long });
-+        }
-+      } catch (error) {
-+        console.log("Error loading stored client location", error);
-+      }
-+    };
-+
-+    loadStoredClientLocation();
-+
-+    return () => {
-+      isMounted = false;
-+    };
-+  }, [clientLocation]);
-+
- 
-   const handleSearchSubmit = () => {
-     // when the user hits enter/search on the keyboard
-     setHasSearched(true);
-     setShouldScrollToResults(true);
-   };
- 
- 
-   const loadProviders = useCallback(async () => {
-     try {
-       setProvidersLoading(true);
-       setProvidersError("");
- 
-       const res = await axios.get(`${API}/providers`);
- 
-       // Always normalize the result to an array
-       const list = Array.isArray(res.data)
-         ? res.data
-         : res.data?.providers || [];
- 
-       setProviders(list);
-       setFilteredProviders(list);
-       syncFavoritesFromList(list);
-       return list;
-     } catch (err) {
+     return legacy || null;
+   } catch (error) {
+     console.log("[auth] Failed to load legacy token", error?.message || error);
+     return null;
+   }
  
 EOF
 )
