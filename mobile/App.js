@@ -159,7 +159,9 @@ const getProviderCoords = (provider) => {
       provider?.location_lat ??
       provider?.locationLat ??
       provider?.latitude ??
-      provider?.lat
+      provider?.lat ??
+      provider?.user?.lat ??
+      provider?.user?.latitude
   );
   const lng = toNum(
     provider?.pinned_lng ??
@@ -170,7 +172,10 @@ const getProviderCoords = (provider) => {
       provider?.longitude ??
       provider?.lng ??
       provider?.lon ??
-      provider?.long
+      provider?.long ??
+      provider?.user?.long ??
+      provider?.user?.lng ??
+      provider?.user?.longitude
   );
   if (lat != null && lng != null) {
     return { lat, lng };
