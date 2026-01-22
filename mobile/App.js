@@ -3013,28 +3013,11 @@ function SearchScreen({ token, showFlash, navigation, route, toggleFavorite, isF
     if (clientLocation) return;
     let isMounted = true;
 
-<<<<<<< ours
-    const loadStoredLocation = async () => {
-=======
     const loadStoredClientLocation = async () => {
->>>>>>> theirs
       try {
         const stored = await AsyncStorage.getItem("clientLocation");
         if (!stored) return;
         const parsed = JSON.parse(stored);
-<<<<<<< ours
-        const lat = toNum(parsed?.lat);
-        const long = toNum(parsed?.long);
-        if (isMounted && lat != null && long != null) {
-          setClientLocation({ lat, long });
-        }
-      } catch (error) {
-        return;
-      }
-    };
-
-    loadStoredLocation();
-=======
         const lat = toNum(parsed?.lat ?? parsed?.latitude);
         const long = toNum(
           parsed?.long ?? parsed?.lng ?? parsed?.longitude
@@ -3049,7 +3032,6 @@ function SearchScreen({ token, showFlash, navigation, route, toggleFavorite, isF
     };
 
     loadStoredClientLocation();
->>>>>>> theirs
 
     return () => {
       isMounted = false;
