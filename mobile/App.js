@@ -2284,8 +2284,14 @@ function ClientHomeScreen({
     }
     nearbyLastProviderCoords = providerCoords;
     nearbyLastDistanceKm = distanceKm;
+     console.log("[distance source]", {
+          clientCoords,
+          providerCoords,
+          distanceKm,
+        });
 
     return (
+     
       <ProviderCard
         key={providerId}
         provider={provider}
@@ -2959,6 +2965,7 @@ function SearchScreen({ token, showFlash, navigation, route, toggleFavorite, isF
   const [hasSearched, setHasSearched] = useState(false); // 👈 NEW
   const [refreshing, setRefreshing] = useState(false);
   const [shouldScrollToResults, setShouldScrollToResults] = useState(false);
+  const [hasRequestedLocation, setHasRequestedLocation] = useState(false);
   const isFocused = useIsFocused();
   const scrollRef = useRef(null);
   const resultsOffset = useRef(0);
@@ -3220,7 +3227,7 @@ function SearchScreen({ token, showFlash, navigation, route, toggleFavorite, isF
 
 
 
-  const ensureClientLocation = async () => {
+  const ensureClientLocation = useCallback(async () => {
     try {
       const { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== "granted") {
@@ -3242,6 +3249,7 @@ function SearchScreen({ token, showFlash, navigation, route, toggleFavorite, isF
         long: loc.coords.longitude,
       };
       setClientLocation(coords);
+      await AsyncStorage.setItem("clientLocation", JSON.stringify(coords));
       setLocationError("");
       return coords;
     } catch (err) {
@@ -3255,7 +3263,7 @@ function SearchScreen({ token, showFlash, navigation, route, toggleFavorite, isF
       // });
       return null;
     }
-  };
+  }, [showFlash]);
 
   const handleRadiusChange = async (value) => {
     setRadiusKm(value);
@@ -3263,6 +3271,23 @@ function SearchScreen({ token, showFlash, navigation, route, toggleFavorite, isF
       await ensureClientLocation();
     }
   };
+
+  useEffect(() => {
+    if (!hasSearched || clientLocation || hasRequestedLocation) return;
+    let isMounted = true;
+
+    const requestLocation = async () => {
+      setHasRequestedLocation(true);
+      const coords = await ensureClientLocation();
+      if (!isMounted || !coords) return;
+    };
+
+    requestLocation();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [clientLocation, ensureClientLocation, hasRequestedLocation, hasSearched]);
 
   const handleResultsLayout = (event) => {
     resultsOffset.current = event.nativeEvent.layout.y;

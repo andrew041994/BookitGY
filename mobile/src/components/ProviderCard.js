@@ -60,10 +60,7 @@ const ProviderCard = ({
     provider?.profession ||
     (provider?.professions || []).join(" · ") ||
     (provider?.services || []).join(" · ");
-  const professionLine =
-    professionLabel && distanceText
-      ? `${professionLabel} · ${distanceText}`
-      : professionLabel;
+  const professionLine = professionLabel
   const locationLabel =
     provider?.location ||
     provider?.city ||
@@ -122,6 +119,12 @@ const ProviderCard = ({
           {professionLine ? (
             <Text style={styles.profession} numberOfLines={1}>
               {professionLine}
+            </Text>
+          ) : null}
+
+          {distanceText ? (
+            <Text style={styles.distance} numberOfLines={1}>
+              {distanceText}
             </Text>
           ) : null}
 

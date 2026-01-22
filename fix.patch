@@ -1,76 +1,175 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
 diff --git a/mobile/App.js b/mobile/App.js
-index 62ebac929ce94df0fa51b6d68783dfaf0da6ada2..f0f61959d95ae47e88dc50fafd12cdf688598aa2 100644
+index f0f61959d95ae47e88dc50fafd12cdf688598aa2..99059ca4fdc3d48d0a4bc4a859d3b1265aa23f28 100644
 --- a/mobile/App.js
 +++ b/mobile/App.js
-@@ -132,60 +132,61 @@ const getDistanceKm = (lat1, lon1, lat2, lon2) => {
-   const R = 6371;
-   const dLat = toRad(lat2 - lat1);
-   const dLon = toRad(lon2 - lon1);
-   const a =
-     Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-     Math.cos(toRad(lat1)) *
-       Math.cos(toRad(lat2)) *
-       Math.sin(dLon / 2) *
-       Math.sin(dLon / 2);
-   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-   const distance = R * c;
-   return Number.isFinite(distance) ? distance : null;
- };
+@@ -2937,50 +2937,51 @@ function SearchScreen({ token, showFlash, navigation, route, toggleFavorite, isF
+   const [filteredProviders, setFilteredProviders] = useState([]);
+   const [searchQuery, setSearchQuery] = useState("");
+   const [radiusKm, setRadiusKm] = useState(0); // 0 = any distance
+   const [clientLocation, setClientLocation] = useState(null);
+   const [locationError, setLocationError] = useState("");
+   const [providers, setProviders] = useState([]);
+   const [providersLoading, setProvidersLoading] = useState(true);
+   const [providersError, setProvidersError] = useState("");
+   const [selectedProvider, setSelectedProvider] = useState(null);
+   const [services, setServices] = useState([]);
+   const [servicesLoading, setServicesLoading] = useState(false);
+   const [servicesError, setServicesError] = useState("");
+   const [selectedService, setSelectedService] = useState(null);
+   const [catalogImages, setCatalogImages] = useState([]);
+   const [catalogLoading, setCatalogLoading] = useState(false);
+   const [catalogError, setCatalogError] = useState("");
+   const [availability, setAvailability] = useState([]);
+   const [availabilityLoading, setAvailabilityLoading] = useState(false);
+   const [availabilityError, setAvailabilityError] = useState("");
+   const [selectedDate, setSelectedDate] = useState(null);
+   const [selectedSlot, setSelectedSlot] = useState(null); // ISO string
+   const [bookingLoading, setBookingLoading] = useState(false);
+   const [hasSearched, setHasSearched] = useState(false); // 👈 NEW
+   const [refreshing, setRefreshing] = useState(false);
+   const [shouldScrollToResults, setShouldScrollToResults] = useState(false);
++  const [hasRequestedLocation, setHasRequestedLocation] = useState(false);
+   const isFocused = useIsFocused();
+   const scrollRef = useRef(null);
+   const resultsOffset = useRef(0);
+   //Radius 
+   const distanceChips = [0, 5, 10, 15, 20];
  
- const getProviderCoords = (provider) => {
-   const location = provider?.location;
-   const pinnedLocation = provider?.pinned_location ?? provider?.pinnedLocation;
-   const coords = provider?.coords;
-   const getCoordsFrom = (source) => {
-     const lat = toNum(source?.lat ?? source?.latitude);
-     const lng = toNum(source?.long ?? source?.lng ?? source?.longitude);
-     if (lat == null || lng == null) return null;
-     return { lat, lng };
+   useEffect(() => {
+     if (!isFocused) return;
+     if (!incomingUsername) return;
+     console.log(
+       "[deeplink] consumed in SearchScreen",
+       incomingUsername,
+       deeplinkNonce,
+       "focused",
+       isFocused
+     );
+     setSearchQuery(incomingUsername);
+     setHasSearched(true);
+     setShouldScrollToResults(true);
+   }, [incomingUsername, deeplinkNonce, isFocused]);
+ 
+   const haversineKm = (lat1, lon1, lat2, lon2) => {
+     if (
+       lat1 == null ||
+       lon1 == null ||
+@@ -3198,94 +3199,112 @@ function SearchScreen({ token, showFlash, navigation, route, toggleFavorite, isF
+         setLocationError(
+           "Turn on location services to filter providers by distance."
+         );
+       } else {
+         setLocationError("");
+         list = list.filter(
+           (p) =>
+             typeof p.distance_km === "number" &&
+             p.distance_km <= radiusKm
+         );
+         list.sort((a, b) => {
+           const da = a.distance_km ?? 999999;
+           const db = b.distance_km ?? 999999;
+           return da - db;
+         });
+       }
+     } else {
+       setLocationError("");
+     }
+ 
+     setFilteredProviders(list);
+   }, [providers, searchQuery, radiusKm, clientLocation, hasSearched, route?.params?.provider]);
+ 
+ 
+ 
+-  const ensureClientLocation = async () => {
++  const ensureClientLocation = useCallback(async () => {
+     try {
+       const { status } = await Location.requestForegroundPermissionsAsync();
+       if (status !== "granted") {
+         setLocationError(
+           "Location permission is required to filter by distance."
+         );
+         if (showFlash) {
+           showFlash(
+             "error",
+             "Please enable location permission to use distance filters."
+           );
+         }
+         return null;
+       }
+ 
+       const loc = await Location.getCurrentPositionAsync({});
+       const coords = {
+         lat: loc.coords.latitude,
+         long: loc.coords.longitude,
+       };
+       setClientLocation(coords);
++      await AsyncStorage.setItem("clientLocation", JSON.stringify(coords));
+       setLocationError("");
+       return coords;
+     } catch (err) {
+       console.log("Error getting client location", err);
+       setLocationError("Could not get your current location.");
+       if (showFlash) {
+         showFlash("error", "Could not get your current location.");
+       }
+       // Sentry.Native.captureException(err, {
+       //   extra: { scope: "client-location" },
+       // });
+       return null;
+     }
+-  };
++  }, [showFlash]);
+ 
+   const handleRadiusChange = async (value) => {
+     setRadiusKm(value);
+     if (value > 0 && !clientLocation) {
+       await ensureClientLocation();
+     }
    };
  
--  const fromUser = getCoordsFrom(provider?.user);
--  if (fromUser) return fromUser;
-+  const fromPinned = getCoordsFrom(pinnedLocation);
-+  if (fromPinned) return fromPinned;
++  useEffect(() => {
++    if (!hasSearched || clientLocation || hasRequestedLocation) return;
++    let isMounted = true;
 +
-+  const fromLocation = getCoordsFrom(location);
-+  if (fromLocation) return fromLocation;
++    const requestLocation = async () => {
++      setHasRequestedLocation(true);
++      const coords = await ensureClientLocation();
++      if (!isMounted || !coords) return;
++    };
++
++    requestLocation();
++
++    return () => {
++      isMounted = false;
++    };
++  }, [clientLocation, ensureClientLocation, hasRequestedLocation, hasSearched]);
++
+   const handleResultsLayout = (event) => {
+     resultsOffset.current = event.nativeEvent.layout.y;
+     if (shouldScrollToResults && scrollRef.current) {
+       scrollRef.current.scrollTo({
+         y: resultsOffset.current,
+         animated: true,
+       });
+       setShouldScrollToResults(false);
+     }
+   };
  
-   const fromProvider = getCoordsFrom(provider);
-   if (fromProvider) return fromProvider;
+   useEffect(() => {
+     if (!shouldScrollToResults || !scrollRef.current) return;
+     scrollRef.current.scrollTo({
+       y: resultsOffset.current,
+       animated: true,
+     });
+     setShouldScrollToResults(false);
+   }, [shouldScrollToResults]);
  
--  const fromLocation = getCoordsFrom(location);
--  if (fromLocation) return fromLocation;
--  const fromPinned = getCoordsFrom(pinnedLocation);
--  if (fromPinned) return fromPinned;
-+  const fromUser = getCoordsFrom(provider?.user);
-+  if (fromUser) return fromUser;
-   const fromCoords = getCoordsFrom(coords);
-   if (fromCoords) return fromCoords;
  
-   const legacyLat = toNum(
-     provider?.pinned_lat ??
-       provider?.pinnedLatitude ??
-       provider?.location_lat ??
-       provider?.locationLat
-   );
-   const legacyLng = toNum(
-     provider?.pinned_long ??
-       provider?.pinned_lng ??
-       provider?.pinnedLongitude ??
-       provider?.location_lng ??
-       provider?.locationLng ??
-       provider?.lon
-   );
-   if (legacyLat != null && legacyLng != null) {
-     return { lat: legacyLat, lng: legacyLng };
-   }
- 
-   return null;
- };
- 
- const LEGACY_ACCESS_TOKEN_KEY = "accessToken";
+   const loadAvailability = useCallback(
+     async (providerId, serviceId) => {
+       try {
+         setAvailabilityLoading(true);
  
 EOF
 )
