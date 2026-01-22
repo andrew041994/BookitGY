@@ -28,8 +28,8 @@ const resolveRatingValue = (provider, ratingOverride) => {
 };
 
 const formatDistanceLabel = (distanceKm) => {
-  if (typeof distanceKm !== "number") return null;
-  if (!Number.isFinite(distanceKm)) return null;
+  if (typeof distanceKm !== "number") return "";
+  if (!Number.isFinite(distanceKm)) return "";
   const rounded =
     distanceKm < 10
       ? distanceKm.toFixed(1)
@@ -54,15 +54,15 @@ const ProviderCard = ({
   const ratingValue = resolveRatingValue(provider, rating);
   const ratingLabel =
     typeof ratingValue === "number" ? ratingValue.toFixed(1) : null;
-  const distanceLabel = formatDistanceLabel(distanceKm);
+  const distanceText = distanceKm != null ? formatDistanceLabel(distanceKm) : "";
   const professionLabel =
     profession ||
     provider?.profession ||
     (provider?.professions || []).join(" · ") ||
     (provider?.services || []).join(" · ");
   const professionLine =
-    professionLabel && distanceLabel
-      ? `${professionLabel} · ${distanceLabel}`
+    professionLabel && distanceText
+      ? `${professionLabel} · ${distanceText}`
       : professionLabel;
   const locationLabel =
     provider?.location ||
@@ -71,12 +71,12 @@ const ProviderCard = ({
     provider?.area ||
     null;
   const locationLine =
-    locationLabel && distanceLabel && !professionLabel
-      ? `${locationLabel} · ${distanceLabel}`
+    locationLabel && distanceText && !professionLabel
+      ? `${locationLabel} · ${distanceText}`
       : locationLabel;
   const initials = getInitials(provider?.name);
   const showDistanceLine =
-    distanceLabel && !professionLabel && !locationLabel;
+    distanceText && !professionLabel && !locationLabel;
 
   return (
     <TouchableOpacity
@@ -133,7 +133,7 @@ const ProviderCard = ({
 
           {showDistanceLine ? (
             <Text style={styles.distance} numberOfLines={1}>
-              {distanceLabel}
+              {distanceText}
             </Text>
           ) : null}
         </View>

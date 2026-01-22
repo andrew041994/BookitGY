@@ -1,10 +1,9 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
 diff --git a/mobile/src/components/ProviderCard.js b/mobile/src/components/ProviderCard.js
-index 8cf7e4887e730a36b6d0b21334aee414a0dc3771..089fbc9104642dc5a65b98d16711f32b0b6e3037 100644
+index 089fbc9104642dc5a65b98d16711f32b0b6e3037..b3598ba1f8c22572f4dc63ee8738a988b0d791e3 100644
 --- a/mobile/src/components/ProviderCard.js
 +++ b/mobile/src/components/ProviderCard.js
-@@ -5,136 +5,155 @@ import { theme } from "../theme";
- 
+@@ -6,99 +6,99 @@ import { theme } from "../theme";
  const colors = theme.colors;
  
  const getInitials = (name) => {
@@ -29,16 +28,18 @@ index 8cf7e4887e730a36b6d0b21334aee414a0dc3771..089fbc9104642dc5a65b98d16711f32b
    return Number.isFinite(numeric) ? numeric : null;
  };
  
-+const formatDistanceLabel = (distanceKm) => {
-+  if (typeof distanceKm !== "number") return null;
-+  if (!Number.isFinite(distanceKm)) return null;
-+  const rounded =
-+    distanceKm < 10
-+      ? distanceKm.toFixed(1)
-+      : Math.round(distanceKm).toString();
-+  return `${rounded} km away`;
-+};
-+
+ const formatDistanceLabel = (distanceKm) => {
+-  if (typeof distanceKm !== "number") return null;
+-  if (!Number.isFinite(distanceKm)) return null;
++  if (typeof distanceKm !== "number") return "";
++  if (!Number.isFinite(distanceKm)) return "";
+   const rounded =
+     distanceKm < 10
+       ? distanceKm.toFixed(1)
+       : Math.round(distanceKm).toString();
+   return `${rounded} km away`;
+ };
+ 
  const ProviderCard = ({
    provider,
    avatarUrl,
@@ -56,31 +57,35 @@ index 8cf7e4887e730a36b6d0b21334aee414a0dc3771..089fbc9104642dc5a65b98d16711f32b
    const ratingValue = resolveRatingValue(provider, rating);
    const ratingLabel =
      typeof ratingValue === "number" ? ratingValue.toFixed(1) : null;
--  const distanceLabel =
--    typeof distanceKm === "number" ? `${distanceKm.toFixed(1)} km away` : null;
-+  const distanceLabel = formatDistanceLabel(distanceKm);
+-  const distanceLabel = formatDistanceLabel(distanceKm);
++  const distanceText = distanceKm != null ? formatDistanceLabel(distanceKm) : "";
    const professionLabel =
      profession ||
      provider?.profession ||
      (provider?.professions || []).join(" · ") ||
      (provider?.services || []).join(" · ");
-+  const professionLine =
-+    professionLabel && distanceLabel
-+      ? `${professionLabel} · ${distanceLabel}`
-+      : professionLabel;
+   const professionLine =
+-    professionLabel && distanceLabel
+-      ? `${professionLabel} · ${distanceLabel}`
++    professionLabel && distanceText
++      ? `${professionLabel} · ${distanceText}`
+       : professionLabel;
    const locationLabel =
      provider?.location ||
      provider?.city ||
      provider?.address ||
      provider?.area ||
      null;
-+  const locationLine =
-+    locationLabel && distanceLabel && !professionLabel
-+      ? `${locationLabel} · ${distanceLabel}`
-+      : locationLabel;
+   const locationLine =
+-    locationLabel && distanceLabel && !professionLabel
+-      ? `${locationLabel} · ${distanceLabel}`
++    locationLabel && distanceText && !professionLabel
++      ? `${locationLabel} · ${distanceText}`
+       : locationLabel;
    const initials = getInitials(provider?.name);
-+  const showDistanceLine =
-+    distanceLabel && !professionLabel && !locationLabel;
+   const showDistanceLine =
+-    distanceLabel && !professionLabel && !locationLabel;
++    distanceText && !professionLabel && !locationLabel;
  
    return (
      <TouchableOpacity
@@ -106,12 +111,7 @@ index 8cf7e4887e730a36b6d0b21334aee414a0dc3771..089fbc9104642dc5a65b98d16711f32b
            />
          </TouchableOpacity>
        ) : null}
- 
-       <View style={styles.topRow}>
-         <View style={styles.avatarWrapper}>
-           {avatarUrl ? (
-             <Image source={{ uri: avatarUrl }} style={styles.avatarImage} />
-           ) : (
+@@ -111,51 +111,51 @@ const ProviderCard = ({
              <View style={styles.avatarFallback}>
                <Text style={styles.avatarInitials}>{initials}</Text>
              </View>
@@ -123,26 +123,22 @@ index 8cf7e4887e730a36b6d0b21334aee414a0dc3771..089fbc9104642dc5a65b98d16711f32b
              {provider?.name || "Provider"}
            </Text>
  
--          {professionLabel ? (
-+          {professionLine ? (
+           {professionLine ? (
              <Text style={styles.profession} numberOfLines={1}>
--              {professionLabel}
-+              {professionLine}
+               {professionLine}
              </Text>
            ) : null}
  
--          {locationLabel ? (
-+          {locationLine ? (
+           {locationLine ? (
              <Text style={styles.distance} numberOfLines={1}>
--              {locationLabel}
-+              {locationLine}
+               {locationLine}
              </Text>
            ) : null}
  
--          {distanceLabel ? (
-+          {showDistanceLine ? (
+           {showDistanceLine ? (
              <Text style={styles.distance} numberOfLines={1}>
-               {distanceLabel}
+-              {distanceLabel}
++              {distanceText}
              </Text>
            ) : null}
          </View>
@@ -166,6 +162,8 @@ index 8cf7e4887e730a36b6d0b21334aee414a0dc3771..089fbc9104642dc5a65b98d16711f32b
        ) : null}
      </TouchableOpacity>
    );
+ };
+ 
  
 EOF
 )

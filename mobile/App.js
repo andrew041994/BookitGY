@@ -119,6 +119,11 @@ const resolveImageUrl = (url) => {
     return `${API}${normalizedPath}`;
   };
 
+const toNum = (value) => {
+  const n = typeof value === "string" ? parseFloat(value) : value;
+  return Number.isFinite(n) ? n : null;
+};
+
 const getDistanceKm = (lat1, lon1, lat2, lon2) => {
   if (lat1 == null || lon1 == null || lat2 == null || lon2 == null) {
     return null;
@@ -134,23 +139,30 @@ const getDistanceKm = (lat1, lon1, lat2, lon2) => {
       Math.sin(dLon / 2) *
       Math.sin(dLon / 2);
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  return R * c;
+  const distance = R * c;
+  return Number.isFinite(distance) ? distance : null;
 };
 
 const getProviderCoords = (provider) => {
-  const lat =
-    provider?.lat ??
-    provider?.latitude ??
-    provider?.location_lat ??
-    provider?.pinned_lat;
-  const long =
-    provider?.long ??
-    provider?.lng ??
-    provider?.longitude ??
-    provider?.location_lng ??
-    provider?.pinned_lng;
-  if (lat == null || long == null) return null;
-  return { lat, long };
+  const lat = toNum(
+    provider?.pinned_lat ??
+      provider?.pinnedLatitude ??
+      provider?.location_lat ??
+      provider?.locationLat ??
+      provider?.latitude ??
+      provider?.lat
+  );
+  const lng = toNum(
+    provider?.pinned_lng ??
+      provider?.pinnedLongitude ??
+      provider?.location_lng ??
+      provider?.locationLng ??
+      provider?.longitude ??
+      provider?.lng ??
+      provider?.lon
+  );
+  if (lat == null || lng == null) return null;
+  return { lat, lng };
 };
 
 const LEGACY_ACCESS_TOKEN_KEY = "accessToken";
@@ -2089,6 +2101,16 @@ function ClientHomeScreen({
     return R * c;
   };
 
+  const getClientCoords = () => {
+    if (!clientLocation) return null;
+    const lat = toNum(clientLocation.lat ?? clientLocation.latitude);
+    const lng = toNum(
+      clientLocation.lng ?? clientLocation.long ?? clientLocation.longitude
+    );
+    if (lat == null || lng == null) return null;
+    return { lat, lng };
+  };
+
   const loadNearbyProviders = useCallback(async () => {
     try {
       setNearbyLoading(true);
@@ -2106,10 +2128,14 @@ function ClientHomeScreen({
 
       const loc = await Location.getCurrentPositionAsync({});
       const coords = {
-        lat: loc.coords.latitude,
-        long: loc.coords.longitude,
+        lat: toNum(loc.coords.latitude),
+        long: toNum(loc.coords.longitude),
       };
       setClientLocation(coords);
+      const clientCoords =
+        coords.lat != null && coords.long != null
+          ? { lat: coords.lat, lng: coords.long }
+          : null;
 
       const res = await axios.get(`${API}/providers`);
       const list = Array.isArray(res.data)
@@ -2117,11 +2143,22 @@ function ClientHomeScreen({
         : res.data?.providers || [];
 
       const withinRadius = list
-        .map((p) => ({
-          ...p,
-          distance_km: haversineKm(coords.lat, coords.long, p.lat, p.long),
-        }))
-        .filter((p) => typeof p.distance_km === "number" && p.distance_km <= 15)
+        .map((p) => {
+          const providerCoords = getProviderCoords(p);
+          const distance = clientCoords && providerCoords
+            ? haversineKm(
+                clientCoords.lat,
+                clientCoords.lng,
+                providerCoords.lat,
+                providerCoords.lng
+              )
+            : null;
+          const distance_km = Number.isFinite(distance) ? distance : null;
+          return { ...p, distance_km };
+        })
+        .filter(
+          (p) => typeof p.distance_km === "number" && p.distance_km <= 15
+        )
         .sort(
           (a, b) => (a.distance_km ?? Infinity) - (b.distance_km ?? Infinity)
         );
@@ -2187,6 +2224,123 @@ function ClientHomeScreen({
   useEffect(() => {
     refreshFavoriteProviders();
   }, [refreshFavoriteProviders]);
+
+  const clientCoords = getClientCoords();
+  let nearbyHasDistance = false;
+  let nearbyLastProviderCoords = null;
+  let nearbyLastDistanceKm = null;
+  const nearbyCards = nearbyProviders.map((provider) => {
+    const avatar = resolveImageUrl(
+      provider.avatar_url || provider.profile_photo_url
+    );
+    const saved = isFavorite(provider);
+    const providerId = getProviderId(provider) || provider.name;
+    const professionLabel = provider.professions?.length
+      ? provider.professions.join(", ")
+      : (provider.services || []).join(" · ");
+    const providerCoords = getProviderCoords(provider);
+    const baseDistance = toNum(provider.distance_km);
+    const computedDistance =
+      baseDistance != null
+        ? baseDistance
+        : clientCoords && providerCoords
+        ? getDistanceKm(
+            clientCoords.lat,
+            clientCoords.lng,
+            providerCoords.lat,
+            providerCoords.lng
+          )
+        : null;
+    const distanceKm = Number.isFinite(computedDistance)
+      ? computedDistance
+      : null;
+    if (distanceKm != null) {
+      nearbyHasDistance = true;
+    }
+    nearbyLastProviderCoords = providerCoords;
+    nearbyLastDistanceKm = distanceKm;
+
+    return (
+      <ProviderCard
+        key={providerId}
+        provider={provider}
+        avatarUrl={avatar}
+        profession={professionLabel}
+        distanceKm={distanceKm}
+        isFavorite={saved}
+        onFavoriteToggle={() => toggleFavorite(provider)}
+        onPress={() => handleProviderPress(provider)}
+        ctaLabel={null}
+        style={styles.providerCardCarousel}
+      />
+    );
+  });
+
+  if (!nearbyHasDistance && nearbyProviders.length) {
+    console.log("[distance] nearby list missing distances", {
+      clientCoords,
+      providerCoords: nearbyLastProviderCoords,
+      distanceKm: nearbyLastDistanceKm,
+    });
+  }
+
+  let favoritesHasDistance = false;
+  let favoritesLastProviderCoords = null;
+  let favoritesLastDistanceKm = null;
+  const favoriteCards = favoriteProviders.map((provider) => {
+    const avatar = resolveImageUrl(
+      provider.avatar_url || provider.profile_photo_url
+    );
+    const saved = isFavorite(provider);
+    const providerId = getProviderId(provider) || provider.name;
+    const professionLabel = provider.professions?.length
+      ? provider.professions.join(", ")
+      : (provider.services || []).join(" · ");
+    const providerCoords = getProviderCoords(provider);
+    const baseDistance = toNum(provider.distance_km);
+    const computedDistance =
+      baseDistance != null
+        ? baseDistance
+        : clientCoords && providerCoords
+        ? getDistanceKm(
+            clientCoords.lat,
+            clientCoords.lng,
+            providerCoords.lat,
+            providerCoords.lng
+          )
+        : null;
+    const distanceKm = Number.isFinite(computedDistance)
+      ? computedDistance
+      : null;
+    if (distanceKm != null) {
+      favoritesHasDistance = true;
+    }
+    favoritesLastProviderCoords = providerCoords;
+    favoritesLastDistanceKm = distanceKm;
+
+    return (
+      <ProviderCard
+        key={providerId}
+        provider={provider}
+        avatarUrl={avatar}
+        profession={professionLabel}
+        distanceKm={distanceKm}
+        isFavorite={saved}
+        onFavoriteToggle={() => toggleFavorite(provider)}
+        onPress={() => handleProviderPress(provider)}
+        ctaLabel={null}
+        style={styles.providerCardCarousel}
+      />
+    );
+  });
+
+  if (!favoritesHasDistance && favoriteProviders.length) {
+    console.log("[distance] favorites list missing distances", {
+      clientCoords,
+      providerCoords: favoritesLastProviderCoords,
+      distanceKm: favoritesLastDistanceKm,
+    });
+  }
 
   return (
     <View style={styles.homeWrapper}>
@@ -2342,43 +2496,7 @@ function ClientHomeScreen({
               contentContainerStyle={styles.carouselList}
               onMomentumScrollEnd={handleCarouselScroll}
             >
-              {nearbyProviders.map((provider) => {
-                const avatar = resolveImageUrl(
-                  provider.avatar_url || provider.profile_photo_url
-                );
-                const saved = isFavorite(provider);
-                const providerId = getProviderId(provider) || provider.name;
-                const professionLabel = provider.professions?.length
-                  ? provider.professions.join(", ")
-                  : (provider.services || []).join(" · ");
-                const providerCoords = getProviderCoords(provider);
-                const distanceKm =
-                  typeof provider.distance_km === "number"
-                    ? provider.distance_km
-                    : clientLocation && providerCoords
-                    ? getDistanceKm(
-                        clientLocation.lat,
-                        clientLocation.long,
-                        providerCoords.lat,
-                        providerCoords.long
-                      )
-                    : null;
-
-                return (
-                  <ProviderCard
-                    key={providerId}
-                    provider={provider}
-                    avatarUrl={avatar}
-                    profession={professionLabel}
-                    distanceKm={distanceKm}
-                    isFavorite={saved}
-                    onFavoriteToggle={() => toggleFavorite(provider)}
-                    onPress={() => handleProviderPress(provider)}
-                    ctaLabel={null}
-                    style={styles.providerCardCarousel}
-                  />
-                );
-              })}
+              {nearbyCards}
             </ScrollView>
           ) : null}
 
@@ -2435,43 +2553,7 @@ function ClientHomeScreen({
               showsHorizontalScrollIndicator={false}
               contentContainerStyle={styles.carouselList}
             >
-              {favoriteProviders.map((provider) => {
-                const avatar = resolveImageUrl(
-                  provider.avatar_url || provider.profile_photo_url
-                );
-                const saved = isFavorite(provider);
-                const providerId = getProviderId(provider) || provider.name;
-                const professionLabel = provider.professions?.length
-                  ? provider.professions.join(", ")
-                  : (provider.services || []).join(" · ");
-                const providerCoords = getProviderCoords(provider);
-                const distanceKm =
-                  typeof provider.distance_km === "number"
-                    ? provider.distance_km
-                    : clientLocation && providerCoords
-                    ? getDistanceKm(
-                        clientLocation.lat,
-                        clientLocation.long,
-                        providerCoords.lat,
-                        providerCoords.long
-                      )
-                    : null;
-
-                return (
-                  <ProviderCard
-                    key={providerId}
-                    provider={provider}
-                    avatarUrl={avatar}
-                    profession={professionLabel}
-                    distanceKm={distanceKm}
-                    isFavorite={saved}
-                    onFavoriteToggle={() => toggleFavorite(provider)}
-                    onPress={() => handleProviderPress(provider)}
-                    ctaLabel={null}
-                    style={styles.providerCardCarousel}
-                  />
-                );
-              })}
+              {favoriteCards}
             </ScrollView>
           ) : null}
           </View>
@@ -2896,6 +2978,16 @@ function SearchScreen({ token, showFlash, navigation, route, toggleFavorite, isF
     return R * c;
   };
 
+  const getClientCoords = () => {
+    if (!clientLocation) return null;
+    const lat = toNum(clientLocation.lat ?? clientLocation.latitude);
+    const lng = toNum(
+      clientLocation.lng ?? clientLocation.long ?? clientLocation.longitude
+    );
+    if (lat == null || lng == null) return null;
+    return { lat, lng };
+  };
+
 
   const handleSearchSubmit = () => {
     // when the user hits enter/search on the keyboard
@@ -3010,16 +3102,18 @@ function SearchScreen({ token, showFlash, navigation, route, toggleFavorite, isF
       return;
     }
 
+    const clientCoords = getClientCoords();
     let list = providerList.map((p) => {
-      let distance_km = null;
-      if (clientLocation && p.lat != null && p.long != null) {
-        distance_km = haversineKm(
-          clientLocation.lat,
-          clientLocation.long,
-          p.lat,
-          p.long
-        );
-      }
+      const providerCoords = getProviderCoords(p);
+      const distance = clientCoords && providerCoords
+        ? haversineKm(
+            clientCoords.lat,
+            clientCoords.lng,
+            providerCoords.lat,
+            providerCoords.lng
+          )
+        : null;
+      const distance_km = Number.isFinite(distance) ? distance : null;
       return { ...p, distance_km };
     });
 
@@ -3247,6 +3341,65 @@ function SearchScreen({ token, showFlash, navigation, route, toggleFavorite, isF
     },
     [loadAvailability, selectedProvider]
   );
+
+  const clientCoords = getClientCoords();
+  let searchHasDistance = false;
+  let searchLastProviderCoords = null;
+  let searchLastDistanceKm = null;
+  const searchCards = filteredProviders.map((p) => {
+    const avatar = resolveImageUrl(p.avatar_url || p.profile_photo_url);
+    const favorite = isFavorite(p);
+    const providerCoords = getProviderCoords(p);
+    const baseDistance = toNum(p.distance_km);
+    const computedDistance =
+      baseDistance != null
+        ? baseDistance
+        : clientCoords && providerCoords
+        ? getDistanceKm(
+            clientCoords.lat,
+            clientCoords.lng,
+            providerCoords.lat,
+            providerCoords.lng
+          )
+        : null;
+    const distanceKm = Number.isFinite(computedDistance)
+      ? computedDistance
+      : null;
+    if (distanceKm != null) {
+      searchHasDistance = true;
+    }
+    searchLastProviderCoords = providerCoords;
+    searchLastDistanceKm = distanceKm;
+    const professionLabel = p.professions?.length
+      ? p.professions.join(" · ")
+      : p.profession || null;
+    return (
+      <ProviderCard
+        key={getProviderId(p) || p.name}
+        provider={p}
+        avatarUrl={avatar}
+        profession={professionLabel}
+        distanceKm={distanceKm}
+        isFavorite={favorite}
+        onFavoriteToggle={() => toggleFavorite(p)}
+        onPress={() => handleSelectProvider(p)}
+        ctaLabel={null}
+        isSelected={
+          selectedProvider &&
+          getProviderId(selectedProvider) === getProviderId(p)
+        }
+        style={styles.providerCardList}
+      />
+    );
+  });
+
+  if (!searchHasDistance && filteredProviders.length) {
+    console.log("[distance] search list missing distances", {
+      clientCoords,
+      providerCoords: searchLastProviderCoords,
+      distanceKm: searchLastDistanceKm,
+    });
+  }
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -3496,45 +3649,7 @@ function SearchScreen({ token, showFlash, navigation, route, toggleFavorite, isF
               !providersError &&
               hasSearched &&
               filteredProviders.length > 0 &&
-              filteredProviders.map((p) => {
-                const avatar = resolveImageUrl(
-                  p.avatar_url || p.profile_photo_url
-                );
-                const favorite = isFavorite(p);
-                const providerCoords = getProviderCoords(p);
-                const distanceKm =
-                  typeof p.distance_km === "number"
-                    ? p.distance_km
-                    : clientLocation && providerCoords
-                    ? getDistanceKm(
-                        clientLocation.lat,
-                        clientLocation.long,
-                        providerCoords.lat,
-                        providerCoords.long
-                      )
-                    : null;
-                const professionLabel = p.professions?.length
-                  ? p.professions.join(" · ")
-                  : p.profession || null;
-                return (
-                  <ProviderCard
-                    key={getProviderId(p) || p.name}
-                    provider={p}
-                    avatarUrl={avatar}
-                    profession={professionLabel}
-                    distanceKm={distanceKm}
-                    isFavorite={favorite}
-                    onFavoriteToggle={() => toggleFavorite(p)}
-                    onPress={() => handleSelectProvider(p)}
-                    ctaLabel={null}
-                    isSelected={
-                      selectedProvider &&
-                      getProviderId(selectedProvider) === getProviderId(p)
-                    }
-                    style={styles.providerCardList}
-                  />
-                );
-              })}
+              searchCards}
           </View>
 
                         {/* Services list for selected provider */}
