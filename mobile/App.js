@@ -144,22 +144,42 @@ const getDistanceKm = (lat1, lon1, lat2, lon2) => {
 };
 
 const getProviderCoords = (provider) => {
+  const location = provider?.location;
+  const pinnedLocation = provider?.pinned_location ?? provider?.pinnedLocation;
+  const coords = provider?.coords;
   const lat = toNum(
     provider?.pinned_lat ??
       provider?.pinnedLatitude ??
+      pinnedLocation?.lat ??
+      pinnedLocation?.latitude ??
+      location?.lat ??
+      location?.latitude ??
       provider?.location_lat ??
       provider?.locationLat ??
+      coords?.lat ??
+      coords?.latitude ??
       provider?.latitude ??
       provider?.lat
   );
   const lng = toNum(
     provider?.pinned_lng ??
+      provider?.pinned_long ??
       provider?.pinnedLongitude ??
+      pinnedLocation?.lng ??
+      pinnedLocation?.long ??
+      pinnedLocation?.longitude ??
+      location?.lng ??
+      location?.long ??
+      location?.longitude ??
       provider?.location_lng ??
       provider?.locationLng ??
+      coords?.lng ??
+      coords?.long ??
+      coords?.longitude ??
       provider?.longitude ??
       provider?.lng ??
-      provider?.lon
+      provider?.lon ??
+      provider?.long
   );
   if (lat == null || lng == null) return null;
   return { lat, lng };
@@ -2132,6 +2152,7 @@ function ClientHomeScreen({
         long: toNum(loc.coords.longitude),
       };
       setClientLocation(coords);
+      await AsyncStorage.setItem("clientLocation", JSON.stringify(coords));
       const clientCoords =
         coords.lat != null && coords.long != null
           ? { lat: coords.lat, lng: coords.long }
@@ -2987,6 +3008,53 @@ function SearchScreen({ token, showFlash, navigation, route, toggleFavorite, isF
     if (lat == null || lng == null) return null;
     return { lat, lng };
   };
+
+  useEffect(() => {
+    if (clientLocation) return;
+    let isMounted = true;
+
+<<<<<<< ours
+    const loadStoredLocation = async () => {
+=======
+    const loadStoredClientLocation = async () => {
+>>>>>>> theirs
+      try {
+        const stored = await AsyncStorage.getItem("clientLocation");
+        if (!stored) return;
+        const parsed = JSON.parse(stored);
+<<<<<<< ours
+        const lat = toNum(parsed?.lat);
+        const long = toNum(parsed?.long);
+        if (isMounted && lat != null && long != null) {
+          setClientLocation({ lat, long });
+        }
+      } catch (error) {
+        return;
+      }
+    };
+
+    loadStoredLocation();
+=======
+        const lat = toNum(parsed?.lat ?? parsed?.latitude);
+        const long = toNum(
+          parsed?.long ?? parsed?.lng ?? parsed?.longitude
+        );
+        if (lat == null || long == null) return;
+        if (isMounted) {
+          setClientLocation({ lat, long });
+        }
+      } catch (error) {
+        console.log("Error loading stored client location", error);
+      }
+    };
+
+    loadStoredClientLocation();
+>>>>>>> theirs
+
+    return () => {
+      isMounted = false;
+    };
+  }, [clientLocation]);
 
 
   const handleSearchSubmit = () => {

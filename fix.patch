@@ -1,169 +1,170 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
-diff --git a/mobile/src/components/ProviderCard.js b/mobile/src/components/ProviderCard.js
-index 089fbc9104642dc5a65b98d16711f32b0b6e3037..b3598ba1f8c22572f4dc63ee8738a988b0d791e3 100644
---- a/mobile/src/components/ProviderCard.js
-+++ b/mobile/src/components/ProviderCard.js
-@@ -6,99 +6,99 @@ import { theme } from "../theme";
- const colors = theme.colors;
- 
- const getInitials = (name) => {
-   const cleaned = String(name || "").trim();
-   if (!cleaned) return "?";
-   const parts = cleaned.split(/\s+/).slice(0, 2);
-   return parts
-     .map((part) => part.charAt(0).toUpperCase())
-     .join("");
+diff --git a/mobile/App.js b/mobile/App.js
+index 35da6a451758713da5112a7e2f3787fd8888dd81..39943a86e693841225bbee7ae4cad1bd2aec089a 100644
+--- a/mobile/App.js
++++ b/mobile/App.js
+@@ -122,63 +122,81 @@ const resolveImageUrl = (url) => {
+ const toNum = (value) => {
+   const n = typeof value === "string" ? parseFloat(value) : value;
+   return Number.isFinite(n) ? n : null;
  };
  
- const resolveRatingValue = (provider, ratingOverride) => {
-   const raw =
-     ratingOverride ??
-     provider?.rating ??
-     provider?.average_rating ??
-     provider?.avg_rating ??
-     provider?.rating_avg ??
-     provider?.rating_value;
-   if (raw == null) return null;
-   const numeric = Number(raw);
-   return Number.isFinite(numeric) ? numeric : null;
+ const getDistanceKm = (lat1, lon1, lat2, lon2) => {
+   if (lat1 == null || lon1 == null || lat2 == null || lon2 == null) {
+     return null;
+   }
+   const toRad = (value) => (value * Math.PI) / 180;
+   const R = 6371;
+   const dLat = toRad(lat2 - lat1);
+   const dLon = toRad(lon2 - lon1);
+   const a =
+     Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+     Math.cos(toRad(lat1)) *
+       Math.cos(toRad(lat2)) *
+       Math.sin(dLon / 2) *
+       Math.sin(dLon / 2);
+   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+   const distance = R * c;
+   return Number.isFinite(distance) ? distance : null;
  };
  
- const formatDistanceLabel = (distanceKm) => {
--  if (typeof distanceKm !== "number") return null;
--  if (!Number.isFinite(distanceKm)) return null;
-+  if (typeof distanceKm !== "number") return "";
-+  if (!Number.isFinite(distanceKm)) return "";
-   const rounded =
-     distanceKm < 10
-       ? distanceKm.toFixed(1)
-       : Math.round(distanceKm).toString();
-   return `${rounded} km away`;
- };
- 
- const ProviderCard = ({
-   provider,
-   avatarUrl,
-   onPress,
-   onFavoriteToggle,
-   isFavorite = false,
-   ctaLabel = "View",
-   onCtaPress,
-   distanceKm,
-   profession,
-   rating,
-   isSelected = false,
-   style,
- }) => {
-   const ratingValue = resolveRatingValue(provider, rating);
-   const ratingLabel =
-     typeof ratingValue === "number" ? ratingValue.toFixed(1) : null;
--  const distanceLabel = formatDistanceLabel(distanceKm);
-+  const distanceText = distanceKm != null ? formatDistanceLabel(distanceKm) : "";
-   const professionLabel =
-     profession ||
-     provider?.profession ||
-     (provider?.professions || []).join(" · ") ||
-     (provider?.services || []).join(" · ");
-   const professionLine =
--    professionLabel && distanceLabel
--      ? `${professionLabel} · ${distanceLabel}`
-+    professionLabel && distanceText
-+      ? `${professionLabel} · ${distanceText}`
-       : professionLabel;
-   const locationLabel =
-     provider?.location ||
-     provider?.city ||
-     provider?.address ||
-     provider?.area ||
-     null;
-   const locationLine =
--    locationLabel && distanceLabel && !professionLabel
--      ? `${locationLabel} · ${distanceLabel}`
-+    locationLabel && distanceText && !professionLabel
-+      ? `${locationLabel} · ${distanceText}`
-       : locationLabel;
-   const initials = getInitials(provider?.name);
-   const showDistanceLine =
--    distanceLabel && !professionLabel && !locationLabel;
-+    distanceText && !professionLabel && !locationLabel;
- 
-   return (
-     <TouchableOpacity
-       style={[styles.card, isSelected && styles.cardSelected, style]}
-       activeOpacity={0.9}
-       onPress={onPress}
-     >
-       {typeof onFavoriteToggle === "function" ? (
-         <TouchableOpacity
-           style={styles.favoriteButton}
-           onPress={(event) => {
-             event.stopPropagation?.();
-             onFavoriteToggle();
-           }}
-           accessibilityLabel={
-             isFavorite ? "Remove from favorites" : "Save to favorites"
-           }
-         >
-           <Ionicons
-             name={isFavorite ? "heart" : "heart-outline"}
-             size={18}
-             color={isFavorite ? colors.error : colors.textPrimary}
-           />
-         </TouchableOpacity>
-       ) : null}
-@@ -111,51 +111,51 @@ const ProviderCard = ({
-             <View style={styles.avatarFallback}>
-               <Text style={styles.avatarInitials}>{initials}</Text>
-             </View>
-           )}
-         </View>
- 
-         <View style={styles.middleColumn}>
-           <Text style={styles.name} numberOfLines={1}>
-             {provider?.name || "Provider"}
-           </Text>
- 
-           {professionLine ? (
-             <Text style={styles.profession} numberOfLines={1}>
-               {professionLine}
-             </Text>
-           ) : null}
- 
-           {locationLine ? (
-             <Text style={styles.distance} numberOfLines={1}>
-               {locationLine}
-             </Text>
-           ) : null}
- 
-           {showDistanceLine ? (
-             <Text style={styles.distance} numberOfLines={1}>
--              {distanceLabel}
-+              {distanceText}
-             </Text>
-           ) : null}
-         </View>
- 
-         {ratingLabel ? (
-           <View style={styles.ratingBadge}>
-             <Text style={styles.ratingText}>★ {ratingLabel}</Text>
-           </View>
-         ) : null}
-       </View>
- 
-       {ctaLabel ? (
-         <View style={styles.bottomRow}>
-           <TouchableOpacity
-             style={styles.ctaButton}
-             onPress={onCtaPress || onPress}
-           >
-             <Text style={styles.ctaText}>{ctaLabel}</Text>
-           </TouchableOpacity>
-         </View>
-       ) : null}
-     </TouchableOpacity>
+ const getProviderCoords = (provider) => {
++  const location = provider?.location;
++  const pinnedLocation = provider?.pinned_location ?? provider?.pinnedLocation;
++  const coords = provider?.coords;
+   const lat = toNum(
+     provider?.pinned_lat ??
+       provider?.pinnedLatitude ??
++      pinnedLocation?.lat ??
++      pinnedLocation?.latitude ??
++      location?.lat ??
++      location?.latitude ??
+       provider?.location_lat ??
+       provider?.locationLat ??
++      coords?.lat ??
++      coords?.latitude ??
+       provider?.latitude ??
+       provider?.lat
    );
+   const lng = toNum(
+     provider?.pinned_lng ??
+       provider?.pinnedLongitude ??
++      pinnedLocation?.lng ??
++      pinnedLocation?.long ??
++      pinnedLocation?.longitude ??
++      location?.lng ??
++      location?.long ??
++      location?.longitude ??
+       provider?.location_lng ??
+       provider?.locationLng ??
++      coords?.lng ??
++      coords?.long ??
++      coords?.longitude ??
+       provider?.longitude ??
+       provider?.lng ??
+       provider?.lon
+   );
+   if (lat == null || lng == null) return null;
+   return { lat, lng };
  };
  
+ const LEGACY_ACCESS_TOKEN_KEY = "accessToken";
+ 
+ const getAuthToken = async (tokenState) => {
+   if (tokenState?.token) return tokenState.token;
+ 
+   try {
+     const secure = await withTimeout(loadToken(), 1500, "loadToken");
+     if (secure) return secure;
+   } catch (error) {
+     console.log("[auth] Failed to load secure token", error?.message || error);
+   }
+ 
+   try {
+     const legacy = await withTimeout(
+       AsyncStorage.getItem(LEGACY_ACCESS_TOKEN_KEY),
+       1500,
+       "loadLegacyToken"
+@@ -2966,50 +2984,79 @@ function SearchScreen({ token, showFlash, navigation, route, toggleFavorite, isF
+     }
+     const toRad = (v) => (v * Math.PI) / 180;
+     const R = 6371; // km
+     const dLat = toRad(lat2 - lat1);
+     const dLon = toRad(lon2 - lon1);
+     const a =
+       Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+       Math.cos(toRad(lat1)) *
+         Math.cos(toRad(lat2)) *
+         Math.sin(dLon / 2) *
+         Math.sin(dLon / 2);
+     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+     return R * c;
+   };
+ 
+   const getClientCoords = () => {
+     if (!clientLocation) return null;
+     const lat = toNum(clientLocation.lat ?? clientLocation.latitude);
+     const lng = toNum(
+       clientLocation.lng ?? clientLocation.long ?? clientLocation.longitude
+     );
+     if (lat == null || lng == null) return null;
+     return { lat, lng };
+   };
+ 
++  useEffect(() => {
++    if (clientLocation) return;
++    let isMounted = true;
++
++    const loadStoredClientLocation = async () => {
++      try {
++        const stored = await AsyncStorage.getItem("clientLocation");
++        if (!stored) return;
++        const parsed = JSON.parse(stored);
++        const lat = toNum(parsed?.lat ?? parsed?.latitude);
++        const long = toNum(
++          parsed?.long ?? parsed?.lng ?? parsed?.longitude
++        );
++        if (lat == null || long == null) return;
++        if (isMounted) {
++          setClientLocation({ lat, long });
++        }
++      } catch (error) {
++        console.log("Error loading stored client location", error);
++      }
++    };
++
++    loadStoredClientLocation();
++
++    return () => {
++      isMounted = false;
++    };
++  }, [clientLocation]);
++
+ 
+   const handleSearchSubmit = () => {
+     // when the user hits enter/search on the keyboard
+     setHasSearched(true);
+     setShouldScrollToResults(true);
+   };
+ 
+ 
+   const loadProviders = useCallback(async () => {
+     try {
+       setProvidersLoading(true);
+       setProvidersError("");
+ 
+       const res = await axios.get(`${API}/providers`);
+ 
+       // Always normalize the result to an array
+       const list = Array.isArray(res.data)
+         ? res.data
+         : res.data?.providers || [];
+ 
+       setProviders(list);
+       setFilteredProviders(list);
+       syncFavoritesFromList(list);
+       return list;
+     } catch (err) {
  
 EOF
 )
