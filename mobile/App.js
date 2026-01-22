@@ -154,28 +154,28 @@ const getProviderCoords = (provider) => {
     return { lat, lng };
   };
   const lat = toNum(
-    provider?.pinned_lat ??
+    provider?.user?.lat ??
+      provider?.user?.latitude ??
+      provider?.lat ??
+      provider?.latitude ??
+      provider?.pinned_lat ??
       provider?.pinnedLatitude ??
       provider?.location_lat ??
-      provider?.locationLat ??
-      provider?.latitude ??
-      provider?.lat ??
-      provider?.user?.lat ??
-      provider?.user?.latitude
+      provider?.locationLat
   );
   const lng = toNum(
-    provider?.pinned_lng ??
+    provider?.user?.long ??
+      provider?.user?.lng ??
+      provider?.user?.longitude ??
+      provider?.long ??
+      provider?.lng ??
+      provider?.longitude ??
+      provider?.pinned_lng ??
       provider?.pinned_long ??
       provider?.pinnedLongitude ??
       provider?.location_lng ??
       provider?.locationLng ??
-      provider?.longitude ??
-      provider?.lng ??
-      provider?.lon ??
-      provider?.long ??
-      provider?.user?.long ??
-      provider?.user?.lng ??
-      provider?.user?.longitude
+      provider?.lon
   );
   if (lat != null && lng != null) {
     return { lat, lng };

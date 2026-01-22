@@ -1,9 +1,14 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
 diff --git a/mobile/App.js b/mobile/App.js
-index 2e6354797c788910ca21bca1dc3a5542a22ff896..ecb03ad7d3ed1a0542d337d7bdd62e58849605b1 100644
+index ecb03ad7d3ed1a0542d337d7bdd62e58849605b1..1a4e2aa906986fbdb1a8a57778b00d5ad48f4598 100644
 --- a/mobile/App.js
 +++ b/mobile/App.js
-@@ -137,62 +137,67 @@ const getDistanceKm = (lat1, lon1, lat2, lon2) => {
+@@ -132,72 +132,72 @@ const getDistanceKm = (lat1, lon1, lat2, lon2) => {
+   const R = 6371;
+   const dLat = toRad(lat2 - lat1);
+   const dLon = toRad(lon2 - lon1);
+   const a =
+     Math.sin(dLat / 2) * Math.sin(dLat / 2) +
      Math.cos(toRad(lat1)) *
        Math.cos(toRad(lat2)) *
        Math.sin(dLon / 2) *
@@ -24,30 +29,42 @@ index 2e6354797c788910ca21bca1dc3a5542a22ff896..ecb03ad7d3ed1a0542d337d7bdd62e58
      return { lat, lng };
    };
    const lat = toNum(
-     provider?.pinned_lat ??
+-    provider?.pinned_lat ??
++    provider?.user?.lat ??
++      provider?.user?.latitude ??
++      provider?.lat ??
++      provider?.latitude ??
++      provider?.pinned_lat ??
        provider?.pinnedLatitude ??
        provider?.location_lat ??
-       provider?.locationLat ??
-       provider?.latitude ??
--      provider?.lat
-+      provider?.lat ??
-+      provider?.user?.lat ??
-+      provider?.user?.latitude
+-      provider?.locationLat ??
+-      provider?.latitude ??
+-      provider?.lat ??
+-      provider?.user?.lat ??
+-      provider?.user?.latitude
++      provider?.locationLat
    );
    const lng = toNum(
-     provider?.pinned_lng ??
+-    provider?.pinned_lng ??
++    provider?.user?.long ??
++      provider?.user?.lng ??
++      provider?.user?.longitude ??
++      provider?.long ??
++      provider?.lng ??
++      provider?.longitude ??
++      provider?.pinned_lng ??
        provider?.pinned_long ??
        provider?.pinnedLongitude ??
        provider?.location_lng ??
        provider?.locationLng ??
-       provider?.longitude ??
-       provider?.lng ??
-       provider?.lon ??
--      provider?.long
-+      provider?.long ??
-+      provider?.user?.long ??
-+      provider?.user?.lng ??
-+      provider?.user?.longitude
+-      provider?.longitude ??
+-      provider?.lng ??
+-      provider?.lon ??
+-      provider?.long ??
+-      provider?.user?.long ??
+-      provider?.user?.lng ??
+-      provider?.user?.longitude
++      provider?.lon
    );
    if (lat != null && lng != null) {
      return { lat, lng };
