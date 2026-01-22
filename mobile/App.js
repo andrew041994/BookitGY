@@ -149,43 +149,42 @@ const getProviderCoords = (provider) => {
   const coords = provider?.coords;
   const getCoordsFrom = (source) => {
     const lat = toNum(source?.lat ?? source?.latitude);
-    const lng = toNum(source?.lng ?? source?.long ?? source?.longitude);
+    const lng = toNum(source?.long ?? source?.lng ?? source?.longitude);
     if (lat == null || lng == null) return null;
     return { lat, lng };
   };
-  const lat = toNum(
-    provider?.user?.lat ??
-      provider?.user?.latitude ??
-      provider?.lat ??
-      provider?.latitude ??
-      provider?.pinned_lat ??
-      provider?.pinnedLatitude ??
-      provider?.location_lat ??
-      provider?.locationLat
-  );
-  const lng = toNum(
-    provider?.user?.long ??
-      provider?.user?.lng ??
-      provider?.user?.longitude ??
-      provider?.long ??
-      provider?.lng ??
-      provider?.longitude ??
-      provider?.pinned_lng ??
-      provider?.pinned_long ??
-      provider?.pinnedLongitude ??
-      provider?.location_lng ??
-      provider?.locationLng ??
-      provider?.lon
-  );
-  if (lat != null && lng != null) {
-    return { lat, lng };
-  }
+
+  const fromUser = getCoordsFrom(provider?.user);
+  if (fromUser) return fromUser;
+
+  const fromProvider = getCoordsFrom(provider);
+  if (fromProvider) return fromProvider;
+
   const fromLocation = getCoordsFrom(location);
   if (fromLocation) return fromLocation;
   const fromPinned = getCoordsFrom(pinnedLocation);
   if (fromPinned) return fromPinned;
   const fromCoords = getCoordsFrom(coords);
   if (fromCoords) return fromCoords;
+
+  const legacyLat = toNum(
+    provider?.pinned_lat ??
+      provider?.pinnedLatitude ??
+      provider?.location_lat ??
+      provider?.locationLat
+  );
+  const legacyLng = toNum(
+    provider?.pinned_long ??
+      provider?.pinned_lng ??
+      provider?.pinnedLongitude ??
+      provider?.location_lng ??
+      provider?.locationLng ??
+      provider?.lon
+  );
+  if (legacyLat != null && legacyLng != null) {
+    return { lat: legacyLat, lng: legacyLng };
+  }
+
   return null;
 };
 
