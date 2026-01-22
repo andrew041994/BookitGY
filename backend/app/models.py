@@ -61,6 +61,7 @@ class Provider(Base):
     account_number = Column(String, unique=True, index=True)  # NEW
     avatar_url = Column(String, nullable=True)
     is_locked = Column(Boolean, default=False)
+    user = relationship("User")
 
 
 

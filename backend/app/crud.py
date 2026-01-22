@@ -4,7 +4,7 @@ import logging
 from decimal import Decimal, ROUND_HALF_UP
 from typing import Optional, List
 from sqlalchemy import func, cast, String, case, select, or_, desc
-from sqlalchemy.orm import Session, aliased
+from sqlalchemy.orm import Session, aliased, joinedload
 from sqlalchemy.exc import IntegrityError
 from passlib.context import CryptContext
 from twilio.rest import Client
@@ -153,8 +153,8 @@ def list_providers(db: Session, profession: Optional[str] = None):
     """
     # Base query joining providers → users
     q = (
-        db.query(models.Provider, models.User)
-        .join(models.User, models.Provider.user_id == models.User.id)
+        db.query(models.Provider)
+        .options(joinedload(models.Provider.user))
     )
 
     # Optional filter by profession
@@ -167,10 +167,11 @@ def list_providers(db: Session, profession: Optional[str] = None):
             .filter(models.ProviderProfession.name.ilike(f"%{profession}%"))
         )
 
-    rows = q.all()
+    providers = q.all()
 
     results = []
-    for provider, user in rows:
+    for provider in providers:
+        user = provider.user
         professions = get_professions_for_provider(db, provider.id)
         services = [svc.name for svc in list_services_for_provider(db, provider.id)]
 
@@ -182,6 +183,10 @@ def list_providers(db: Session, profession: Optional[str] = None):
                 "location": user.location or "",
                 "lat": user.lat,
                 "long": user.long,
+                "user": {
+                    "lat": user.lat,
+                    "long": user.long,
+                },
                 "bio": provider.bio or "",
                 "professions": professions,
                 "services": services,
