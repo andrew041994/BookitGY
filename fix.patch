@@ -1,61 +1,104 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
 diff --git a/mobile/App.js b/mobile/App.js
-index f0f61959d95ae47e88dc50fafd12cdf688598aa2..99059ca4fdc3d48d0a4bc4a859d3b1265aa23f28 100644
+index ddb68a6a2d96e747d09721c256f1f1c65547dbf5..187479ba0855b6956430fec7093d99894996217a 100644
 --- a/mobile/App.js
 +++ b/mobile/App.js
-@@ -2937,50 +2937,51 @@ function SearchScreen({ token, showFlash, navigation, route, toggleFavorite, isF
-   const [filteredProviders, setFilteredProviders] = useState([]);
-   const [searchQuery, setSearchQuery] = useState("");
-   const [radiusKm, setRadiusKm] = useState(0); // 0 = any distance
-   const [clientLocation, setClientLocation] = useState(null);
-   const [locationError, setLocationError] = useState("");
-   const [providers, setProviders] = useState([]);
-   const [providersLoading, setProvidersLoading] = useState(true);
-   const [providersError, setProvidersError] = useState("");
-   const [selectedProvider, setSelectedProvider] = useState(null);
-   const [services, setServices] = useState([]);
-   const [servicesLoading, setServicesLoading] = useState(false);
-   const [servicesError, setServicesError] = useState("");
-   const [selectedService, setSelectedService] = useState(null);
-   const [catalogImages, setCatalogImages] = useState([]);
-   const [catalogLoading, setCatalogLoading] = useState(false);
-   const [catalogError, setCatalogError] = useState("");
-   const [availability, setAvailability] = useState([]);
-   const [availabilityLoading, setAvailabilityLoading] = useState(false);
-   const [availabilityError, setAvailabilityError] = useState("");
-   const [selectedDate, setSelectedDate] = useState(null);
-   const [selectedSlot, setSelectedSlot] = useState(null); // ISO string
-   const [bookingLoading, setBookingLoading] = useState(false);
-   const [hasSearched, setHasSearched] = useState(false); // 👈 NEW
-   const [refreshing, setRefreshing] = useState(false);
-   const [shouldScrollToResults, setShouldScrollToResults] = useState(false);
-+  const [hasRequestedLocation, setHasRequestedLocation] = useState(false);
-   const isFocused = useIsFocused();
-   const scrollRef = useRef(null);
-   const resultsOffset = useRef(0);
-   //Radius 
-   const distanceChips = [0, 5, 10, 15, 20];
+@@ -3064,76 +3064,90 @@ function SearchScreen({ token, showFlash, navigation, route, toggleFavorite, isF
+ 
+       const res = await axios.get(`${API}/providers`);
+ 
+       // Always normalize the result to an array
+       const list = Array.isArray(res.data)
+         ? res.data
+         : res.data?.providers || [];
+ 
+       setProviders(list);
+       setFilteredProviders(list);
+       syncFavoritesFromList(list);
+       return list;
+     } catch (err) {
+       console.log(
+         "Error loading providers",
+         err?.response?.data || err?.message
+       );
+       setProvidersError("Could not load providers.");
+       if (showFlash) showFlash("error", "Could not load providers.");
+       return [];
+     } finally {
+       setProvidersLoading(false);
+     }
+   }, [showFlash, syncFavoritesFromList]);
+ 
++  const clearSelectedProvider = useCallback(() => {
++    setSelectedProvider(null);
++    setServices([]);
++    setServicesError("");
++    setSelectedService(null);
++    setAvailability([]);
++    setAvailabilityError("");
++    setCatalogImages([]);
++    setCatalogError("");
++    setSelectedDate(null);
++    setSelectedSlot(null);
++  }, []);
++
+   // Load providers on mount
+   useEffect(() => {
+     loadProviders();
+   }, [loadProviders]);
  
    useEffect(() => {
-     if (!isFocused) return;
-     if (!incomingUsername) return;
-     console.log(
-       "[deeplink] consumed in SearchScreen",
-       incomingUsername,
-       deeplinkNonce,
-       "focused",
-       isFocused
-     );
-     setSearchQuery(incomingUsername);
-     setHasSearched(true);
-     setShouldScrollToResults(true);
-   }, [incomingUsername, deeplinkNonce, isFocused]);
+     const providerFromNav = route?.params?.provider;
+     if (!providerFromNav) return;
  
-   const haversineKm = (lat1, lon1, lat2, lon2) => {
+     const incomingId = getProviderId(providerFromNav);
+     const currentId = getProviderId(selectedProvider);
+     if (incomingId && incomingId === currentId) return;
+ 
+     setSearchQuery(providerFromNav.name || "");
+     setHasSearched(true);
+     setFilteredProviders([providerFromNav]);
+     handleSelectProvider(providerFromNav);
+   }, [route?.params?.provider, selectedProvider, handleSelectProvider]);
+ 
+   // Add a useEffect that recomputes filteredProviders
+   // whenever providers/search/radius/location changes:
+   useEffect(() => {
+     // 👇 do nothing until the user actually searches or if the query is empty
+     const normalizedQuery = normalizeSearchValue(searchQuery);
+     if (!hasSearched || !normalizedQuery) {
+       setFilteredProviders([]);
++      clearSelectedProvider();
+       return;
+     }
+ 
+     const providerList = Array.isArray(providers) ? providers : [];
+     const deeplinkUsername = normalizeSearchValue(incomingUsername);
      if (
-       lat1 == null ||
-       lon1 == null ||
-@@ -3198,94 +3199,112 @@ function SearchScreen({ token, showFlash, navigation, route, toggleFavorite, isF
+       deeplinkUsername &&
+       normalizedQuery === deeplinkUsername
+     ) {
+       console.log(
+         "[search] deeplink exact attempt",
+         deeplinkUsername
+       );
+       const exact = providerList.filter((p) => {
+         const u1 = normalizeSearchValue(p.username);
+         const u2 = normalizeSearchValue(p.user?.username);
+         return u1 === deeplinkUsername || u2 === deeplinkUsername;
+       });
+       console.log(
+         "[search] deeplink exact username",
+         deeplinkUsername,
+         "matches",
+         exact.length
+       );
+       if (exact.length > 0) {
+@@ -3201,51 +3215,51 @@ function SearchScreen({ token, showFlash, navigation, route, toggleFavorite, isF
+ 
+     // distance filter
+     if (radiusKm > 0) {
+       if (!clientLocation) {
          setLocationError(
            "Turn on location services to filter providers by distance."
          );
@@ -77,12 +120,12 @@ index f0f61959d95ae47e88dc50fafd12cdf688598aa2..99059ca4fdc3d48d0a4bc4a859d3b126
      }
  
      setFilteredProviders(list);
-   }, [providers, searchQuery, radiusKm, clientLocation, hasSearched, route?.params?.provider]);
+-  }, [providers, searchQuery, radiusKm, clientLocation, hasSearched, route?.params?.provider]);
++  }, [providers, searchQuery, radiusKm, clientLocation, hasSearched, route?.params?.provider, clearSelectedProvider]);
  
  
  
--  const ensureClientLocation = async () => {
-+  const ensureClientLocation = useCallback(async () => {
+   const ensureClientLocation = useCallback(async () => {
      try {
        const { status } = await Location.requestForegroundPermissionsAsync();
        if (status !== "granted") {
@@ -104,72 +147,67 @@ index f0f61959d95ae47e88dc50fafd12cdf688598aa2..99059ca4fdc3d48d0a4bc4a859d3b126
          long: loc.coords.longitude,
        };
        setClientLocation(coords);
-+      await AsyncStorage.setItem("clientLocation", JSON.stringify(coords));
-       setLocationError("");
-       return coords;
-     } catch (err) {
-       console.log("Error getting client location", err);
-       setLocationError("Could not get your current location.");
-       if (showFlash) {
-         showFlash("error", "Could not get your current location.");
-       }
-       // Sentry.Native.captureException(err, {
-       //   extra: { scope: "client-location" },
-       // });
-       return null;
+@@ -3600,51 +3614,59 @@ function SearchScreen({ token, showFlash, navigation, route, toggleFavorite, isF
      }
--  };
-+  }, [showFlash]);
- 
-   const handleRadiusChange = async (value) => {
-     setRadiusKm(value);
-     if (value > 0 && !clientLocation) {
-       await ensureClientLocation();
-     }
+     return days;
    };
  
-+  useEffect(() => {
-+    if (!hasSearched || clientLocation || hasRequestedLocation) return;
-+    let isMounted = true;
-+
-+    const requestLocation = async () => {
-+      setHasRequestedLocation(true);
-+      const coords = await ensureClientLocation();
-+      if (!isMounted || !coords) return;
-+    };
-+
-+    requestLocation();
-+
-+    return () => {
-+      isMounted = false;
-+    };
-+  }, [clientLocation, ensureClientLocation, hasRequestedLocation, hasSearched]);
-+
-   const handleResultsLayout = (event) => {
-     resultsOffset.current = event.nativeEvent.layout.y;
-     if (shouldScrollToResults && scrollRef.current) {
-       scrollRef.current.scrollTo({
-         y: resultsOffset.current,
-         animated: true,
-       });
-       setShouldScrollToResults(false);
-     }
-   };
+   const calendarDays = buildCalendarDays();
  
-   useEffect(() => {
-     if (!shouldScrollToResults || !scrollRef.current) return;
-     scrollRef.current.scrollTo({
-       y: resultsOffset.current,
-       animated: true,
+   const formatTimeLabel = (isoString) => {
+     const d = new Date(isoString);
+     return d.toLocaleTimeString("en-US", {
+       hour: "numeric",
+       minute: "2-digit",
      });
-     setShouldScrollToResults(false);
-   }, [shouldScrollToResults]);
+   };
  
- 
-   const loadAvailability = useCallback(
-     async (providerId, serviceId) => {
-       try {
-         setAvailabilityLoading(true);
+     return (
+       <SafeAreaView style={styles.searchSafeArea}>
+         <View style={styles.searchHeader}>
+           <Text style={styles.searchHeaderTitle}>Search providers</Text>
+           <View style={styles.searchBar}>
+             <Ionicons name="search-outline" size={18} color={colors.textMuted} />
+             <TextInput
+               style={styles.searchInput}
+               placeholder="Search by profession or provider…"
+               placeholderTextColor={colors.textSecondary}
+               value={searchQuery}
+-              onChangeText={setSearchQuery}
++              onChangeText={(value) => {
++                if (!normalizeSearchValue(value)) {
++                  setSearchQuery(value);
++                  setHasSearched(false);
++                  clearSelectedProvider();
++                  return;
++                }
++                setSearchQuery(value);
++              }}
+               onSubmitEditing={handleSearchSubmit}
+               returnKeyType="search"
+             />
+           </View>
+           <View style={styles.chipsRow}>
+             <ScrollView
+               horizontal
+               showsHorizontalScrollIndicator={false}
+               contentContainerStyle={styles.chipsContent}
+             >
+               {distanceChips.map((km) => {
+                 const selected = radiusKm === km;
+                 const label = km === 0 ? "Any" : `${km}km`;
+                 return (
+                   <TouchableOpacity
+                     key={km}
+                     style={[
+                       styles.filterChip,
+                       selected && styles.filterChipSelected,
+                     ]}
+                     onPress={() => handleRadiusChange(km)}
+                   >
+                     <Text
+                       style={[
+                         styles.filterChipText,
  
 EOF
 )

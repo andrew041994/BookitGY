@@ -3086,6 +3086,19 @@ function SearchScreen({ token, showFlash, navigation, route, toggleFavorite, isF
     }
   }, [showFlash, syncFavoritesFromList]);
 
+  const clearSelectedProvider = useCallback(() => {
+    setSelectedProvider(null);
+    setServices([]);
+    setServicesError("");
+    setSelectedService(null);
+    setAvailability([]);
+    setAvailabilityError("");
+    setCatalogImages([]);
+    setCatalogError("");
+    setSelectedDate(null);
+    setSelectedSlot(null);
+  }, []);
+
   // Load providers on mount
   useEffect(() => {
     loadProviders();
@@ -3112,6 +3125,7 @@ function SearchScreen({ token, showFlash, navigation, route, toggleFavorite, isF
     const normalizedQuery = normalizeSearchValue(searchQuery);
     if (!hasSearched || !normalizedQuery) {
       setFilteredProviders([]);
+      clearSelectedProvider();
       return;
     }
 
@@ -3223,7 +3237,7 @@ function SearchScreen({ token, showFlash, navigation, route, toggleFavorite, isF
     }
 
     setFilteredProviders(list);
-  }, [providers, searchQuery, radiusKm, clientLocation, hasSearched, route?.params?.provider]);
+  }, [providers, searchQuery, radiusKm, clientLocation, hasSearched, route?.params?.provider, clearSelectedProvider]);
 
 
 
@@ -3622,7 +3636,15 @@ function SearchScreen({ token, showFlash, navigation, route, toggleFavorite, isF
               placeholder="Search by profession or provider…"
               placeholderTextColor={colors.textSecondary}
               value={searchQuery}
-              onChangeText={setSearchQuery}
+              onChangeText={(value) => {
+                if (!normalizeSearchValue(value)) {
+                  setSearchQuery(value);
+                  setHasSearched(false);
+                  clearSelectedProvider();
+                  return;
+                }
+                setSearchQuery(value);
+              }}
               onSubmitEditing={handleSearchSubmit}
               returnKeyType="search"
             />
