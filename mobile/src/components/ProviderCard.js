@@ -117,7 +117,7 @@ const ProviderCard = ({
           </Text>
 
           {professionLine ? (
-            <Text style={styles.profession} numberOfLines={1}>
+            <Text style={styles.profession} numberOfLines={2}>
               {professionLine}
             </Text>
           ) : null}
