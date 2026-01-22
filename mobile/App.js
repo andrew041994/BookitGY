@@ -119,6 +119,40 @@ const resolveImageUrl = (url) => {
     return `${API}${normalizedPath}`;
   };
 
+const getDistanceKm = (lat1, lon1, lat2, lon2) => {
+  if (lat1 == null || lon1 == null || lat2 == null || lon2 == null) {
+    return null;
+  }
+  const toRad = (value) => (value * Math.PI) / 180;
+  const R = 6371;
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(toRad(lat1)) *
+      Math.cos(toRad(lat2)) *
+      Math.sin(dLon / 2) *
+      Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+};
+
+const getProviderCoords = (provider) => {
+  const lat =
+    provider?.lat ??
+    provider?.latitude ??
+    provider?.location_lat ??
+    provider?.pinned_lat;
+  const long =
+    provider?.long ??
+    provider?.lng ??
+    provider?.longitude ??
+    provider?.location_lng ??
+    provider?.pinned_lng;
+  if (lat == null || long == null) return null;
+  return { lat, long };
+};
+
 const LEGACY_ACCESS_TOKEN_KEY = "accessToken";
 
 const getAuthToken = async (tokenState) => {
@@ -2002,6 +2036,7 @@ function ClientHomeScreen({
   const [currentProvider, setCurrentProvider] = useState(null);
   const [nearbyLoading, setNearbyLoading] = useState(true);
   const [nearbyError, setNearbyError] = useState("");
+  const [clientLocation, setClientLocation] = useState(null);
   const [locationDenied, setLocationDenied] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [searchText, setSearchText] = useState("");
@@ -2063,6 +2098,7 @@ function ClientHomeScreen({
       const { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== "granted") {
         setLocationDenied(true);
+        setClientLocation(null);
         setNearbyProviders([]);
         setCurrentProvider(null);
         return;
@@ -2073,6 +2109,7 @@ function ClientHomeScreen({
         lat: loc.coords.latitude,
         long: loc.coords.longitude,
       };
+      setClientLocation(coords);
 
       const res = await axios.get(`${API}/providers`);
       const list = Array.isArray(res.data)
@@ -2314,9 +2351,17 @@ function ClientHomeScreen({
                 const professionLabel = provider.professions?.length
                   ? provider.professions.join(", ")
                   : (provider.services || []).join(" · ");
+                const providerCoords = getProviderCoords(provider);
                 const distanceKm =
                   typeof provider.distance_km === "number"
                     ? provider.distance_km
+                    : clientLocation && providerCoords
+                    ? getDistanceKm(
+                        clientLocation.lat,
+                        clientLocation.long,
+                        providerCoords.lat,
+                        providerCoords.long
+                      )
                     : null;
 
                 return (
@@ -2399,9 +2444,17 @@ function ClientHomeScreen({
                 const professionLabel = provider.professions?.length
                   ? provider.professions.join(", ")
                   : (provider.services || []).join(" · ");
+                const providerCoords = getProviderCoords(provider);
                 const distanceKm =
                   typeof provider.distance_km === "number"
                     ? provider.distance_km
+                    : clientLocation && providerCoords
+                    ? getDistanceKm(
+                        clientLocation.lat,
+                        clientLocation.long,
+                        providerCoords.lat,
+                        providerCoords.long
+                      )
                     : null;
 
                 return (
@@ -3448,9 +3501,17 @@ function SearchScreen({ token, showFlash, navigation, route, toggleFavorite, isF
                   p.avatar_url || p.profile_photo_url
                 );
                 const favorite = isFavorite(p);
+                const providerCoords = getProviderCoords(p);
                 const distanceKm =
-                  typeof p.distance_km === "number" && clientLocation
+                  typeof p.distance_km === "number"
                     ? p.distance_km
+                    : clientLocation && providerCoords
+                    ? getDistanceKm(
+                        clientLocation.lat,
+                        clientLocation.long,
+                        providerCoords.lat,
+                        providerCoords.long
+                      )
                     : null;
                 const professionLabel = p.professions?.length
                   ? p.professions.join(" · ")

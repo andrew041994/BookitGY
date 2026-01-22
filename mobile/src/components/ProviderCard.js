@@ -27,6 +27,16 @@ const resolveRatingValue = (provider, ratingOverride) => {
   return Number.isFinite(numeric) ? numeric : null;
 };
 
+const formatDistanceLabel = (distanceKm) => {
+  if (typeof distanceKm !== "number") return null;
+  if (!Number.isFinite(distanceKm)) return null;
+  const rounded =
+    distanceKm < 10
+      ? distanceKm.toFixed(1)
+      : Math.round(distanceKm).toString();
+  return `${rounded} km away`;
+};
+
 const ProviderCard = ({
   provider,
   avatarUrl,
@@ -44,20 +54,29 @@ const ProviderCard = ({
   const ratingValue = resolveRatingValue(provider, rating);
   const ratingLabel =
     typeof ratingValue === "number" ? ratingValue.toFixed(1) : null;
-  const distanceLabel =
-    typeof distanceKm === "number" ? `${distanceKm.toFixed(1)} km away` : null;
+  const distanceLabel = formatDistanceLabel(distanceKm);
   const professionLabel =
     profession ||
     provider?.profession ||
     (provider?.professions || []).join(" · ") ||
     (provider?.services || []).join(" · ");
+  const professionLine =
+    professionLabel && distanceLabel
+      ? `${professionLabel} · ${distanceLabel}`
+      : professionLabel;
   const locationLabel =
     provider?.location ||
     provider?.city ||
     provider?.address ||
     provider?.area ||
     null;
+  const locationLine =
+    locationLabel && distanceLabel && !professionLabel
+      ? `${locationLabel} · ${distanceLabel}`
+      : locationLabel;
   const initials = getInitials(provider?.name);
+  const showDistanceLine =
+    distanceLabel && !professionLabel && !locationLabel;
 
   return (
     <TouchableOpacity
@@ -100,19 +119,19 @@ const ProviderCard = ({
             {provider?.name || "Provider"}
           </Text>
 
-          {professionLabel ? (
+          {professionLine ? (
             <Text style={styles.profession} numberOfLines={1}>
-              {professionLabel}
+              {professionLine}
             </Text>
           ) : null}
 
-          {locationLabel ? (
+          {locationLine ? (
             <Text style={styles.distance} numberOfLines={1}>
-              {locationLabel}
+              {locationLine}
             </Text>
           ) : null}
 
-          {distanceLabel ? (
+          {showDistanceLine ? (
             <Text style={styles.distance} numberOfLines={1}>
               {distanceLabel}
             </Text>
