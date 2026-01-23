@@ -1,61 +1,99 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
-diff --git a/mobile/App.js b/mobile/App.js
-index 187479ba0855b6956430fec7093d99894996217a..00de4d1a967d3cff7aeca677878a3a4f588c4be8 100644
---- a/mobile/App.js
-+++ b/mobile/App.js
-@@ -1650,51 +1650,51 @@ function ProfileScreen({ apiClient, authLoading, setToken, showFlash, token }) {
-         const q = encodeURIComponent(booking.provider_location);
-         url = `https://www.google.com/maps/search/?api=1&query=${q}`;
-       } else {
-         if (showFlash) {
-           showFlash(
-             "error",
-             "No location is available yet for this booking."
-           );
-         }
-         return;
-       }
+diff --git a/backend/tests/test_billing.py b/backend/tests/test_billing.py
+index 051262663dfbcad39fabc6433b93bec66d4acdf7..a36845f4f82c508798ee73c2b5692160d7ec9e8b 100644
+--- a/backend/tests/test_billing.py
++++ b/backend/tests/test_billing.py
+@@ -334,50 +334,90 @@ def test_cancelled_booking_removed_from_billing_after_status_change(db_session):
+         session,
+         models,
+         customer=customer,
+         service=service,
+         start_time=start_time,
+         end_time=end_time,
+         status="confirmed",
+     )
  
-       Linking.openURL(url);
-     } catch (err) {
-       console.log("Error opening maps", err);
-       if (showFlash) {
-         showFlash("error", "Could not open maps on this device.");
-       }
-     }
-   };
+     crud._auto_complete_finished_bookings(session, as_of=now)
  
-   const displayAvatarUrl = resolveImageUrl(avatarUrl || user?.avatar_url);
-   const isProviderPublic =
-     user?.is_provider === true || token?.is_provider === true;
-   const providerPublicLink = buildProviderPublicLink(user?.username);
--  const isProfileValid = Boolean(editProfile.full_name?.trim());
-+  const isProfileValid = Boolean(String(editProfile.username || "").trim());
-   const isSaveDisabled = editSaving || !isProfileValid;
+     billable_before = crud.get_billable_bookings_for_provider(
+         session, provider.id, as_of=now
+     )
+     assert [item["id"] for item in billable_before] == [booking.id]
+     assert crud.get_provider_fees_due(session, provider.id) == 100.0
  
-   const handleShareProviderLink = async () => {
-     if (!providerPublicLink) {
-       if (showFlash) {
-         showFlash("error", "Set a username to enable your profile link.");
-       }
-       return;
-     }
+     booking.status = "cancelled"
+     session.commit()
  
-     try {
-       await Share.share({
-         message: `Book with me on BookitGY:`,
-         url: providerPublicLink,
-       });
-     } catch (err) {
-       console.log("Error sharing provider link", err?.message || err);
-       if (showFlash) {
-         showFlash("error", "Could not share your profile link.");
-       }
-     }
-   };
+     billable_after = crud.get_billable_bookings_for_provider(session, provider.id, as_of=now)
+     assert billable_after == []
+     assert crud.get_provider_fees_due(session, provider.id) == 0.0
  
-   const handleCopyProviderLink = async () => {
-     if (!providerPublicLink) {
+ 
++def test_provider_cancel_is_idempotent_for_notifications(db_session, monkeypatch):
++    session, models, crud = db_session
++    provider, customer, service = _create_provider_graph(session, models)
++
++    now = now_guyana()
++    start_time = _current_month_past_time(now)
++    end_time = start_time + timedelta(hours=1)
++
++    booking = _add_booking(
++        session,
++        models,
++        customer=customer,
++        service=service,
++        start_time=start_time,
++        end_time=end_time,
++        status="confirmed",
++    )
++
++    customer.whatsapp = "whatsapp:+5920000000"
++    customer.expo_push_token = "expo-token"
++    session.commit()
++
++    calls = {"whatsapp": 0, "push": 0}
++
++    def fake_send_whatsapp(to, body):
++        calls["whatsapp"] += 1
++
++    def fake_send_push(to_token, title, body):
++        calls["push"] += 1
++
++    monkeypatch.setattr(crud, "send_whatsapp", fake_send_whatsapp)
++    monkeypatch.setattr(crud, "send_push", fake_send_push)
++
++    assert crud.cancel_booking_for_provider(session, booking.id, provider.id) is True
++    assert calls == {"whatsapp": 1, "push": 1}
++
++    assert crud.cancel_booking_for_provider(session, booking.id, provider.id) is True
++    assert calls == {"whatsapp": 1, "push": 1}
++
++
+ def test_billing_endpoint_only_returns_completed(db_session):
+     session, models, crud = db_session
+     provider, customer, service = _create_provider_graph(session, models)
+ 
+     now = now_guyana()
+     past_start = _current_month_past_time(now)
+     past_end = past_start + timedelta(hours=1)
+ 
+     completed_booking = _add_booking(
+         session,
+         models,
+         customer=customer,
+         service=service,
+         start_time=past_start,
+         end_time=past_end,
+         status="confirmed",
+     )
+ 
+     future_start = now + timedelta(days=1)
+     future_end = future_start + timedelta(hours=1)
+     _add_booking(
+         session,
+         models,
+         customer=customer,
+         service=service,
  
 EOF
 )

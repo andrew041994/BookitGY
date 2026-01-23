@@ -356,6 +356,46 @@ def test_cancelled_booking_removed_from_billing_after_status_change(db_session):
     assert crud.get_provider_fees_due(session, provider.id) == 0.0
 
 
+def test_provider_cancel_is_idempotent_for_notifications(db_session, monkeypatch):
+    session, models, crud = db_session
+    provider, customer, service = _create_provider_graph(session, models)
+
+    now = now_guyana()
+    start_time = _current_month_past_time(now)
+    end_time = start_time + timedelta(hours=1)
+
+    booking = _add_booking(
+        session,
+        models,
+        customer=customer,
+        service=service,
+        start_time=start_time,
+        end_time=end_time,
+        status="confirmed",
+    )
+
+    customer.whatsapp = "whatsapp:+5920000000"
+    customer.expo_push_token = "expo-token"
+    session.commit()
+
+    calls = {"whatsapp": 0, "push": 0}
+
+    def fake_send_whatsapp(to, body):
+        calls["whatsapp"] += 1
+
+    def fake_send_push(to_token, title, body):
+        calls["push"] += 1
+
+    monkeypatch.setattr(crud, "send_whatsapp", fake_send_whatsapp)
+    monkeypatch.setattr(crud, "send_push", fake_send_push)
+
+    assert crud.cancel_booking_for_provider(session, booking.id, provider.id) is True
+    assert calls == {"whatsapp": 1, "push": 1}
+
+    assert crud.cancel_booking_for_provider(session, booking.id, provider.id) is True
+    assert calls == {"whatsapp": 1, "push": 1}
+
+
 def test_billing_endpoint_only_returns_completed(db_session):
     session, models, crud = db_session
     provider, customer, service = _create_provider_graph(session, models)

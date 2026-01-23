@@ -2201,7 +2201,7 @@ def cancel_booking_for_customer(
         .first()
     )
 
-    if provider_user and service and customer:
+    if provider_user and service and customer and provider_user.whatsapp:
         send_whatsapp(
             provider_user.whatsapp,
             (
@@ -2211,6 +2211,7 @@ def cancel_booking_for_customer(
             ),
         )
 
+    if provider_user and service and customer:
         send_push(
             provider_user.expo_push_token,
             "Booking cancelled",
@@ -2248,6 +2249,9 @@ def cancel_booking_for_provider(
     if normalized_status == "completed":
         raise ValueError("Cannot cancel a completed booking")
 
+    if normalized_status == "cancelled":
+        return True
+
     service = (
         db.query(models.Service)
         .filter(models.Service.id == booking.service_id)
@@ -2269,7 +2273,7 @@ def cancel_booking_for_provider(
 
     _refresh_bill_for_booking(db, booking)
 
-    if customer and service:
+    if customer and service and customer.whatsapp:
         send_whatsapp(
             customer.whatsapp,
             (
@@ -2279,6 +2283,7 @@ def cancel_booking_for_provider(
             ),
         )
 
+    if customer and service:
         send_push(
             customer.expo_push_token,
             "Appointment cancelled",
