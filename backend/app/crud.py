@@ -1055,7 +1055,7 @@ def generate_monthly_bills(db: Session, month: date):
         * completed (booking has ended) and not cancelled
         * belong to this provider
         * have end_time inside [first_of_month, first_of_next_month)
-    - Safe to run multiple times (updates existing unpaid bill instead of duplicating).
+    - Safe to run multiple times (creates missing bills only).
     """
     providers = db.query(models.Provider).all()
 
@@ -1093,7 +1093,6 @@ def generate_monthly_bills(db: Session, month: date):
         fee_rate = service_charge_pct / Decimal("100")
         fee = fee_rate * Decimal(str(total))
 
-        # If there's nothing to bill and no existing bill, skip
         existing_bill = (
             db.query(models.Bill)
             .filter(
@@ -1102,29 +1101,25 @@ def generate_monthly_bills(db: Session, month: date):
             )
             .first()
         )
-        if not existing_bill and total == 0:
+        if existing_bill:
+            continue
+
+        # If there's nothing to bill and no existing bill, skip
+        if total == 0:
             continue
 
         # Bill due on the 15th of the following month
         due = datetime(next_month.year, next_month.month, 15, 23, 59)
 
-        if existing_bill:
-            # Don't overwrite already-paid bills
-            if existing_bill.is_paid:
-                continue
-
-            existing_bill.total_gyd = total
-            existing_bill.fee_gyd = fee
-            existing_bill.due_date = due
-        else:
-            bill = models.Bill(
-                provider_id=prov.id,
-                month=start,
-                total_gyd=total,
-                fee_gyd=fee,
-                due_date=due,
-            )
-            db.add(bill)
+        bill = models.Bill(
+            provider_id=prov.id,
+            month=start,
+            total_gyd=total,
+            fee_gyd=fee,
+            due_date=due,
+            is_paid=False,
+        )
+        db.add(bill)
 
     db.commit()
 

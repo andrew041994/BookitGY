@@ -1,207 +1,144 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
-diff --git a/backend/tests/test_booking_status_rules.py b/backend/tests/test_booking_status_rules.py
-index 941bacdad79181fce58ae14c549f402e965e799c..a1962b6f46735f3396c880dbb45d610bc655203e 100644
---- a/backend/tests/test_booking_status_rules.py
-+++ b/backend/tests/test_booking_status_rules.py
-@@ -1,26 +1,29 @@
- from datetime import datetime, timedelta
-+import threading
-+
-+from sqlalchemy.orm import Query, Session as OrmSession
+diff --git a/backend/app/crud.py b/backend/app/crud.py
+index 0eb3aef99db4079d260df9516ef5105657f52965..a7dd5aa12d002217f56692764d0c2b8326fe16ee 100644
+--- a/backend/app/crud.py
++++ b/backend/app/crud.py
+@@ -1033,120 +1033,115 @@ def _auto_complete_finished_bookings(
  
- from app.utils.time import now_guyana
+     update_data = {models.Booking.status: "completed"}
+     if "completed_at" in models.Booking.__table__.columns:
+         update_data[models.Booking.completed_at] = cutoff
  
- 
- def _create_provider_graph(session, models):
-     provider_user = models.User(username="provider@example.com", is_provider=True)
-     customer_user = models.User(username="customer@example.com")
-     session.add_all([provider_user, customer_user])
-     session.commit()
- 
-     provider = models.Provider(user_id=provider_user.id, account_number="ACC-1")
-     session.add(provider)
-     session.commit()
-     session.refresh(provider)
- 
-     service = models.Service(
-         provider_id=provider.id,
-         name="Test Service",
-         price_gyd=1000,
-         duration_minutes=60,
-     )
-     session.add(service)
-     session.commit()
-     session.refresh(service)
- 
-@@ -235,25 +238,168 @@ def test_cannot_cancel_completed_bookings(db_session):
-         status="confirmed",
+     updated = (
+         db.query(models.Booking)
+         .filter(models.Booking.id.in_(candidate_ids))
+         .filter(models.Booking.end_time <= cutoff)
+         .filter(normalized_status == "confirmed")
+         .update(update_data, synchronize_session=False)
      )
  
-     cancelled_booking = crud.cancel_booking_for_customer(
-         session, active_booking.id, customer.id
-     )
-     assert cancelled_booking.status == "cancelled"
+     if updated:
+         db.commit()
  
-     completed_booking = _add_booking(
-         session,
-         models,
-         customer=customer,
-         service=service,
-         start_time=start_time + timedelta(hours=2),
-         end_time=end_time + timedelta(hours=2),
-         status="completed",
-     )
  
-     try:
-         crud.cancel_booking_for_customer(session, completed_booking.id, customer.id)
-     except ValueError:
-         session.refresh(completed_booking)
-         assert completed_booking.status == "completed"
+ def generate_monthly_bills(db: Session, month: date):
+     """
+     Generate or update bills for all providers for the given month.
+ 
+     - Only counts bookings that are:
+         * completed (booking has ended) and not cancelled
+         * belong to this provider
+         * have end_time inside [first_of_month, first_of_next_month)
+-    - Safe to run multiple times (updates existing unpaid bill instead of duplicating).
++    - Safe to run multiple times (creates missing bills only).
+     """
+     providers = db.query(models.Provider).all()
+ 
+     # First day of this month
+     start = date(month.year, month.month, 1)
+ 
+     # First day of the next month
+     if month.month == 12:
+         next_month = date(month.year + 1, 1, 1)
      else:
-         raise AssertionError("Cancelling a completed booking should fail")
+         next_month = date(month.year, month.month + 1, 1)
+ 
+     start_dt = datetime(start.year, start.month, start.day)
+     end_dt = datetime(next_month.year, next_month.month, next_month.day)
+ 
+     now = now_guyana()
+ 
+     # Don't count future appointments that haven't ended yet
+     period_end = min(end_dt, now)
+ 
+     for prov in providers:
+         total = (
+             _billable_bookings_base_query(db, prov.id, as_of=period_end)
+             .with_entities(func.sum(models.Service.price_gyd))
+             .filter(
+                 models.Booking.end_time >= start_dt,
+                 models.Booking.end_time < period_end,
+             )
+             .scalar()
+             or 0
+         )
+ 
+         # Platform fee on completed bookings using admin-configured percentage
+         service_charge_pct = get_platform_service_charge_percentage(db)
+         fee_rate = service_charge_pct / Decimal("100")
+         fee = fee_rate * Decimal(str(total))
+ 
+-        # If there's nothing to bill and no existing bill, skip
+         existing_bill = (
+             db.query(models.Bill)
+             .filter(
+                 models.Bill.provider_id == prov.id,
+                 models.Bill.month == start,
+             )
+             .first()
+         )
+-        if not existing_bill and total == 0:
++        if existing_bill:
++            continue
 +
-+
-+def test_cancel_booking_for_customer_uses_row_lock(db_session, monkeypatch):
-+    session, models, crud = db_session
-+    _, customer, service = _create_provider_graph(session, models)
-+
-+    now = now_guyana()
-+    booking = _add_booking(
-+        session,
-+        models,
-+        customer=customer,
-+        service=service,
-+        start_time=now + timedelta(hours=1),
-+        end_time=now + timedelta(hours=2),
-+        status="confirmed",
-+    )
-+
-+    called = {"value": False}
-+    original = Query.with_for_update
-+
-+    def wrapped(self, *args, **kwargs):
-+        called["value"] = True
-+        return original(self, *args, **kwargs)
-+
-+    monkeypatch.setattr(Query, "with_for_update", wrapped)
-+
-+    crud.cancel_booking_for_customer(session, booking.id, customer.id)
-+
-+    assert called["value"] is True
-+
-+
-+def test_cancel_booking_for_provider_uses_row_lock(db_session, monkeypatch):
-+    session, models, crud = db_session
-+    provider, customer, service = _create_provider_graph(session, models)
-+
-+    now = now_guyana()
-+    booking = _add_booking(
-+        session,
-+        models,
-+        customer=customer,
-+        service=service,
-+        start_time=now + timedelta(hours=1),
-+        end_time=now + timedelta(hours=2),
-+        status="confirmed",
-+    )
-+
-+    called = {"value": False}
-+    original = Query.with_for_update
-+
-+    def wrapped(self, *args, **kwargs):
-+        called["value"] = True
-+        return original(self, *args, **kwargs)
-+
-+    monkeypatch.setattr(Query, "with_for_update", wrapped)
-+
-+    crud.cancel_booking_for_provider(session, booking.id, provider.id)
-+
-+    assert called["value"] is True
-+
-+
-+def test_concurrent_customer_cancel_sends_notifications_once(db_session, monkeypatch):
-+    session, models, crud = db_session
-+    provider, customer, service = _create_provider_graph(session, models)
-+
-+    provider_user = (
-+        session.query(models.User)
-+        .filter(models.User.id == provider.user_id)
-+        .first()
-+    )
-+    provider_user.whatsapp = "whatsapp:+592000000"
-+    provider_user.expo_push_token = "expo-token"
-+    session.commit()
-+
-+    now = now_guyana()
-+    booking = _add_booking(
-+        session,
-+        models,
-+        customer=customer,
-+        service=service,
-+        start_time=now + timedelta(hours=1),
-+        end_time=now + timedelta(hours=2),
-+        status="confirmed",
-+    )
-+
-+    counts = {"whatsapp": 0, "push": 0}
-+
-+    def fake_whatsapp(*args, **kwargs):
-+        counts["whatsapp"] += 1
-+
-+    def fake_push(*args, **kwargs):
-+        counts["push"] += 1
-+
-+    monkeypatch.setattr(crud, "send_whatsapp", fake_whatsapp)
-+    monkeypatch.setattr(crud, "send_push", fake_push)
-+
-+    row_lock = threading.Lock()
-+    original_with_for_update = Query.with_for_update
-+    original_commit = OrmSession.commit
-+
-+    def locked_with_for_update(self, *args, **kwargs):
-+        row_lock.acquire()
-+        self.session.info["test_row_lock"] = row_lock
-+        return original_with_for_update(self, *args, **kwargs)
-+
-+    def locked_commit(self, *args, **kwargs):
-+        try:
-+            return original_commit(self, *args, **kwargs)
-+        finally:
-+            lock = self.info.pop("test_row_lock", None)
-+            if lock and lock.locked():
-+                lock.release()
-+
-+    monkeypatch.setattr(Query, "with_for_update", locked_with_for_update)
-+    monkeypatch.setattr(OrmSession, "commit", locked_commit)
-+
-+    import app.database as database
-+
-+    second_session = database.SessionLocal()
-+    try:
-+        results = {}
-+
-+        def cancel_in_session(target_session, key):
-+            results[key] = crud.cancel_booking_for_customer(
-+                target_session, booking.id, customer.id
-+            )
-+
-+        thread_one = threading.Thread(
-+            target=cancel_in_session, args=(session, "first")
++        # If there's nothing to bill and no existing bill, skip
++        if total == 0:
+             continue
+ 
+         # Bill due on the 15th of the following month
+         due = datetime(next_month.year, next_month.month, 15, 23, 59)
+ 
+-        if existing_bill:
+-            # Don't overwrite already-paid bills
+-            if existing_bill.is_paid:
+-                continue
+-
+-            existing_bill.total_gyd = total
+-            existing_bill.fee_gyd = fee
+-            existing_bill.due_date = due
+-        else:
+-            bill = models.Bill(
+-                provider_id=prov.id,
+-                month=start,
+-                total_gyd=total,
+-                fee_gyd=fee,
+-                due_date=due,
+-            )
+-            db.add(bill)
++        bill = models.Bill(
++            provider_id=prov.id,
++            month=start,
++            total_gyd=total,
++            fee_gyd=fee,
++            due_date=due,
++            is_paid=False,
 +        )
-+        thread_two = threading.Thread(
-+            target=cancel_in_session, args=(second_session, "second")
-+        )
-+
-+        thread_one.start()
-+        thread_two.start()
-+        thread_one.join()
-+        thread_two.join()
-+
-+        assert results["first"].status == "cancelled"
-+        assert results["second"].status == "cancelled"
-+        assert counts == {"whatsapp": 1, "push": 1}
-+    finally:
-+        second_session.close()
++        db.add(bill)
+ 
+     db.commit()
+ 
+ 
+ def list_bills_for_provider(db: Session, provider_id: int):
+     """Return persisted monthly bills for a provider (newest first)."""
+ 
+     return (
+         db.query(models.Bill)
+         .filter(models.Bill.provider_id == provider_id)
+         .order_by(models.Bill.month.desc())
+         .all()
+     )
+ 
+ 
+ def _calculate_bill_total_due(db: Session, bill: models.Bill, provider_id: int) -> float:
+     """Mirror the provider-facing bill "Total due" for a given bill."""
+ 
+     total_due = Decimal(str(bill.fee_gyd or 0)).quantize(
+         Decimal("1"), rounding=ROUND_HALF_UP
+     )
+     credits = Decimal(str(get_provider_credit_balance(db, provider_id) or 0))
+     # Bill credits should only ever reduce what a provider owes. If the balance is
+     # negative (e.g., from a bad manual entry), clamp it to zero so we don't
+     # accidentally inflate the amount due.
  
 EOF
 )
