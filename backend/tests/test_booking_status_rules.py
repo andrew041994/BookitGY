@@ -1,4 +1,7 @@
 from datetime import datetime, timedelta
+import threading
+
+from sqlalchemy.orm import Query, Session as OrmSession
 
 from app.utils.time import now_guyana
 
@@ -257,3 +260,146 @@ def test_cannot_cancel_completed_bookings(db_session):
         assert completed_booking.status == "completed"
     else:
         raise AssertionError("Cancelling a completed booking should fail")
+
+
+def test_cancel_booking_for_customer_uses_row_lock(db_session, monkeypatch):
+    session, models, crud = db_session
+    _, customer, service = _create_provider_graph(session, models)
+
+    now = now_guyana()
+    booking = _add_booking(
+        session,
+        models,
+        customer=customer,
+        service=service,
+        start_time=now + timedelta(hours=1),
+        end_time=now + timedelta(hours=2),
+        status="confirmed",
+    )
+
+    called = {"value": False}
+    original = Query.with_for_update
+
+    def wrapped(self, *args, **kwargs):
+        called["value"] = True
+        return original(self, *args, **kwargs)
+
+    monkeypatch.setattr(Query, "with_for_update", wrapped)
+
+    crud.cancel_booking_for_customer(session, booking.id, customer.id)
+
+    assert called["value"] is True
+
+
+def test_cancel_booking_for_provider_uses_row_lock(db_session, monkeypatch):
+    session, models, crud = db_session
+    provider, customer, service = _create_provider_graph(session, models)
+
+    now = now_guyana()
+    booking = _add_booking(
+        session,
+        models,
+        customer=customer,
+        service=service,
+        start_time=now + timedelta(hours=1),
+        end_time=now + timedelta(hours=2),
+        status="confirmed",
+    )
+
+    called = {"value": False}
+    original = Query.with_for_update
+
+    def wrapped(self, *args, **kwargs):
+        called["value"] = True
+        return original(self, *args, **kwargs)
+
+    monkeypatch.setattr(Query, "with_for_update", wrapped)
+
+    crud.cancel_booking_for_provider(session, booking.id, provider.id)
+
+    assert called["value"] is True
+
+
+def test_concurrent_customer_cancel_sends_notifications_once(db_session, monkeypatch):
+    session, models, crud = db_session
+    provider, customer, service = _create_provider_graph(session, models)
+
+    provider_user = (
+        session.query(models.User)
+        .filter(models.User.id == provider.user_id)
+        .first()
+    )
+    provider_user.whatsapp = "whatsapp:+592000000"
+    provider_user.expo_push_token = "expo-token"
+    session.commit()
+
+    now = now_guyana()
+    booking = _add_booking(
+        session,
+        models,
+        customer=customer,
+        service=service,
+        start_time=now + timedelta(hours=1),
+        end_time=now + timedelta(hours=2),
+        status="confirmed",
+    )
+
+    counts = {"whatsapp": 0, "push": 0}
+
+    def fake_whatsapp(*args, **kwargs):
+        counts["whatsapp"] += 1
+
+    def fake_push(*args, **kwargs):
+        counts["push"] += 1
+
+    monkeypatch.setattr(crud, "send_whatsapp", fake_whatsapp)
+    monkeypatch.setattr(crud, "send_push", fake_push)
+
+    row_lock = threading.Lock()
+    original_with_for_update = Query.with_for_update
+    original_commit = OrmSession.commit
+
+    def locked_with_for_update(self, *args, **kwargs):
+        row_lock.acquire()
+        self.session.info["test_row_lock"] = row_lock
+        return original_with_for_update(self, *args, **kwargs)
+
+    def locked_commit(self, *args, **kwargs):
+        try:
+            return original_commit(self, *args, **kwargs)
+        finally:
+            lock = self.info.pop("test_row_lock", None)
+            if lock and lock.locked():
+                lock.release()
+
+    monkeypatch.setattr(Query, "with_for_update", locked_with_for_update)
+    monkeypatch.setattr(OrmSession, "commit", locked_commit)
+
+    import app.database as database
+
+    second_session = database.SessionLocal()
+    try:
+        results = {}
+
+        def cancel_in_session(target_session, key):
+            results[key] = crud.cancel_booking_for_customer(
+                target_session, booking.id, customer.id
+            )
+
+        thread_one = threading.Thread(
+            target=cancel_in_session, args=(session, "first")
+        )
+        thread_two = threading.Thread(
+            target=cancel_in_session, args=(second_session, "second")
+        )
+
+        thread_one.start()
+        thread_two.start()
+        thread_one.join()
+        thread_two.join()
+
+        assert results["first"].status == "cancelled"
+        assert results["second"].status == "cancelled"
+        assert counts == {"whatsapp": 1, "push": 1}
+    finally:
+        second_session.close()

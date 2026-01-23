@@ -1,99 +1,207 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
-diff --git a/backend/tests/test_billing.py b/backend/tests/test_billing.py
-index 051262663dfbcad39fabc6433b93bec66d4acdf7..a36845f4f82c508798ee73c2b5692160d7ec9e8b 100644
---- a/backend/tests/test_billing.py
-+++ b/backend/tests/test_billing.py
-@@ -334,50 +334,90 @@ def test_cancelled_booking_removed_from_billing_after_status_change(db_session):
-         session,
-         models,
-         customer=customer,
-         service=service,
-         start_time=start_time,
-         end_time=end_time,
+diff --git a/backend/tests/test_booking_status_rules.py b/backend/tests/test_booking_status_rules.py
+index 941bacdad79181fce58ae14c549f402e965e799c..a1962b6f46735f3396c880dbb45d610bc655203e 100644
+--- a/backend/tests/test_booking_status_rules.py
++++ b/backend/tests/test_booking_status_rules.py
+@@ -1,26 +1,29 @@
+ from datetime import datetime, timedelta
++import threading
++
++from sqlalchemy.orm import Query, Session as OrmSession
+ 
+ from app.utils.time import now_guyana
+ 
+ 
+ def _create_provider_graph(session, models):
+     provider_user = models.User(username="provider@example.com", is_provider=True)
+     customer_user = models.User(username="customer@example.com")
+     session.add_all([provider_user, customer_user])
+     session.commit()
+ 
+     provider = models.Provider(user_id=provider_user.id, account_number="ACC-1")
+     session.add(provider)
+     session.commit()
+     session.refresh(provider)
+ 
+     service = models.Service(
+         provider_id=provider.id,
+         name="Test Service",
+         price_gyd=1000,
+         duration_minutes=60,
+     )
+     session.add(service)
+     session.commit()
+     session.refresh(service)
+ 
+@@ -235,25 +238,168 @@ def test_cannot_cancel_completed_bookings(db_session):
          status="confirmed",
      )
  
-     crud._auto_complete_finished_bookings(session, as_of=now)
- 
-     billable_before = crud.get_billable_bookings_for_provider(
-         session, provider.id, as_of=now
+     cancelled_booking = crud.cancel_booking_for_customer(
+         session, active_booking.id, customer.id
      )
-     assert [item["id"] for item in billable_before] == [booking.id]
-     assert crud.get_provider_fees_due(session, provider.id) == 100.0
- 
-     booking.status = "cancelled"
-     session.commit()
- 
-     billable_after = crud.get_billable_bookings_for_provider(session, provider.id, as_of=now)
-     assert billable_after == []
-     assert crud.get_provider_fees_due(session, provider.id) == 0.0
- 
- 
-+def test_provider_cancel_is_idempotent_for_notifications(db_session, monkeypatch):
-+    session, models, crud = db_session
-+    provider, customer, service = _create_provider_graph(session, models)
-+
-+    now = now_guyana()
-+    start_time = _current_month_past_time(now)
-+    end_time = start_time + timedelta(hours=1)
-+
-+    booking = _add_booking(
-+        session,
-+        models,
-+        customer=customer,
-+        service=service,
-+        start_time=start_time,
-+        end_time=end_time,
-+        status="confirmed",
-+    )
-+
-+    customer.whatsapp = "whatsapp:+5920000000"
-+    customer.expo_push_token = "expo-token"
-+    session.commit()
-+
-+    calls = {"whatsapp": 0, "push": 0}
-+
-+    def fake_send_whatsapp(to, body):
-+        calls["whatsapp"] += 1
-+
-+    def fake_send_push(to_token, title, body):
-+        calls["push"] += 1
-+
-+    monkeypatch.setattr(crud, "send_whatsapp", fake_send_whatsapp)
-+    monkeypatch.setattr(crud, "send_push", fake_send_push)
-+
-+    assert crud.cancel_booking_for_provider(session, booking.id, provider.id) is True
-+    assert calls == {"whatsapp": 1, "push": 1}
-+
-+    assert crud.cancel_booking_for_provider(session, booking.id, provider.id) is True
-+    assert calls == {"whatsapp": 1, "push": 1}
-+
-+
- def test_billing_endpoint_only_returns_completed(db_session):
-     session, models, crud = db_session
-     provider, customer, service = _create_provider_graph(session, models)
- 
-     now = now_guyana()
-     past_start = _current_month_past_time(now)
-     past_end = past_start + timedelta(hours=1)
+     assert cancelled_booking.status == "cancelled"
  
      completed_booking = _add_booking(
          session,
          models,
          customer=customer,
          service=service,
-         start_time=past_start,
-         end_time=past_end,
-         status="confirmed",
+         start_time=start_time + timedelta(hours=2),
+         end_time=end_time + timedelta(hours=2),
+         status="completed",
      )
  
-     future_start = now + timedelta(days=1)
-     future_end = future_start + timedelta(hours=1)
-     _add_booking(
-         session,
-         models,
-         customer=customer,
-         service=service,
+     try:
+         crud.cancel_booking_for_customer(session, completed_booking.id, customer.id)
+     except ValueError:
+         session.refresh(completed_booking)
+         assert completed_booking.status == "completed"
+     else:
+         raise AssertionError("Cancelling a completed booking should fail")
++
++
++def test_cancel_booking_for_customer_uses_row_lock(db_session, monkeypatch):
++    session, models, crud = db_session
++    _, customer, service = _create_provider_graph(session, models)
++
++    now = now_guyana()
++    booking = _add_booking(
++        session,
++        models,
++        customer=customer,
++        service=service,
++        start_time=now + timedelta(hours=1),
++        end_time=now + timedelta(hours=2),
++        status="confirmed",
++    )
++
++    called = {"value": False}
++    original = Query.with_for_update
++
++    def wrapped(self, *args, **kwargs):
++        called["value"] = True
++        return original(self, *args, **kwargs)
++
++    monkeypatch.setattr(Query, "with_for_update", wrapped)
++
++    crud.cancel_booking_for_customer(session, booking.id, customer.id)
++
++    assert called["value"] is True
++
++
++def test_cancel_booking_for_provider_uses_row_lock(db_session, monkeypatch):
++    session, models, crud = db_session
++    provider, customer, service = _create_provider_graph(session, models)
++
++    now = now_guyana()
++    booking = _add_booking(
++        session,
++        models,
++        customer=customer,
++        service=service,
++        start_time=now + timedelta(hours=1),
++        end_time=now + timedelta(hours=2),
++        status="confirmed",
++    )
++
++    called = {"value": False}
++    original = Query.with_for_update
++
++    def wrapped(self, *args, **kwargs):
++        called["value"] = True
++        return original(self, *args, **kwargs)
++
++    monkeypatch.setattr(Query, "with_for_update", wrapped)
++
++    crud.cancel_booking_for_provider(session, booking.id, provider.id)
++
++    assert called["value"] is True
++
++
++def test_concurrent_customer_cancel_sends_notifications_once(db_session, monkeypatch):
++    session, models, crud = db_session
++    provider, customer, service = _create_provider_graph(session, models)
++
++    provider_user = (
++        session.query(models.User)
++        .filter(models.User.id == provider.user_id)
++        .first()
++    )
++    provider_user.whatsapp = "whatsapp:+592000000"
++    provider_user.expo_push_token = "expo-token"
++    session.commit()
++
++    now = now_guyana()
++    booking = _add_booking(
++        session,
++        models,
++        customer=customer,
++        service=service,
++        start_time=now + timedelta(hours=1),
++        end_time=now + timedelta(hours=2),
++        status="confirmed",
++    )
++
++    counts = {"whatsapp": 0, "push": 0}
++
++    def fake_whatsapp(*args, **kwargs):
++        counts["whatsapp"] += 1
++
++    def fake_push(*args, **kwargs):
++        counts["push"] += 1
++
++    monkeypatch.setattr(crud, "send_whatsapp", fake_whatsapp)
++    monkeypatch.setattr(crud, "send_push", fake_push)
++
++    row_lock = threading.Lock()
++    original_with_for_update = Query.with_for_update
++    original_commit = OrmSession.commit
++
++    def locked_with_for_update(self, *args, **kwargs):
++        row_lock.acquire()
++        self.session.info["test_row_lock"] = row_lock
++        return original_with_for_update(self, *args, **kwargs)
++
++    def locked_commit(self, *args, **kwargs):
++        try:
++            return original_commit(self, *args, **kwargs)
++        finally:
++            lock = self.info.pop("test_row_lock", None)
++            if lock and lock.locked():
++                lock.release()
++
++    monkeypatch.setattr(Query, "with_for_update", locked_with_for_update)
++    monkeypatch.setattr(OrmSession, "commit", locked_commit)
++
++    import app.database as database
++
++    second_session = database.SessionLocal()
++    try:
++        results = {}
++
++        def cancel_in_session(target_session, key):
++            results[key] = crud.cancel_booking_for_customer(
++                target_session, booking.id, customer.id
++            )
++
++        thread_one = threading.Thread(
++            target=cancel_in_session, args=(session, "first")
++        )
++        thread_two = threading.Thread(
++            target=cancel_in_session, args=(second_session, "second")
++        )
++
++        thread_one.start()
++        thread_two.start()
++        thread_one.join()
++        thread_two.join()
++
++        assert results["first"].status == "cancelled"
++        assert results["second"].status == "cancelled"
++        assert counts == {"whatsapp": 1, "push": 1}
++    finally:
++        second_session.close()
  
 EOF
 )

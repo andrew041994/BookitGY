@@ -2152,6 +2152,7 @@ def cancel_booking_for_customer(
             models.Booking.id == booking_id,
             models.Booking.customer_id == customer_id,
         )
+        .with_for_update()
         .first()
     )
 
@@ -2229,7 +2230,7 @@ def cancel_booking_for_provider(
 ) -> bool:
 
     booking_row = (
-        db.query(models.Booking, models.Provider)
+        db.query(models.Booking.id, models.Provider.user_id)
         .join(models.Service, models.Booking.service_id == models.Service.id)
         .join(models.Provider, models.Service.provider_id == models.Provider.id)
         .filter(
@@ -2242,7 +2243,15 @@ def cancel_booking_for_provider(
     if not booking_row:
         return False
 
-    booking, provider = booking_row
+    booking_id, provider_user_id = booking_row
+    booking = (
+        db.query(models.Booking)
+        .filter(models.Booking.id == booking_id)
+        .with_for_update()
+        .first()
+    )
+    if not booking:
+        return False
 
     normalized_status = normalized_booking_status_value(booking.status)
 
@@ -2257,6 +2266,8 @@ def cancel_booking_for_provider(
         .filter(models.Service.id == booking.service_id)
         .first()
     )
+    if not service:
+        return False
 
     customer = (
         db.query(models.User)
@@ -2266,7 +2277,7 @@ def cancel_booking_for_provider(
 
     booking.status = "cancelled"
     booking.canceled_at = now_guyana()
-    booking.canceled_by_user_id = provider.user_id if provider else None
+    booking.canceled_by_user_id = provider_user_id
     booking.canceled_by_role = "provider"
     db.commit()
     db.refresh(booking)
