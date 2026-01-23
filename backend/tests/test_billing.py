@@ -608,7 +608,8 @@ def test_paid_bill_persists_after_regeneration(db_session):
     original_fee = float(bill.fee_gyd)
     original_due = bill.due_date
 
-    crud.set_provider_bills_paid_state(session, provider.id, True)
+    crud.set_provider_bills_paid_state(session, provider.id, start_of_prior_month, True)
+
 
     crud.generate_monthly_bills(session, month=prior_month_date)
 
@@ -843,7 +844,7 @@ def test_paid_bills_are_not_overwritten(db_session):
     original_fee = float(bill.fee_gyd)
     original_due = bill.due_date
 
-    crud.set_provider_bills_paid_state(session, provider.id, True)
+    crud.set_provider_bills_paid_state(session, provider.id, billing_month.date(), True)
     _create_completed_booking_for_month(
         session,
         models,

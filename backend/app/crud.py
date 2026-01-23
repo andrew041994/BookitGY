@@ -1711,7 +1711,12 @@ def list_provider_billing_cycles(
     }
 
 
-def set_provider_bills_paid_state(db: Session, provider_id: int, is_paid: bool) -> int:
+def set_provider_bills_paid_state(
+    db: Session,
+    provider_id: int,
+    month: date,
+    is_paid: bool,
+) -> int:
     provider = (
         db.query(models.Provider)
         .filter(models.Provider.id == provider_id)
@@ -1720,13 +1725,28 @@ def set_provider_bills_paid_state(db: Session, provider_id: int, is_paid: bool) 
     if not provider or not provider.account_number:
         return 0
 
-    cycle_month = current_billing_cycle_month()
+    cycle_month = date(month.year, month.month, 1)
     billing_cycle = get_or_create_billing_cycle(db, provider.account_number, cycle_month)
     if not billing_cycle:
         return 0
 
     billing_cycle.is_paid = bool(is_paid)
     billing_cycle.paid_at = now_guyana() if is_paid else None
+    bill_updates = {models.Bill.is_paid: bool(is_paid)}
+    bill_paid_at = getattr(models.Bill, "paid_at", None)
+    bill_paid_on = getattr(models.Bill, "paid_on", None)
+    if bill_paid_at is not None:
+        bill_updates[bill_paid_at] = now_guyana() if is_paid else None
+    if bill_paid_on is not None:
+        bill_updates[bill_paid_on] = now_guyana().date() if is_paid else None
+    (
+        db.query(models.Bill)
+        .filter(
+            models.Bill.provider_id == provider_id,
+            models.Bill.month == cycle_month,
+        )
+        .update(bill_updates, synchronize_session="fetch")
+    )
     db.commit()
     return 1
 

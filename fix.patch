@@ -1,144 +1,97 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
 diff --git a/backend/app/crud.py b/backend/app/crud.py
-index 0eb3aef99db4079d260df9516ef5105657f52965..a7dd5aa12d002217f56692764d0c2b8326fe16ee 100644
+index a7dd5aa12d002217f56692764d0c2b8326fe16ee..4e9f37bd316453d5a375e597df52adc8e73bc146 100644
 --- a/backend/app/crud.py
 +++ b/backend/app/crud.py
-@@ -1033,120 +1033,115 @@ def _auto_complete_finished_bookings(
+@@ -1689,66 +1689,86 @@ def list_provider_billing_cycles(
+         else:
+             status = "Generated"
  
-     update_data = {models.Booking.status: "completed"}
-     if "completed_at" in models.Booking.__table__.columns:
-         update_data[models.Booking.completed_at] = cutoff
+         cycles.append(
+             {
+                 "cycle_month": cycle_month,
+                 "coverage_start": cycle_month,
+                 "coverage_end": coverage_end,
+                 "invoice_date": invoice_date,
+                 "status": status,
+                 "services_total_gyd": float(services_total),
+                 "platform_fee_gyd": float(platform_fee),
+                 "bill_credits_gyd": float(bill_credits),
+                 "total_due_gyd": float(total_due),
+                 "items": items,
+             }
+         )
  
-     updated = (
-         db.query(models.Booking)
-         .filter(models.Booking.id.in_(candidate_ids))
-         .filter(models.Booking.end_time <= cutoff)
-         .filter(normalized_status == "confirmed")
-         .update(update_data, synchronize_session=False)
+     return {
+         "account_number": account_number,
+         "outstanding_fees_gyd": outstanding_fees,
+         "cycles": cycles,
+     }
+ 
+ 
+-def set_provider_bills_paid_state(db: Session, provider_id: int, is_paid: bool) -> int:
++def set_provider_bills_paid_state(
++    db: Session,
++    provider_id: int,
++    month: date,
++    is_paid: bool,
++) -> int:
+     provider = (
+         db.query(models.Provider)
+         .filter(models.Provider.id == provider_id)
+         .first()
      )
+     if not provider or not provider.account_number:
+         return 0
  
-     if updated:
-         db.commit()
+-    cycle_month = current_billing_cycle_month()
++    cycle_month = date(month.year, month.month, 1)
+     billing_cycle = get_or_create_billing_cycle(db, provider.account_number, cycle_month)
+     if not billing_cycle:
+         return 0
  
- 
- def generate_monthly_bills(db: Session, month: date):
-     """
-     Generate or update bills for all providers for the given month.
- 
-     - Only counts bookings that are:
-         * completed (booking has ended) and not cancelled
-         * belong to this provider
-         * have end_time inside [first_of_month, first_of_next_month)
--    - Safe to run multiple times (updates existing unpaid bill instead of duplicating).
-+    - Safe to run multiple times (creates missing bills only).
-     """
-     providers = db.query(models.Provider).all()
- 
-     # First day of this month
-     start = date(month.year, month.month, 1)
- 
-     # First day of the next month
-     if month.month == 12:
-         next_month = date(month.year + 1, 1, 1)
-     else:
-         next_month = date(month.year, month.month + 1, 1)
- 
-     start_dt = datetime(start.year, start.month, start.day)
-     end_dt = datetime(next_month.year, next_month.month, next_month.day)
- 
-     now = now_guyana()
- 
-     # Don't count future appointments that haven't ended yet
-     period_end = min(end_dt, now)
- 
-     for prov in providers:
-         total = (
-             _billable_bookings_base_query(db, prov.id, as_of=period_end)
-             .with_entities(func.sum(models.Service.price_gyd))
-             .filter(
-                 models.Booking.end_time >= start_dt,
-                 models.Booking.end_time < period_end,
-             )
-             .scalar()
-             or 0
-         )
- 
-         # Platform fee on completed bookings using admin-configured percentage
-         service_charge_pct = get_platform_service_charge_percentage(db)
-         fee_rate = service_charge_pct / Decimal("100")
-         fee = fee_rate * Decimal(str(total))
- 
--        # If there's nothing to bill and no existing bill, skip
-         existing_bill = (
-             db.query(models.Bill)
-             .filter(
-                 models.Bill.provider_id == prov.id,
-                 models.Bill.month == start,
-             )
-             .first()
-         )
--        if not existing_bill and total == 0:
-+        if existing_bill:
-+            continue
-+
-+        # If there's nothing to bill and no existing bill, skip
-+        if total == 0:
-             continue
- 
-         # Bill due on the 15th of the following month
-         due = datetime(next_month.year, next_month.month, 15, 23, 59)
- 
--        if existing_bill:
--            # Don't overwrite already-paid bills
--            if existing_bill.is_paid:
--                continue
--
--            existing_bill.total_gyd = total
--            existing_bill.fee_gyd = fee
--            existing_bill.due_date = due
--        else:
--            bill = models.Bill(
--                provider_id=prov.id,
--                month=start,
--                total_gyd=total,
--                fee_gyd=fee,
--                due_date=due,
--            )
--            db.add(bill)
-+        bill = models.Bill(
-+            provider_id=prov.id,
-+            month=start,
-+            total_gyd=total,
-+            fee_gyd=fee,
-+            due_date=due,
-+            is_paid=False,
+     billing_cycle.is_paid = bool(is_paid)
+     billing_cycle.paid_at = now_guyana() if is_paid else None
++    bill_updates = {models.Bill.is_paid: bool(is_paid)}
++    bill_paid_at = getattr(models.Bill, "paid_at", None)
++    bill_paid_on = getattr(models.Bill, "paid_on", None)
++    if bill_paid_at is not None:
++        bill_updates[bill_paid_at] = now_guyana() if is_paid else None
++    if bill_paid_on is not None:
++        bill_updates[bill_paid_on] = now_guyana().date() if is_paid else None
++    (
++        db.query(models.Bill)
++        .filter(
++            models.Bill.provider_id == provider_id,
++            models.Bill.month == cycle_month,
 +        )
-+        db.add(bill)
- 
++        .update(bill_updates, synchronize_session="fetch")
++    )
      db.commit()
+     return 1
  
  
- def list_bills_for_provider(db: Session, provider_id: int):
-     """Return persisted monthly bills for a provider (newest first)."""
+ def current_billing_cycle_month(reference: datetime | date | None = None) -> date:
+     if reference is None:
+         reference = now_guyana()
+     if isinstance(reference, datetime):
+         reference = reference.date()
+     return date(reference.year, reference.month, 1)
  
+ 
+ def get_billing_cycle_for_account(
+     db: Session, account_number: str | None, cycle_month: date
+ ) -> Optional[models.BillingCycle]:
+     if not account_number:
+         return None
      return (
-         db.query(models.Bill)
-         .filter(models.Bill.provider_id == provider_id)
-         .order_by(models.Bill.month.desc())
-         .all()
+         db.query(models.BillingCycle)
+         .filter(
+             models.BillingCycle.account_number == account_number,
+             models.BillingCycle.cycle_month == cycle_month,
+         )
+         .first()
      )
- 
- 
- def _calculate_bill_total_due(db: Session, bill: models.Bill, provider_id: int) -> float:
-     """Mirror the provider-facing bill "Total due" for a given bill."""
- 
-     total_due = Decimal(str(bill.fee_gyd or 0)).quantize(
-         Decimal("1"), rounding=ROUND_HALF_UP
-     )
-     credits = Decimal(str(get_provider_credit_balance(db, provider_id) or 0))
-     # Bill credits should only ever reduce what a provider owes. If the balance is
-     # negative (e.g., from a bad manual entry), clamp it to zero so we don't
-     # accidentally inflate the amount due.
  
 EOF
 )
