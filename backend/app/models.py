@@ -40,6 +40,11 @@ class User(Base):
     password_reset_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=now_guyana)
     avatar_url = Column(String, nullable=True)   # 👈 NEW
+    deleted_at = Column(DateTime, nullable=True)
+    is_deleted = Column(Boolean, default=False, nullable=False)
+    token_version = Column(Integer, default=0, nullable=False)
+    deleted_email_hash = Column(Text, nullable=True)
+    deleted_phone_hash = Column(Text, nullable=True)
 
 
 class PasswordResetToken(Base):

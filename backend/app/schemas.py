@@ -73,6 +73,10 @@ class VerifyEmailPayload(BaseModel):
     token: str
 
 
+class DeleteAccountRequest(BaseModel):
+    password: str
+
+
 class VerifyEmailStatus(BaseModel):
     email: EmailStr
     is_email_verified: bool

@@ -155,6 +155,8 @@ def list_providers(db: Session, profession: Optional[str] = None):
     # Base query joining providers → users
     q = (
         db.query(models.Provider)
+        .join(models.User, models.Provider.user_id == models.User.id)
+        .filter(models.User.is_deleted.is_(False))
         .options(joinedload(models.Provider.user))
     )
 
@@ -666,10 +668,70 @@ def authenticate_user(db: Session, email: str, password: str):
     if not user:
         return None
 
+    if getattr(user, "is_deleted", False):
+        return None
+
     if not verify_password(password, user.hashed_password):
         return None
 
     return user
+
+
+def _hash_deleted_value(value: Optional[str]) -> Optional[str]:
+    if not value:
+        return None
+    normalized = value.strip().lower()
+    if not normalized:
+        return None
+    return hashlib.sha256(normalized.encode("utf-8")).hexdigest()
+
+
+def delete_user_account(
+    db: Session,
+    user: models.User,
+    password: str,
+) -> None:
+    if not verify_password(password, user.hashed_password):
+        raise ValueError("Incorrect password")
+
+    deletion_id = os.urandom(16).hex()
+    placeholder_email = f"deleted_{deletion_id}@deleted.bookitgy"
+    placeholder_username = f"deleted_user_{deletion_id[:8]}"
+
+    deleted_email_hash = _hash_deleted_value(user.email)
+    deleted_phone_hash = _hash_deleted_value(user.phone)
+
+    transaction = db.begin_nested() if db.in_transaction() else db.begin()
+    with transaction:
+        user.is_deleted = True
+        user.deleted_at = now_guyana()
+        user.token_version = (user.token_version or 0) + 1
+        user.deleted_email_hash = deleted_email_hash
+        user.deleted_phone_hash = deleted_phone_hash
+        user.email = placeholder_email
+        user.username = placeholder_username
+        user.phone = None
+        user.whatsapp = None
+        user.expo_push_token = None
+        user.location = None
+        user.lat = None
+        user.long = None
+        user.avatar_url = None
+        user.is_email_verified = False
+        user.email_verified_at = None
+        user.password_reset_at = None
+
+        provider = get_provider_by_user_id(db, user.id)
+        if provider:
+            provider.is_locked = True
+            provider.bio = None
+            provider.avatar_url = None
+            db.query(models.Service).filter(
+                models.Service.provider_id == provider.id
+            ).update(
+                {models.Service.is_active: False},
+                synchronize_session=False,
+            )
 
 
 def verify_user_email(db: Session, user: models.User) -> models.User:

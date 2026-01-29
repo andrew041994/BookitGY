@@ -1,219 +1,81 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
-diff --git a/mobile/App.js b/mobile/App.js
-index 00de4d1a967d3cff7aeca677878a3a4f588c4be8..56a18ace98c059afb4ffa26acd1ad687f1845e72 100644
---- a/mobile/App.js
-+++ b/mobile/App.js
-@@ -865,57 +865,68 @@ function SignupScreen({ goToLogin, goBack, showFlash }) {
-     behavior: Platform.OS === "ios" ? "padding" : "height",
-     keyboardVerticalOffset: Platform.OS === "ios" ? 40 : 0,
-   };
-   const signupValidation = useMemo(() => {
-     const errors = {};
-     const trimmedUsername = username.trim();
-     const trimmedEmail = email.trim();
-     const trimmedPhone = phone.trim();
-     const trimmedPassword = password.trim();
-     const trimmedConfirm = confirmPassword.trim();
- 
-     if (!trimmedUsername) errors.username = "Username is required";
-     if (!trimmedEmail) {
-       errors.email = "Email is required";
-     } else if (!isValidEmail(trimmedEmail)) {
-       errors.email = "Email is invalid";
-     }
-     if (!trimmedPhone) errors.phone = "Phone is required";
-     if (trimmedPassword.length < 8) {
-       errors.password = "Password must be at least 8 characters";
-     }
-     if (trimmedConfirm !== trimmedPassword) {
-       errors.confirmPassword = "Passwords do not match";
-     }
- 
-+    const isSignupFormValid = Object.keys(errors).length === 0;
+diff --git a/backend/tests/test_account_deletion.py b/backend/tests/test_account_deletion.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..e14d4c44b820bf3cc7a1a1e7ed780bd295f7a1c8
+--- /dev/null
++++ b/backend/tests/test_account_deletion.py
+@@ -0,0 +1,71 @@
++def test_delete_user_account_anonymizes_and_hides_provider(db_session):
++    session, models, crud = db_session
 +
-     return {
-       errors,
--      canSubmit: Object.keys(errors).length === 0,
-+      isSignupFormValid,
-     };
-   }, [username, email, phone, password, confirmPassword]);
-+  const isSignupFormValid = signupValidation.isSignupFormValid;
- 
-   const signup = async () => {
-+    if (!isSignupFormValid) {
-+      if (showFlash) {
-+        showFlash("error", "Please complete all fields correctly");
-+      } else {
-+        Alert.alert("Error", "Please complete all fields correctly");
-+      }
-+      return;
-+    }
-     const trimmedEmail = email.trim();
-     const normalizedEmail = trimmedEmail.toLowerCase();
-     const trimmedPassword = password.trim();
-     const trimmedConfirm = confirmPassword.trim();
-     const trimmedUsername = username.trim();
-     const trimmedPhone = phone.trim();
- 
-     // ✅ All fields required
-     if (
-       !trimmedUsername ||
-       !trimmedEmail ||
-       !trimmedPhone ||
-       !trimmedPassword ||
-       !trimmedConfirm
-     ) {
-       if (showFlash) {
-         showFlash("error", "Please fill in all fields");
-       } else {
-         Alert.alert("Error", "Please fill in all fields");
-       }
-       return;
-     }
- 
-     // ✅ Passwords must match
-     if (trimmedPassword !== trimmedConfirm) {
-@@ -1098,56 +1109,63 @@ function SignupScreen({ goToLogin, goBack, showFlash }) {
-                 },
-               ]}
-               placeholder="Confirm Password"
-               placeholderTextColor={styles.inputPlaceholder.color}
-               value={confirmPassword}
-               onChangeText={setConfirmPassword}
-               textContentType="password"
-               autoComplete="password"
-               importantForAutofill="yes"
-               secureTextEntry={true}
-               keyboardType="default"
-               autoCapitalize="none"
-               autoCorrect={false}
-               spellCheck={false}
-               underlineColorAndroid="transparent"
-               selectionColor={colors.primary}
-               cursorColor={colors.primary}
-             />
-             {signupValidation.errors.confirmPassword && (
-               <Text style={styles.inputErrorText}>
-                 {signupValidation.errors.confirmPassword}
-               </Text>
-             )}
- 
-             <View style={{ width: "100%", marginBottom: 10 }}>
--              <Button
--                title="Sign Up"
-+              <TouchableOpacity
-+                style={[
-+                  styles.signupButton,
-+                  !isSignupFormValid && styles.signupButtonDisabled,
-+                ]}
-                 onPress={signup}
--                color={colors.primary}
--                disabled={!signupValidation.canSubmit}
--              />
-+                disabled={!isSignupFormValid}
-+                accessibilityRole="button"
-+                accessibilityState={{ disabled: !isSignupFormValid }}
-+                activeOpacity={0.8}
-+              >
-+                <Text style={styles.signupButtonText}>Sign Up</Text>
-+              </TouchableOpacity>
-             </View>
- 
-             {goToLogin && (
-               <View style={{ width: "100%", marginBottom: 10 }}>
-                 <Button
-                   title="Already have an account? Login"
-                   onPress={goToLogin}
-                   color={colors.primary}
-                 />
-               </View>
-             )}
- 
-             {goBack && (
-               <View style={{ width: "100%" }}>
-                 <Button title="Back" onPress={goBack} color={colors.textMuted} />
-               </View>
-             )}
-           </View>
-         </TouchableWithoutFeedback>
-       </ScrollView>
-     </KeyboardAvoidingView>
-   );
- }
- 
- 
-@@ -8445,50 +8463,71 @@ billingTotalsValue: {
- authPrimaryButtonText: {
-   color: colors.textPrimary,
-   fontSize: 16,
-   fontWeight: "600",
- },
- 
- authSecondaryButton: {
-   backgroundColor: "transparent",
-   paddingVertical: 14,
-   borderRadius: 6,
-   alignItems: "center",
-   borderWidth: 1,
-   borderColor: colors.primary,
-   shadowColor: "#000",
-   shadowOpacity: 0.15,
-   shadowOffset: { width: 0, height: 2 },
-   shadowRadius: 3,
-   elevation: 3,
- },
- 
- authSecondaryButtonText: {
-   color: colors.primary,
-   fontSize: 16,
-   fontWeight: "600",
- },
-+signupButton: {
-+  backgroundColor: colors.primary,
-+  paddingVertical: 14,
-+  borderRadius: 6,
-+  alignItems: "center",
-+  marginBottom: 12,
-+  shadowColor: "#000",
-+  shadowOpacity: 0.15,
-+  shadowOffset: { width: 0, height: 2 },
-+  shadowRadius: 3,
-+  elevation: 3,
-+},
-+signupButtonDisabled: {
-+  backgroundColor: colors.textMuted,
-+  opacity: 0.6,
-+},
-+signupButtonText: {
-+  color: colors.textPrimary,
-+  fontSize: 16,
-+  fontWeight: "600",
-+},
- 
-   avoider: {
-     flex: 1,
-     backgroundColor: colors.background,
-   },
-   scrollContent: {
-     flexGrow: 1,
-   },
-   container: {
-     flex: 1,
-     paddingHorizontal: 24,
-     alignItems: "center",
-     justifyContent: "center",
-   },
-   logoWrapper: {
-     alignItems: "center",
-     marginBottom: 24,
-   },
-   logo: {
-     width: 260,
-     height: 260,
-     resizeMode: "contain",
-   },
-   title: {
-     fontSize: 28,
++    user = models.User(
++        username="providerone",
++        email="providerone@example.com",
++        phone="5921234",
++        whatsapp="whatsapp:+5921234",
++        hashed_password=crud.hash_password("Secret123!"),
++        is_provider=True,
++        is_email_verified=True,
++        expo_push_token="expo-token",
++        location="Georgetown",
++        lat=6.8,
++        long=-58.1,
++        avatar_url="https://example.com/user.png",
++    )
++    session.add(user)
++    session.commit()
++    session.refresh(user)
++
++    provider = models.Provider(
++        user_id=user.id,
++        account_number="ACC-DELETE-1",
++        bio="Provider bio",
++        avatar_url="https://example.com/provider.png",
++    )
++    session.add(provider)
++    session.commit()
++    session.refresh(provider)
++
++    service = models.Service(
++        provider_id=provider.id,
++        name="Test Service",
++        description="Desc",
++        price_gyd=50.0,
++        duration_minutes=30,
++        is_active=True,
++    )
++    session.add(service)
++    session.commit()
++    session.refresh(service)
++
++    crud.delete_user_account(session, user, "Secret123!")
++
++    session.refresh(user)
++    session.refresh(provider)
++    session.refresh(service)
++
++    assert user.is_deleted is True
++    assert user.deleted_at is not None
++    assert user.token_version == 1
++    assert user.email.startswith("deleted_")
++    assert user.username.startswith("deleted_user_")
++    assert user.phone is None
++    assert user.whatsapp is None
++    assert user.expo_push_token is None
++    assert user.location is None
++    assert user.lat is None
++    assert user.long is None
++    assert user.avatar_url is None
++    assert user.deleted_email_hash is not None
++    assert user.deleted_phone_hash is not None
++
++    assert provider.is_locked is True
++    assert provider.bio is None
++    assert provider.avatar_url is None
++    assert service.is_active is False
++
++    providers = crud.list_providers(session)
++    assert providers == []
  
 EOF
 )

@@ -115,6 +115,29 @@ def update_users_me(
 
     return updated_user
 
+
+@router.post("/users/me/delete")
+def delete_my_account(
+    payload: schemas.DeleteAccountRequest,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user_from_header),
+):
+    if getattr(current_user, "is_deleted", False):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Account deleted",
+        )
+
+    try:
+        crud.delete_user_account(db, current_user, payload.password)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=str(exc),
+        )
+
+    return {"ok": True}
+
 @router.post("/users/me/avatar")
 async def upload_my_avatar(
     file: UploadFile = File(...),
@@ -183,4 +206,3 @@ async def upload_my_avatar(
     db.refresh(current_user)
 
     return {"avatar_url": secure_url}
-
