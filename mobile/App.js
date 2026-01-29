@@ -862,6 +862,14 @@ function SignupScreen({ goToLogin, goBack, showFlash }) {
   const [username, setUsername] = useState("");
   const [phone, setPhone] = useState("");
   const [isProvider, setIsProvider] = useState(false); // 👈 new
+  const passwordRules = {
+    length: password.length >= 8,
+    lower: /[a-z]/.test(password),
+    upper: /[A-Z]/.test(password),
+    number: /[0-9]/.test(password),
+    special: /[^A-Za-z0-9]/.test(password),
+  };
+  const passwordStrong = Object.values(passwordRules).every(Boolean);
   const keyboardWrapperProps = {
     behavior: Platform.OS === "ios" ? "padding" : "height",
     keyboardVerticalOffset: Platform.OS === "ios" ? 40 : 0,
@@ -882,8 +890,8 @@ function SignupScreen({ goToLogin, goBack, showFlash }) {
       errors.email = "Email is invalid";
     }
     if (!trimmedPhone) errors.phone = "Phone is required";
-    if (trimmedPassword.length < 8) {
-      errors.password = "Password must be at least 8 characters";
+    if (!passwordStrong) {
+      errors.password = "Password must meet all requirements";
     }
     if (!trimmedConfirm || trimmedConfirm !== trimmedPassword) {
       errors.confirmPassword = "Passwords do not match";
@@ -896,7 +904,7 @@ function SignupScreen({ goToLogin, goBack, showFlash }) {
       isValidEmail(trimmedEmail) &&
       trimmedPhone.length > 0 &&
       phoneDigitsOnly.test(trimmedPhone) &&
-      trimmedPassword.length >= 8 &&
+      passwordStrong &&
       trimmedConfirm.length > 0 &&
       trimmedPassword === trimmedConfirm;
 
@@ -904,7 +912,7 @@ function SignupScreen({ goToLogin, goBack, showFlash }) {
       errors,
       signupIsValid,
     };
-  }, [username, email, phone, password, confirmPassword]);
+  }, [username, email, phone, password, confirmPassword, passwordStrong]);
   const signupIsValid = signupValidation.signupIsValid;
 
   const signup = async () => {
@@ -1097,6 +1105,58 @@ function SignupScreen({ goToLogin, goBack, showFlash }) {
               selectionColor={colors.primary}
               cursorColor={colors.primary}
             />
+            <View style={styles.passwordRequirements}>
+              <Text
+                style={[
+                  styles.passwordRequirement,
+                  passwordRules.length
+                    ? styles.passwordRequirementMet
+                    : styles.passwordRequirementUnmet,
+                ]}
+              >
+                At least 8 characters
+              </Text>
+              <Text
+                style={[
+                  styles.passwordRequirement,
+                  passwordRules.lower
+                    ? styles.passwordRequirementMet
+                    : styles.passwordRequirementUnmet,
+                ]}
+              >
+                One lowercase letter (a–z)
+              </Text>
+              <Text
+                style={[
+                  styles.passwordRequirement,
+                  passwordRules.upper
+                    ? styles.passwordRequirementMet
+                    : styles.passwordRequirementUnmet,
+                ]}
+              >
+                One uppercase letter (A–Z)
+              </Text>
+              <Text
+                style={[
+                  styles.passwordRequirement,
+                  passwordRules.number
+                    ? styles.passwordRequirementMet
+                    : styles.passwordRequirementUnmet,
+                ]}
+              >
+                One number (0–9)
+              </Text>
+              <Text
+                style={[
+                  styles.passwordRequirement,
+                  passwordRules.special
+                    ? styles.passwordRequirementMet
+                    : styles.passwordRequirementUnmet,
+                ]}
+              >
+                One special character (!@#…)
+              </Text>
+            </View>
             {signupValidation.errors.password && (
               <Text style={styles.inputErrorText}>
                 {signupValidation.errors.password}
@@ -7133,6 +7193,21 @@ const styles = StyleSheet.create({
     fontSize: 12,
     marginTop: -6,
     marginBottom: 12,
+  },
+  passwordRequirements: {
+    width: "100%",
+    marginTop: -6,
+    marginBottom: 12,
+  },
+  passwordRequirement: {
+    fontSize: 12,
+    marginBottom: 2,
+  },
+  passwordRequirementMet: {
+    color: colors.success,
+  },
+  passwordRequirementUnmet: {
+    color: colors.error,
   },
   inputPlaceholder: {
     color: colors.textMuted,
