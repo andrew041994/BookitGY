@@ -873,6 +873,7 @@ function SignupScreen({ goToLogin, goBack, showFlash }) {
     const trimmedPhone = phone.trim();
     const trimmedPassword = password.trim();
     const trimmedConfirm = confirmPassword.trim();
+    const phoneDigitsOnly = /^\d+$/;
 
     if (!trimmedUsername) errors.username = "Username is required";
     if (!trimmedEmail) {
@@ -884,28 +885,31 @@ function SignupScreen({ goToLogin, goBack, showFlash }) {
     if (trimmedPassword.length < 8) {
       errors.password = "Password must be at least 8 characters";
     }
-    if (trimmedConfirm !== trimmedPassword) {
+    if (!trimmedConfirm || trimmedConfirm !== trimmedPassword) {
       errors.confirmPassword = "Passwords do not match";
     }
 
-    const isSignupFormValid = Object.keys(errors).length === 0;
+    const signupIsValid =
+      trimmedUsername.length > 0 &&
+      trimmedEmail.length > 0 &&
+      trimmedEmail.includes("@") &&
+      isValidEmail(trimmedEmail) &&
+      trimmedPhone.length > 0 &&
+      phoneDigitsOnly.test(trimmedPhone) &&
+      trimmedPassword.length >= 8 &&
+      trimmedConfirm.length > 0 &&
+      trimmedPassword === trimmedConfirm;
 
     return {
       errors,
-      isSignupFormValid,
+      signupIsValid,
     };
   }, [username, email, phone, password, confirmPassword]);
-  const isSignupFormValid = signupValidation.isSignupFormValid;
+  const signupIsValid = signupValidation.signupIsValid;
 
   const signup = async () => {
-    if (!isSignupFormValid) {
-      if (showFlash) {
-        showFlash("error", "Please complete all fields correctly");
-      } else {
-        Alert.alert("Error", "Please complete all fields correctly");
-      }
-      return;
-    }
+    if (!signupIsValid) return;
+
     const trimmedEmail = email.trim();
     const normalizedEmail = trimmedEmail.toLowerCase();
     const trimmedPassword = password.trim();
@@ -1132,19 +1136,35 @@ function SignupScreen({ goToLogin, goBack, showFlash }) {
             )}
 
             <View style={{ width: "100%", marginBottom: 10 }}>
-              <TouchableOpacity
-                style={[
-                  styles.signupButton,
-                  !isSignupFormValid && styles.signupButtonDisabled,
-                ]}
-                onPress={signup}
-                disabled={!isSignupFormValid}
-                accessibilityRole="button"
-                accessibilityState={{ disabled: !isSignupFormValid }}
-                activeOpacity={0.8}
-              >
-                <Text style={styles.signupButtonText}>Sign Up</Text>
-              </TouchableOpacity>
+              {Platform.OS === "ios" ? (
+                <TouchableOpacity
+                  style={[
+                    styles.signupTextButton,
+                    !signupIsValid && styles.signupTextButtonDisabled,
+                  ]}
+                  onPress={signup}
+                  disabled={!signupIsValid}
+                  accessibilityRole="button"
+                  accessibilityState={{ disabled: !signupIsValid }}
+                  activeOpacity={0.8}
+                >
+                  <Text style={styles.signupTextButtonText}>Sign Up</Text>
+                </TouchableOpacity>
+              ) : (
+                <TouchableOpacity
+                  style={[
+                    styles.signupButton,
+                    !signupIsValid && styles.signupButtonDisabled,
+                  ]}
+                  onPress={signup}
+                  disabled={!signupIsValid}
+                  accessibilityRole="button"
+                  accessibilityState={{ disabled: !signupIsValid }}
+                  activeOpacity={0.8}
+                >
+                  <Text style={styles.signupButtonText}>Sign Up</Text>
+                </TouchableOpacity>
+              )}
             </View>
 
             {goToLogin && (
@@ -8741,6 +8761,18 @@ signupButtonDisabled: {
 },
 signupButtonText: {
   color: colors.textPrimary,
+  fontSize: 16,
+  fontWeight: "600",
+},
+signupTextButton: {
+  alignItems: "center",
+  paddingVertical: 8,
+},
+signupTextButtonDisabled: {
+  opacity: 0.4,
+},
+signupTextButtonText: {
+  color: colors.primary,
   fontSize: 16,
   fontWeight: "600",
 },

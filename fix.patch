@@ -1,91 +1,264 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
-diff --git a/backend/alembic/versions/e2d4a6b8c0f1_ensure_user_soft_delete_fields_after_merge.py b/backend/alembic/versions/e2d4a6b8c0f1_ensure_user_soft_delete_fields_after_merge.py
-new file mode 100644
-index 0000000000000000000000000000000000000000..b776b8890bac9fb0218836a88052782a2d3981f4
---- /dev/null
-+++ b/backend/alembic/versions/e2d4a6b8c0f1_ensure_user_soft_delete_fields_after_merge.py
-@@ -0,0 +1,81 @@
-+"""ensure user soft delete fields after merge
+diff --git a/mobile/App.js b/mobile/App.js
+index 46240ee54d44f4358a19b0fdcaac26102cdca747..546df63f9ae03c0f9e4d85bf91fa49539425e51b 100644
+--- a/mobile/App.js
++++ b/mobile/App.js
+@@ -851,83 +851,87 @@ function ForgotPasswordScreen({ goToLogin, goBack, showFlash }) {
+     </KeyboardAvoidingView>
+   );
+ }
+ 
+ 
+ 
+ 
+ function SignupScreen({ goToLogin, goBack, showFlash }) {
+   const [email, setEmail] = useState("");
+   const [password, setPassword] = useState("");
+   const [confirmPassword, setConfirmPassword] = useState("");
+   const [username, setUsername] = useState("");
+   const [phone, setPhone] = useState("");
+   const [isProvider, setIsProvider] = useState(false); // 👈 new
+   const keyboardWrapperProps = {
+     behavior: Platform.OS === "ios" ? "padding" : "height",
+     keyboardVerticalOffset: Platform.OS === "ios" ? 40 : 0,
+   };
+   const signupValidation = useMemo(() => {
+     const errors = {};
+     const trimmedUsername = username.trim();
+     const trimmedEmail = email.trim();
+     const trimmedPhone = phone.trim();
+     const trimmedPassword = password.trim();
+     const trimmedConfirm = confirmPassword.trim();
++    const phoneDigitsOnly = /^\d+$/;
+ 
+     if (!trimmedUsername) errors.username = "Username is required";
+     if (!trimmedEmail) {
+       errors.email = "Email is required";
+     } else if (!isValidEmail(trimmedEmail)) {
+       errors.email = "Email is invalid";
+     }
+     if (!trimmedPhone) errors.phone = "Phone is required";
+     if (trimmedPassword.length < 8) {
+       errors.password = "Password must be at least 8 characters";
+     }
+-    if (trimmedConfirm !== trimmedPassword) {
++    if (!trimmedConfirm || trimmedConfirm !== trimmedPassword) {
+       errors.confirmPassword = "Passwords do not match";
+     }
+ 
+-    const isSignupFormValid = Object.keys(errors).length === 0;
++    const signupIsValid =
++      trimmedUsername.length > 0 &&
++      trimmedEmail.length > 0 &&
++      trimmedEmail.includes("@") &&
++      isValidEmail(trimmedEmail) &&
++      trimmedPhone.length > 0 &&
++      phoneDigitsOnly.test(trimmedPhone) &&
++      trimmedPassword.length >= 8 &&
++      trimmedConfirm.length > 0 &&
++      trimmedPassword === trimmedConfirm;
+ 
+     return {
+       errors,
+-      isSignupFormValid,
++      signupIsValid,
+     };
+   }, [username, email, phone, password, confirmPassword]);
+-  const isSignupFormValid = signupValidation.isSignupFormValid;
++  const signupIsValid = signupValidation.signupIsValid;
+ 
+   const signup = async () => {
+-    if (!isSignupFormValid) {
+-      if (showFlash) {
+-        showFlash("error", "Please complete all fields correctly");
+-      } else {
+-        Alert.alert("Error", "Please complete all fields correctly");
+-      }
+-      return;
+-    }
++    if (!signupIsValid) return;
 +
-+Revision ID: e2d4a6b8c0f1
-+Revises: c816011eee02
-+Create Date: 2025-02-16 00:00:01.000000
-+"""
-+
-+from alembic import op
-+
-+
-+# revision identifiers, used by Alembic.
-+revision = "e2d4a6b8c0f1"
-+down_revision = "c816011eee02"
-+branch_labels = None
-+depends_on = None
-+
-+
-+def upgrade():
-+    op.execute(
-+        """
-+        ALTER TABLE users
-+            ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMP NULL;
-+        """
-+    )
-+    op.execute(
-+        """
-+        ALTER TABLE users
-+            ADD COLUMN IF NOT EXISTS is_deleted BOOLEAN NOT NULL DEFAULT false;
-+        """
-+    )
-+    op.execute(
-+        """
-+        ALTER TABLE users
-+            ADD COLUMN IF NOT EXISTS token_version INTEGER NOT NULL DEFAULT 0;
-+        """
-+    )
-+    op.execute(
-+        """
-+        ALTER TABLE users
-+            ADD COLUMN IF NOT EXISTS deleted_email_hash TEXT NULL;
-+        """
-+    )
-+    op.execute(
-+        """
-+        ALTER TABLE users
-+            ADD COLUMN IF NOT EXISTS deleted_phone_hash TEXT NULL;
-+        """
-+    )
-+
-+
-+def downgrade():
-+    op.execute(
-+        """
-+        ALTER TABLE users
-+            DROP COLUMN IF EXISTS deleted_phone_hash;
-+        """
-+    )
-+    op.execute(
-+        """
-+        ALTER TABLE users
-+            DROP COLUMN IF EXISTS deleted_email_hash;
-+        """
-+    )
-+    op.execute(
-+        """
-+        ALTER TABLE users
-+            DROP COLUMN IF EXISTS token_version;
-+        """
-+    )
-+    op.execute(
-+        """
-+        ALTER TABLE users
-+            DROP COLUMN IF EXISTS is_deleted;
-+        """
-+    )
-+    op.execute(
-+        """
-+        ALTER TABLE users
-+            DROP COLUMN IF EXISTS deleted_at;
-+        """
-+    )
+     const trimmedEmail = email.trim();
+     const normalizedEmail = trimmedEmail.toLowerCase();
+     const trimmedPassword = password.trim();
+     const trimmedConfirm = confirmPassword.trim();
+     const trimmedUsername = username.trim();
+     const trimmedPhone = phone.trim();
+ 
+     // ✅ All fields required
+     if (
+       !trimmedUsername ||
+       !trimmedEmail ||
+       !trimmedPhone ||
+       !trimmedPassword ||
+       !trimmedConfirm
+     ) {
+       if (showFlash) {
+         showFlash("error", "Please fill in all fields");
+       } else {
+         Alert.alert("Error", "Please fill in all fields");
+       }
+       return;
+     }
+ 
+     // ✅ Passwords must match
+     if (trimmedPassword !== trimmedConfirm) {
+@@ -1110,63 +1114,79 @@ function SignupScreen({ goToLogin, goBack, showFlash }) {
+                 },
+               ]}
+               placeholder="Confirm Password"
+               placeholderTextColor={styles.inputPlaceholder.color}
+               value={confirmPassword}
+               onChangeText={setConfirmPassword}
+               textContentType="password"
+               autoComplete="password"
+               importantForAutofill="yes"
+               secureTextEntry={true}
+               keyboardType="default"
+               autoCapitalize="none"
+               autoCorrect={false}
+               spellCheck={false}
+               underlineColorAndroid="transparent"
+               selectionColor={colors.primary}
+               cursorColor={colors.primary}
+             />
+             {signupValidation.errors.confirmPassword && (
+               <Text style={styles.inputErrorText}>
+                 {signupValidation.errors.confirmPassword}
+               </Text>
+             )}
+ 
+             <View style={{ width: "100%", marginBottom: 10 }}>
+-              <TouchableOpacity
+-                style={[
+-                  styles.signupButton,
+-                  !isSignupFormValid && styles.signupButtonDisabled,
+-                ]}
+-                onPress={signup}
+-                disabled={!isSignupFormValid}
+-                accessibilityRole="button"
+-                accessibilityState={{ disabled: !isSignupFormValid }}
+-                activeOpacity={0.8}
+-              >
+-                <Text style={styles.signupButtonText}>Sign Up</Text>
+-              </TouchableOpacity>
++              {Platform.OS === "ios" ? (
++                <TouchableOpacity
++                  style={[
++                    styles.signupTextButton,
++                    !signupIsValid && styles.signupTextButtonDisabled,
++                  ]}
++                  onPress={signup}
++                  disabled={!signupIsValid}
++                  accessibilityRole="button"
++                  accessibilityState={{ disabled: !signupIsValid }}
++                  activeOpacity={0.8}
++                >
++                  <Text style={styles.signupTextButtonText}>Sign Up</Text>
++                </TouchableOpacity>
++              ) : (
++                <TouchableOpacity
++                  style={[
++                    styles.signupButton,
++                    !signupIsValid && styles.signupButtonDisabled,
++                  ]}
++                  onPress={signup}
++                  disabled={!signupIsValid}
++                  accessibilityRole="button"
++                  accessibilityState={{ disabled: !signupIsValid }}
++                  activeOpacity={0.8}
++                >
++                  <Text style={styles.signupButtonText}>Sign Up</Text>
++                </TouchableOpacity>
++              )}
+             </View>
+ 
+             {goToLogin && (
+               <View style={{ width: "100%", marginBottom: 10 }}>
+                 <Button
+                   title="Already have an account? Login"
+                   onPress={goToLogin}
+                   color={colors.primary}
+                 />
+               </View>
+             )}
+ 
+             {goBack && (
+               <View style={{ width: "100%" }}>
+                 <Button title="Back" onPress={goBack} color={colors.textMuted} />
+               </View>
+             )}
+           </View>
+         </TouchableWithoutFeedback>
+       </ScrollView>
+     </KeyboardAvoidingView>
+   );
+ }
+ 
+ 
+@@ -8722,50 +8742,62 @@ authSecondaryButtonText: {
+   color: colors.primary,
+   fontSize: 16,
+   fontWeight: "600",
+ },
+ signupButton: {
+   backgroundColor: colors.primary,
+   paddingVertical: 14,
+   borderRadius: 6,
+   alignItems: "center",
+   marginBottom: 12,
+   shadowColor: "#000",
+   shadowOpacity: 0.15,
+   shadowOffset: { width: 0, height: 2 },
+   shadowRadius: 3,
+   elevation: 3,
+ },
+ signupButtonDisabled: {
+   backgroundColor: colors.textMuted,
+   opacity: 0.6,
+ },
+ signupButtonText: {
+   color: colors.textPrimary,
+   fontSize: 16,
+   fontWeight: "600",
+ },
++signupTextButton: {
++  alignItems: "center",
++  paddingVertical: 8,
++},
++signupTextButtonDisabled: {
++  opacity: 0.4,
++},
++signupTextButtonText: {
++  color: colors.primary,
++  fontSize: 16,
++  fontWeight: "600",
++},
+ 
+   avoider: {
+     flex: 1,
+     backgroundColor: colors.background,
+   },
+   scrollContent: {
+     flexGrow: 1,
+   },
+   container: {
+     flex: 1,
+     paddingHorizontal: 24,
+     alignItems: "center",
+     justifyContent: "center",
+   },
+   logoWrapper: {
+     alignItems: "center",
+     marginBottom: 24,
+   },
+   logo: {
+     width: 260,
+     height: 260,
+     resizeMode: "contain",
+   },
+   title: {
+     fontSize: 28,
  
 EOF
 )
