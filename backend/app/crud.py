@@ -10,6 +10,7 @@ from passlib.context import CryptContext
 from twilio.rest import Client
 import requests
 import hashlib
+import json
 from . import models, schemas
 from typing import Optional
 from dotenv import load_dotenv, find_dotenv
@@ -486,6 +487,34 @@ def send_whatsapp(to: str, body: str) -> None:
         print(f"WhatsApp error: {e}")
 
 
+
+
+
+def send_whatsapp_template(
+    to: str,
+    template_sid: str,
+    variables: dict,
+) -> None:
+    normalized_from = normalize_whatsapp_number(FROM_NUMBER)
+    normalized_to = normalize_whatsapp_number(to)
+
+    if not twilio_client or not normalized_to or not normalized_from:
+        print("[WhatsApp Template Preview]", template_sid, variables)
+        return
+
+    try:
+        msg = twilio_client.messages.create(
+            from_=normalized_from,
+            to=normalized_to,
+            content_sid=template_sid,
+            content_variables=json.dumps(variables),
+        )
+        print(f"[WhatsApp template] SID: {msg.sid}")
+    except Exception as e:
+        print(f"WhatsApp template error: {e}")
+
+
+
 def notify_booking_created(
     customer: Optional[models.User],
     provider_user: Optional[models.User],
@@ -504,26 +533,30 @@ def notify_booking_created(
 
     # Customer: one confirmation message
     if customer.whatsapp:
-        send_whatsapp(
-            customer.whatsapp,
-            (
-                "Booking confirmed!\n"
-                f"{service.name} with {get_display_name(provider_user)}\n"
-                f"{booking.start_time.strftime('%d %b %Y at %I:%M %p')}\n"
-                f"GYD {service.price_gyd}"
-            ),
-        )
+        send_whatsapp_template(
+        to=customer.whatsapp,
+        template_sid=os.environ["WA_TPL_BOOKING_CONFIRMED_SID"],
+        variables={
+            "1": service.name,
+            "2": get_display_name(provider_user),
+            "3": booking.start_time.strftime("%d %b %Y at %I:%M %p"),
+            "4": str(service.price_gyd),
+        },
+    )
+
 
     # Provider: one "new booking" message
     if provider_user.whatsapp:
-        send_whatsapp(
-            provider_user.whatsapp,
-            (
-                "New booking!\n"
-                f"{get_display_name(customer)} booked {service.name}\n"
-                f"{booking.start_time.strftime('%d %b %Y at %I:%M %p')}"
-            ),
-        )
+        send_whatsapp_template(
+        to=provider_user.whatsapp,
+        template_sid=os.environ["WA_TPL_PROVIDER_NEW_BOOKING_SID"],
+        variables={
+            "1": get_display_name(customer),
+            "2": service.name,
+            "3": booking.start_time.strftime("%d %b %Y at %I:%M %p"),
+        },
+    )
+
 
     # Push notifications (one each)
     send_push(
@@ -2218,14 +2251,16 @@ def cancel_booking_for_customer(
     )
 
     if provider_user and service and customer and provider_user.whatsapp:
-        send_whatsapp(
-            provider_user.whatsapp,
-            (
-                "❌ Booking cancelled by customer.\n"
-                f"{get_display_name(customer)} cancelled {service.name}\n"
-                f"{booking.start_time.strftime('%d %b %Y at %I:%M %p')}"
-            ),
-        )
+     send_whatsapp_template(
+        to=provider_user.whatsapp,
+        template_sid=os.environ["WA_TPL_PROVIDER_BOOKING_CANCELLED_BY_CUSTOMER_SID"],
+        variables={
+            "1": get_display_name(customer),
+            "2": service.name,
+            "3": booking.start_time.strftime("%d %b %Y at %I:%M %p"),
+        },
+    )
+
 
     if provider_user and service and customer:
         send_push(
@@ -2300,14 +2335,15 @@ def cancel_booking_for_provider(
     _refresh_bill_for_booking(db, booking)
 
     if customer and service and customer.whatsapp:
-        send_whatsapp(
-            customer.whatsapp,
-            (
-                "❌ Your appointment was cancelled by the provider.\n"
-                f"Service: {service.name}\n"
-                f"Time: {booking.start_time.strftime('%d %b %Y at %I:%M %p')}"
-            ),
-        )
+     send_whatsapp_template(
+        to=customer.whatsapp,
+        template_sid=os.environ["WA_TPL_CUSTOMER_BOOKING_CANCELLED_BY_PROVIDER_SID"],
+        variables={
+            "1": service.name,
+            "2": booking.start_time.strftime("%d %b %Y at %I:%M %p"),
+        },
+    )
+
 
     if customer and service:
         send_push(
