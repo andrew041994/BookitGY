@@ -19,6 +19,7 @@ import {
   Pressable,
   RefreshControl,
   Share,
+  Modal,
 } from "react-native";
 import * as ExpoLinking from "expo-linking";
 import {
@@ -1225,6 +1226,33 @@ function ProfileScreen({ apiClient, authLoading, setToken, showFlash, token }) {
   const [refreshing, setRefreshing] = useState(false);
   const [isProviderUser, setIsProviderUser] = useState(null);
   const canUseClipboard = Boolean(Clipboard?.setStringAsync);
+  const [deleteModalVisible, setDeleteModalVisible] = useState(false);
+  const [deletePassword, setDeletePassword] = useState("");
+  const [deleteLoading, setDeleteLoading] = useState(false);
+
+  const forceLogout = useCallback(
+    async (flashMessage) => {
+      try {
+        await clearToken();
+      } catch (err) {
+        console.log("Error clearing token", err?.message || err);
+      }
+      try {
+        await AsyncStorage.removeItem(LEGACY_ACCESS_TOKEN_KEY);
+      } catch (err) {
+        console.log("Error clearing legacy token", err?.message || err);
+      }
+      setUser(null);
+      setAvatarUrl(null);
+      if (setToken) {
+        setToken(null);
+      }
+      if (flashMessage && showFlash) {
+        showFlash("success", flashMessage);
+      }
+    },
+    [setToken, showFlash]
+  );
 
 
   const uploadAvatar = async (uri) => {
@@ -1338,6 +1366,55 @@ function ProfileScreen({ apiClient, authLoading, setToken, showFlash, token }) {
     }
   };
 
+  const handleDeleteAccountRequest = () => {
+    Alert.alert(
+      "Delete account?",
+      "This will delete your account and remove all personal data associated with it. Your appointments and billing history may be retained for record-keeping. This action cannot be undone.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Continue",
+          style: "destructive",
+          onPress: () => {
+            setDeletePassword("");
+            setDeleteModalVisible(true);
+          },
+        },
+      ]
+    );
+  };
+
+  const handleDeleteAccount = async () => {
+    if (deleteLoading) return;
+    const trimmedPassword = deletePassword.trim();
+    if (!trimmedPassword) {
+      if (showFlash) {
+        showFlash("error", "Please enter your password.");
+      }
+      return;
+    }
+    setDeleteLoading(true);
+    try {
+      await apiClient.post("/users/me/delete", {
+        password: trimmedPassword,
+      });
+      setDeleteModalVisible(false);
+      setDeletePassword("");
+      await forceLogout("Account deleted.");
+    } catch (err) {
+      const message =
+        err?.response?.data?.detail ||
+        err?.response?.data?.message ||
+        err?.message ||
+        "Could not delete account.";
+      if (showFlash) {
+        showFlash("error", message);
+      }
+    } finally {
+      setDeleteLoading(false);
+    }
+  };
+
   const loadProfile = useCallback(
     async (useRefresh = false) => {
       try {
@@ -1355,6 +1432,13 @@ function ProfileScreen({ apiClient, authLoading, setToken, showFlash, token }) {
 
         // 1) Load base user info
         const res = await apiClient.get("/users/me");
+        if (
+          res.data?.account_deleted === true ||
+          res.data?.detail === "account_deleted"
+        ) {
+          await forceLogout();
+          return;
+        }
 
         setUser(res.data);
         if (typeof res.data.is_provider === "boolean") {
@@ -1388,6 +1472,15 @@ function ProfileScreen({ apiClient, authLoading, setToken, showFlash, token }) {
 
         setAvatarUrl(avatar);
       } catch (err) {
+        const shouldForceLogout =
+          err?.response?.status === 401 ||
+          err?.response?.status === 403 ||
+          err?.response?.data?.detail === "account_deleted" ||
+          err?.response?.data?.account_deleted === true;
+        if (shouldForceLogout) {
+          await forceLogout();
+          return;
+        }
         console.error("Error loading profile", err);
         setError("Could not load profile.");
         if (showFlash) {
@@ -1398,7 +1491,7 @@ function ProfileScreen({ apiClient, authLoading, setToken, showFlash, token }) {
         if (useRefresh) setRefreshing(false);
       }
     },
-    [apiClient, showFlash, token]
+    [apiClient, forceLogout, showFlash, token]
   );
 
   useEffect(() => {
@@ -2063,9 +2156,86 @@ function ProfileScreen({ apiClient, authLoading, setToken, showFlash, token }) {
         </View>
       )}
 
+      <TouchableOpacity
+        style={styles.deleteAccountRow}
+        onPress={handleDeleteAccountRequest}
+      >
+        <Text style={styles.deleteAccountRowText}>Delete account</Text>
+      </TouchableOpacity>
+
       <TouchableOpacity style={styles.logoutRow} onPress={logout}>
         <Text style={styles.logoutRowText}>Logout</Text>
       </TouchableOpacity>
+
+      <Modal
+        transparent
+        animationType="fade"
+        visible={deleteModalVisible}
+        onRequestClose={() => {
+          if (!deleteLoading) {
+            setDeleteModalVisible(false);
+          }
+        }}
+      >
+        <TouchableWithoutFeedback
+          onPress={() => {
+            if (!deleteLoading) {
+              setDeleteModalVisible(false);
+            }
+          }}
+        >
+          <View style={styles.modalOverlay}>
+            <TouchableWithoutFeedback>
+              <KeyboardAvoidingView
+                behavior={Platform.OS === "ios" ? "padding" : undefined}
+                style={styles.modalCard}
+              >
+                <Text style={styles.modalTitle}>Confirm deletion</Text>
+                <Text style={styles.modalMessage}>
+                  Enter your password to delete your account.
+                </Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="Password"
+                  placeholderTextColor={colors.textSecondary}
+                  secureTextEntry
+                  autoCapitalize="none"
+                  value={deletePassword}
+                  editable={!deleteLoading}
+                  onChangeText={setDeletePassword}
+                />
+                <View style={styles.modalActions}>
+                  <TouchableOpacity
+                    style={[
+                      styles.modalButton,
+                      deleteLoading && styles.modalButtonDisabled,
+                    ]}
+                    onPress={() => setDeleteModalVisible(false)}
+                    disabled={deleteLoading}
+                  >
+                    <Text style={styles.modalButtonText}>Back</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[
+                      styles.modalButton,
+                      styles.modalDeleteButton,
+                      deleteLoading && styles.modalButtonDisabled,
+                    ]}
+                    onPress={handleDeleteAccount}
+                    disabled={deleteLoading}
+                  >
+                    {deleteLoading ? (
+                      <ActivityIndicator color={colors.error} />
+                    ) : (
+                      <Text style={styles.modalDeleteButtonText}>Delete</Text>
+                    )}
+                  </TouchableOpacity>
+                </View>
+              </KeyboardAvoidingView>
+            </TouchableWithoutFeedback>
+          </View>
+        </TouchableWithoutFeedback>
+      </Modal>
 
     </ScrollView>
     
@@ -7516,6 +7686,74 @@ cardHeartButton: {
     fontSize: 15,
     fontWeight: "600",
     color: colors.error,
+  },
+  deleteAccountRow: {
+    marginTop: 16,
+    paddingVertical: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.error,
+    backgroundColor: "transparent",
+    alignItems: "center",
+  },
+  deleteAccountRowText: {
+    fontSize: 15,
+    fontWeight: "600",
+    color: colors.error,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.65)",
+    justifyContent: "center",
+    padding: 20,
+  },
+  modalCard: {
+    backgroundColor: colors.surface,
+    borderRadius: 16,
+    padding: 20,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: "700",
+    color: colors.textPrimary,
+    marginBottom: 8,
+  },
+  modalMessage: {
+    fontSize: 14,
+    color: colors.textSecondary,
+    marginBottom: 16,
+  },
+  modalActions: {
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    marginTop: 8,
+  },
+  modalButton: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 999,
+    marginLeft: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    minWidth: 90,
+  },
+  modalButtonText: {
+    color: colors.textPrimary,
+    fontWeight: "600",
+  },
+  modalDeleteButton: {
+    borderColor: colors.error,
+  },
+  modalDeleteButtonText: {
+    color: colors.error,
+    fontWeight: "700",
+  },
+  modalButtonDisabled: {
+    opacity: 0.6,
   },
 
   toggleCard: {
