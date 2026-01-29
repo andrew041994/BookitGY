@@ -1,97 +1,219 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
-diff --git a/backend/app/crud.py b/backend/app/crud.py
-index a7dd5aa12d002217f56692764d0c2b8326fe16ee..4e9f37bd316453d5a375e597df52adc8e73bc146 100644
---- a/backend/app/crud.py
-+++ b/backend/app/crud.py
-@@ -1689,66 +1689,86 @@ def list_provider_billing_cycles(
-         else:
-             status = "Generated"
+diff --git a/mobile/App.js b/mobile/App.js
+index 00de4d1a967d3cff7aeca677878a3a4f588c4be8..56a18ace98c059afb4ffa26acd1ad687f1845e72 100644
+--- a/mobile/App.js
++++ b/mobile/App.js
+@@ -865,57 +865,68 @@ function SignupScreen({ goToLogin, goBack, showFlash }) {
+     behavior: Platform.OS === "ios" ? "padding" : "height",
+     keyboardVerticalOffset: Platform.OS === "ios" ? 40 : 0,
+   };
+   const signupValidation = useMemo(() => {
+     const errors = {};
+     const trimmedUsername = username.trim();
+     const trimmedEmail = email.trim();
+     const trimmedPhone = phone.trim();
+     const trimmedPassword = password.trim();
+     const trimmedConfirm = confirmPassword.trim();
  
-         cycles.append(
-             {
-                 "cycle_month": cycle_month,
-                 "coverage_start": cycle_month,
-                 "coverage_end": coverage_end,
-                 "invoice_date": invoice_date,
-                 "status": status,
-                 "services_total_gyd": float(services_total),
-                 "platform_fee_gyd": float(platform_fee),
-                 "bill_credits_gyd": float(bill_credits),
-                 "total_due_gyd": float(total_due),
-                 "items": items,
-             }
-         )
- 
-     return {
-         "account_number": account_number,
-         "outstanding_fees_gyd": outstanding_fees,
-         "cycles": cycles,
+     if (!trimmedUsername) errors.username = "Username is required";
+     if (!trimmedEmail) {
+       errors.email = "Email is required";
+     } else if (!isValidEmail(trimmedEmail)) {
+       errors.email = "Email is invalid";
+     }
+     if (!trimmedPhone) errors.phone = "Phone is required";
+     if (trimmedPassword.length < 8) {
+       errors.password = "Password must be at least 8 characters";
+     }
+     if (trimmedConfirm !== trimmedPassword) {
+       errors.confirmPassword = "Passwords do not match";
      }
  
++    const isSignupFormValid = Object.keys(errors).length === 0;
++
+     return {
+       errors,
+-      canSubmit: Object.keys(errors).length === 0,
++      isSignupFormValid,
+     };
+   }, [username, email, phone, password, confirmPassword]);
++  const isSignupFormValid = signupValidation.isSignupFormValid;
  
--def set_provider_bills_paid_state(db: Session, provider_id: int, is_paid: bool) -> int:
-+def set_provider_bills_paid_state(
-+    db: Session,
-+    provider_id: int,
-+    month: date,
-+    is_paid: bool,
-+) -> int:
-     provider = (
-         db.query(models.Provider)
-         .filter(models.Provider.id == provider_id)
-         .first()
-     )
-     if not provider or not provider.account_number:
-         return 0
+   const signup = async () => {
++    if (!isSignupFormValid) {
++      if (showFlash) {
++        showFlash("error", "Please complete all fields correctly");
++      } else {
++        Alert.alert("Error", "Please complete all fields correctly");
++      }
++      return;
++    }
+     const trimmedEmail = email.trim();
+     const normalizedEmail = trimmedEmail.toLowerCase();
+     const trimmedPassword = password.trim();
+     const trimmedConfirm = confirmPassword.trim();
+     const trimmedUsername = username.trim();
+     const trimmedPhone = phone.trim();
  
--    cycle_month = current_billing_cycle_month()
-+    cycle_month = date(month.year, month.month, 1)
-     billing_cycle = get_or_create_billing_cycle(db, provider.account_number, cycle_month)
-     if not billing_cycle:
-         return 0
+     // ✅ All fields required
+     if (
+       !trimmedUsername ||
+       !trimmedEmail ||
+       !trimmedPhone ||
+       !trimmedPassword ||
+       !trimmedConfirm
+     ) {
+       if (showFlash) {
+         showFlash("error", "Please fill in all fields");
+       } else {
+         Alert.alert("Error", "Please fill in all fields");
+       }
+       return;
+     }
  
-     billing_cycle.is_paid = bool(is_paid)
-     billing_cycle.paid_at = now_guyana() if is_paid else None
-+    bill_updates = {models.Bill.is_paid: bool(is_paid)}
-+    bill_paid_at = getattr(models.Bill, "paid_at", None)
-+    bill_paid_on = getattr(models.Bill, "paid_on", None)
-+    if bill_paid_at is not None:
-+        bill_updates[bill_paid_at] = now_guyana() if is_paid else None
-+    if bill_paid_on is not None:
-+        bill_updates[bill_paid_on] = now_guyana().date() if is_paid else None
-+    (
-+        db.query(models.Bill)
-+        .filter(
-+            models.Bill.provider_id == provider_id,
-+            models.Bill.month == cycle_month,
-+        )
-+        .update(bill_updates, synchronize_session="fetch")
-+    )
-     db.commit()
-     return 1
+     // ✅ Passwords must match
+     if (trimmedPassword !== trimmedConfirm) {
+@@ -1098,56 +1109,63 @@ function SignupScreen({ goToLogin, goBack, showFlash }) {
+                 },
+               ]}
+               placeholder="Confirm Password"
+               placeholderTextColor={styles.inputPlaceholder.color}
+               value={confirmPassword}
+               onChangeText={setConfirmPassword}
+               textContentType="password"
+               autoComplete="password"
+               importantForAutofill="yes"
+               secureTextEntry={true}
+               keyboardType="default"
+               autoCapitalize="none"
+               autoCorrect={false}
+               spellCheck={false}
+               underlineColorAndroid="transparent"
+               selectionColor={colors.primary}
+               cursorColor={colors.primary}
+             />
+             {signupValidation.errors.confirmPassword && (
+               <Text style={styles.inputErrorText}>
+                 {signupValidation.errors.confirmPassword}
+               </Text>
+             )}
+ 
+             <View style={{ width: "100%", marginBottom: 10 }}>
+-              <Button
+-                title="Sign Up"
++              <TouchableOpacity
++                style={[
++                  styles.signupButton,
++                  !isSignupFormValid && styles.signupButtonDisabled,
++                ]}
+                 onPress={signup}
+-                color={colors.primary}
+-                disabled={!signupValidation.canSubmit}
+-              />
++                disabled={!isSignupFormValid}
++                accessibilityRole="button"
++                accessibilityState={{ disabled: !isSignupFormValid }}
++                activeOpacity={0.8}
++              >
++                <Text style={styles.signupButtonText}>Sign Up</Text>
++              </TouchableOpacity>
+             </View>
+ 
+             {goToLogin && (
+               <View style={{ width: "100%", marginBottom: 10 }}>
+                 <Button
+                   title="Already have an account? Login"
+                   onPress={goToLogin}
+                   color={colors.primary}
+                 />
+               </View>
+             )}
+ 
+             {goBack && (
+               <View style={{ width: "100%" }}>
+                 <Button title="Back" onPress={goBack} color={colors.textMuted} />
+               </View>
+             )}
+           </View>
+         </TouchableWithoutFeedback>
+       </ScrollView>
+     </KeyboardAvoidingView>
+   );
+ }
  
  
- def current_billing_cycle_month(reference: datetime | date | None = None) -> date:
-     if reference is None:
-         reference = now_guyana()
-     if isinstance(reference, datetime):
-         reference = reference.date()
-     return date(reference.year, reference.month, 1)
+@@ -8445,50 +8463,71 @@ billingTotalsValue: {
+ authPrimaryButtonText: {
+   color: colors.textPrimary,
+   fontSize: 16,
+   fontWeight: "600",
+ },
  
+ authSecondaryButton: {
+   backgroundColor: "transparent",
+   paddingVertical: 14,
+   borderRadius: 6,
+   alignItems: "center",
+   borderWidth: 1,
+   borderColor: colors.primary,
+   shadowColor: "#000",
+   shadowOpacity: 0.15,
+   shadowOffset: { width: 0, height: 2 },
+   shadowRadius: 3,
+   elevation: 3,
+ },
  
- def get_billing_cycle_for_account(
-     db: Session, account_number: str | None, cycle_month: date
- ) -> Optional[models.BillingCycle]:
-     if not account_number:
-         return None
-     return (
-         db.query(models.BillingCycle)
-         .filter(
-             models.BillingCycle.account_number == account_number,
-             models.BillingCycle.cycle_month == cycle_month,
-         )
-         .first()
-     )
+ authSecondaryButtonText: {
+   color: colors.primary,
+   fontSize: 16,
+   fontWeight: "600",
+ },
++signupButton: {
++  backgroundColor: colors.primary,
++  paddingVertical: 14,
++  borderRadius: 6,
++  alignItems: "center",
++  marginBottom: 12,
++  shadowColor: "#000",
++  shadowOpacity: 0.15,
++  shadowOffset: { width: 0, height: 2 },
++  shadowRadius: 3,
++  elevation: 3,
++},
++signupButtonDisabled: {
++  backgroundColor: colors.textMuted,
++  opacity: 0.6,
++},
++signupButtonText: {
++  color: colors.textPrimary,
++  fontSize: 16,
++  fontWeight: "600",
++},
+ 
+   avoider: {
+     flex: 1,
+     backgroundColor: colors.background,
+   },
+   scrollContent: {
+     flexGrow: 1,
+   },
+   container: {
+     flex: 1,
+     paddingHorizontal: 24,
+     alignItems: "center",
+     justifyContent: "center",
+   },
+   logoWrapper: {
+     alignItems: "center",
+     marginBottom: 24,
+   },
+   logo: {
+     width: 260,
+     height: 260,
+     resizeMode: "contain",
+   },
+   title: {
+     fontSize: 28,
  
 EOF
 )

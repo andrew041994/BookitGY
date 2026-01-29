@@ -887,13 +887,24 @@ function SignupScreen({ goToLogin, goBack, showFlash }) {
       errors.confirmPassword = "Passwords do not match";
     }
 
+    const isSignupFormValid = Object.keys(errors).length === 0;
+
     return {
       errors,
-      canSubmit: Object.keys(errors).length === 0,
+      isSignupFormValid,
     };
   }, [username, email, phone, password, confirmPassword]);
+  const isSignupFormValid = signupValidation.isSignupFormValid;
 
   const signup = async () => {
+    if (!isSignupFormValid) {
+      if (showFlash) {
+        showFlash("error", "Please complete all fields correctly");
+      } else {
+        Alert.alert("Error", "Please complete all fields correctly");
+      }
+      return;
+    }
     const trimmedEmail = email.trim();
     const normalizedEmail = trimmedEmail.toLowerCase();
     const trimmedPassword = password.trim();
@@ -1120,12 +1131,19 @@ function SignupScreen({ goToLogin, goBack, showFlash }) {
             )}
 
             <View style={{ width: "100%", marginBottom: 10 }}>
-              <Button
-                title="Sign Up"
+              <TouchableOpacity
+                style={[
+                  styles.signupButton,
+                  !isSignupFormValid && styles.signupButtonDisabled,
+                ]}
                 onPress={signup}
-                color={colors.primary}
-                disabled={!signupValidation.canSubmit}
-              />
+                disabled={!isSignupFormValid}
+                accessibilityRole="button"
+                accessibilityState={{ disabled: !isSignupFormValid }}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.signupButtonText}>Sign Up</Text>
+              </TouchableOpacity>
             </View>
 
             {goToLogin && (
@@ -8464,6 +8482,27 @@ authSecondaryButton: {
 
 authSecondaryButtonText: {
   color: colors.primary,
+  fontSize: 16,
+  fontWeight: "600",
+},
+signupButton: {
+  backgroundColor: colors.primary,
+  paddingVertical: 14,
+  borderRadius: 6,
+  alignItems: "center",
+  marginBottom: 12,
+  shadowColor: "#000",
+  shadowOpacity: 0.15,
+  shadowOffset: { width: 0, height: 2 },
+  shadowRadius: 3,
+  elevation: 3,
+},
+signupButtonDisabled: {
+  backgroundColor: colors.textMuted,
+  opacity: 0.6,
+},
+signupButtonText: {
+  color: colors.textPrimary,
   fontSize: 16,
   fontWeight: "600",
 },

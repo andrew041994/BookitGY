@@ -535,7 +535,7 @@ def notify_booking_created(
     if customer.whatsapp:
         send_whatsapp_template(
         to=customer.whatsapp,
-        template_sid=os.environ["WA_TPL_BOOKING_CONFIRMED_SID"],
+        template_sid=os.environ["TWILIO_WA_TPL_BOOKING_CONFIRMED"],
         variables={
             "1": service.name,
             "2": get_display_name(provider_user),
@@ -549,7 +549,7 @@ def notify_booking_created(
     if provider_user.whatsapp:
         send_whatsapp_template(
         to=provider_user.whatsapp,
-        template_sid=os.environ["WA_TPL_PROVIDER_NEW_BOOKING_SID"],
+        template_sid=os.environ["TWILIO_WA_TPL_PROVIDER_NEW_BOOKING"],
         variables={
             "1": get_display_name(customer),
             "2": service.name,
@@ -2253,7 +2253,7 @@ def cancel_booking_for_customer(
     if provider_user and service and customer and provider_user.whatsapp:
      send_whatsapp_template(
         to=provider_user.whatsapp,
-        template_sid=os.environ["WA_TPL_PROVIDER_BOOKING_CANCELLED_BY_CUSTOMER_SID"],
+        template_sid=os.environ["TWILIO_WA_TPL_PROVIDER_CUSTOMER_CANCELLED"],
         variables={
             "1": get_display_name(customer),
             "2": service.name,
@@ -2337,7 +2337,7 @@ def cancel_booking_for_provider(
     if customer and service and customer.whatsapp:
      send_whatsapp_template(
         to=customer.whatsapp,
-        template_sid=os.environ["WA_TPL_CUSTOMER_BOOKING_CANCELLED_BY_PROVIDER_SID"],
+        template_sid=os.environ["TWILIO_WA_TPL_CUSTOMER_PROVIDER_CANCELLED"],
         variables={
             "1": service.name,
             "2": booking.start_time.strftime("%d %b %Y at %I:%M %p"),
