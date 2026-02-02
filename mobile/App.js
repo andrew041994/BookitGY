@@ -4321,10 +4321,9 @@ const parseServiceNumber = useCallback((value) => {
   return Number.isFinite(numberValue) ? numberValue : null;
 }, []);
 
-const validateServiceFields = useCallback((name, price, duration, description) => {
-  const errors = { name: "", price: "", duration: "", description: "" };
+const validateServiceFields = useCallback((name, price, duration) => {
+  const errors = { name: "", price: "", duration: "" };
   const trimmedName = String(name || "").trim();
-  const trimmedDescription = String(description || "").trim();
   const priceNumber = parseServiceNumber(price);
   const durationNumber = parseServiceNumber(duration);
 
@@ -4340,23 +4339,18 @@ const validateServiceFields = useCallback((name, price, duration, description) =
     errors.duration = "Enter a duration greater than 0.";
   }
 
-  if (!trimmedDescription) {
-    errors.description = "Description is required.";
-  }
-
   return errors;
 }, [parseServiceNumber]);
 
 const serviceErrors = useMemo(
-  () => validateServiceFields(newName, newPrice, newDuration, newDescription),
-  [newName, newPrice, newDuration, newDescription, validateServiceFields]
+  () => validateServiceFields(newName, newPrice, newDuration),
+  [newName, newPrice, newDuration, validateServiceFields]
 );
 
 const isServiceFormValid =
   !serviceErrors.name &&
   !serviceErrors.price &&
-  !serviceErrors.duration &&
-  !serviceErrors.description;
+  !serviceErrors.duration;
 
 
 const handleShareProfileLink = async () => {
@@ -4821,17 +4815,11 @@ const to24Hour = (time12) => {
   if (isSavingService) return;
   if (!isServiceFormValid) return;
 
-  const currentErrors = validateServiceFields(
-    newName,
-    newPrice,
-    newDuration,
-    newDescription
-  );
+  const currentErrors = validateServiceFields(newName, newPrice, newDuration);
   const isValid =
     !currentErrors.name &&
     !currentErrors.price &&
-    !currentErrors.duration &&
-    !currentErrors.description;
+    !currentErrors.duration;
 
   if (!isValid) {
     if (showFlash) {
@@ -4839,8 +4827,7 @@ const to24Hour = (time12) => {
         "error",
         currentErrors.name ||
           currentErrors.price ||
-          currentErrors.duration ||
-          currentErrors.description
+          currentErrors.duration
       );
     }
     return;
@@ -5718,7 +5705,6 @@ const loadProviderSummary = async () => {
               <TextInput
                 style={[
                   styles.input,
-                  serviceErrors.description ? styles.inputError : null,
                   { height: 80 },
                 ]}
                 placeholder="Description"
@@ -5727,11 +5713,6 @@ const loadProviderSummary = async () => {
                 onChangeText={setNewDescription}
                 multiline
               />
-              {serviceErrors.description ? (
-                <Text style={styles.inputErrorText}>
-                  {serviceErrors.description}
-                </Text>
-              ) : null}
 
               <View style={{ width: "100%", marginTop: 4 }}>
                 <TouchableOpacity

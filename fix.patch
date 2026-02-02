@@ -1,67 +1,9 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
 diff --git a/mobile/App.js b/mobile/App.js
-index 56af2e9ba9c186283bd01cff584fdd6fe76c3683..c281cfe69849684ffc251a38b7e5139865448664 100644
+index c281cfe69849684ffc251a38b7e5139865448664..9a97a309b21664439dd2185c59b8552f4211eedf 100644
 --- a/mobile/App.js
 +++ b/mobile/App.js
-@@ -4238,50 +4238,51 @@ function SearchScreen({ token, showFlash, navigation, route, toggleFavorite, isF
-                         {bookingLoading ? "Booking..." : "Book Appointment"}
-                       </Text>
-                     </TouchableOpacity>
-                   </View>
-                 )}
-               </ScrollView>
-               </SafeAreaView>
-          );
-       }
- 
- 
- 
- 
- 
- 
- function ProviderDashboardScreen({ apiClient, token, showFlash }) {
-   // const providerLabel = profile?.full_name || "Provider";
-   const [services, setServices] = useState([]);
-   const [loading, setLoading] = useState(true);
-   const [servicesError, setServicesError] = useState("");
-   const [adding, setAdding] = useState(false);
-   const [newName, setNewName] = useState("");
-   const [newPrice, setNewPrice] = useState("");
-   const [newDuration, setNewDuration] = useState("30");
-   const [newDescription, setNewDescription] = useState("");
-+  const [isSavingService, setIsSavingService] = useState(false);
-   const [bookings, setBookings] = useState([]);
-   const [bookingsLoading, setBookingsLoading] = useState(true);
-   const [bookingsError, setBookingsError] = useState("");
-   const [workingHours, setWorkingHours] = useState([]);
-   const [hoursLoading, setHoursLoading] = useState(false);
-   const [hoursError, setHoursError] = useState("");
-   const [showHours, setShowHours] = useState(false);
-   const [hoursFlash, setHoursFlash] = useState(null);
-   const [refreshing, setRefreshing] = useState(false);
-   const [showProfileEditor, setShowProfileEditor] = useState(false);
-   const [profileLoading, setProfileLoading] = useState(false);
-   const [profileError, setProfileError] = useState("");
-   const [profile, setProfile] = useState({
-     full_name: "",
-     phone: "",
-     whatsapp: "",
-     location: "",
-     bio: "",
-     professions: [],
-     username: "",
-   });
-   const [provider, setProvider] = useState(null);  // 👈 add this
- 
- 
- const providerLabel =
-@@ -4292,78 +4293,92 @@ const providerLabel =
- 
- const [customProfession, setCustomProfession] = useState("");
- const [providerSummary, setProviderSummary] = useState(null);
- const [todayBookings, setTodayBookings] = useState([]);
- const [todayLoading, setTodayLoading] = useState(false);
- const [todayError, setTodayError] = useState("");
+@@ -4299,86 +4299,80 @@ const [todayError, setTodayError] = useState("");
  const [upcomingBookings, setUpcomingBookings] = useState([]);
  const [upcomingLoading, setUpcomingLoading] = useState(false);
  const [upcomingError, setUpcomingError] = useState("");
@@ -81,59 +23,53 @@ index 56af2e9ba9c186283bd01cff584fdd6fe76c3683..c281cfe69849684ffc251a38b7e51398
    token?.username;
  const providerProfileLink = buildProviderPublicLink(providerUsername);
  
--const validateServiceFields = useCallback((name, price, duration) => {
--  const errors = { name: "", price: "", duration: "" };
--  const trimmedName = name.trim();
--  const priceNumber = Number(price);
--  const durationNumber = Number(duration);
-+const parseServiceNumber = useCallback((value) => {
-+  const normalized = String(value || "").replace(/[,\s]/g, "");
-+  const numberValue = Number(normalized);
-+  return Number.isFinite(numberValue) ? numberValue : null;
-+}, []);
-+
-+const validateServiceFields = useCallback((name, price, duration, description) => {
-+  const errors = { name: "", price: "", duration: "", description: "" };
-+  const trimmedName = String(name || "").trim();
-+  const trimmedDescription = String(description || "").trim();
-+  const priceNumber = parseServiceNumber(price);
-+  const durationNumber = parseServiceNumber(duration);
+ const parseServiceNumber = useCallback((value) => {
+   const normalized = String(value || "").replace(/[,\s]/g, "");
+   const numberValue = Number(normalized);
+   return Number.isFinite(numberValue) ? numberValue : null;
+ }, []);
+ 
+-const validateServiceFields = useCallback((name, price, duration, description) => {
+-  const errors = { name: "", price: "", duration: "", description: "" };
++const validateServiceFields = useCallback((name, price, duration) => {
++  const errors = { name: "", price: "", duration: "" };
+   const trimmedName = String(name || "").trim();
+-  const trimmedDescription = String(description || "").trim();
+   const priceNumber = parseServiceNumber(price);
+   const durationNumber = parseServiceNumber(duration);
  
    if (!trimmedName) {
      errors.name = "Service name is required.";
    }
  
--  if (!price || Number.isNaN(priceNumber) || priceNumber <= 0) {
-+  if (!priceNumber || priceNumber <= 0) {
+   if (!priceNumber || priceNumber <= 0) {
      errors.price = "Enter a price greater than 0.";
    }
  
--  if (!duration || Number.isNaN(durationNumber) || durationNumber <= 0) {
-+  if (!durationNumber || durationNumber <= 0) {
+   if (!durationNumber || durationNumber <= 0) {
      errors.duration = "Enter a duration greater than 0.";
    }
  
-+  if (!trimmedDescription) {
-+    errors.description = "Description is required.";
-+  }
-+
+-  if (!trimmedDescription) {
+-    errors.description = "Description is required.";
+-  }
+-
    return errors;
--}, []);
-+}, [parseServiceNumber]);
+ }, [parseServiceNumber]);
  
  const serviceErrors = useMemo(
--  () => validateServiceFields(newName, newPrice, newDuration),
--  [newName, newPrice, newDuration, validateServiceFields]
-+  () => validateServiceFields(newName, newPrice, newDuration, newDescription),
-+  [newName, newPrice, newDuration, newDescription, validateServiceFields]
+-  () => validateServiceFields(newName, newPrice, newDuration, newDescription),
+-  [newName, newPrice, newDuration, newDescription, validateServiceFields]
++  () => validateServiceFields(newName, newPrice, newDuration),
++  [newName, newPrice, newDuration, validateServiceFields]
  );
  
  const isServiceFormValid =
--  !serviceErrors.name && !serviceErrors.price && !serviceErrors.duration;
-+  !serviceErrors.name &&
-+  !serviceErrors.price &&
-+  !serviceErrors.duration &&
-+  !serviceErrors.description;
+   !serviceErrors.name &&
+   !serviceErrors.price &&
+-  !serviceErrors.duration &&
+-  !serviceErrors.description;
++  !serviceErrors.duration;
  
  
  const handleShareProfileLink = async () => {
@@ -159,10 +95,7 @@ index 56af2e9ba9c186283bd01cff584fdd6fe76c3683..c281cfe69849684ffc251a38b7e51398
  };
  
  
-@@ -4781,123 +4796,134 @@ const to24Hour = (time12) => {
-       if (
-         isNaN(h) ||
-         isNaN(m) ||
+@@ -4799,70 +4793,63 @@ const to24Hour = (time12) => {
          h < 0 ||
          h > 23 ||
          m < 0 ||
@@ -185,44 +118,42 @@ index 56af2e9ba9c186283bd01cff584fdd6fe76c3683..c281cfe69849684ffc251a38b7e51398
  
  
    const handleAddService = async () => {
-+  if (isSavingService) return;
-+  if (!isServiceFormValid) return;
-+
-   const currentErrors = validateServiceFields(
-     newName,
-     newPrice,
--    newDuration
-+    newDuration,
-+    newDescription
-   );
+   if (isSavingService) return;
+   if (!isServiceFormValid) return;
+ 
+-  const currentErrors = validateServiceFields(
+-    newName,
+-    newPrice,
+-    newDuration,
+-    newDescription
+-  );
++  const currentErrors = validateServiceFields(newName, newPrice, newDuration);
    const isValid =
      !currentErrors.name &&
      !currentErrors.price &&
--    !currentErrors.duration;
-+    !currentErrors.duration &&
-+    !currentErrors.description;
+-    !currentErrors.duration &&
+-    !currentErrors.description;
++    !currentErrors.duration;
  
    if (!isValid) {
      if (showFlash) {
        showFlash(
          "error",
--        currentErrors.name || currentErrors.price || currentErrors.duration
-+        currentErrors.name ||
-+          currentErrors.price ||
-+          currentErrors.duration ||
-+          currentErrors.description
+         currentErrors.name ||
+           currentErrors.price ||
+-          currentErrors.duration ||
+-          currentErrors.description
++          currentErrors.duration
        );
      }
      return;
    }
  
--  const priceNumber = Number(newPrice);
--  const durationNumber = Number(newDuration);
-+  const priceNumber = parseServiceNumber(newPrice);
-+  const durationNumber = parseServiceNumber(newDuration);
+   const priceNumber = parseServiceNumber(newPrice);
+   const durationNumber = parseServiceNumber(newDuration);
  
    try {
-+    setIsSavingService(true);
+     setIsSavingService(true);
      const authToken = await getAuthToken(token);
      if (!authToken) {
        if (showFlash) showFlash("error", "No access token found.");
@@ -238,70 +169,7 @@ index 56af2e9ba9c186283bd01cff584fdd6fe76c3683..c281cfe69849684ffc251a38b7e51398
  
      // ✅ Create service on backend and get the created record back
      const res = await axios.post(
-       `${API}/providers/me/services`,
-       payload,
-       {
-         headers: {
-           Authorization: `Bearer ${authToken}`,
-         },
-       }
-     );
- 
-     const created = res.data;
- 
-     // ✅ Optimistically add to local list so it shows immediately
-     setServices((prev) => {
-       const prevArr = Array.isArray(prev) ? prev : [];
-       return [...prevArr, created];
-     });
- 
-     if (showFlash) {
-       showFlash("success", "Service created");
-     }
- 
-     // Reset form + close add UI
-     resetForm();
-     setAdding(false);
- 
-     // Optional: background refresh to stay in sync with backend
-     loadServices();
-   } catch (err) {
-     console.log("Error creating service", err.response?.data || err.message);
-     if (showFlash) {
-       const detail =
-         err.response?.data?.detail || "Could not create service.";
-       showFlash("error", detail);
-     }
-+  } finally {
-+    setIsSavingService(false);
-   }
- };
- 
- 
-   const handleDeleteService = async (serviceId) => {
-     try {
-       const authToken = await getAuthToken(token);
-       if (!authToken) {
-         if (showFlash) showFlash("error", "No access token found.");
-         return;
-       }
- 
-       const res = await axios.delete(`${API}/providers/me/services/${serviceId}`, {
-         headers: {
-           Authorization: `Bearer ${authToken}`,
-         },
-       });
- 
-       const responseData = res?.data || {};
-       const responseStatus = `${responseData.status || responseData.result || ""}`.toLowerCase();
-       const responseMessage =
-         responseData.detail || responseData.message || responseData.error || "";
-       const responseText = `${responseStatus} ${responseMessage}`.toLowerCase();
-       const hasBookings = responseText.includes("booking");
- 
-@@ -5668,65 +5694,98 @@ const loadProviderSummary = async () => {
-                 onChangeText={setNewPrice}
-                 keyboardType="numeric"
+@@ -5696,64 +5683,58 @@ const loadProviderSummary = async () => {
                />
                {serviceErrors.price ? (
                  <Text style={styles.inputErrorText}>
@@ -325,163 +193,47 @@ index 56af2e9ba9c186283bd01cff584fdd6fe76c3683..c281cfe69849684ffc251a38b7e51398
                  </Text>
                ) : null}
                <TextInput
--                style={[styles.input, { height: 80 }]}
-+                style={[
-+                  styles.input,
-+                  serviceErrors.description ? styles.inputError : null,
-+                  { height: 80 },
-+                ]}
+                 style={[
+                   styles.input,
+-                  serviceErrors.description ? styles.inputError : null,
+                   { height: 80 },
+                 ]}
                  placeholder="Description"
                  placeholderTextColor={colors.textSecondary}
                  value={newDescription}
                  onChangeText={setNewDescription}
                  multiline
                />
-+              {serviceErrors.description ? (
-+                <Text style={styles.inputErrorText}>
-+                  {serviceErrors.description}
-+                </Text>
-+              ) : null}
+-              {serviceErrors.description ? (
+-                <Text style={styles.inputErrorText}>
+-                  {serviceErrors.description}
+-                </Text>
+-              ) : null}
  
                <View style={{ width: "100%", marginTop: 4 }}>
--                <Button
--                  title="Save service"
-+                <TouchableOpacity
-+                  style={[
-+                    styles.saveServiceButton,
-+                    isServiceFormValid && !isSavingService
-+                      ? styles.saveServiceButtonEnabled
-+                      : styles.saveServiceButtonDisabled,
-+                  ]}
+                 <TouchableOpacity
+                   style={[
+                     styles.saveServiceButton,
+                     isServiceFormValid && !isSavingService
+                       ? styles.saveServiceButtonEnabled
+                       : styles.saveServiceButtonDisabled,
+                   ]}
                    onPress={handleAddService}
--                  color={colors.primary}
--                  disabled={!isServiceFormValid}
--                />
-+                  disabled={!isServiceFormValid || isSavingService}
-+                  accessibilityRole="button"
-+                  accessibilityState={{
-+                    disabled: !isServiceFormValid || isSavingService,
-+                  }}
-+                  activeOpacity={0.8}
-+                >
-+                  {isSavingService ? (
-+                    <View style={styles.saveServiceButtonContent}>
-+                      <ActivityIndicator
-+                        size="small"
-+                        color={colors.textPrimary}
-+                        style={styles.saveServiceButtonSpinner}
-+                      />
-+                      <Text style={styles.saveServiceButtonText}>Saving…</Text>
-+                    </View>
-+                  ) : (
-+                    <Text style={styles.saveServiceButtonText}>
-+                      Save service
-+                    </Text>
-+                  )}
-+                </TouchableOpacity>
-               </View>
-             </View>
-           )}
- 
-           {loading && (
-             <View style={{ paddingVertical: 10 }}>
-               <ActivityIndicator />
-               <Text style={styles.serviceMeta}>Loading services…</Text>
-             </View>
-           )}
- 
-           {!loading && servicesError ? (
-             <Text style={styles.errorText}>{servicesError}</Text>
-           ) : null}
- 
-           {!loading && !servicesError && services.length === 0 && !adding && (
-             <Text style={styles.serviceHint}>
-               You have no services yet. Tap “+ Add” to create your first
-               service.
-             </Text>
-           )}
- 
-            {!loading &&
-             !servicesError &&
-             (Array.isArray(services) ? services : []).map((s) => (
-@@ -8817,50 +8876,77 @@ authSecondaryButtonText: {
-   color: colors.primary,
-   fontSize: 16,
-   fontWeight: "600",
- },
- signupButton: {
-   backgroundColor: colors.primary,
-   paddingVertical: 14,
-   borderRadius: 6,
-   alignItems: "center",
-   marginBottom: 12,
-   shadowColor: "#000",
-   shadowOpacity: 0.15,
-   shadowOffset: { width: 0, height: 2 },
-   shadowRadius: 3,
-   elevation: 3,
- },
- signupButtonDisabled: {
-   backgroundColor: colors.textMuted,
-   opacity: 0.6,
- },
- signupButtonText: {
-   color: colors.textPrimary,
-   fontSize: 16,
-   fontWeight: "600",
- },
-+saveServiceButton: {
-+  paddingVertical: 12,
-+  borderRadius: 6,
-+  alignItems: "center",
-+  justifyContent: "center",
-+},
-+saveServiceButtonEnabled: {
-+  backgroundColor: colors.primary,
-+  opacity: 1,
-+},
-+saveServiceButtonDisabled: {
-+  backgroundColor: colors.textMuted,
-+  opacity: 0.6,
-+},
-+saveServiceButtonContent: {
-+  flexDirection: "row",
-+  alignItems: "center",
-+  justifyContent: "center",
-+},
-+saveServiceButtonSpinner: {
-+  marginRight: 8,
-+},
-+saveServiceButtonText: {
-+  color: colors.textPrimary,
-+  fontSize: 16,
-+  fontWeight: "600",
-+},
- signupTextButton: {
-   alignItems: "center",
-   paddingVertical: 8,
- },
- signupTextButtonDisabled: {
-   opacity: 0.4,
- },
- signupTextButtonText: {
-   color: colors.primary,
-   fontSize: 16,
-   fontWeight: "600",
- },
- 
-   avoider: {
-     flex: 1,
-     backgroundColor: colors.background,
-   },
-   scrollContent: {
-     flexGrow: 1,
-   },
-   container: {
-     flex: 1,
-     paddingHorizontal: 24,
-     alignItems: "center",
-     justifyContent: "center",
+                   disabled={!isServiceFormValid || isSavingService}
+                   accessibilityRole="button"
+                   accessibilityState={{
+                     disabled: !isServiceFormValid || isSavingService,
+                   }}
+                   activeOpacity={0.8}
+                 >
+                   {isSavingService ? (
+                     <View style={styles.saveServiceButtonContent}>
+                       <ActivityIndicator
+                         size="small"
+                         color={colors.textPrimary}
+                         style={styles.saveServiceButtonSpinner}
+                       />
+                       <Text style={styles.saveServiceButtonText}>Saving…</Text>
  
 EOF
 )
