@@ -5193,8 +5193,6 @@ const saveProviderProfile = async () => {
     // ✅ Show success flash in the green bar
     setHoursFlash({ type: "success", message: "Provider profile saved" });
     setTimeout(() => setHoursFlash(null), 4000);
-
-    if (showFlash) showFlash("success", "Provider profile saved");
   } catch (err) {
     console.log("Error saving provider profile", err.response?.data || err.message);
 

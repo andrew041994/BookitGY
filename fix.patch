@@ -1,223 +1,61 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
 diff --git a/mobile/App.js b/mobile/App.js
-index 9a97a309b21664439dd2185c59b8552f4211eedf..8a3ec5cc73c1a969f24c53a778ff1b015f113e64 100644
+index 8a3ec5cc73c1a969f24c53a778ff1b015f113e64..37ff397a56b68486d583ab0edf453f17ba71ceb6 100644
 --- a/mobile/App.js
 +++ b/mobile/App.js
-@@ -841,104 +841,114 @@ function ForgotPasswordScreen({ goToLogin, goBack, showFlash }) {
-             )}
- 
-             {goBack && (
-               <View style={{ width: "100%" }}>
-                 <Button title="Back" onPress={goBack} color={colors.textMuted} />
-               </View>
-             )}
-           </View>
-         </TouchableWithoutFeedback>
-       </ScrollView>
-     </KeyboardAvoidingView>
-   );
- }
- 
- 
- 
- 
- function SignupScreen({ goToLogin, goBack, showFlash }) {
-   const [email, setEmail] = useState("");
-   const [password, setPassword] = useState("");
-   const [confirmPassword, setConfirmPassword] = useState("");
-   const [username, setUsername] = useState("");
-   const [phone, setPhone] = useState("");
-   const [isProvider, setIsProvider] = useState(false); // 👈 new
-   const passwordRules = {
--    length: password.length >= 8,
-+    length: password.length >= 5,
-     lower: /[a-z]/.test(password),
-     upper: /[A-Z]/.test(password),
--    number: /[0-9]/.test(password),
--    special: /[^A-Za-z0-9]/.test(password),
-   };
-   const passwordStrong = Object.values(passwordRules).every(Boolean);
-   const keyboardWrapperProps = {
-     behavior: Platform.OS === "ios" ? "padding" : "height",
-     keyboardVerticalOffset: Platform.OS === "ios" ? 40 : 0,
-   };
-   const signupValidation = useMemo(() => {
-     const errors = {};
-     const trimmedUsername = username.trim();
-     const trimmedEmail = email.trim();
-     const trimmedPhone = phone.trim();
-     const trimmedPassword = password.trim();
-     const trimmedConfirm = confirmPassword.trim();
-     const phoneDigitsOnly = /^\d+$/;
- 
-     if (!trimmedUsername) errors.username = "Username is required";
-     if (!trimmedEmail) {
-       errors.email = "Email is required";
-     } else if (!isValidEmail(trimmedEmail)) {
-       errors.email = "Email is invalid";
-     }
-     if (!trimmedPhone) errors.phone = "Phone is required";
-     if (!passwordStrong) {
--      errors.password = "Password must meet all requirements";
-+      errors.password =
-+        "Password must be at least 5 characters and include 1 uppercase and 1 lowercase letter.";
-     }
-     if (!trimmedConfirm || trimmedConfirm !== trimmedPassword) {
-       errors.confirmPassword = "Passwords do not match";
-     }
- 
-     const signupIsValid =
-       trimmedUsername.length > 0 &&
-       trimmedEmail.length > 0 &&
-       trimmedEmail.includes("@") &&
-       isValidEmail(trimmedEmail) &&
-       trimmedPhone.length > 0 &&
-       phoneDigitsOnly.test(trimmedPhone) &&
-       passwordStrong &&
-       trimmedConfirm.length > 0 &&
-       trimmedPassword === trimmedConfirm;
- 
-     return {
-       errors,
-       signupIsValid,
-     };
-   }, [username, email, phone, password, confirmPassword, passwordStrong]);
-   const signupIsValid = signupValidation.signupIsValid;
- 
-   const signup = async () => {
--    if (!signupIsValid) return;
-+    if (!signupIsValid) {
-+      if (!passwordStrong) {
-+        const message =
-+          "Password must be at least 5 characters and include 1 uppercase and 1 lowercase letter.";
-+        if (showFlash) {
-+          showFlash("error", message);
-+        } else {
-+          Alert.alert("Error", message);
-+        }
-+      }
-+      return;
-+    }
- 
-     const trimmedEmail = email.trim();
-     const normalizedEmail = trimmedEmail.toLowerCase();
-     const trimmedPassword = password.trim();
-     const trimmedConfirm = confirmPassword.trim();
-     const trimmedUsername = username.trim();
-     const trimmedPhone = phone.trim();
- 
-     // ✅ All fields required
-     if (
-       !trimmedUsername ||
-       !trimmedEmail ||
-       !trimmedPhone ||
-       !trimmedPassword ||
-       !trimmedConfirm
-     ) {
-       if (showFlash) {
-         showFlash("error", "Please fill in all fields");
-       } else {
-         Alert.alert("Error", "Please fill in all fields");
+@@ -5171,52 +5171,50 @@ const saveProviderProfile = async () => {
+     // ✅ Save provider profile to backend
+     const res = await axios.put(
+       `${API}/providers/me/profile`,
+       payload,
+       {
+         headers: {
+           Authorization: `Bearer ${authToken}`,
+         },
        }
-       return;
+     );
+ 
+     // ✅ Update local state from server response so UI reflects what’s saved
+     setProfile({
+       full_name: res.data.full_name || "",
+       phone: res.data.phone || "",
+       whatsapp: res.data.whatsapp || "",
+       location: res.data.location || "",
+       bio: res.data.bio || "",
+       professions: res.data.professions || [],
+       username: res.data.username || "",
+     });
+ 
+     // ✅ Show success flash in the green bar
+     setHoursFlash({ type: "success", message: "Provider profile saved" });
+     setTimeout(() => setHoursFlash(null), 4000);
+-
+-    if (showFlash) showFlash("success", "Provider profile saved");
+   } catch (err) {
+     console.log("Error saving provider profile", err.response?.data || err.message);
+ 
+     setHoursFlash({ type: "error", message: "Provider profile not saved" });
+     setTimeout(() => setHoursFlash(null), 4000);
+ 
+     if (showFlash) {
+       const detail =
+         err.response?.data?.detail || "Could not save provider profile.";
+       showFlash("error", detail);
      }
+   }
+ };
  
-     // ✅ Passwords must match
-@@ -1092,91 +1102,71 @@ function SignupScreen({ goToLogin, goBack, showFlash }) {
-               placeholder="Password"
-               placeholderTextColor={styles.inputPlaceholder.color}
-               value={password}
-               onChangeText={setPassword}
-               textContentType="password"
-               autoComplete="password"
-               importantForAutofill="yes"
-               secureTextEntry={true}
-               keyboardType="default"
-               autoCapitalize="none"
-               autoCorrect={false}
-               spellCheck={false}
-               underlineColorAndroid="transparent"
-               selectionColor={colors.primary}
-               cursorColor={colors.primary}
-             />
-             <View style={styles.passwordRequirements}>
-               <Text
-                 style={[
-                   styles.passwordRequirement,
-                   passwordRules.length
-                     ? styles.passwordRequirementMet
-                     : styles.passwordRequirementUnmet,
-                 ]}
-               >
--                At least 8 characters
-+                At least 5 characters
-               </Text>
-               <Text
-                 style={[
-                   styles.passwordRequirement,
-                   passwordRules.lower
-                     ? styles.passwordRequirementMet
-                     : styles.passwordRequirementUnmet,
-                 ]}
-               >
--                One lowercase letter (a–z)
-+                At least 1 lowercase letter
-               </Text>
-               <Text
-                 style={[
-                   styles.passwordRequirement,
-                   passwordRules.upper
-                     ? styles.passwordRequirementMet
-                     : styles.passwordRequirementUnmet,
-                 ]}
-               >
--                One uppercase letter (A–Z)
--              </Text>
--              <Text
--                style={[
--                  styles.passwordRequirement,
--                  passwordRules.number
--                    ? styles.passwordRequirementMet
--                    : styles.passwordRequirementUnmet,
--                ]}
--              >
--                One number (0–9)
--              </Text>
--              <Text
--                style={[
--                  styles.passwordRequirement,
--                  passwordRules.special
--                    ? styles.passwordRequirementMet
--                    : styles.passwordRequirementUnmet,
--                ]}
--              >
--                One special character (!@#…)
-+                At least 1 uppercase letter
-               </Text>
-             </View>
-             {signupValidation.errors.password && (
-               <Text style={styles.inputErrorText}>
-                 {signupValidation.errors.password}
-               </Text>
-             )}
+ const pickAvatar = async () => {
+   try {
+     const result = await ImagePicker.launchImageLibraryAsync({
+       mediaTypes: ImagePicker.MediaTypeOptions.Images,
+       allowsEditing: true,
+       aspect: [1, 1],
+       quality: 1,
+     });
  
-             <TextInput
-               style={[
-                 styles.input,
-                 signupValidation.errors.confirmPassword ? styles.inputError : null,
-                 Platform.OS === "android" && {
-                   fontFamily: "sans-serif",
-                   letterSpacing: 0,
-                   includeFontPadding: false,
-                 },
-               ]}
-               placeholder="Confirm Password"
-               placeholderTextColor={styles.inputPlaceholder.color}
-               value={confirmPassword}
-               onChangeText={setConfirmPassword}
-               textContentType="password"
-               autoComplete="password"
-               importantForAutofill="yes"
+     if (result.canceled) return;
+ 
  
 EOF
 )
