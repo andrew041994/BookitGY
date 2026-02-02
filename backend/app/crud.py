@@ -14,6 +14,7 @@ import json
 from . import models, schemas
 from typing import Optional
 from dotenv import load_dotenv, find_dotenv
+from app.utils.passwords import validate_password
 from app.utils.time import now_guyana, today_start_guyana, today_end_guyana
 
 load_dotenv(find_dotenv(), override=False)
@@ -584,6 +585,7 @@ def notify_booking_created(
 
 def create_user(db: Session, user: schemas.UserCreate) -> models.User:
     """Create a new user with hashed password."""
+    validate_password(user.password)
     hashed = hash_password(user.password)
     user_data = user.dict(exclude={"password"})
     user_data["username"] = normalize_username(user.username)

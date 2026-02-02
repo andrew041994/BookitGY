@@ -46,13 +46,13 @@ def test_suspended_provider_can_log_in(db_session):
         crud,
         email="provider@example.com",
         username="provider_login",
-        password="password123",
+        password="Password",
         is_provider=True,
         is_suspended=True,
     )
     crud.get_or_create_provider_for_user(session, provider_user.id)
     authenticated = crud.authenticate_user(
-        session, provider_user.email, "password123"
+        session, provider_user.email, "Password"
     )
 
     assert authenticated is not None
@@ -66,7 +66,7 @@ def test_booking_creation_blocked_when_provider_suspended(db_session):
         crud,
         email="provider2@example.com",
         username="provider_blocked",
-        password="password123",
+        password="Password",
         is_provider=True,
         is_suspended=True,
     )
@@ -78,7 +78,7 @@ def test_booking_creation_blocked_when_provider_suspended(db_session):
         crud,
         email="customer@example.com",
         username="customer",
-        password="password123",
+        password="Password",
     )
     from app.routes.bookings import create_booking_for_me
 
@@ -107,7 +107,7 @@ def test_provider_confirm_blocked_when_suspended(db_session):
         crud,
         email="provider3@example.com",
         username="provider_confirm",
-        password="password123",
+        password="Password",
         is_provider=True,
         is_suspended=True,
     )
@@ -119,7 +119,7 @@ def test_provider_confirm_blocked_when_suspended(db_session):
         crud,
         email="customer2@example.com",
         username="customer2",
-        password="password123",
+        password="Password",
     )
 
     start_time = now_guyana() + timedelta(hours=2)
@@ -156,7 +156,7 @@ def test_booking_creation_allows_unsuspended_provider(db_session):
         crud,
         email="provider4@example.com",
         username="provider_unsuspended",
-        password="password123",
+        password="Password",
         is_provider=True,
         is_suspended=True,
     )
@@ -172,7 +172,7 @@ def test_booking_creation_allows_unsuspended_provider(db_session):
         crud,
         email="customer3@example.com",
         username="customer3",
-        password="password123",
+        password="Password",
     )
     from app.routes.bookings import create_booking_for_me
 

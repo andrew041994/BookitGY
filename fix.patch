@@ -1,239 +1,223 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
 diff --git a/mobile/App.js b/mobile/App.js
-index c281cfe69849684ffc251a38b7e5139865448664..9a97a309b21664439dd2185c59b8552f4211eedf 100644
+index 9a97a309b21664439dd2185c59b8552f4211eedf..8a3ec5cc73c1a969f24c53a778ff1b015f113e64 100644
 --- a/mobile/App.js
 +++ b/mobile/App.js
-@@ -4299,86 +4299,80 @@ const [todayError, setTodayError] = useState("");
- const [upcomingBookings, setUpcomingBookings] = useState([]);
- const [upcomingLoading, setUpcomingLoading] = useState(false);
- const [upcomingError, setUpcomingError] = useState("");
- const [providerLocation, setProviderLocation] = useState(null);
- const [focusedHoursField, setFocusedHoursField] = useState(null);
- const [avatarUrl, setAvatarUrl] = useState(null);
- // Catalog (portfolio images)
- const [catalog, setCatalog] = useState([]);
- const [catalogLoading, setCatalogLoading] = useState(false);
- const [catalogError, setCatalogError] = useState("");
- const [catalogUploading, setCatalogUploading] = useState(false);
- const isProviderUser = token?.isProvider || token?.is_provider;
- const providerUsername =
-   provider?.user?.username ||
-   profile?.username ||
-   token?.user?.username ||
-   token?.username;
- const providerProfileLink = buildProviderPublicLink(providerUsername);
+@@ -841,104 +841,114 @@ function ForgotPasswordScreen({ goToLogin, goBack, showFlash }) {
+             )}
  
- const parseServiceNumber = useCallback((value) => {
-   const normalized = String(value || "").replace(/[,\s]/g, "");
-   const numberValue = Number(normalized);
-   return Number.isFinite(numberValue) ? numberValue : null;
- }, []);
- 
--const validateServiceFields = useCallback((name, price, duration, description) => {
--  const errors = { name: "", price: "", duration: "", description: "" };
-+const validateServiceFields = useCallback((name, price, duration) => {
-+  const errors = { name: "", price: "", duration: "" };
-   const trimmedName = String(name || "").trim();
--  const trimmedDescription = String(description || "").trim();
-   const priceNumber = parseServiceNumber(price);
-   const durationNumber = parseServiceNumber(duration);
- 
-   if (!trimmedName) {
-     errors.name = "Service name is required.";
-   }
- 
-   if (!priceNumber || priceNumber <= 0) {
-     errors.price = "Enter a price greater than 0.";
-   }
- 
-   if (!durationNumber || durationNumber <= 0) {
-     errors.duration = "Enter a duration greater than 0.";
-   }
- 
--  if (!trimmedDescription) {
--    errors.description = "Description is required.";
--  }
--
-   return errors;
- }, [parseServiceNumber]);
- 
- const serviceErrors = useMemo(
--  () => validateServiceFields(newName, newPrice, newDuration, newDescription),
--  [newName, newPrice, newDuration, newDescription, validateServiceFields]
-+  () => validateServiceFields(newName, newPrice, newDuration),
-+  [newName, newPrice, newDuration, validateServiceFields]
- );
- 
- const isServiceFormValid =
-   !serviceErrors.name &&
-   !serviceErrors.price &&
--  !serviceErrors.duration &&
--  !serviceErrors.description;
-+  !serviceErrors.duration;
+             {goBack && (
+               <View style={{ width: "100%" }}>
+                 <Button title="Back" onPress={goBack} color={colors.textMuted} />
+               </View>
+             )}
+           </View>
+         </TouchableWithoutFeedback>
+       </ScrollView>
+     </KeyboardAvoidingView>
+   );
+ }
  
  
- const handleShareProfileLink = async () => {
-   if (!providerProfileLink) {
-     if (showFlash) {
-       showFlash("error", "Set a username to enable your profile link.");
+ 
+ 
+ function SignupScreen({ goToLogin, goBack, showFlash }) {
+   const [email, setEmail] = useState("");
+   const [password, setPassword] = useState("");
+   const [confirmPassword, setConfirmPassword] = useState("");
+   const [username, setUsername] = useState("");
+   const [phone, setPhone] = useState("");
+   const [isProvider, setIsProvider] = useState(false); // 👈 new
+   const passwordRules = {
+-    length: password.length >= 8,
++    length: password.length >= 5,
+     lower: /[a-z]/.test(password),
+     upper: /[A-Z]/.test(password),
+-    number: /[0-9]/.test(password),
+-    special: /[^A-Za-z0-9]/.test(password),
+   };
+   const passwordStrong = Object.values(passwordRules).every(Boolean);
+   const keyboardWrapperProps = {
+     behavior: Platform.OS === "ios" ? "padding" : "height",
+     keyboardVerticalOffset: Platform.OS === "ios" ? 40 : 0,
+   };
+   const signupValidation = useMemo(() => {
+     const errors = {};
+     const trimmedUsername = username.trim();
+     const trimmedEmail = email.trim();
+     const trimmedPhone = phone.trim();
+     const trimmedPassword = password.trim();
+     const trimmedConfirm = confirmPassword.trim();
+     const phoneDigitsOnly = /^\d+$/;
+ 
+     if (!trimmedUsername) errors.username = "Username is required";
+     if (!trimmedEmail) {
+       errors.email = "Email is required";
+     } else if (!isValidEmail(trimmedEmail)) {
+       errors.email = "Email is invalid";
      }
-     return;
-   }
- 
-   try {
-     await Share.share({
-       message: providerProfileLink,
-       url: providerProfileLink,
-       title: "My BookitGY profile link",
-     });
-   } catch (err) {
-     console.log("Error sharing provider profile link", err?.message || err);
-     if (showFlash) {
-       showFlash("error", "Could not share your profile link.");
+     if (!trimmedPhone) errors.phone = "Phone is required";
+     if (!passwordStrong) {
+-      errors.password = "Password must meet all requirements";
++      errors.password =
++        "Password must be at least 5 characters and include 1 uppercase and 1 lowercase letter.";
      }
-   }
- };
+     if (!trimmedConfirm || trimmedConfirm !== trimmedPassword) {
+       errors.confirmPassword = "Passwords do not match";
+     }
  
+     const signupIsValid =
+       trimmedUsername.length > 0 &&
+       trimmedEmail.length > 0 &&
+       trimmedEmail.includes("@") &&
+       isValidEmail(trimmedEmail) &&
+       trimmedPhone.length > 0 &&
+       phoneDigitsOnly.test(trimmedPhone) &&
+       passwordStrong &&
+       trimmedConfirm.length > 0 &&
+       trimmedPassword === trimmedConfirm;
  
-@@ -4799,70 +4793,63 @@ const to24Hour = (time12) => {
-         h < 0 ||
-         h > 23 ||
-         m < 0 ||
-         m > 59
-       ) {
-         return "";
+     return {
+       errors,
+       signupIsValid,
+     };
+   }, [username, email, phone, password, confirmPassword, passwordStrong]);
+   const signupIsValid = signupValidation.signupIsValid;
+ 
+   const signup = async () => {
+-    if (!signupIsValid) return;
++    if (!signupIsValid) {
++      if (!passwordStrong) {
++        const message =
++          "Password must be at least 5 characters and include 1 uppercase and 1 lowercase letter.";
++        if (showFlash) {
++          showFlash("error", message);
++        } else {
++          Alert.alert("Error", message);
++        }
++      }
++      return;
++    }
+ 
+     const trimmedEmail = email.trim();
+     const normalizedEmail = trimmedEmail.toLowerCase();
+     const trimmedPassword = password.trim();
+     const trimmedConfirm = confirmPassword.trim();
+     const trimmedUsername = username.trim();
+     const trimmedPhone = phone.trim();
+ 
+     // ✅ All fields required
+     if (
+       !trimmedUsername ||
+       !trimmedEmail ||
+       !trimmedPhone ||
+       !trimmedPassword ||
+       !trimmedConfirm
+     ) {
+       if (showFlash) {
+         showFlash("error", "Please fill in all fields");
+       } else {
+         Alert.alert("Error", "Please fill in all fields");
        }
- 
-       // 4) Default to AM if no suffix provided
-       if (!suffix) suffix = "AM";
- 
-       // 5) Convert to 24h
-       if (suffix === "PM" && h !== 12) h += 12;
-       if (suffix === "AM" && h === 12) h = 0;
- 
-       // 6) Return "HH:MM"
-       return `${h.toString().padStart(2, "0")}:${m.toString().padStart(2, "0")}`;
- };
- 
- 
- 
-   const handleAddService = async () => {
-   if (isSavingService) return;
-   if (!isServiceFormValid) return;
- 
--  const currentErrors = validateServiceFields(
--    newName,
--    newPrice,
--    newDuration,
--    newDescription
--  );
-+  const currentErrors = validateServiceFields(newName, newPrice, newDuration);
-   const isValid =
-     !currentErrors.name &&
-     !currentErrors.price &&
--    !currentErrors.duration &&
--    !currentErrors.description;
-+    !currentErrors.duration;
- 
-   if (!isValid) {
-     if (showFlash) {
-       showFlash(
-         "error",
-         currentErrors.name ||
-           currentErrors.price ||
--          currentErrors.duration ||
--          currentErrors.description
-+          currentErrors.duration
-       );
-     }
-     return;
-   }
- 
-   const priceNumber = parseServiceNumber(newPrice);
-   const durationNumber = parseServiceNumber(newDuration);
- 
-   try {
-     setIsSavingService(true);
-     const authToken = await getAuthToken(token);
-     if (!authToken) {
-       if (showFlash) showFlash("error", "No access token found.");
        return;
      }
  
-     const payload = {
-       name: newName.trim(),
-       description: newDescription.trim(),
-       duration_minutes: durationNumber,
-       price_gyd: priceNumber,
-     };
- 
-     // ✅ Create service on backend and get the created record back
-     const res = await axios.post(
-@@ -5696,64 +5683,58 @@ const loadProviderSummary = async () => {
-               />
-               {serviceErrors.price ? (
-                 <Text style={styles.inputErrorText}>
-                   {serviceErrors.price}
-                 </Text>
-               ) : null}
-               <TextInput
+     // ✅ Passwords must match
+@@ -1092,91 +1102,71 @@ function SignupScreen({ goToLogin, goBack, showFlash }) {
+               placeholder="Password"
+               placeholderTextColor={styles.inputPlaceholder.color}
+               value={password}
+               onChangeText={setPassword}
+               textContentType="password"
+               autoComplete="password"
+               importantForAutofill="yes"
+               secureTextEntry={true}
+               keyboardType="default"
+               autoCapitalize="none"
+               autoCorrect={false}
+               spellCheck={false}
+               underlineColorAndroid="transparent"
+               selectionColor={colors.primary}
+               cursorColor={colors.primary}
+             />
+             <View style={styles.passwordRequirements}>
+               <Text
                  style={[
-                   styles.input,
-                   serviceErrors.duration ? styles.inputError : null,
+                   styles.passwordRequirement,
+                   passwordRules.length
+                     ? styles.passwordRequirementMet
+                     : styles.passwordRequirementUnmet,
                  ]}
-                 placeholder="Duration (minutes)"
-                 placeholderTextColor={colors.textSecondary}
-                 value={newDuration}
-                 onChangeText={setNewDuration}
-                 keyboardType="numeric"
-               />
-               {serviceErrors.duration ? (
-                 <Text style={styles.inputErrorText}>
-                   {serviceErrors.duration}
-                 </Text>
-               ) : null}
-               <TextInput
+               >
+-                At least 8 characters
++                At least 5 characters
+               </Text>
+               <Text
                  style={[
-                   styles.input,
--                  serviceErrors.description ? styles.inputError : null,
-                   { height: 80 },
+                   styles.passwordRequirement,
+                   passwordRules.lower
+                     ? styles.passwordRequirementMet
+                     : styles.passwordRequirementUnmet,
                  ]}
-                 placeholder="Description"
-                 placeholderTextColor={colors.textSecondary}
-                 value={newDescription}
-                 onChangeText={setNewDescription}
-                 multiline
-               />
--              {serviceErrors.description ? (
--                <Text style={styles.inputErrorText}>
--                  {serviceErrors.description}
--                </Text>
--              ) : null}
+               >
+-                One lowercase letter (a–z)
++                At least 1 lowercase letter
+               </Text>
+               <Text
+                 style={[
+                   styles.passwordRequirement,
+                   passwordRules.upper
+                     ? styles.passwordRequirementMet
+                     : styles.passwordRequirementUnmet,
+                 ]}
+               >
+-                One uppercase letter (A–Z)
+-              </Text>
+-              <Text
+-                style={[
+-                  styles.passwordRequirement,
+-                  passwordRules.number
+-                    ? styles.passwordRequirementMet
+-                    : styles.passwordRequirementUnmet,
+-                ]}
+-              >
+-                One number (0–9)
+-              </Text>
+-              <Text
+-                style={[
+-                  styles.passwordRequirement,
+-                  passwordRules.special
+-                    ? styles.passwordRequirementMet
+-                    : styles.passwordRequirementUnmet,
+-                ]}
+-              >
+-                One special character (!@#…)
++                At least 1 uppercase letter
+               </Text>
+             </View>
+             {signupValidation.errors.password && (
+               <Text style={styles.inputErrorText}>
+                 {signupValidation.errors.password}
+               </Text>
+             )}
  
-               <View style={{ width: "100%", marginTop: 4 }}>
-                 <TouchableOpacity
-                   style={[
-                     styles.saveServiceButton,
-                     isServiceFormValid && !isSavingService
-                       ? styles.saveServiceButtonEnabled
-                       : styles.saveServiceButtonDisabled,
-                   ]}
-                   onPress={handleAddService}
-                   disabled={!isServiceFormValid || isSavingService}
-                   accessibilityRole="button"
-                   accessibilityState={{
-                     disabled: !isServiceFormValid || isSavingService,
-                   }}
-                   activeOpacity={0.8}
-                 >
-                   {isSavingService ? (
-                     <View style={styles.saveServiceButtonContent}>
-                       <ActivityIndicator
-                         size="small"
-                         color={colors.textPrimary}
-                         style={styles.saveServiceButtonSpinner}
-                       />
-                       <Text style={styles.saveServiceButtonText}>Saving…</Text>
+             <TextInput
+               style={[
+                 styles.input,
+                 signupValidation.errors.confirmPassword ? styles.inputError : null,
+                 Platform.OS === "android" && {
+                   fontFamily: "sans-serif",
+                   letterSpacing: 0,
+                   includeFontPadding: false,
+                 },
+               ]}
+               placeholder="Confirm Password"
+               placeholderTextColor={styles.inputPlaceholder.color}
+               value={confirmPassword}
+               onChangeText={setConfirmPassword}
+               textContentType="password"
+               autoComplete="password"
+               importantForAutofill="yes"
  
 EOF
 )

@@ -39,7 +39,7 @@ def test_suspend_active_provider_sends_email(db_session, monkeypatch):
         crud,
         email="admin@example.com",
         username="admin_user",
-        password="password123",
+        password="Password",
         is_admin=True,
     )
     provider_user = _create_user(
@@ -47,7 +47,7 @@ def test_suspend_active_provider_sends_email(db_session, monkeypatch):
         crud,
         email="provider@example.com",
         username="provider_user",
-        password="password123",
+        password="Password",
         is_provider=True,
         is_suspended=False,
     )
@@ -90,7 +90,7 @@ def test_suspend_already_suspended_sends_no_email(db_session, monkeypatch):
         crud,
         email="admin2@example.com",
         username="admin_user2",
-        password="password123",
+        password="Password",
         is_admin=True,
     )
     provider_user = _create_user(
@@ -98,7 +98,7 @@ def test_suspend_already_suspended_sends_no_email(db_session, monkeypatch):
         crud,
         email="provider2@example.com",
         username="provider_user2",
-        password="password123",
+        password="Password",
         is_provider=True,
         is_suspended=True,
     )
@@ -133,7 +133,7 @@ def test_restore_suspended_provider_sends_email(db_session, monkeypatch):
         crud,
         email="admin3@example.com",
         username="admin_user3",
-        password="password123",
+        password="Password",
         is_admin=True,
     )
     provider_user = _create_user(
@@ -141,7 +141,7 @@ def test_restore_suspended_provider_sends_email(db_session, monkeypatch):
         crud,
         email="provider3@example.com",
         username="provider_user3",
-        password="password123",
+        password="Password",
         is_provider=True,
         is_suspended=True,
     )
@@ -184,7 +184,7 @@ def test_restore_active_provider_sends_no_email(db_session, monkeypatch):
         crud,
         email="admin4@example.com",
         username="admin_user4",
-        password="password123",
+        password="Password",
         is_admin=True,
     )
     provider_user = _create_user(
@@ -192,7 +192,7 @@ def test_restore_active_provider_sends_no_email(db_session, monkeypatch):
         crud,
         email="provider4@example.com",
         username="provider_user4",
-        password="password123",
+        password="Password",
         is_provider=True,
         is_suspended=False,
     )

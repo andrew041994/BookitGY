@@ -863,11 +863,9 @@ function SignupScreen({ goToLogin, goBack, showFlash }) {
   const [phone, setPhone] = useState("");
   const [isProvider, setIsProvider] = useState(false); // 👈 new
   const passwordRules = {
-    length: password.length >= 8,
+    length: password.length >= 5,
     lower: /[a-z]/.test(password),
     upper: /[A-Z]/.test(password),
-    number: /[0-9]/.test(password),
-    special: /[^A-Za-z0-9]/.test(password),
   };
   const passwordStrong = Object.values(passwordRules).every(Boolean);
   const keyboardWrapperProps = {
@@ -891,7 +889,8 @@ function SignupScreen({ goToLogin, goBack, showFlash }) {
     }
     if (!trimmedPhone) errors.phone = "Phone is required";
     if (!passwordStrong) {
-      errors.password = "Password must meet all requirements";
+      errors.password =
+        "Password must be at least 5 characters and include 1 uppercase and 1 lowercase letter.";
     }
     if (!trimmedConfirm || trimmedConfirm !== trimmedPassword) {
       errors.confirmPassword = "Passwords do not match";
@@ -916,7 +915,18 @@ function SignupScreen({ goToLogin, goBack, showFlash }) {
   const signupIsValid = signupValidation.signupIsValid;
 
   const signup = async () => {
-    if (!signupIsValid) return;
+    if (!signupIsValid) {
+      if (!passwordStrong) {
+        const message =
+          "Password must be at least 5 characters and include 1 uppercase and 1 lowercase letter.";
+        if (showFlash) {
+          showFlash("error", message);
+        } else {
+          Alert.alert("Error", message);
+        }
+      }
+      return;
+    }
 
     const trimmedEmail = email.trim();
     const normalizedEmail = trimmedEmail.toLowerCase();
@@ -1114,7 +1124,7 @@ function SignupScreen({ goToLogin, goBack, showFlash }) {
                     : styles.passwordRequirementUnmet,
                 ]}
               >
-                At least 8 characters
+                At least 5 characters
               </Text>
               <Text
                 style={[
@@ -1124,7 +1134,7 @@ function SignupScreen({ goToLogin, goBack, showFlash }) {
                     : styles.passwordRequirementUnmet,
                 ]}
               >
-                One lowercase letter (a–z)
+                At least 1 lowercase letter
               </Text>
               <Text
                 style={[
@@ -1134,27 +1144,7 @@ function SignupScreen({ goToLogin, goBack, showFlash }) {
                     : styles.passwordRequirementUnmet,
                 ]}
               >
-                One uppercase letter (A–Z)
-              </Text>
-              <Text
-                style={[
-                  styles.passwordRequirement,
-                  passwordRules.number
-                    ? styles.passwordRequirementMet
-                    : styles.passwordRequirementUnmet,
-                ]}
-              >
-                One number (0–9)
-              </Text>
-              <Text
-                style={[
-                  styles.passwordRequirement,
-                  passwordRules.special
-                    ? styles.passwordRequirementMet
-                    : styles.passwordRequirementUnmet,
-                ]}
-              >
-                One special character (!@#…)
+                At least 1 uppercase letter
               </Text>
             </View>
             {signupValidation.errors.password && (
