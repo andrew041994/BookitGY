@@ -4260,6 +4260,7 @@ function ProviderDashboardScreen({ apiClient, token, showFlash }) {
   const [newPrice, setNewPrice] = useState("");
   const [newDuration, setNewDuration] = useState("30");
   const [newDescription, setNewDescription] = useState("");
+  const [isSavingService, setIsSavingService] = useState(false);
   const [bookings, setBookings] = useState([]);
   const [bookingsLoading, setBookingsLoading] = useState(true);
   const [bookingsError, setBookingsError] = useState("");
@@ -4314,34 +4315,48 @@ const providerUsername =
   token?.username;
 const providerProfileLink = buildProviderPublicLink(providerUsername);
 
-const validateServiceFields = useCallback((name, price, duration) => {
-  const errors = { name: "", price: "", duration: "" };
-  const trimmedName = name.trim();
-  const priceNumber = Number(price);
-  const durationNumber = Number(duration);
+const parseServiceNumber = useCallback((value) => {
+  const normalized = String(value || "").replace(/[,\s]/g, "");
+  const numberValue = Number(normalized);
+  return Number.isFinite(numberValue) ? numberValue : null;
+}, []);
+
+const validateServiceFields = useCallback((name, price, duration, description) => {
+  const errors = { name: "", price: "", duration: "", description: "" };
+  const trimmedName = String(name || "").trim();
+  const trimmedDescription = String(description || "").trim();
+  const priceNumber = parseServiceNumber(price);
+  const durationNumber = parseServiceNumber(duration);
 
   if (!trimmedName) {
     errors.name = "Service name is required.";
   }
 
-  if (!price || Number.isNaN(priceNumber) || priceNumber <= 0) {
+  if (!priceNumber || priceNumber <= 0) {
     errors.price = "Enter a price greater than 0.";
   }
 
-  if (!duration || Number.isNaN(durationNumber) || durationNumber <= 0) {
+  if (!durationNumber || durationNumber <= 0) {
     errors.duration = "Enter a duration greater than 0.";
   }
 
+  if (!trimmedDescription) {
+    errors.description = "Description is required.";
+  }
+
   return errors;
-}, []);
+}, [parseServiceNumber]);
 
 const serviceErrors = useMemo(
-  () => validateServiceFields(newName, newPrice, newDuration),
-  [newName, newPrice, newDuration, validateServiceFields]
+  () => validateServiceFields(newName, newPrice, newDuration, newDescription),
+  [newName, newPrice, newDuration, newDescription, validateServiceFields]
 );
 
 const isServiceFormValid =
-  !serviceErrors.name && !serviceErrors.price && !serviceErrors.duration;
+  !serviceErrors.name &&
+  !serviceErrors.price &&
+  !serviceErrors.duration &&
+  !serviceErrors.description;
 
 
 const handleShareProfileLink = async () => {
@@ -4803,30 +4818,39 @@ const to24Hour = (time12) => {
 
 
   const handleAddService = async () => {
+  if (isSavingService) return;
+  if (!isServiceFormValid) return;
+
   const currentErrors = validateServiceFields(
     newName,
     newPrice,
-    newDuration
+    newDuration,
+    newDescription
   );
   const isValid =
     !currentErrors.name &&
     !currentErrors.price &&
-    !currentErrors.duration;
+    !currentErrors.duration &&
+    !currentErrors.description;
 
   if (!isValid) {
     if (showFlash) {
       showFlash(
         "error",
-        currentErrors.name || currentErrors.price || currentErrors.duration
+        currentErrors.name ||
+          currentErrors.price ||
+          currentErrors.duration ||
+          currentErrors.description
       );
     }
     return;
   }
 
-  const priceNumber = Number(newPrice);
-  const durationNumber = Number(newDuration);
+  const priceNumber = parseServiceNumber(newPrice);
+  const durationNumber = parseServiceNumber(newDuration);
 
   try {
+    setIsSavingService(true);
     const authToken = await getAuthToken(token);
     if (!authToken) {
       if (showFlash) showFlash("error", "No access token found.");
@@ -4876,6 +4900,8 @@ const to24Hour = (time12) => {
         err.response?.data?.detail || "Could not create service.";
       showFlash("error", detail);
     }
+  } finally {
+    setIsSavingService(false);
   }
 };
 
@@ -5690,21 +5716,54 @@ const loadProviderSummary = async () => {
                 </Text>
               ) : null}
               <TextInput
-                style={[styles.input, { height: 80 }]}
+                style={[
+                  styles.input,
+                  serviceErrors.description ? styles.inputError : null,
+                  { height: 80 },
+                ]}
                 placeholder="Description"
                 placeholderTextColor={colors.textSecondary}
                 value={newDescription}
                 onChangeText={setNewDescription}
                 multiline
               />
+              {serviceErrors.description ? (
+                <Text style={styles.inputErrorText}>
+                  {serviceErrors.description}
+                </Text>
+              ) : null}
 
               <View style={{ width: "100%", marginTop: 4 }}>
-                <Button
-                  title="Save service"
+                <TouchableOpacity
+                  style={[
+                    styles.saveServiceButton,
+                    isServiceFormValid && !isSavingService
+                      ? styles.saveServiceButtonEnabled
+                      : styles.saveServiceButtonDisabled,
+                  ]}
                   onPress={handleAddService}
-                  color={colors.primary}
-                  disabled={!isServiceFormValid}
-                />
+                  disabled={!isServiceFormValid || isSavingService}
+                  accessibilityRole="button"
+                  accessibilityState={{
+                    disabled: !isServiceFormValid || isSavingService,
+                  }}
+                  activeOpacity={0.8}
+                >
+                  {isSavingService ? (
+                    <View style={styles.saveServiceButtonContent}>
+                      <ActivityIndicator
+                        size="small"
+                        color={colors.textPrimary}
+                        style={styles.saveServiceButtonSpinner}
+                      />
+                      <Text style={styles.saveServiceButtonText}>Saving…</Text>
+                    </View>
+                  ) : (
+                    <Text style={styles.saveServiceButtonText}>
+                      Save service
+                    </Text>
+                  )}
+                </TouchableOpacity>
               </View>
             </View>
           )}
@@ -8835,6 +8894,33 @@ signupButtonDisabled: {
   opacity: 0.6,
 },
 signupButtonText: {
+  color: colors.textPrimary,
+  fontSize: 16,
+  fontWeight: "600",
+},
+saveServiceButton: {
+  paddingVertical: 12,
+  borderRadius: 6,
+  alignItems: "center",
+  justifyContent: "center",
+},
+saveServiceButtonEnabled: {
+  backgroundColor: colors.primary,
+  opacity: 1,
+},
+saveServiceButtonDisabled: {
+  backgroundColor: colors.textMuted,
+  opacity: 0.6,
+},
+saveServiceButtonContent: {
+  flexDirection: "row",
+  alignItems: "center",
+  justifyContent: "center",
+},
+saveServiceButtonSpinner: {
+  marginRight: 8,
+},
+saveServiceButtonText: {
   color: colors.textPrimary,
   fontSize: 16,
   fontWeight: "600",

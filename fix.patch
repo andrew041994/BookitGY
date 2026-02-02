@@ -1,283 +1,487 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
 diff --git a/mobile/App.js b/mobile/App.js
-index 546df63f9ae03c0f9e4d85bf91fa49539425e51b..56af2e9ba9c186283bd01cff584fdd6fe76c3683 100644
+index 56af2e9ba9c186283bd01cff584fdd6fe76c3683..c281cfe69849684ffc251a38b7e5139865448664 100644
 --- a/mobile/App.js
 +++ b/mobile/App.js
-@@ -840,93 +840,101 @@ function ForgotPasswordScreen({ goToLogin, goBack, showFlash }) {
-               </View>
-             )}
- 
-             {goBack && (
-               <View style={{ width: "100%" }}>
-                 <Button title="Back" onPress={goBack} color={colors.textMuted} />
-               </View>
-             )}
-           </View>
-         </TouchableWithoutFeedback>
-       </ScrollView>
-     </KeyboardAvoidingView>
-   );
- }
- 
- 
- 
- 
- function SignupScreen({ goToLogin, goBack, showFlash }) {
-   const [email, setEmail] = useState("");
-   const [password, setPassword] = useState("");
-   const [confirmPassword, setConfirmPassword] = useState("");
-   const [username, setUsername] = useState("");
-   const [phone, setPhone] = useState("");
-   const [isProvider, setIsProvider] = useState(false); // 👈 new
-+  const passwordRules = {
-+    length: password.length >= 8,
-+    lower: /[a-z]/.test(password),
-+    upper: /[A-Z]/.test(password),
-+    number: /[0-9]/.test(password),
-+    special: /[^A-Za-z0-9]/.test(password),
-+  };
-+  const passwordStrong = Object.values(passwordRules).every(Boolean);
-   const keyboardWrapperProps = {
-     behavior: Platform.OS === "ios" ? "padding" : "height",
-     keyboardVerticalOffset: Platform.OS === "ios" ? 40 : 0,
-   };
-   const signupValidation = useMemo(() => {
-     const errors = {};
-     const trimmedUsername = username.trim();
-     const trimmedEmail = email.trim();
-     const trimmedPhone = phone.trim();
-     const trimmedPassword = password.trim();
-     const trimmedConfirm = confirmPassword.trim();
-     const phoneDigitsOnly = /^\d+$/;
- 
-     if (!trimmedUsername) errors.username = "Username is required";
-     if (!trimmedEmail) {
-       errors.email = "Email is required";
-     } else if (!isValidEmail(trimmedEmail)) {
-       errors.email = "Email is invalid";
-     }
-     if (!trimmedPhone) errors.phone = "Phone is required";
--    if (trimmedPassword.length < 8) {
--      errors.password = "Password must be at least 8 characters";
-+    if (!passwordStrong) {
-+      errors.password = "Password must meet all requirements";
-     }
-     if (!trimmedConfirm || trimmedConfirm !== trimmedPassword) {
-       errors.confirmPassword = "Passwords do not match";
-     }
- 
-     const signupIsValid =
-       trimmedUsername.length > 0 &&
-       trimmedEmail.length > 0 &&
-       trimmedEmail.includes("@") &&
-       isValidEmail(trimmedEmail) &&
-       trimmedPhone.length > 0 &&
-       phoneDigitsOnly.test(trimmedPhone) &&
--      trimmedPassword.length >= 8 &&
-+      passwordStrong &&
-       trimmedConfirm.length > 0 &&
-       trimmedPassword === trimmedConfirm;
- 
-     return {
-       errors,
-       signupIsValid,
-     };
--  }, [username, email, phone, password, confirmPassword]);
-+  }, [username, email, phone, password, confirmPassword, passwordStrong]);
-   const signupIsValid = signupValidation.signupIsValid;
- 
-   const signup = async () => {
-     if (!signupIsValid) return;
- 
-     const trimmedEmail = email.trim();
-     const normalizedEmail = trimmedEmail.toLowerCase();
-     const trimmedPassword = password.trim();
-     const trimmedConfirm = confirmPassword.trim();
-     const trimmedUsername = username.trim();
-     const trimmedPhone = phone.trim();
- 
-     // ✅ All fields required
-     if (
-       !trimmedUsername ||
-       !trimmedEmail ||
-       !trimmedPhone ||
-       !trimmedPassword ||
-       !trimmedConfirm
-     ) {
-       if (showFlash) {
-         showFlash("error", "Please fill in all fields");
-       } else {
-         Alert.alert("Error", "Please fill in all fields");
+@@ -4238,50 +4238,51 @@ function SearchScreen({ token, showFlash, navigation, route, toggleFavorite, isF
+                         {bookingLoading ? "Booking..." : "Book Appointment"}
+                       </Text>
+                     </TouchableOpacity>
+                   </View>
+                 )}
+               </ScrollView>
+               </SafeAreaView>
+          );
        }
-@@ -1075,50 +1083,102 @@ function SignupScreen({ goToLogin, goBack, showFlash }) {
-               style={[
-                 styles.input,
-                 signupValidation.errors.password ? styles.inputError : null,
-                 Platform.OS === "android" && {
-                   fontFamily: "sans-serif",
-                   letterSpacing: 0,
-                   includeFontPadding: false,
-                 },
-               ]}
-               placeholder="Password"
-               placeholderTextColor={styles.inputPlaceholder.color}
-               value={password}
-               onChangeText={setPassword}
-               textContentType="password"
-               autoComplete="password"
-               importantForAutofill="yes"
-               secureTextEntry={true}
-               keyboardType="default"
-               autoCapitalize="none"
-               autoCorrect={false}
-               spellCheck={false}
-               underlineColorAndroid="transparent"
-               selectionColor={colors.primary}
-               cursorColor={colors.primary}
-             />
-+            <View style={styles.passwordRequirements}>
-+              <Text
-+                style={[
-+                  styles.passwordRequirement,
-+                  passwordRules.length
-+                    ? styles.passwordRequirementMet
-+                    : styles.passwordRequirementUnmet,
-+                ]}
-+              >
-+                At least 8 characters
-+              </Text>
-+              <Text
-+                style={[
-+                  styles.passwordRequirement,
-+                  passwordRules.lower
-+                    ? styles.passwordRequirementMet
-+                    : styles.passwordRequirementUnmet,
-+                ]}
-+              >
-+                One lowercase letter (a–z)
-+              </Text>
-+              <Text
-+                style={[
-+                  styles.passwordRequirement,
-+                  passwordRules.upper
-+                    ? styles.passwordRequirementMet
-+                    : styles.passwordRequirementUnmet,
-+                ]}
-+              >
-+                One uppercase letter (A–Z)
-+              </Text>
-+              <Text
-+                style={[
-+                  styles.passwordRequirement,
-+                  passwordRules.number
-+                    ? styles.passwordRequirementMet
-+                    : styles.passwordRequirementUnmet,
-+                ]}
-+              >
-+                One number (0–9)
-+              </Text>
-+              <Text
-+                style={[
-+                  styles.passwordRequirement,
-+                  passwordRules.special
-+                    ? styles.passwordRequirementMet
-+                    : styles.passwordRequirementUnmet,
-+                ]}
-+              >
-+                One special character (!@#…)
-+              </Text>
-+            </View>
-             {signupValidation.errors.password && (
-               <Text style={styles.inputErrorText}>
-                 {signupValidation.errors.password}
-               </Text>
-             )}
  
-             <TextInput
-               style={[
-                 styles.input,
-                 signupValidation.errors.confirmPassword ? styles.inputError : null,
-                 Platform.OS === "android" && {
-                   fontFamily: "sans-serif",
-                   letterSpacing: 0,
-                   includeFontPadding: false,
-                 },
-               ]}
-               placeholder="Confirm Password"
-               placeholderTextColor={styles.inputPlaceholder.color}
-               value={confirmPassword}
-               onChangeText={setConfirmPassword}
-               textContentType="password"
-               autoComplete="password"
-               importantForAutofill="yes"
-               secureTextEntry={true}
-               keyboardType="default"
-@@ -7112,50 +7172,65 @@ const styles = StyleSheet.create({
-     borderRadius: 8,
-     paddingHorizontal: 12,
-     paddingVertical: 12,
-     marginBottom: 12,
-     borderWidth: 1,
-     borderColor: colors.border,
-     color: colors.textPrimary,
-     minHeight: 48,
-     textAlignVertical: "center",
-     ...Platform.select({
-       android: {
-         includeFontPadding: false,
-       },
-     }),
-   },
-   inputError: {
-     borderColor: colors.error,
-     borderWidth: 2,
-   },
-   inputErrorText: {
-     color: colors.error,
-     fontSize: 12,
-     marginTop: -6,
-     marginBottom: 12,
-   },
-+  passwordRequirements: {
-+    width: "100%",
-+    marginTop: -6,
-+    marginBottom: 12,
-+  },
-+  passwordRequirement: {
-+    fontSize: 12,
-+    marginBottom: 2,
-+  },
-+  passwordRequirementMet: {
-+    color: colors.success,
-+  },
-+  passwordRequirementUnmet: {
-+    color: colors.error,
-+  },
-   inputPlaceholder: {
-     color: colors.textMuted,
-   },
-   forgotLink: {
-     marginBottom: 6,
-     alignSelf: "center",
-     paddingVertical: 4,
-   },
-   forgotLinkText: {
-     color: colors.textSecondary,
-     textDecorationLine: "underline",
-     textAlign: "center",
-     flexShrink: 1,
-   },
-   subtitle: { fontSize: 22, color: colors.textSecondary, marginTop: 20, textAlign: "center" },
-   text: { fontSize: 18, color: colors.textSecondary, marginTop: 15, textAlign: "center" },
  
-     flashContainer: {
-     position: "absolute",
-     top: 40,
-     left: 20,
-     right: 20,
-     paddingVertical: 10,
-     paddingHorizontal: 12,
-     borderRadius: 8,
+ 
+ 
+ 
+ 
+ function ProviderDashboardScreen({ apiClient, token, showFlash }) {
+   // const providerLabel = profile?.full_name || "Provider";
+   const [services, setServices] = useState([]);
+   const [loading, setLoading] = useState(true);
+   const [servicesError, setServicesError] = useState("");
+   const [adding, setAdding] = useState(false);
+   const [newName, setNewName] = useState("");
+   const [newPrice, setNewPrice] = useState("");
+   const [newDuration, setNewDuration] = useState("30");
+   const [newDescription, setNewDescription] = useState("");
++  const [isSavingService, setIsSavingService] = useState(false);
+   const [bookings, setBookings] = useState([]);
+   const [bookingsLoading, setBookingsLoading] = useState(true);
+   const [bookingsError, setBookingsError] = useState("");
+   const [workingHours, setWorkingHours] = useState([]);
+   const [hoursLoading, setHoursLoading] = useState(false);
+   const [hoursError, setHoursError] = useState("");
+   const [showHours, setShowHours] = useState(false);
+   const [hoursFlash, setHoursFlash] = useState(null);
+   const [refreshing, setRefreshing] = useState(false);
+   const [showProfileEditor, setShowProfileEditor] = useState(false);
+   const [profileLoading, setProfileLoading] = useState(false);
+   const [profileError, setProfileError] = useState("");
+   const [profile, setProfile] = useState({
+     full_name: "",
+     phone: "",
+     whatsapp: "",
+     location: "",
+     bio: "",
+     professions: [],
+     username: "",
+   });
+   const [provider, setProvider] = useState(null);  // 👈 add this
+ 
+ 
+ const providerLabel =
+@@ -4292,78 +4293,92 @@ const providerLabel =
+ 
+ const [customProfession, setCustomProfession] = useState("");
+ const [providerSummary, setProviderSummary] = useState(null);
+ const [todayBookings, setTodayBookings] = useState([]);
+ const [todayLoading, setTodayLoading] = useState(false);
+ const [todayError, setTodayError] = useState("");
+ const [upcomingBookings, setUpcomingBookings] = useState([]);
+ const [upcomingLoading, setUpcomingLoading] = useState(false);
+ const [upcomingError, setUpcomingError] = useState("");
+ const [providerLocation, setProviderLocation] = useState(null);
+ const [focusedHoursField, setFocusedHoursField] = useState(null);
+ const [avatarUrl, setAvatarUrl] = useState(null);
+ // Catalog (portfolio images)
+ const [catalog, setCatalog] = useState([]);
+ const [catalogLoading, setCatalogLoading] = useState(false);
+ const [catalogError, setCatalogError] = useState("");
+ const [catalogUploading, setCatalogUploading] = useState(false);
+ const isProviderUser = token?.isProvider || token?.is_provider;
+ const providerUsername =
+   provider?.user?.username ||
+   profile?.username ||
+   token?.user?.username ||
+   token?.username;
+ const providerProfileLink = buildProviderPublicLink(providerUsername);
+ 
+-const validateServiceFields = useCallback((name, price, duration) => {
+-  const errors = { name: "", price: "", duration: "" };
+-  const trimmedName = name.trim();
+-  const priceNumber = Number(price);
+-  const durationNumber = Number(duration);
++const parseServiceNumber = useCallback((value) => {
++  const normalized = String(value || "").replace(/[,\s]/g, "");
++  const numberValue = Number(normalized);
++  return Number.isFinite(numberValue) ? numberValue : null;
++}, []);
++
++const validateServiceFields = useCallback((name, price, duration, description) => {
++  const errors = { name: "", price: "", duration: "", description: "" };
++  const trimmedName = String(name || "").trim();
++  const trimmedDescription = String(description || "").trim();
++  const priceNumber = parseServiceNumber(price);
++  const durationNumber = parseServiceNumber(duration);
+ 
+   if (!trimmedName) {
+     errors.name = "Service name is required.";
+   }
+ 
+-  if (!price || Number.isNaN(priceNumber) || priceNumber <= 0) {
++  if (!priceNumber || priceNumber <= 0) {
+     errors.price = "Enter a price greater than 0.";
+   }
+ 
+-  if (!duration || Number.isNaN(durationNumber) || durationNumber <= 0) {
++  if (!durationNumber || durationNumber <= 0) {
+     errors.duration = "Enter a duration greater than 0.";
+   }
+ 
++  if (!trimmedDescription) {
++    errors.description = "Description is required.";
++  }
++
+   return errors;
+-}, []);
++}, [parseServiceNumber]);
+ 
+ const serviceErrors = useMemo(
+-  () => validateServiceFields(newName, newPrice, newDuration),
+-  [newName, newPrice, newDuration, validateServiceFields]
++  () => validateServiceFields(newName, newPrice, newDuration, newDescription),
++  [newName, newPrice, newDuration, newDescription, validateServiceFields]
+ );
+ 
+ const isServiceFormValid =
+-  !serviceErrors.name && !serviceErrors.price && !serviceErrors.duration;
++  !serviceErrors.name &&
++  !serviceErrors.price &&
++  !serviceErrors.duration &&
++  !serviceErrors.description;
+ 
+ 
+ const handleShareProfileLink = async () => {
+   if (!providerProfileLink) {
+     if (showFlash) {
+       showFlash("error", "Set a username to enable your profile link.");
+     }
+     return;
+   }
+ 
+   try {
+     await Share.share({
+       message: providerProfileLink,
+       url: providerProfileLink,
+       title: "My BookitGY profile link",
+     });
+   } catch (err) {
+     console.log("Error sharing provider profile link", err?.message || err);
+     if (showFlash) {
+       showFlash("error", "Could not share your profile link.");
+     }
+   }
+ };
+ 
+ 
+@@ -4781,123 +4796,134 @@ const to24Hour = (time12) => {
+       if (
+         isNaN(h) ||
+         isNaN(m) ||
+         h < 0 ||
+         h > 23 ||
+         m < 0 ||
+         m > 59
+       ) {
+         return "";
+       }
+ 
+       // 4) Default to AM if no suffix provided
+       if (!suffix) suffix = "AM";
+ 
+       // 5) Convert to 24h
+       if (suffix === "PM" && h !== 12) h += 12;
+       if (suffix === "AM" && h === 12) h = 0;
+ 
+       // 6) Return "HH:MM"
+       return `${h.toString().padStart(2, "0")}:${m.toString().padStart(2, "0")}`;
+ };
+ 
+ 
+ 
+   const handleAddService = async () => {
++  if (isSavingService) return;
++  if (!isServiceFormValid) return;
++
+   const currentErrors = validateServiceFields(
+     newName,
+     newPrice,
+-    newDuration
++    newDuration,
++    newDescription
+   );
+   const isValid =
+     !currentErrors.name &&
+     !currentErrors.price &&
+-    !currentErrors.duration;
++    !currentErrors.duration &&
++    !currentErrors.description;
+ 
+   if (!isValid) {
+     if (showFlash) {
+       showFlash(
+         "error",
+-        currentErrors.name || currentErrors.price || currentErrors.duration
++        currentErrors.name ||
++          currentErrors.price ||
++          currentErrors.duration ||
++          currentErrors.description
+       );
+     }
+     return;
+   }
+ 
+-  const priceNumber = Number(newPrice);
+-  const durationNumber = Number(newDuration);
++  const priceNumber = parseServiceNumber(newPrice);
++  const durationNumber = parseServiceNumber(newDuration);
+ 
+   try {
++    setIsSavingService(true);
+     const authToken = await getAuthToken(token);
+     if (!authToken) {
+       if (showFlash) showFlash("error", "No access token found.");
+       return;
+     }
+ 
+     const payload = {
+       name: newName.trim(),
+       description: newDescription.trim(),
+       duration_minutes: durationNumber,
+       price_gyd: priceNumber,
+     };
+ 
+     // ✅ Create service on backend and get the created record back
+     const res = await axios.post(
+       `${API}/providers/me/services`,
+       payload,
+       {
+         headers: {
+           Authorization: `Bearer ${authToken}`,
+         },
+       }
+     );
+ 
+     const created = res.data;
+ 
+     // ✅ Optimistically add to local list so it shows immediately
+     setServices((prev) => {
+       const prevArr = Array.isArray(prev) ? prev : [];
+       return [...prevArr, created];
+     });
+ 
+     if (showFlash) {
+       showFlash("success", "Service created");
+     }
+ 
+     // Reset form + close add UI
+     resetForm();
+     setAdding(false);
+ 
+     // Optional: background refresh to stay in sync with backend
+     loadServices();
+   } catch (err) {
+     console.log("Error creating service", err.response?.data || err.message);
+     if (showFlash) {
+       const detail =
+         err.response?.data?.detail || "Could not create service.";
+       showFlash("error", detail);
+     }
++  } finally {
++    setIsSavingService(false);
+   }
+ };
+ 
+ 
+   const handleDeleteService = async (serviceId) => {
+     try {
+       const authToken = await getAuthToken(token);
+       if (!authToken) {
+         if (showFlash) showFlash("error", "No access token found.");
+         return;
+       }
+ 
+       const res = await axios.delete(`${API}/providers/me/services/${serviceId}`, {
+         headers: {
+           Authorization: `Bearer ${authToken}`,
+         },
+       });
+ 
+       const responseData = res?.data || {};
+       const responseStatus = `${responseData.status || responseData.result || ""}`.toLowerCase();
+       const responseMessage =
+         responseData.detail || responseData.message || responseData.error || "";
+       const responseText = `${responseStatus} ${responseMessage}`.toLowerCase();
+       const hasBookings = responseText.includes("booking");
+ 
+@@ -5668,65 +5694,98 @@ const loadProviderSummary = async () => {
+                 onChangeText={setNewPrice}
+                 keyboardType="numeric"
+               />
+               {serviceErrors.price ? (
+                 <Text style={styles.inputErrorText}>
+                   {serviceErrors.price}
+                 </Text>
+               ) : null}
+               <TextInput
+                 style={[
+                   styles.input,
+                   serviceErrors.duration ? styles.inputError : null,
+                 ]}
+                 placeholder="Duration (minutes)"
+                 placeholderTextColor={colors.textSecondary}
+                 value={newDuration}
+                 onChangeText={setNewDuration}
+                 keyboardType="numeric"
+               />
+               {serviceErrors.duration ? (
+                 <Text style={styles.inputErrorText}>
+                   {serviceErrors.duration}
+                 </Text>
+               ) : null}
+               <TextInput
+-                style={[styles.input, { height: 80 }]}
++                style={[
++                  styles.input,
++                  serviceErrors.description ? styles.inputError : null,
++                  { height: 80 },
++                ]}
+                 placeholder="Description"
+                 placeholderTextColor={colors.textSecondary}
+                 value={newDescription}
+                 onChangeText={setNewDescription}
+                 multiline
+               />
++              {serviceErrors.description ? (
++                <Text style={styles.inputErrorText}>
++                  {serviceErrors.description}
++                </Text>
++              ) : null}
+ 
+               <View style={{ width: "100%", marginTop: 4 }}>
+-                <Button
+-                  title="Save service"
++                <TouchableOpacity
++                  style={[
++                    styles.saveServiceButton,
++                    isServiceFormValid && !isSavingService
++                      ? styles.saveServiceButtonEnabled
++                      : styles.saveServiceButtonDisabled,
++                  ]}
+                   onPress={handleAddService}
+-                  color={colors.primary}
+-                  disabled={!isServiceFormValid}
+-                />
++                  disabled={!isServiceFormValid || isSavingService}
++                  accessibilityRole="button"
++                  accessibilityState={{
++                    disabled: !isServiceFormValid || isSavingService,
++                  }}
++                  activeOpacity={0.8}
++                >
++                  {isSavingService ? (
++                    <View style={styles.saveServiceButtonContent}>
++                      <ActivityIndicator
++                        size="small"
++                        color={colors.textPrimary}
++                        style={styles.saveServiceButtonSpinner}
++                      />
++                      <Text style={styles.saveServiceButtonText}>Saving…</Text>
++                    </View>
++                  ) : (
++                    <Text style={styles.saveServiceButtonText}>
++                      Save service
++                    </Text>
++                  )}
++                </TouchableOpacity>
+               </View>
+             </View>
+           )}
+ 
+           {loading && (
+             <View style={{ paddingVertical: 10 }}>
+               <ActivityIndicator />
+               <Text style={styles.serviceMeta}>Loading services…</Text>
+             </View>
+           )}
+ 
+           {!loading && servicesError ? (
+             <Text style={styles.errorText}>{servicesError}</Text>
+           ) : null}
+ 
+           {!loading && !servicesError && services.length === 0 && !adding && (
+             <Text style={styles.serviceHint}>
+               You have no services yet. Tap “+ Add” to create your first
+               service.
+             </Text>
+           )}
+ 
+            {!loading &&
+             !servicesError &&
+             (Array.isArray(services) ? services : []).map((s) => (
+@@ -8817,50 +8876,77 @@ authSecondaryButtonText: {
+   color: colors.primary,
+   fontSize: 16,
+   fontWeight: "600",
+ },
+ signupButton: {
+   backgroundColor: colors.primary,
+   paddingVertical: 14,
+   borderRadius: 6,
+   alignItems: "center",
+   marginBottom: 12,
+   shadowColor: "#000",
+   shadowOpacity: 0.15,
+   shadowOffset: { width: 0, height: 2 },
+   shadowRadius: 3,
+   elevation: 3,
+ },
+ signupButtonDisabled: {
+   backgroundColor: colors.textMuted,
+   opacity: 0.6,
+ },
+ signupButtonText: {
+   color: colors.textPrimary,
+   fontSize: 16,
+   fontWeight: "600",
+ },
++saveServiceButton: {
++  paddingVertical: 12,
++  borderRadius: 6,
++  alignItems: "center",
++  justifyContent: "center",
++},
++saveServiceButtonEnabled: {
++  backgroundColor: colors.primary,
++  opacity: 1,
++},
++saveServiceButtonDisabled: {
++  backgroundColor: colors.textMuted,
++  opacity: 0.6,
++},
++saveServiceButtonContent: {
++  flexDirection: "row",
++  alignItems: "center",
++  justifyContent: "center",
++},
++saveServiceButtonSpinner: {
++  marginRight: 8,
++},
++saveServiceButtonText: {
++  color: colors.textPrimary,
++  fontSize: 16,
++  fontWeight: "600",
++},
+ signupTextButton: {
+   alignItems: "center",
+   paddingVertical: 8,
+ },
+ signupTextButtonDisabled: {
+   opacity: 0.4,
+ },
+ signupTextButtonText: {
+   color: colors.primary,
+   fontSize: 16,
+   fontWeight: "600",
+ },
+ 
+   avoider: {
+     flex: 1,
+     backgroundColor: colors.background,
+   },
+   scrollContent: {
+     flexGrow: 1,
+   },
+   container: {
+     flex: 1,
+     paddingHorizontal: 24,
+     alignItems: "center",
+     justifyContent: "center",
  
 EOF
 )
