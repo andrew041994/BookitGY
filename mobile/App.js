@@ -7040,119 +7040,125 @@ function ProviderCalendarScreen({ token, showFlash }) {
   return (
     <SafeAreaView style={styles.providerCalendarScreen} edges={["left", "right", "bottom"]}>
       <View style={styles.providerCalendarContentContainer}>
-        <View style={styles.providerCalendarModeSwitch}>
-          {[
-            { key: "day", label: "Daily" },
-            { key: "week", label: "Weekly" },
-            { key: "month", label: "Monthly" },
-          ].map((mode) => {
-            const active = mode.key === viewMode;
-            return (
-              <TouchableOpacity
-                key={mode.key}
-                style={[
-                  styles.providerCalendarModeButton,
-                  active && styles.providerCalendarModeButtonActive,
-                ]}
-                onPress={() => setViewMode(mode.key)}
-              >
-                <Text
+        <View style={styles.providerCalendarTop}>
+          <View style={styles.providerCalendarModeSwitch}>
+            {[
+              { key: "day", label: "Daily" },
+              { key: "week", label: "Weekly" },
+              { key: "month", label: "Monthly" },
+            ].map((mode) => {
+              const active = mode.key === viewMode;
+              return (
+                <TouchableOpacity
+                  key={mode.key}
                   style={[
-                    styles.providerCalendarModeText,
-                    active && styles.providerCalendarModeTextActive,
+                    styles.providerCalendarModeButton,
+                    active && styles.providerCalendarModeButtonActive,
+                  ]}
+                  onPress={() => setViewMode(mode.key)}
+                >
+                  <Text
+                    style={[
+                      styles.providerCalendarModeText,
+                      active && styles.providerCalendarModeTextActive,
+                    ]}
+                  >
+                    {mode.label}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+
+          <CalendarProvider date={selectedDate} onDateChanged={onSelectDate}>
+            <View style={styles.providerCalendarCard}>
+              {viewMode === "month" ? (
+                <View
+                  style={[
+                    styles.providerCalendarViewport,
+                    styles.providerCalendarViewportMonth,
                   ]}
                 >
-                  {mode.label}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
-        </View>
-
-        <CalendarProvider date={selectedDate} onDateChanged={onSelectDate}>
-          <View style={styles.providerCalendarCard}>
-            {viewMode === "month" ? (
-              <View
-                style={[
-                  styles.providerCalendarViewport,
-                  styles.providerCalendarViewportMonth,
-                ]}
-              >
-                <Calendar
-                  current={selectedDate}
-                  markedDates={markedDates}
-                  onDayPress={onSelectDate}
-                  theme={calendarTheme}
-                />
-              </View>
-            ) : viewMode === "week" ? (
-              <View
-                style={[
-                  styles.providerCalendarViewport,
-                  styles.providerCalendarViewportWeek,
-                ]}
-                onLayout={(event) => {
-                  const width = Math.round(event?.nativeEvent?.layout?.width || 0);
-                  if (width > 0 && width !== weekPagerWidth) {
-                    setWeekPagerWidth(width);
-                  }
-                }}
-              >
-                <ScrollView
-                  ref={weekPagerRef}
-                  horizontal
-                  pagingEnabled
-                  showsHorizontalScrollIndicator={false}
-                  onMomentumScrollEnd={onWeekPagerMomentumEnd}
-                  contentOffset={{ x: weekPagerWidth, y: 0 }}
-                >
-                  {weekPages.map((pageWeekStartKey) => (
-                    <View key={pageWeekStartKey} style={{ width: weekPagerWidth || undefined }}>
-                      <WeeklyStrip
-                        weekStartKey={pageWeekStartKey}
-                        selectedDate={selectedDate}
-                        onSelectDate={(dayKey) => setSelectedDate(dayKey)}
-                        bookingsByDate={bookingsByDate}
-                        isBookingCompleted={isBookingCompleted}
-                        colors={colors}
-                        getWeekDays={getWeekDays}
-                      />
-                    </View>
-                  ))}
-                </ScrollView>
-              </View>
-            ) : (
-              // Daily layout structure: WeekCalendar strip -> custom vertical day schedule grid.
-              <View style={styles.providerCalendarDailyLayout}>
-                <View style={styles.providerCalendarDayStrip}>
-                  <WeekCalendar
-                    firstDay={0}
+                  <Calendar
                     current={selectedDate}
                     markedDates={markedDates}
                     onDayPress={onSelectDate}
                     theme={calendarTheme}
                   />
                 </View>
-                <View style={styles.providerCalendarViewportDay}>
-                  <DayScheduleGrid events={dayGridEvents} startHour={0} endHour={24} />
+              ) : viewMode === "week" ? (
+                <View
+                  style={[
+                    styles.providerCalendarViewport,
+                    styles.providerCalendarViewportWeek,
+                  ]}
+                  onLayout={(event) => {
+                    const width = Math.round(event?.nativeEvent?.layout?.width || 0);
+                    if (width > 0 && width !== weekPagerWidth) {
+                      setWeekPagerWidth(width);
+                    }
+                  }}
+                >
+                  <ScrollView
+                    ref={weekPagerRef}
+                    horizontal
+                    pagingEnabled
+                    showsHorizontalScrollIndicator={false}
+                    onMomentumScrollEnd={onWeekPagerMomentumEnd}
+                    contentOffset={{ x: weekPagerWidth, y: 0 }}
+                  >
+                    {weekPages.map((pageWeekStartKey) => (
+                      <View key={pageWeekStartKey} style={{ width: weekPagerWidth || undefined }}>
+                        <WeeklyStrip
+                          weekStartKey={pageWeekStartKey}
+                          selectedDate={selectedDate}
+                          onSelectDate={(dayKey) => setSelectedDate(dayKey)}
+                          bookingsByDate={bookingsByDate}
+                          isBookingCompleted={isBookingCompleted}
+                          colors={colors}
+                          getWeekDays={getWeekDays}
+                        />
+                      </View>
+                    ))}
+                  </ScrollView>
                 </View>
-              </View>
-            )}
-          </View>
-        </CalendarProvider>
+              ) : (
+                // Daily layout structure: WeekCalendar strip -> custom vertical day schedule grid.
+                <View style={styles.providerCalendarDailyLayout}>
+                  <View style={styles.providerCalendarDayStrip}>
+                    <WeekCalendar
+                      firstDay={0}
+                      current={selectedDate}
+                      markedDates={markedDates}
+                      onDayPress={onSelectDate}
+                      theme={calendarTheme}
+                    />
+                  </View>
+                  <View style={styles.providerCalendarViewportDay}>
+                    <DayScheduleGrid events={dayGridEvents} startHour={0} endHour={24} />
+                  </View>
+                </View>
+              )}
+            </View>
+          </CalendarProvider>
+        </View>
 
         {loading ? <ActivityIndicator color={colors.primary} style={{ marginTop: 12 }} /> : null}
         {error ? <Text style={styles.errorText}>{error}</Text> : null}
         {!loading && !error && viewMode !== "day" ? (
-          <>
+          <View style={styles.providerCalendarBottom}>
             <View style={styles.providerCalendarHeaderBlock}>
               <Text style={styles.sectionTitle}>Appointments for {selectedDate}</Text>
             </View>
-            <View style={styles.providerCalendarListSection}>
+            <ScrollView
+              style={styles.providerCalendarList}
+              contentContainerStyle={styles.providerCalendarListContent}
+              showsVerticalScrollIndicator={false}
+            >
               {selectedBookings.length === 0 ? (
                 <Text style={styles.providerCalendarEmpty}>No appointments for this date.</Text>
               ) : (
-                <ScrollView style={styles.providerCalendarList} showsVerticalScrollIndicator={false}>
+                <>
                   {selectedBookings
                     .slice()
                     .sort((a, b) => new Date(a?.start_time || a?.start) - new Date(b?.start_time || b?.start))
@@ -7203,10 +7209,10 @@ function ProviderCalendarScreen({ token, showFlash }) {
                         </View>
                       );
                     })}
-                </ScrollView>
+                </>
               )}
-            </View>
-          </>
+            </ScrollView>
+          </View>
         ) : null}
       </View>
     </SafeAreaView>
@@ -9707,6 +9713,10 @@ signupTextButtonText: {
     paddingTop: 8,
     paddingBottom: 12,
   },
+  providerCalendarTop: {
+    zIndex: 10,
+    elevation: 10,
+  },
   providerCalendarModeSwitch: {
     flexDirection: "row",
     backgroundColor: colors.surface,
@@ -9738,6 +9748,9 @@ signupTextButtonText: {
     borderColor: colors.border,
     borderRadius: 14,
     padding: 8,
+    position: "relative",
+    zIndex: 10,
+    elevation: 10,
   },
   providerCalendarViewport: {
     overflow: "hidden",
@@ -9917,13 +9930,17 @@ signupTextButtonText: {
     fontWeight: "700",
   },
   providerCalendarHeaderBlock: {
+    marginTop: 0,
+  },
+  providerCalendarBottom: {
+    flex: 1,
     marginTop: 12,
   },
-  providerCalendarListSection: {
-    marginTop: 8,
-  },
   providerCalendarList: {
-    marginTop: 0,
+    flex: 1,
+  },
+  providerCalendarListContent: {
+    paddingBottom: 24,
   },
   providerCalendarEmpty: {
     color: colors.textMuted,
