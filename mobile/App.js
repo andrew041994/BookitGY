@@ -6876,7 +6876,7 @@ function ProviderCalendarScreen({ token, showFlash }) {
         week: {
           flexDirection: "row",
           alignItems: "center",
-          justifyContent: "space-between",
+          justifyContent: "space-around",
           paddingLeft: 0,
           paddingRight: 0,
           marginLeft: 0,
@@ -6892,7 +6892,7 @@ function ProviderCalendarScreen({ token, showFlash }) {
       "stylesheet.calendar.main": {
         week: {
           flexDirection: "row",
-          justifyContent: "space-between",
+          justifyContent: "space-around",
           marginLeft: 0,
           marginRight: 0,
           paddingLeft: 0,
@@ -6991,14 +6991,21 @@ function ProviderCalendarScreen({ token, showFlash }) {
                 />
               </View>
             ) : viewMode === "week" ? (
-              <View style={styles.providerCalendarViewportWeek}>
-                <WeekCalendar
-                  firstDay={WEEKLY_FIRST_DAY}
-                  current={selectedDate}
-                  markedDates={markedDates}
-                  onDayPress={onSelectDate}
-                  theme={weeklyTheme}
-                />
+              <View
+                style={[
+                  styles.providerCalendarViewport,
+                  styles.providerCalendarViewportWeek,
+                ]}
+              >
+                <View style={styles.providerCalendarWeekInner}>
+                  <WeekCalendar
+                    firstDay={WEEKLY_FIRST_DAY}
+                    current={selectedDate}
+                    markedDates={markedDates}
+                    onDayPress={onSelectDate}
+                    theme={weeklyTheme}
+                  />
+                </View>
               </View>
             ) : (
               // Daily layout structure: WeekCalendar strip -> custom vertical day schedule grid.
@@ -9628,8 +9635,10 @@ signupTextButtonText: {
   providerCalendarViewportWeek: {
     minHeight: 168,
     paddingTop: 4,
+    overflow: "hidden",
+  },
+  providerCalendarWeekInner: {
     marginHorizontal: -8,
-    overflow: "visible",
   },
   providerCalendarDailyLayout: {
     borderRadius: 10,
