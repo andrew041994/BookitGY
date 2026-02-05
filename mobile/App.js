@@ -6602,6 +6602,21 @@ function ProviderCalendarScreen({ token, showFlash }) {
 
   const selectedBookings = useMemo(() => bookingsByDate[selectedDate] || [], [bookingsByDate, selectedDate]);
 
+  const formatTimelineTime = useCallback((isoDateLike) => {
+    const parsed = new Date(isoDateLike);
+    if (Number.isNaN(parsed.getTime())) return "--:--";
+    const hh = String(parsed.getHours()).padStart(2, "0");
+    const mm = String(parsed.getMinutes()).padStart(2, "0");
+    return `${hh}:${mm}`;
+  }, []);
+
+  const getEventAccentColor = useCallback((booking) => {
+    const palette = [colors.primary, "#1CA7A8", "#4C8BF5", "#8A63D2"];
+    const hashSource = String(booking?.service_id || booking?.service_name || "service");
+    const hash = Array.from(hashSource).reduce((acc, ch) => acc + ch.charCodeAt(0), 0);
+    return palette[hash % palette.length];
+  }, []);
+
   const markedDates = useMemo(() => {
     const marked = {};
 
@@ -6628,7 +6643,7 @@ function ProviderCalendarScreen({ token, showFlash }) {
   const timelineEvents = useMemo(
     () =>
       selectedBookings
-        .map((booking) => {
+      .map((booking) => {
           const startIso = booking?.start_time || booking?.start;
           if (!startIso) return null;
           const startDate = new Date(startIso);
@@ -6641,19 +6656,48 @@ function ProviderCalendarScreen({ token, showFlash }) {
           }
 
           const completed = isBookingCompleted(booking);
+          const accentColor = getEventAccentColor(booking);
 
           return {
             id: String(booking?.id || booking?.booking_id || `${startIso}-${booking?.service_name || "service"}`),
-            start: startDate,
-            end: endDate,
+            start: startDate.toISOString(),
+            end: endDate.toISOString(),
             title: booking?.service_name || "Service",
             summary: booking?.customer_name || "Customer",
-            color: completed ? colors.textMuted : colors.primary,
+            color: accentColor,
+            accentColor,
+            completed,
+            startLabel: `${formatTimelineTime(startDate)} - ${formatTimelineTime(endDate)}`,
           };
         })
         .filter(Boolean),
-    [isBookingCompleted, selectedBookings]
+    [formatTimelineTime, getEventAccentColor, isBookingCompleted, selectedBookings]
   );
+
+  const timelineBounds = useMemo(() => {
+    if (!timelineEvents.length) return { start: 8, end: 20 };
+
+    const mins = timelineEvents.reduce(
+      (acc, event) => {
+        const start = new Date(event.start);
+        const end = new Date(event.end);
+        if (!Number.isNaN(start.getTime())) {
+          acc.start = Math.min(acc.start, start.getHours());
+        }
+        if (!Number.isNaN(end.getTime())) {
+          const roundedEndHour = end.getMinutes() > 0 ? end.getHours() + 1 : end.getHours();
+          acc.end = Math.max(acc.end, roundedEndHour);
+        }
+        return acc;
+      },
+      { start: 8, end: 20 }
+    );
+
+    return {
+      start: Math.max(6, mins.start),
+      end: Math.min(22, Math.max(mins.end, mins.start + 1)),
+    };
+  }, [timelineEvents]);
 
   const calendarTheme = useMemo(
     () => ({
@@ -6673,6 +6717,7 @@ function ProviderCalendarScreen({ token, showFlash }) {
       timelineBackgroundColor: colors.surface,
       timelineLineColor: colors.border,
       timelineTextColor: colors.textPrimary,
+      timelineNowIndicatorColor: colors.primary,
     }),
     []
   );
@@ -6684,12 +6729,47 @@ function ProviderCalendarScreen({ token, showFlash }) {
     setSelectedDate(nextDate);
   }, []);
 
+  const renderTimelineEvent = useCallback(
+    (event) => {
+      const completed = Boolean(event?.completed);
+      return (
+        <TouchableOpacity
+          activeOpacity={0.9}
+          style={[
+            styles.providerTimelineEvent,
+            completed && styles.providerTimelineEventCompleted,
+          ]}
+          onPress={() => {
+            Alert.alert(
+              event?.title || "Appointment",
+              `${event?.summary || "Customer"}\n${event?.startLabel || "--:--"}`
+            );
+          }}
+        >
+          <View style={[styles.providerTimelineEventAccent, { backgroundColor: event?.accentColor || colors.primary }]} />
+          <View style={styles.providerTimelineEventBody}>
+            <Text style={styles.providerTimelineEventTime}>{event?.startLabel || "--:--"}</Text>
+            <Text style={styles.providerTimelineEventService} numberOfLines={2}>
+              {event?.title || "Service"}
+            </Text>
+            <Text style={styles.providerTimelineEventCustomer} numberOfLines={1}>
+              {event?.summary || "Customer"}
+            </Text>
+          </View>
+          {completed ? (
+            <View style={styles.providerTimelineEventCompletedBadge}>
+              <Text style={styles.providerTimelineEventCompletedText}>Completed</Text>
+            </View>
+          ) : null}
+        </TouchableOpacity>
+      );
+    },
+    []
+  );
+
   return (
     <SafeAreaView style={styles.providerCalendarScreen} edges={["left", "right", "bottom"]}>
-      <ScrollView
-        contentContainerStyle={styles.providerCalendarContentContainer}
-        showsVerticalScrollIndicator={false}
-      >
+      <View style={styles.providerCalendarContentContainer}>
         <View style={styles.providerCalendarModeSwitch}>
           {[
             { key: "day", label: "Daily" },
@@ -6721,24 +6801,27 @@ function ProviderCalendarScreen({ token, showFlash }) {
 
         <CalendarProvider date={selectedDate} onDateChanged={onSelectDate}>
           <View style={styles.providerCalendarCard}>
-            <View
-              style={[
-                styles.providerCalendarViewport,
-                viewMode === "month"
-                  ? styles.providerCalendarViewportMonth
-                  : viewMode === "week"
-                  ? styles.providerCalendarViewportWeek
-                  : styles.providerCalendarViewportDay,
-              ]}
-            >
-              {viewMode === "month" ? (
+            {viewMode === "month" ? (
+              <View
+                style={[
+                  styles.providerCalendarViewport,
+                  styles.providerCalendarViewportMonth,
+                ]}
+              >
                 <Calendar
                   current={selectedDate}
                   markedDates={markedDates}
                   onDayPress={onSelectDate}
                   theme={calendarTheme}
                 />
-              ) : viewMode === "week" ? (
+              </View>
+            ) : viewMode === "week" ? (
+              <View
+                style={[
+                  styles.providerCalendarViewport,
+                  styles.providerCalendarViewportWeek,
+                ]}
+              >
                 <WeekCalendar
                   firstDay={1}
                   current={selectedDate}
@@ -6746,84 +6829,111 @@ function ProviderCalendarScreen({ token, showFlash }) {
                   onDayPress={onSelectDate}
                   theme={calendarTheme}
                 />
-              ) : (
-                <Timeline
-                  events={timelineEvents}
-                  date={selectedDate}
-                  showNowIndicator
-                  theme={calendarTheme}
-                />
-              )}
-            </View>
+              </View>
+            ) : (
+              // Daily layout structure: WeekCalendar strip -> Timeline schedule grid (scrollable) -> optional list toggle.
+              <View style={styles.providerCalendarDailyLayout}>
+                <View style={styles.providerCalendarDayStrip}>
+                  <WeekCalendar
+                    firstDay={0}
+                    current={selectedDate}
+                    markedDates={markedDates}
+                    onDayPress={onSelectDate}
+                    theme={calendarTheme}
+                  />
+                </View>
+                <View style={styles.providerCalendarViewportDay}>
+                  <Timeline
+                    events={timelineEvents}
+                    date={selectedDate}
+                    start={timelineBounds.start}
+                    end={timelineBounds.end}
+                    format24h
+                    showNowIndicator
+                    overlapEventsSpacing={8}
+                    rightEdgeSpacing={8}
+                    renderEvent={renderTimelineEvent}
+                    theme={{
+                      ...calendarTheme,
+                      timelineHoursBackgroundColor: colors.surface,
+                      timelineHoursLineColor: "rgba(255,255,255,0.06)",
+                      timelineTextColor: colors.textMuted,
+                    }}
+                  />
+                </View>
+              </View>
+            )}
           </View>
         </CalendarProvider>
 
-        <View style={styles.providerCalendarHeaderBlock}>
-          <Text style={styles.sectionTitle}>Appointments for {selectedDate}</Text>
-        </View>
-        <View style={styles.providerCalendarListSection}>
-          {loading ? (
-            <ActivityIndicator color={colors.primary} style={{ marginTop: 12 }} />
-          ) : error ? (
-            <Text style={styles.errorText}>{error}</Text>
-          ) : selectedBookings.length === 0 ? (
-            <Text style={styles.providerCalendarEmpty}>No appointments for this date.</Text>
-          ) : (
-            <View style={styles.providerCalendarList}>
-              {selectedBookings
-                .slice()
-                .sort((a, b) => new Date(a?.start_time || a?.start) - new Date(b?.start_time || b?.start))
-                .map((booking) => {
-                  const completed = isBookingCompleted(booking);
-                  const startIso = booking?.start_time || booking?.start;
-                  const startLabel = startIso
-                    ? new Date(startIso).toLocaleTimeString([], {
-                        hour: "numeric",
-                        minute: "2-digit",
-                      })
-                    : "--:--";
-
-                  return (
-                    <View
-                      key={String(
-                        booking?.id || booking?.booking_id || `${startIso}-${booking?.service_name || "service"}`
-                      )}
-                      style={[
-                        styles.providerCalendarRow,
-                        completed && styles.providerCalendarRowCompleted,
-                      ]}
-                    >
-                      <View style={{ flex: 1 }}>
-                        <Text style={styles.providerCalendarTime}>{startLabel}</Text>
-                        <Text
-                          style={[
-                            styles.providerCalendarService,
-                            completed && styles.providerCalendarTextCompleted,
-                          ]}
-                        >
-                          {booking?.service_name || "Service"}
-                        </Text>
-                        <Text
-                          style={[
-                            styles.providerCalendarCustomer,
-                            completed && styles.providerCalendarTextCompleted,
-                          ]}
-                        >
-                          {booking?.customer_name || "Customer"}
-                        </Text>
-                      </View>
-                      {completed ? (
-                        <View style={styles.providerCalendarCompletedBadge}>
-                          <Text style={styles.providerCalendarCompletedText}>Completed</Text>
-                        </View>
-                      ) : null}
-                    </View>
-                  );
-                })}
+        {loading ? <ActivityIndicator color={colors.primary} style={{ marginTop: 12 }} /> : null}
+        {error ? <Text style={styles.errorText}>{error}</Text> : null}
+        {!loading && !error && viewMode !== "day" ? (
+          <>
+            <View style={styles.providerCalendarHeaderBlock}>
+              <Text style={styles.sectionTitle}>Appointments for {selectedDate}</Text>
             </View>
-          )}
-        </View>
-      </ScrollView>
+            <View style={styles.providerCalendarListSection}>
+              {selectedBookings.length === 0 ? (
+                <Text style={styles.providerCalendarEmpty}>No appointments for this date.</Text>
+              ) : (
+                <ScrollView style={styles.providerCalendarList} showsVerticalScrollIndicator={false}>
+                  {selectedBookings
+                    .slice()
+                    .sort((a, b) => new Date(a?.start_time || a?.start) - new Date(b?.start_time || b?.start))
+                    .map((booking) => {
+                      const completed = isBookingCompleted(booking);
+                      const startIso = booking?.start_time || booking?.start;
+                      const startLabel = startIso
+                        ? new Date(startIso).toLocaleTimeString([], {
+                            hour: "numeric",
+                            minute: "2-digit",
+                          })
+                        : "--:--";
+
+                      return (
+                        <View
+                          key={String(
+                            booking?.id || booking?.booking_id || `${startIso}-${booking?.service_name || "service"}`
+                          )}
+                          style={[
+                            styles.providerCalendarRow,
+                            completed && styles.providerCalendarRowCompleted,
+                          ]}
+                        >
+                          <View style={{ flex: 1 }}>
+                            <Text style={styles.providerCalendarTime}>{startLabel}</Text>
+                            <Text
+                              style={[
+                                styles.providerCalendarService,
+                                completed && styles.providerCalendarTextCompleted,
+                              ]}
+                            >
+                              {booking?.service_name || "Service"}
+                            </Text>
+                            <Text
+                              style={[
+                                styles.providerCalendarCustomer,
+                                completed && styles.providerCalendarTextCompleted,
+                              ]}
+                            >
+                              {booking?.customer_name || "Customer"}
+                            </Text>
+                          </View>
+                          {completed ? (
+                            <View style={styles.providerCalendarCompletedBadge}>
+                              <Text style={styles.providerCalendarCompletedText}>Completed</Text>
+                            </View>
+                          ) : null}
+                        </View>
+                      );
+                    })}
+                </ScrollView>
+              )}
+            </View>
+          </>
+        ) : null}
+      </View>
     </SafeAreaView>
   );
 }
@@ -9317,9 +9427,10 @@ signupTextButtonText: {
     backgroundColor: colors.background,
   },
   providerCalendarContentContainer: {
+    flex: 1,
     paddingHorizontal: 16,
     paddingTop: 8,
-    paddingBottom: 28,
+    paddingBottom: 12,
   },
   providerCalendarModeSwitch: {
     flexDirection: "row",
@@ -9363,8 +9474,71 @@ signupTextButtonText: {
   providerCalendarViewportWeek: {
     height: 140,
   },
+  providerCalendarDailyLayout: {
+    borderRadius: 10,
+    overflow: "hidden",
+  },
+  providerCalendarDayStrip: {
+    minHeight: 104,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+    backgroundColor: colors.surface,
+  },
   providerCalendarViewportDay: {
-    height: 420,
+    height: 500,
+    backgroundColor: colors.surface,
+  },
+  providerTimelineEvent: {
+    flex: 1,
+    borderRadius: 12,
+    backgroundColor: colors.surfaceElevated,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.08)",
+    overflow: "hidden",
+    flexDirection: "row",
+  },
+  providerTimelineEventCompleted: {
+    opacity: 0.58,
+  },
+  providerTimelineEventAccent: {
+    width: 4,
+  },
+  providerTimelineEventBody: {
+    flex: 1,
+    paddingHorizontal: 8,
+    paddingVertical: 7,
+  },
+  providerTimelineEventTime: {
+    color: colors.textPrimary,
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  providerTimelineEventService: {
+    color: colors.textPrimary,
+    fontSize: 13,
+    fontWeight: "700",
+    marginTop: 2,
+  },
+  providerTimelineEventCustomer: {
+    color: colors.textMuted,
+    fontSize: 12,
+    marginTop: 1,
+  },
+  providerTimelineEventCompletedBadge: {
+    position: "absolute",
+    top: 6,
+    right: 6,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: colors.textMuted,
+    backgroundColor: "rgba(0,0,0,0.25)",
+  },
+  providerTimelineEventCompletedText: {
+    color: colors.textMuted,
+    fontSize: 9,
+    fontWeight: "700",
   },
   providerCalendarHeaderBlock: {
     marginTop: 12,
