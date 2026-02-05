@@ -1,164 +1,112 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
 diff --git a/mobile/App.js b/mobile/App.js
-index c7b952d26703e87417ade1789418813fc3c0ec9c..908de7923b1bd6c0e096ba7a7b1109b5567c97e0 100644
+index 908de7923b1bd6c0e096ba7a7b1109b5567c97e0..dd26c0741b5857b60687b388f4a44e17bdf08667 100644
 --- a/mobile/App.js
 +++ b/mobile/App.js
-@@ -6651,58 +6651,61 @@ function WeeklyStrip({
-   weekStartKey,
-   selectedDate,
-   onSelectDate,
-   bookingsByDate,
-   isBookingCompleted,
-   colors,
-   getWeekDays,
- }) {
-   const weekDays = useMemo(() => getWeekDays(weekStartKey), [getWeekDays, weekStartKey]);
- 
-   return (
-     <View style={styles.providerWeeklyStrip}>
-       <View style={styles.providerWeeklyRow}>
-         {weekDays.map((day) => {
-           const bookings = bookingsByDate?.[day.key] || [];
-           const hasBookings = bookings.length > 0;
-           const allCompleted = hasBookings && bookings.every((booking) => isBookingCompleted(booking));
-           const isSelected = day.key === selectedDate;
- 
-           return (
-             <Pressable
-               key={day.key}
-               style={styles.providerWeeklyCell}
-               onPress={() => onSelectDate(day.key)}
-             >
--              <Text style={styles.providerWeeklyDow}>{day.label}</Text>
-+              <Text allowFontScaling={false} style={styles.providerWeeklyDow}>
-+                {day.label}
-+              </Text>
-               <View
-                 style={[
-                   styles.providerWeeklyDayWrap,
-                   isSelected && styles.providerWeeklyDayWrapSelected,
-                 ]}
-               >
-                 <Text
-+                  allowFontScaling={false}
-                   style={[
-                     styles.providerWeeklyDayText,
-                     !isSelected && styles.providerWeeklyDayTextMuted,
-                   ]}
-                 >
-                   {day.dayNumber}
+@@ -6490,50 +6490,51 @@ function ProviderBillingScreen({ token, showFlash }) {
+                   -{formatMoney(bill.bill_credits_gyd)}
                  </Text>
                </View>
-               {hasBookings ? (
-                 <View
-                   style={[
-                     styles.providerWeeklyDot,
-                     {
-                       backgroundColor: allCompleted ? colors.textMuted : colors.primary,
-                     },
-                   ]}
-                 />
-               ) : null}
-             </Pressable>
-           );
-         })}
-       </View>
-     </View>
+             <View style={styles.billingTotalsRow}>
+               <Text style={styles.billingTotalsLabel}>Total due</Text>
+               <Text style={styles.billingTotalsValue}>
+                 {formatMoney(bill.total_due_gyd)}
+               </Text>
+             </View>
+           </View>
+         )})}
+     </ScrollView>
    );
  }
-@@ -9798,77 +9801,91 @@ signupTextButtonText: {
-     padding: 8,
-   },
-   providerCalendarViewport: {
-     overflow: "hidden",
-     borderRadius: 10,
-   },
-   providerCalendarViewportMonth: {
-     height: 360,
-   },
-   providerCalendarViewportWeek: {
-     height: 168,
-     overflow: "hidden",
-   },
-   providerWeeklyStrip: {
-     width: "100%",
-     paddingVertical: 10,
-   },
-   providerWeeklyRow: {
-     flexDirection: "row",
-     width: "100%",
-     paddingHorizontal: 8,
-   },
-   providerWeeklyCell: {
-     flex: 1,
-     alignItems: "center",
--    justifyContent: "center",
-+    justifyContent: "flex-start",
-+    minHeight: 70,
-   },
-   providerWeeklyDow: {
-     color: colors.textSecondary,
-     fontSize: 13,
-     fontWeight: "600",
-+    lineHeight: 13,
-+    height: 13,
-+    textAlign: "center",
-+    includeFontPadding: false,
-+    textAlignVertical: "center",
-     marginBottom: 10,
-   },
-   providerWeeklyDayWrap: {
-     width: 36,
-     height: 36,
-     borderRadius: 18,
-     alignItems: "center",
-     justifyContent: "center",
-   },
-   providerWeeklyDayWrapSelected: {
-     backgroundColor: colors.primarySoft,
-   },
-   providerWeeklyDayText: {
-     color: colors.textPrimary,
-     fontSize: 18,
-     fontWeight: "700",
-+    lineHeight: 18,
-+    textAlign: "center",
-+    includeFontPadding: false,
-+    textAlignVertical: "center",
-   },
-   providerWeeklyDayTextMuted: {
-     color: colors.textSecondary,
-     fontSize: 18,
-     fontWeight: "700",
-+    lineHeight: 18,
-+    textAlign: "center",
-+    includeFontPadding: false,
-+    textAlignVertical: "center",
-   },
-   providerWeeklyDot: {
-     width: 6,
-     height: 6,
-     borderRadius: 3,
-     marginTop: 6,
-   },
-   providerCalendarDailyLayout: {
-     borderRadius: 10,
-     overflow: "hidden",
-   },
-   providerCalendarDayStrip: {
-     minHeight: 104,
-     borderBottomWidth: 1,
-     borderBottomColor: colors.border,
-     backgroundColor: colors.surface,
-   },
-   providerCalendarViewportDay: {
-     height: 500,
-     backgroundColor: colors.surface,
-     width: "100%",
-     overflow: "hidden",
-   },
-   providerDayScheduleScroll: {
-     flex: 1,
+ 
+ 
+ function DayScheduleGrid({ events, startHour, endHour }) {
+   const hourHeight = 130;
+   const timeGutterWidth = 56;
+   const gridVerticalPadding = 12;
+   const gridStart = Number.isFinite(startHour) ? startHour : 0;
+   const gridEnd = Number.isFinite(endHour) ? Math.max(endHour, gridStart + 1) : 24;
+   const totalHours = Math.max(gridEnd - gridStart, 1);
+   const totalHeight = totalHours * hourHeight;
+   const trackHeight = totalHeight + gridVerticalPadding * 2;
++  const contentMinHeight = totalHeight + gridVerticalPadding * 2 + 24;
+ 
+   const hourTicks = useMemo(
+     () => Array.from({ length: totalHours }, (_, idx) => gridStart + idx),
+     [gridStart, totalHours]
+   );
+ 
+   const lineTicks = useMemo(
+     () => Array.from({ length: totalHours + 1 }, (_, idx) => gridStart + idx),
+     [gridStart, totalHours]
+   );
+ 
+   const formatHourLabel = useCallback((hour) => {
+     const normalizedHour = ((hour % 24) + 24) % 24;
+     const meridiem = normalizedHour >= 12 ? "PM" : "AM";
+     const displayHour = normalizedHour % 12 === 0 ? 12 : normalizedHour % 12;
+     return `${displayHour}${meridiem}`;
+   }, []);
+ 
+   const positionedEvents = useMemo(() => {
+     const minuteToPx = hourHeight / 60;
+     return (events || [])
+       .map((event) => {
+         const startDate = event?.startDate || new Date(event?.start);
+         const endDate = event?.endDate || new Date(event?.end);
+         if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) return null;
+@@ -6542,50 +6543,51 @@ function DayScheduleGrid({ events, startHour, endHour }) {
+         const endMinutes = endDate.getHours() * 60 + endDate.getMinutes();
+         const gridStartMinutes = gridStart * 60;
+         const gridEndMinutes = gridEnd * 60;
+         const clampedStart = Math.max(startMinutes, gridStartMinutes);
+         const clampedEnd = Math.min(Math.max(endMinutes, clampedStart + 1), gridEndMinutes);
+         const durationMinutes = Math.max(clampedEnd - clampedStart, 1);
+ 
+         const top = (clampedStart - gridStartMinutes) * minuteToPx + gridVerticalPadding;
+         const height = Math.max(durationMinutes * minuteToPx - 6, 50);
+ 
+         return {
+           ...event,
+           top,
+           height,
+         };
+       })
+       .filter(Boolean)
+       .sort((a, b) => a.top - b.top);
+   }, [events, gridEnd, gridStart, gridVerticalPadding, hourHeight]);
+ 
+   return (
+     <ScrollView
+       style={styles.providerDayScheduleScroll}
+       contentContainerStyle={[
+         styles.providerDayScheduleScrollContent,
++        Platform.OS === "android" ? { flexGrow: 1, minHeight: contentMinHeight } : null,
+         { paddingTop: gridVerticalPadding, paddingBottom: gridVerticalPadding + 24 },
+       ]}
+       showsVerticalScrollIndicator={false}
+       bounces={false}
+       alwaysBounceHorizontal={false}
+       horizontal={false}
+     >
+       <View style={styles.providerDayScheduleRow}>
+         <View style={[styles.providerDayScheduleGutter, { width: timeGutterWidth, height: trackHeight }]}>
+           {hourTicks.map((hour) => {
+             const y = (hour - gridStart) * hourHeight + gridVerticalPadding;
+             return (
+               <Text key={`label-${hour}`} style={[styles.providerDayScheduleTimeLabel, { top: y + hourHeight / 2 }]}>
+                 {formatHourLabel(hour)}
+               </Text>
+             );
+           })}
+         </View>
+ 
+         <View style={[styles.providerDayScheduleGrid, { height: trackHeight }]}>
+           {lineTicks.map((hour) => {
+             const y = (hour - gridStart) * hourHeight + gridVerticalPadding;
+             const hasHalfHour = hour < gridEnd;
+             return (
+               <React.Fragment key={`line-${hour}`}>
  
 EOF
 )

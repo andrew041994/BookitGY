@@ -6512,6 +6512,7 @@ function DayScheduleGrid({ events, startHour, endHour }) {
   const totalHours = Math.max(gridEnd - gridStart, 1);
   const totalHeight = totalHours * hourHeight;
   const trackHeight = totalHeight + gridVerticalPadding * 2;
+  const contentMinHeight = totalHeight + gridVerticalPadding * 2 + 24;
 
   const hourTicks = useMemo(
     () => Array.from({ length: totalHours }, (_, idx) => gridStart + idx),
@@ -6564,6 +6565,7 @@ function DayScheduleGrid({ events, startHour, endHour }) {
       style={styles.providerDayScheduleScroll}
       contentContainerStyle={[
         styles.providerDayScheduleScrollContent,
+        Platform.OS === "android" ? { flexGrow: 1, minHeight: contentMinHeight } : null,
         { paddingTop: gridVerticalPadding, paddingBottom: gridVerticalPadding + 24 },
       ]}
       showsVerticalScrollIndicator={false}
