@@ -1,19 +1,9 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
 diff --git a/mobile/App.js b/mobile/App.js
-index dd26c0741b5857b60687b388f4a44e17bdf08667..18b966141e5b0460faf4cb5a10d820a6be788bdc 100644
+index 18b966141e5b0460faf4cb5a10d820a6be788bdc..f97f24fcd76515405f4fa964deec0b18b92c393a 100644
 --- a/mobile/App.js
 +++ b/mobile/App.js
-@@ -6485,132 +6485,151 @@ function ProviderBillingScreen({ token, showFlash }) {
-               </Text>
-             </View>
-               <View style={styles.billingTotalsRow}>
-                 <Text style={styles.billingTotalsLabel}>Bill credits</Text>
-                 <Text style={styles.billingTotalsValue}>
-                   -{formatMoney(bill.bill_credits_gyd)}
-                 </Text>
-               </View>
-             <View style={styles.billingTotalsRow}>
-               <Text style={styles.billingTotalsLabel}>Total due</Text>
+@@ -6495,51 +6495,50 @@ function ProviderBillingScreen({ token, showFlash }) {
                <Text style={styles.billingTotalsValue}>
                  {formatMoney(bill.total_due_gyd)}
                </Text>
@@ -29,70 +19,48 @@ index dd26c0741b5857b60687b388f4a44e17bdf08667..18b966141e5b0460faf4cb5a10d820a6
    const hourHeight = 130;
    const timeGutterWidth = 56;
    const gridVerticalPadding = 12;
--  const gridStart = Number.isFinite(startHour) ? startHour : 0;
--  const gridEnd = Number.isFinite(endHour) ? Math.max(endHour, gridStart + 1) : 24;
--  const totalHours = Math.max(gridEnd - gridStart, 1);
-+  const startRaw = Number(startHour);
-+  const endRaw = Number(endHour);
-+  const gridStart = Number.isFinite(startRaw) ? startRaw : 0;
-+  const gridEndCandidate = Number.isFinite(endRaw) ? endRaw : 24;
-+  const gridStartClamped = Math.min(Math.max(gridStart, 0), 23);
-+  const gridEndClamped = Math.min(Math.max(gridEndCandidate, gridStartClamped + 1), 24);
-+  const totalHours = gridEndClamped - gridStartClamped;
+   const startRaw = Number(startHour);
+   const endRaw = Number(endHour);
+   const gridStart = Number.isFinite(startRaw) ? startRaw : 0;
+   const gridEndCandidate = Number.isFinite(endRaw) ? endRaw : 24;
+   const gridStartClamped = Math.min(Math.max(gridStart, 0), 23);
+   const gridEndClamped = Math.min(Math.max(gridEndCandidate, gridStartClamped + 1), 24);
+   const totalHours = gridEndClamped - gridStartClamped;
    const totalHeight = totalHours * hourHeight;
    const trackHeight = totalHeight + gridVerticalPadding * 2;
-+  const contentHeight = trackHeight;
-   const contentMinHeight = totalHeight + gridVerticalPadding * 2 + 24;
-+  const loggedRef = useRef(false);
-+
-+  useEffect(() => {
-+    if (Platform.OS !== "android" || loggedRef.current) return;
-+    loggedRef.current = true;
-+    console.log("[DayScheduleGrid Android debug]", {
-+      startHour,
-+      endHour,
-+      gridStartClamped,
-+      gridEndClamped,
-+      totalHours,
-+      contentHeight,
-+    });
-+  }, [contentHeight, endHour, gridEndClamped, gridStartClamped, startHour, totalHours]);
+   const contentHeight = trackHeight;
+-  const contentMinHeight = totalHeight + gridVerticalPadding * 2 + 24;
+   const loggedRef = useRef(false);
+ 
+   useEffect(() => {
+     if (Platform.OS !== "android" || loggedRef.current) return;
+     loggedRef.current = true;
+     console.log("[DayScheduleGrid Android debug]", {
+       startHour,
+       endHour,
+       gridStartClamped,
+       gridEndClamped,
+       totalHours,
+       contentHeight,
+     });
+   }, [contentHeight, endHour, gridEndClamped, gridStartClamped, startHour, totalHours]);
  
    const hourTicks = useMemo(
--    () => Array.from({ length: totalHours }, (_, idx) => gridStart + idx),
--    [gridStart, totalHours]
-+    () => Array.from({ length: totalHours }, (_, idx) => gridStartClamped + idx),
-+    [gridStartClamped, totalHours]
+     () => Array.from({ length: totalHours }, (_, idx) => gridStartClamped + idx),
+     [gridStartClamped, totalHours]
    );
  
    const lineTicks = useMemo(
--    () => Array.from({ length: totalHours + 1 }, (_, idx) => gridStart + idx),
--    [gridStart, totalHours]
-+    () => Array.from({ length: totalHours + 1 }, (_, idx) => gridStartClamped + idx),
-+    [gridStartClamped, totalHours]
+     () => Array.from({ length: totalHours + 1 }, (_, idx) => gridStartClamped + idx),
+     [gridStartClamped, totalHours]
    );
  
-   const formatHourLabel = useCallback((hour) => {
-     const normalizedHour = ((hour % 24) + 24) % 24;
-     const meridiem = normalizedHour >= 12 ? "PM" : "AM";
-     const displayHour = normalizedHour % 12 === 0 ? 12 : normalizedHour % 12;
-     return `${displayHour}${meridiem}`;
-   }, []);
- 
-   const positionedEvents = useMemo(() => {
-     const minuteToPx = hourHeight / 60;
-     return (events || [])
-       .map((event) => {
-         const startDate = event?.startDate || new Date(event?.start);
-         const endDate = event?.endDate || new Date(event?.end);
-         if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) return null;
+@@ -6560,59 +6559,64 @@ function DayScheduleGrid({ events, startHour, endHour }) {
  
          const startMinutes = startDate.getHours() * 60 + startDate.getMinutes();
          const endMinutes = endDate.getHours() * 60 + endDate.getMinutes();
--        const gridStartMinutes = gridStart * 60;
--        const gridEndMinutes = gridEnd * 60;
-+        const gridStartMinutes = gridStartClamped * 60;
-+        const gridEndMinutes = gridEndClamped * 60;
+         const gridStartMinutes = gridStartClamped * 60;
+         const gridEndMinutes = gridEndClamped * 60;
          const clampedStart = Math.max(startMinutes, gridStartMinutes);
          const clampedEnd = Math.min(Math.max(endMinutes, clampedStart + 1), gridEndMinutes);
          const durationMinutes = Math.max(clampedEnd - clampedStart, 1);
@@ -108,27 +76,31 @@ index dd26c0741b5857b60687b388f4a44e17bdf08667..18b966141e5b0460faf4cb5a10d820a6
        })
        .filter(Boolean)
        .sort((a, b) => a.top - b.top);
--  }, [events, gridEnd, gridStart, gridVerticalPadding, hourHeight]);
-+  }, [events, gridEndClamped, gridStartClamped, gridVerticalPadding, hourHeight]);
+   }, [events, gridEndClamped, gridStartClamped, gridVerticalPadding, hourHeight]);
  
    return (
      <ScrollView
        style={styles.providerDayScheduleScroll}
++      pointerEvents="auto"
        contentContainerStyle={[
          styles.providerDayScheduleScrollContent,
-         Platform.OS === "android" ? { flexGrow: 1, minHeight: contentMinHeight } : null,
+-        Platform.OS === "android" ? { flexGrow: 1, minHeight: contentMinHeight } : null,
++        Platform.OS === "android" ? { minHeight: contentHeight + gridVerticalPadding * 2 + 24 } : null,
          { paddingTop: gridVerticalPadding, paddingBottom: gridVerticalPadding + 24 },
        ]}
        showsVerticalScrollIndicator={false}
        bounces={false}
        alwaysBounceHorizontal={false}
        horizontal={false}
++      nestedScrollEnabled={true}
++      scrollEnabled={true}
++      keyboardShouldPersistTaps="handled"
++      contentInsetAdjustmentBehavior="never"
      >
        <View style={styles.providerDayScheduleRow}>
          <View style={[styles.providerDayScheduleGutter, { width: timeGutterWidth, height: trackHeight }]}>
            {hourTicks.map((hour) => {
--            const y = (hour - gridStart) * hourHeight + gridVerticalPadding;
-+            const y = (hour - gridStartClamped) * hourHeight + gridVerticalPadding;
+             const y = (hour - gridStartClamped) * hourHeight + gridVerticalPadding;
              return (
                <Text key={`label-${hour}`} style={[styles.providerDayScheduleTimeLabel, { top: y + hourHeight / 2 }]}>
                  {formatHourLabel(hour)}
@@ -139,10 +111,8 @@ index dd26c0741b5857b60687b388f4a44e17bdf08667..18b966141e5b0460faf4cb5a10d820a6
  
          <View style={[styles.providerDayScheduleGrid, { height: trackHeight }]}>
            {lineTicks.map((hour) => {
--            const y = (hour - gridStart) * hourHeight + gridVerticalPadding;
--            const hasHalfHour = hour < gridEnd;
-+            const y = (hour - gridStartClamped) * hourHeight + gridVerticalPadding;
-+            const hasHalfHour = hour < gridEndClamped;
+             const y = (hour - gridStartClamped) * hourHeight + gridVerticalPadding;
+             const hasHalfHour = hour < gridEndClamped;
              return (
                <React.Fragment key={`line-${hour}`}>
                  <View style={[styles.providerDayScheduleHourLine, { top: y }]} />
@@ -151,23 +121,65 @@ index dd26c0741b5857b60687b388f4a44e17bdf08667..18b966141e5b0460faf4cb5a10d820a6
              );
            })}
  
-           {positionedEvents.map((event) => {
-             const completed = Boolean(event?.completed);
-             return (
-               <TouchableOpacity
-                 key={event.id}
-                 activeOpacity={0.9}
-                 style={[
-                   styles.providerDayScheduleEvent,
-                   completed && styles.providerDayScheduleEventCompleted,
-                   {
-                     top: event.top,
-                     height: event.height,
-                   },
-                 ]}
-                 onPress={() => {
-                   Alert.alert(
-                     event?.title || "Appointment",
+@@ -9884,56 +9888,56 @@ signupTextButtonText: {
+     lineHeight: 18,
+     textAlign: "center",
+     includeFontPadding: false,
+     textAlignVertical: "center",
+   },
+   providerWeeklyDot: {
+     width: 6,
+     height: 6,
+     borderRadius: 3,
+     marginTop: 6,
+   },
+   providerCalendarDailyLayout: {
+     borderRadius: 10,
+     overflow: "hidden",
+   },
+   providerCalendarDayStrip: {
+     minHeight: 104,
+     borderBottomWidth: 1,
+     borderBottomColor: colors.border,
+     backgroundColor: colors.surface,
+   },
+   providerCalendarViewportDay: {
+     height: 500,
+     backgroundColor: colors.surface,
+     width: "100%",
+-    overflow: "hidden",
++    overflow: Platform.OS === "android" ? "visible" : "hidden",
+   },
+   providerDayScheduleScroll: {
+     flex: 1,
+     width: "100%",
+-    overflow: "hidden",
++    overflow: Platform.OS === "android" ? "visible" : "hidden",
+   },
+   providerDayScheduleScrollContent: {
+     minWidth: "100%",
+   },
+   providerDayScheduleRow: {
+     flexDirection: "row",
+     width: "100%",
+   },
+   providerDayScheduleGutter: {
+     position: "relative",
+     backgroundColor: colors.surface,
+     borderRightWidth: 1,
+     borderRightColor: "rgba(255,255,255,0.06)",
+   },
+   providerDayScheduleTimeLabel: {
+     position: "absolute",
+     left: 6,
+     color: colors.textMuted,
+     fontSize: 11,
+     fontWeight: "600",
+     transform: [{ translateY: -8 }],
+   },
+   providerDayScheduleGrid: {
+     flex: 1,
+     position: "relative",
  
 EOF
 )

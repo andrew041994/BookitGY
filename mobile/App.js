@@ -6517,7 +6517,6 @@ function DayScheduleGrid({ events, startHour, endHour }) {
   const totalHeight = totalHours * hourHeight;
   const trackHeight = totalHeight + gridVerticalPadding * 2;
   const contentHeight = trackHeight;
-  const contentMinHeight = totalHeight + gridVerticalPadding * 2 + 24;
   const loggedRef = useRef(false);
 
   useEffect(() => {
@@ -6582,15 +6581,20 @@ function DayScheduleGrid({ events, startHour, endHour }) {
   return (
     <ScrollView
       style={styles.providerDayScheduleScroll}
+      pointerEvents="auto"
       contentContainerStyle={[
         styles.providerDayScheduleScrollContent,
-        Platform.OS === "android" ? { flexGrow: 1, minHeight: contentMinHeight } : null,
+        Platform.OS === "android" ? { minHeight: contentHeight + gridVerticalPadding * 2 + 24 } : null,
         { paddingTop: gridVerticalPadding, paddingBottom: gridVerticalPadding + 24 },
       ]}
       showsVerticalScrollIndicator={false}
       bounces={false}
       alwaysBounceHorizontal={false}
       horizontal={false}
+      nestedScrollEnabled={true}
+      scrollEnabled={true}
+      keyboardShouldPersistTaps="handled"
+      contentInsetAdjustmentBehavior="never"
     >
       <View style={styles.providerDayScheduleRow}>
         <View style={[styles.providerDayScheduleGutter, { width: timeGutterWidth, height: trackHeight }]}>
@@ -9906,12 +9910,12 @@ signupTextButtonText: {
     height: 500,
     backgroundColor: colors.surface,
     width: "100%",
-    overflow: "hidden",
+    overflow: Platform.OS === "android" ? "visible" : "hidden",
   },
   providerDayScheduleScroll: {
     flex: 1,
     width: "100%",
-    overflow: "hidden",
+    overflow: Platform.OS === "android" ? "visible" : "hidden",
   },
   providerDayScheduleScrollContent: {
     minWidth: "100%",
