@@ -1,9 +1,14 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
 diff --git a/mobile/App.js b/mobile/App.js
-index 908de7923b1bd6c0e096ba7a7b1109b5567c97e0..dd26c0741b5857b60687b388f4a44e17bdf08667 100644
+index dd26c0741b5857b60687b388f4a44e17bdf08667..18b966141e5b0460faf4cb5a10d820a6be788bdc 100644
 --- a/mobile/App.js
 +++ b/mobile/App.js
-@@ -6490,50 +6490,51 @@ function ProviderBillingScreen({ token, showFlash }) {
+@@ -6485,132 +6485,151 @@ function ProviderBillingScreen({ token, showFlash }) {
+               </Text>
+             </View>
+               <View style={styles.billingTotalsRow}>
+                 <Text style={styles.billingTotalsLabel}>Bill credits</Text>
+                 <Text style={styles.billingTotalsValue}>
                    -{formatMoney(bill.bill_credits_gyd)}
                  </Text>
                </View>
@@ -24,21 +29,47 @@ index 908de7923b1bd6c0e096ba7a7b1109b5567c97e0..dd26c0741b5857b60687b388f4a44e17
    const hourHeight = 130;
    const timeGutterWidth = 56;
    const gridVerticalPadding = 12;
-   const gridStart = Number.isFinite(startHour) ? startHour : 0;
-   const gridEnd = Number.isFinite(endHour) ? Math.max(endHour, gridStart + 1) : 24;
-   const totalHours = Math.max(gridEnd - gridStart, 1);
+-  const gridStart = Number.isFinite(startHour) ? startHour : 0;
+-  const gridEnd = Number.isFinite(endHour) ? Math.max(endHour, gridStart + 1) : 24;
+-  const totalHours = Math.max(gridEnd - gridStart, 1);
++  const startRaw = Number(startHour);
++  const endRaw = Number(endHour);
++  const gridStart = Number.isFinite(startRaw) ? startRaw : 0;
++  const gridEndCandidate = Number.isFinite(endRaw) ? endRaw : 24;
++  const gridStartClamped = Math.min(Math.max(gridStart, 0), 23);
++  const gridEndClamped = Math.min(Math.max(gridEndCandidate, gridStartClamped + 1), 24);
++  const totalHours = gridEndClamped - gridStartClamped;
    const totalHeight = totalHours * hourHeight;
    const trackHeight = totalHeight + gridVerticalPadding * 2;
-+  const contentMinHeight = totalHeight + gridVerticalPadding * 2 + 24;
++  const contentHeight = trackHeight;
+   const contentMinHeight = totalHeight + gridVerticalPadding * 2 + 24;
++  const loggedRef = useRef(false);
++
++  useEffect(() => {
++    if (Platform.OS !== "android" || loggedRef.current) return;
++    loggedRef.current = true;
++    console.log("[DayScheduleGrid Android debug]", {
++      startHour,
++      endHour,
++      gridStartClamped,
++      gridEndClamped,
++      totalHours,
++      contentHeight,
++    });
++  }, [contentHeight, endHour, gridEndClamped, gridStartClamped, startHour, totalHours]);
  
    const hourTicks = useMemo(
-     () => Array.from({ length: totalHours }, (_, idx) => gridStart + idx),
-     [gridStart, totalHours]
+-    () => Array.from({ length: totalHours }, (_, idx) => gridStart + idx),
+-    [gridStart, totalHours]
++    () => Array.from({ length: totalHours }, (_, idx) => gridStartClamped + idx),
++    [gridStartClamped, totalHours]
    );
  
    const lineTicks = useMemo(
-     () => Array.from({ length: totalHours + 1 }, (_, idx) => gridStart + idx),
-     [gridStart, totalHours]
+-    () => Array.from({ length: totalHours + 1 }, (_, idx) => gridStart + idx),
+-    [gridStart, totalHours]
++    () => Array.from({ length: totalHours + 1 }, (_, idx) => gridStartClamped + idx),
++    [gridStartClamped, totalHours]
    );
  
    const formatHourLabel = useCallback((hour) => {
@@ -55,10 +86,13 @@ index 908de7923b1bd6c0e096ba7a7b1109b5567c97e0..dd26c0741b5857b60687b388f4a44e17
          const startDate = event?.startDate || new Date(event?.start);
          const endDate = event?.endDate || new Date(event?.end);
          if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) return null;
-@@ -6542,50 +6543,51 @@ function DayScheduleGrid({ events, startHour, endHour }) {
+ 
+         const startMinutes = startDate.getHours() * 60 + startDate.getMinutes();
          const endMinutes = endDate.getHours() * 60 + endDate.getMinutes();
-         const gridStartMinutes = gridStart * 60;
-         const gridEndMinutes = gridEnd * 60;
+-        const gridStartMinutes = gridStart * 60;
+-        const gridEndMinutes = gridEnd * 60;
++        const gridStartMinutes = gridStartClamped * 60;
++        const gridEndMinutes = gridEndClamped * 60;
          const clampedStart = Math.max(startMinutes, gridStartMinutes);
          const clampedEnd = Math.min(Math.max(endMinutes, clampedStart + 1), gridEndMinutes);
          const durationMinutes = Math.max(clampedEnd - clampedStart, 1);
@@ -74,14 +108,15 @@ index 908de7923b1bd6c0e096ba7a7b1109b5567c97e0..dd26c0741b5857b60687b388f4a44e17
        })
        .filter(Boolean)
        .sort((a, b) => a.top - b.top);
-   }, [events, gridEnd, gridStart, gridVerticalPadding, hourHeight]);
+-  }, [events, gridEnd, gridStart, gridVerticalPadding, hourHeight]);
++  }, [events, gridEndClamped, gridStartClamped, gridVerticalPadding, hourHeight]);
  
    return (
      <ScrollView
        style={styles.providerDayScheduleScroll}
        contentContainerStyle={[
          styles.providerDayScheduleScrollContent,
-+        Platform.OS === "android" ? { flexGrow: 1, minHeight: contentMinHeight } : null,
+         Platform.OS === "android" ? { flexGrow: 1, minHeight: contentMinHeight } : null,
          { paddingTop: gridVerticalPadding, paddingBottom: gridVerticalPadding + 24 },
        ]}
        showsVerticalScrollIndicator={false}
@@ -92,7 +127,8 @@ index 908de7923b1bd6c0e096ba7a7b1109b5567c97e0..dd26c0741b5857b60687b388f4a44e17
        <View style={styles.providerDayScheduleRow}>
          <View style={[styles.providerDayScheduleGutter, { width: timeGutterWidth, height: trackHeight }]}>
            {hourTicks.map((hour) => {
-             const y = (hour - gridStart) * hourHeight + gridVerticalPadding;
+-            const y = (hour - gridStart) * hourHeight + gridVerticalPadding;
++            const y = (hour - gridStartClamped) * hourHeight + gridVerticalPadding;
              return (
                <Text key={`label-${hour}`} style={[styles.providerDayScheduleTimeLabel, { top: y + hourHeight / 2 }]}>
                  {formatHourLabel(hour)}
@@ -103,10 +139,35 @@ index 908de7923b1bd6c0e096ba7a7b1109b5567c97e0..dd26c0741b5857b60687b388f4a44e17
  
          <View style={[styles.providerDayScheduleGrid, { height: trackHeight }]}>
            {lineTicks.map((hour) => {
-             const y = (hour - gridStart) * hourHeight + gridVerticalPadding;
-             const hasHalfHour = hour < gridEnd;
+-            const y = (hour - gridStart) * hourHeight + gridVerticalPadding;
+-            const hasHalfHour = hour < gridEnd;
++            const y = (hour - gridStartClamped) * hourHeight + gridVerticalPadding;
++            const hasHalfHour = hour < gridEndClamped;
              return (
                <React.Fragment key={`line-${hour}`}>
+                 <View style={[styles.providerDayScheduleHourLine, { top: y }]} />
+                 {hasHalfHour ? <View style={[styles.providerDayScheduleHalfHourLine, { top: y + hourHeight / 2 }]} /> : null}
+               </React.Fragment>
+             );
+           })}
+ 
+           {positionedEvents.map((event) => {
+             const completed = Boolean(event?.completed);
+             return (
+               <TouchableOpacity
+                 key={event.id}
+                 activeOpacity={0.9}
+                 style={[
+                   styles.providerDayScheduleEvent,
+                   completed && styles.providerDayScheduleEventCompleted,
+                   {
+                     top: event.top,
+                     height: event.height,
+                   },
+                 ]}
+                 onPress={() => {
+                   Alert.alert(
+                     event?.title || "Appointment",
  
 EOF
 )

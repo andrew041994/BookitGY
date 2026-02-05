@@ -6507,21 +6507,40 @@ function DayScheduleGrid({ events, startHour, endHour }) {
   const hourHeight = 130;
   const timeGutterWidth = 56;
   const gridVerticalPadding = 12;
-  const gridStart = Number.isFinite(startHour) ? startHour : 0;
-  const gridEnd = Number.isFinite(endHour) ? Math.max(endHour, gridStart + 1) : 24;
-  const totalHours = Math.max(gridEnd - gridStart, 1);
+  const startRaw = Number(startHour);
+  const endRaw = Number(endHour);
+  const gridStart = Number.isFinite(startRaw) ? startRaw : 0;
+  const gridEndCandidate = Number.isFinite(endRaw) ? endRaw : 24;
+  const gridStartClamped = Math.min(Math.max(gridStart, 0), 23);
+  const gridEndClamped = Math.min(Math.max(gridEndCandidate, gridStartClamped + 1), 24);
+  const totalHours = gridEndClamped - gridStartClamped;
   const totalHeight = totalHours * hourHeight;
   const trackHeight = totalHeight + gridVerticalPadding * 2;
+  const contentHeight = trackHeight;
   const contentMinHeight = totalHeight + gridVerticalPadding * 2 + 24;
+  const loggedRef = useRef(false);
+
+  useEffect(() => {
+    if (Platform.OS !== "android" || loggedRef.current) return;
+    loggedRef.current = true;
+    console.log("[DayScheduleGrid Android debug]", {
+      startHour,
+      endHour,
+      gridStartClamped,
+      gridEndClamped,
+      totalHours,
+      contentHeight,
+    });
+  }, [contentHeight, endHour, gridEndClamped, gridStartClamped, startHour, totalHours]);
 
   const hourTicks = useMemo(
-    () => Array.from({ length: totalHours }, (_, idx) => gridStart + idx),
-    [gridStart, totalHours]
+    () => Array.from({ length: totalHours }, (_, idx) => gridStartClamped + idx),
+    [gridStartClamped, totalHours]
   );
 
   const lineTicks = useMemo(
-    () => Array.from({ length: totalHours + 1 }, (_, idx) => gridStart + idx),
-    [gridStart, totalHours]
+    () => Array.from({ length: totalHours + 1 }, (_, idx) => gridStartClamped + idx),
+    [gridStartClamped, totalHours]
   );
 
   const formatHourLabel = useCallback((hour) => {
@@ -6541,8 +6560,8 @@ function DayScheduleGrid({ events, startHour, endHour }) {
 
         const startMinutes = startDate.getHours() * 60 + startDate.getMinutes();
         const endMinutes = endDate.getHours() * 60 + endDate.getMinutes();
-        const gridStartMinutes = gridStart * 60;
-        const gridEndMinutes = gridEnd * 60;
+        const gridStartMinutes = gridStartClamped * 60;
+        const gridEndMinutes = gridEndClamped * 60;
         const clampedStart = Math.max(startMinutes, gridStartMinutes);
         const clampedEnd = Math.min(Math.max(endMinutes, clampedStart + 1), gridEndMinutes);
         const durationMinutes = Math.max(clampedEnd - clampedStart, 1);
@@ -6558,7 +6577,7 @@ function DayScheduleGrid({ events, startHour, endHour }) {
       })
       .filter(Boolean)
       .sort((a, b) => a.top - b.top);
-  }, [events, gridEnd, gridStart, gridVerticalPadding, hourHeight]);
+  }, [events, gridEndClamped, gridStartClamped, gridVerticalPadding, hourHeight]);
 
   return (
     <ScrollView
@@ -6576,7 +6595,7 @@ function DayScheduleGrid({ events, startHour, endHour }) {
       <View style={styles.providerDayScheduleRow}>
         <View style={[styles.providerDayScheduleGutter, { width: timeGutterWidth, height: trackHeight }]}>
           {hourTicks.map((hour) => {
-            const y = (hour - gridStart) * hourHeight + gridVerticalPadding;
+            const y = (hour - gridStartClamped) * hourHeight + gridVerticalPadding;
             return (
               <Text key={`label-${hour}`} style={[styles.providerDayScheduleTimeLabel, { top: y + hourHeight / 2 }]}>
                 {formatHourLabel(hour)}
@@ -6587,8 +6606,8 @@ function DayScheduleGrid({ events, startHour, endHour }) {
 
         <View style={[styles.providerDayScheduleGrid, { height: trackHeight }]}>
           {lineTicks.map((hour) => {
-            const y = (hour - gridStart) * hourHeight + gridVerticalPadding;
-            const hasHalfHour = hour < gridEnd;
+            const y = (hour - gridStartClamped) * hourHeight + gridVerticalPadding;
+            const hasHalfHour = hour < gridEndClamped;
             return (
               <React.Fragment key={`line-${hour}`}>
                 <View style={[styles.providerDayScheduleHourLine, { top: y }]} />
