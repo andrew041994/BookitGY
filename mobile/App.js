@@ -6648,6 +6648,7 @@ function DayScheduleGrid({ events, startHour, endHour }) {
 }
 
 function WeeklyStrip({
+  weekStartKey,
   selectedDate,
   onSelectDate,
   bookingsByDate,
@@ -6655,7 +6656,7 @@ function WeeklyStrip({
   colors,
   getWeekDays,
 }) {
-  const weekDays = useMemo(() => getWeekDays(selectedDate), [getWeekDays, selectedDate]);
+  const weekDays = useMemo(() => getWeekDays(weekStartKey), [getWeekDays, weekStartKey]);
 
   return (
     <View style={styles.providerWeeklyStrip}>
@@ -6748,13 +6749,23 @@ function ProviderCalendarScreen({ token, showFlash }) {
     const dd = String(parsed.getDate()).padStart(2, "0");
     return `${yyyy}-${mm}-${dd}`;
   }, [parseLocalMidday]);
-  const getWeekDays = useCallback((selectedDateKey) => {
-    const weekdayLabels = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-    const d = parseLocalMidday(selectedDateKey);
-    if (!d) return [];
-    const jsDay = d.getDay();
-    const mondayIndex = (jsDay + 6) % 7;
+  const startOfWeekKey = useCallback((dateKey) => {
+    const d = parseLocalMidday(dateKey);
+    if (!d) return null;
+    const mondayIndex = (d.getDay() + 6) % 7;
     const start = new Date(d.getFullYear(), d.getMonth(), d.getDate() - mondayIndex, 12, 0, 0);
+    return normalizeDateKey(start);
+  }, [normalizeDateKey, parseLocalMidday]);
+  const addDaysKey = useCallback((dateKey, deltaDays) => {
+    const base = parseLocalMidday(dateKey);
+    if (!base || !Number.isFinite(deltaDays)) return null;
+    const next = new Date(base.getFullYear(), base.getMonth(), base.getDate() + deltaDays, 12, 0, 0);
+    return normalizeDateKey(next);
+  }, [normalizeDateKey, parseLocalMidday]);
+  const getWeekDays = useCallback((weekStartKey) => {
+    const weekdayLabels = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+    const start = parseLocalMidday(weekStartKey);
+    if (!start) return [];
 
     return Array.from({ length: 7 }, (_, index) => {
       const current = new Date(start.getFullYear(), start.getMonth(), start.getDate() + index, 12, 0, 0);
@@ -6770,9 +6781,15 @@ function ProviderCalendarScreen({ token, showFlash }) {
   }, [parseLocalMidday]);
   const [viewMode, setViewMode] = useState("month");
   const [selectedDate, setSelectedDate] = useState(() => normalizeDateKey(new Date()) || "");
+  const [weekStartKey, setWeekStartKey] = useState(() => {
+    const todayKey = normalizeDateKey(new Date()) || "";
+    return startOfWeekKey(todayKey) || todayKey;
+  });
+  const [weekPagerWidth, setWeekPagerWidth] = useState(0);
   const [bookingsByDate, setBookingsByDate] = useState({});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const weekPagerRef = useRef(null);
 
   const dateRange = useMemo(() => {
     const base = new Date(`${selectedDate}T12:00:00`);
@@ -6785,6 +6802,39 @@ function ProviderCalendarScreen({ token, showFlash }) {
   }, [normalizeDateKey, selectedDate]);
 
   const formatDayKey = useCallback((bookingStartTime) => normalizeDateKey(bookingStartTime), [normalizeDateKey]);
+
+  useEffect(() => {
+    const nextWeekStart = startOfWeekKey(selectedDate);
+    if (nextWeekStart) {
+      setWeekStartKey(nextWeekStart);
+    }
+  }, [selectedDate, startOfWeekKey]);
+
+  const weekPages = useMemo(() => {
+    const previousWeek = addDaysKey(weekStartKey, -7);
+    const nextWeek = addDaysKey(weekStartKey, 7);
+    return [previousWeek, weekStartKey, nextWeek].filter(Boolean);
+  }, [addDaysKey, weekStartKey]);
+
+  useEffect(() => {
+    if (!weekPagerWidth || !weekPagerRef.current) return;
+    weekPagerRef.current.scrollTo({ x: weekPagerWidth, animated: false });
+  }, [weekPagerWidth, weekStartKey]);
+
+  const onWeekPagerMomentumEnd = useCallback((event) => {
+    if (!weekPagerWidth) return;
+    const x = event?.nativeEvent?.contentOffset?.x || 0;
+    const pageIndex = Math.round(x / weekPagerWidth);
+    if (pageIndex === 1) return;
+    const deltaWeeks = pageIndex < 1 ? -1 : 1;
+    const nextSelectedDate = addDaysKey(selectedDate, deltaWeeks * 7);
+    if (nextSelectedDate) {
+      setSelectedDate(nextSelectedDate);
+    }
+    if (weekPagerRef.current) {
+      weekPagerRef.current.scrollTo({ x: weekPagerWidth, animated: false });
+    }
+  }, [addDaysKey, selectedDate, weekPagerWidth]);
 
   const isBookingCompleted = useCallback((booking) => {
     const now = Date.now();
@@ -7041,15 +7091,35 @@ function ProviderCalendarScreen({ token, showFlash }) {
                   styles.providerCalendarViewport,
                   styles.providerCalendarViewportWeek,
                 ]}
+                onLayout={(event) => {
+                  const width = Math.round(event?.nativeEvent?.layout?.width || 0);
+                  if (width > 0 && width !== weekPagerWidth) {
+                    setWeekPagerWidth(width);
+                  }
+                }}
               >
-                <WeeklyStrip
-                  selectedDate={selectedDate}
-                  onSelectDate={(dayKey) => setSelectedDate(dayKey)}
-                  bookingsByDate={bookingsByDate}
-                  isBookingCompleted={isBookingCompleted}
-                  colors={colors}
-                  getWeekDays={getWeekDays}
-                />
+                <ScrollView
+                  ref={weekPagerRef}
+                  horizontal
+                  pagingEnabled
+                  showsHorizontalScrollIndicator={false}
+                  onMomentumScrollEnd={onWeekPagerMomentumEnd}
+                  contentOffset={{ x: weekPagerWidth, y: 0 }}
+                >
+                  {weekPages.map((pageWeekStartKey) => (
+                    <View key={pageWeekStartKey} style={{ width: weekPagerWidth || undefined }}>
+                      <WeeklyStrip
+                        weekStartKey={pageWeekStartKey}
+                        selectedDate={selectedDate}
+                        onSelectDate={(dayKey) => setSelectedDate(dayKey)}
+                        bookingsByDate={bookingsByDate}
+                        isBookingCompleted={isBookingCompleted}
+                        colors={colors}
+                        getWeekDays={getWeekDays}
+                      />
+                    </View>
+                  ))}
+                </ScrollView>
               </View>
             ) : (
               // Daily layout structure: WeekCalendar strip -> custom vertical day schedule grid.
