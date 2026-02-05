@@ -1,164 +1,164 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
 diff --git a/mobile/App.js b/mobile/App.js
-index f1bdcc266f0bdcb49438225c056a820d812cf78f..c7b952d26703e87417ade1789418813fc3c0ec9c 100644
+index c7b952d26703e87417ade1789418813fc3c0ec9c..908de7923b1bd6c0e096ba7a7b1109b5567c97e0 100644
 --- a/mobile/App.js
 +++ b/mobile/App.js
-@@ -21,51 +21,50 @@ import {
-   Share,
-   Modal,
-   FlatList,
- } from "react-native";
- import * as ExpoLinking from "expo-linking";
- import {
-   NavigationContainer,
-   CommonActions,
-   useFocusEffect,
-   useIsFocused,
- } from "@react-navigation/native";
- import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
- import { enableScreens } from "react-native-screens";
- import axios from "axios";
- import AsyncStorage from "@react-native-async-storage/async-storage";
- import { clearToken, loadToken, saveToken } from "./src/components/tokenStorage";
- import ProviderCard from "./src/components/ProviderCard";
- import { createApiClient } from "./src/api/client";
- import * as Location from "expo-location";
- import Constants from "expo-constants";
- import * as ImagePicker from "expo-image-picker";
- import { Ionicons } from "@expo/vector-icons";
- import {
-   CalendarProvider,
-   Calendar,
--  WeekCalendar,
- } from "react-native-calendars";
- import {
-   SafeAreaProvider,
-   SafeAreaView,
-   useSafeAreaInsets,
- } from "react-native-safe-area-context";
- import BookitGYLogoTransparent from "./assets/bookitgy-logo-transparent.png"
- import { theme } from "./src/theme";
- // import * as Sentry from "sentry-expo";
+@@ -6651,58 +6651,61 @@ function WeeklyStrip({
+   weekStartKey,
+   selectedDate,
+   onSelectDate,
+   bookingsByDate,
+   isBookingCompleted,
+   colors,
+   getWeekDays,
+ }) {
+   const weekDays = useMemo(() => getWeekDays(weekStartKey), [getWeekDays, weekStartKey]);
  
- let Clipboard = null;
- try {
-   Clipboard = require("expo-clipboard");
- } catch (e) {}
+   return (
+     <View style={styles.providerWeeklyStrip}>
+       <View style={styles.providerWeeklyRow}>
+         {weekDays.map((day) => {
+           const bookings = bookingsByDate?.[day.key] || [];
+           const hasBookings = bookings.length > 0;
+           const allCompleted = hasBookings && bookings.every((booking) => isBookingCompleted(booking));
+           const isSelected = day.key === selectedDate;
  
- enableScreens(false);
- 
- 
- 
- 
- // import { API } from "./App"; // wherever you define your base URL
- 
- 
- 
- 
-@@ -7175,60 +7174,94 @@ function ProviderCalendarScreen({ token, showFlash }) {
-                         nestedScrollEnabled={false}
-                         directionalLockEnabled={true}
-                         alwaysBounceVertical={false}
-                         alwaysBounceHorizontal={true}
-                         scrollEventThrottle={16}
-                       >
-                         {weekPages.map((pageWeekStartKey) => (
-                           <View key={pageWeekStartKey} style={{ width: weekPagerWidth }}>
-                             <WeeklyStrip
-                               weekStartKey={pageWeekStartKey}
-                               selectedDate={selectedDate}
-                               onSelectDate={(dayKey) => setSelectedDate(dayKey)}
-                               bookingsByDate={bookingsByDate}
-                               isBookingCompleted={isBookingCompleted}
-                               colors={colors}
-                               getWeekDays={getWeekDays}
-                             />
-                           </View>
-                         ))}
-                       </ScrollView>
-                     ) : (
-                       <View style={{ flex: 1 }} />
-                     )}
-                   </View>
-                 ) : (
--                  // Daily layout structure: WeekCalendar strip -> custom vertical day schedule grid.
-                   <View style={styles.providerCalendarDailyLayout}>
--                    <View style={styles.providerCalendarDayStrip}>
--                      <WeekCalendar
--                        firstDay={0}
--                        current={selectedDate}
--                        markedDates={markedDates}
--                        onDayPress={onSelectDate}
--                        theme={calendarTheme}
--                      />
-+                    <View
-+                      style={[
-+                        styles.providerCalendarViewport,
-+                        styles.providerCalendarViewportWeek,
-+                      ]}
-+                      onLayout={(event) => {
-+                        const width = Math.round(event?.nativeEvent?.layout?.width || 0);
-+                        if (width > 0 && weekPagerWidth === 0) {
-+                          setWeekPagerWidth(width);
-+                        }
-+                      }}
-+                    >
-+                      {weekPagerWidth > 0 ? (
-+                        <ScrollView
-+                          ref={weekPagerRef}
-+                          horizontal
-+                          pagingEnabled
-+                          showsHorizontalScrollIndicator={false}
-+                          onMomentumScrollEnd={onWeekPagerMomentumEnd}
-+                          contentOffset={{ x: weekPagerWidth, y: 0 }}
-+                          nestedScrollEnabled={false}
-+                          directionalLockEnabled={true}
-+                          alwaysBounceVertical={false}
-+                          alwaysBounceHorizontal={true}
-+                          scrollEventThrottle={16}
-+                        >
-+                          {weekPages.map((pageWeekStartKey) => (
-+                            <View key={pageWeekStartKey} style={{ width: weekPagerWidth }}>
-+                              <WeeklyStrip
-+                                weekStartKey={pageWeekStartKey}
-+                                selectedDate={selectedDate}
-+                                onSelectDate={(dayKey) => setSelectedDate(dayKey)}
-+                                bookingsByDate={bookingsByDate}
-+                                isBookingCompleted={isBookingCompleted}
-+                                colors={colors}
-+                                getWeekDays={getWeekDays}
-+                              />
-+                            </View>
-+                          ))}
-+                        </ScrollView>
-+                      ) : (
-+                        <View style={{ flex: 1 }} />
-+                      )}
-                     </View>
-                     <View style={styles.providerCalendarViewportDay}>
-                       <DayScheduleGrid events={dayGridEvents} startHour={0} endHour={24} />
-                     </View>
-                   </View>
-                 )}
-                 </View>
-               </CalendarProvider>
- 
-               {loading ? <ActivityIndicator color={colors.primary} style={{ marginTop: 12 }} /> : null}
-               {error ? <Text style={styles.errorText}>{error}</Text> : null}
-               <View style={{ height: 12 }} />
-               <View style={styles.providerCalendarHeaderBlock}>
-                 <Text style={styles.sectionTitle}>Appointments for {selectedDate}</Text>
+           return (
+             <Pressable
+               key={day.key}
+               style={styles.providerWeeklyCell}
+               onPress={() => onSelectDate(day.key)}
+             >
+-              <Text style={styles.providerWeeklyDow}>{day.label}</Text>
++              <Text allowFontScaling={false} style={styles.providerWeeklyDow}>
++                {day.label}
++              </Text>
+               <View
+                 style={[
+                   styles.providerWeeklyDayWrap,
+                   isSelected && styles.providerWeeklyDayWrapSelected,
+                 ]}
+               >
+                 <Text
++                  allowFontScaling={false}
+                   style={[
+                     styles.providerWeeklyDayText,
+                     !isSelected && styles.providerWeeklyDayTextMuted,
+                   ]}
+                 >
+                   {day.dayNumber}
+                 </Text>
                </View>
-             </View>
-           }
-           ListEmptyComponent={
-             showAppointmentsEmptyState ? (
-               <Text style={styles.providerCalendarEmpty}>No appointments for this date.</Text>
-             ) : null
-           }
-           contentContainerStyle={styles.providerCalendarListContent}
-           showsVerticalScrollIndicator={false}
-           keyboardShouldPersistTaps="handled"
+               {hasBookings ? (
+                 <View
+                   style={[
+                     styles.providerWeeklyDot,
+                     {
+                       backgroundColor: allCompleted ? colors.textMuted : colors.primary,
+                     },
+                   ]}
+                 />
+               ) : null}
+             </Pressable>
+           );
+         })}
+       </View>
+     </View>
+   );
+ }
+@@ -9798,77 +9801,91 @@ signupTextButtonText: {
+     padding: 8,
+   },
+   providerCalendarViewport: {
+     overflow: "hidden",
+     borderRadius: 10,
+   },
+   providerCalendarViewportMonth: {
+     height: 360,
+   },
+   providerCalendarViewportWeek: {
+     height: 168,
+     overflow: "hidden",
+   },
+   providerWeeklyStrip: {
+     width: "100%",
+     paddingVertical: 10,
+   },
+   providerWeeklyRow: {
+     flexDirection: "row",
+     width: "100%",
+     paddingHorizontal: 8,
+   },
+   providerWeeklyCell: {
+     flex: 1,
+     alignItems: "center",
+-    justifyContent: "center",
++    justifyContent: "flex-start",
++    minHeight: 70,
+   },
+   providerWeeklyDow: {
+     color: colors.textSecondary,
+     fontSize: 13,
+     fontWeight: "600",
++    lineHeight: 13,
++    height: 13,
++    textAlign: "center",
++    includeFontPadding: false,
++    textAlignVertical: "center",
+     marginBottom: 10,
+   },
+   providerWeeklyDayWrap: {
+     width: 36,
+     height: 36,
+     borderRadius: 18,
+     alignItems: "center",
+     justifyContent: "center",
+   },
+   providerWeeklyDayWrapSelected: {
+     backgroundColor: colors.primarySoft,
+   },
+   providerWeeklyDayText: {
+     color: colors.textPrimary,
+     fontSize: 18,
+     fontWeight: "700",
++    lineHeight: 18,
++    textAlign: "center",
++    includeFontPadding: false,
++    textAlignVertical: "center",
+   },
+   providerWeeklyDayTextMuted: {
+     color: colors.textSecondary,
+     fontSize: 18,
+     fontWeight: "700",
++    lineHeight: 18,
++    textAlign: "center",
++    includeFontPadding: false,
++    textAlignVertical: "center",
+   },
+   providerWeeklyDot: {
+     width: 6,
+     height: 6,
+     borderRadius: 3,
+     marginTop: 6,
+   },
+   providerCalendarDailyLayout: {
+     borderRadius: 10,
+     overflow: "hidden",
+   },
+   providerCalendarDayStrip: {
+     minHeight: 104,
+     borderBottomWidth: 1,
+     borderBottomColor: colors.border,
+     backgroundColor: colors.surface,
+   },
+   providerCalendarViewportDay: {
+     height: 500,
+     backgroundColor: colors.surface,
+     width: "100%",
+     overflow: "hidden",
+   },
+   providerDayScheduleScroll: {
+     flex: 1,
  
 EOF
 )

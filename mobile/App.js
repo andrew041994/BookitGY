@@ -6673,7 +6673,9 @@ function WeeklyStrip({
               style={styles.providerWeeklyCell}
               onPress={() => onSelectDate(day.key)}
             >
-              <Text style={styles.providerWeeklyDow}>{day.label}</Text>
+              <Text allowFontScaling={false} style={styles.providerWeeklyDow}>
+                {day.label}
+              </Text>
               <View
                 style={[
                   styles.providerWeeklyDayWrap,
@@ -6681,6 +6683,7 @@ function WeeklyStrip({
                 ]}
               >
                 <Text
+                  allowFontScaling={false}
                   style={[
                     styles.providerWeeklyDayText,
                     !isSelected && styles.providerWeeklyDayTextMuted,
@@ -9820,12 +9823,18 @@ signupTextButtonText: {
   providerWeeklyCell: {
     flex: 1,
     alignItems: "center",
-    justifyContent: "center",
+    justifyContent: "flex-start",
+    minHeight: 70,
   },
   providerWeeklyDow: {
     color: colors.textSecondary,
     fontSize: 13,
     fontWeight: "600",
+    lineHeight: 13,
+    height: 13,
+    textAlign: "center",
+    includeFontPadding: false,
+    textAlignVertical: "center",
     marginBottom: 10,
   },
   providerWeeklyDayWrap: {
@@ -9842,11 +9851,19 @@ signupTextButtonText: {
     color: colors.textPrimary,
     fontSize: 18,
     fontWeight: "700",
+    lineHeight: 18,
+    textAlign: "center",
+    includeFontPadding: false,
+    textAlignVertical: "center",
   },
   providerWeeklyDayTextMuted: {
     color: colors.textSecondary,
     fontSize: 18,
     fontWeight: "700",
+    lineHeight: 18,
+    textAlign: "center",
+    includeFontPadding: false,
+    textAlignVertical: "center",
   },
   providerWeeklyDot: {
     width: 6,
