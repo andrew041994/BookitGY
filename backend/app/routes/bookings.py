@@ -1,4 +1,5 @@
 from typing import Optional, List
+from datetime import datetime, time
 
 from fastapi import APIRouter, Depends, HTTPException, Header
 from sqlalchemy.orm import Session
@@ -66,9 +67,36 @@ def list_my_bookings(
 
 @router.get("/providers/me/bookings")
 def list_provider_bookings(
+    start: Optional[str] = None,
+    end: Optional[str] = None,
     db: Session = Depends(get_db),
-     provider: models.Provider = Depends(_require_current_provider),
+    provider: models.Provider = Depends(_require_current_provider),
 ):
+    if start and end:
+        try:
+            start_date = datetime.strptime(start, "%Y-%m-%d").date()
+            end_date = datetime.strptime(end, "%Y-%m-%d").date()
+        except ValueError:
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid start/end format. Use YYYY-MM-DD.",
+            )
+
+        if end_date < start_date:
+            raise HTTPException(
+                status_code=400,
+                detail="end must be greater than or equal to start",
+            )
+
+        range_start = datetime.combine(start_date, time.min)
+        range_end = datetime.combine(end_date, time.max)
+        return crud.list_bookings_for_provider(
+            db,
+            provider.id,
+            range_start=range_start,
+            range_end=range_end,
+        )
+
     return crud.list_bookings_for_provider(db, provider.id)
 
 

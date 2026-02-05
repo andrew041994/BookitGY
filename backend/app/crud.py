@@ -2013,18 +2013,28 @@ def set_provider_lock_state(db: Session, provider_id: int, is_locked: bool) -> i
     return updated
 
 
-def list_bookings_for_provider(db: Session, provider_id: int):
-    """Return all bookings for this provider, newest first."""
+def list_bookings_for_provider(
+    db: Session,
+    provider_id: int,
+    range_start: datetime | None = None,
+    range_end: datetime | None = None,
+):
+    """Return bookings for this provider, newest first, optionally within a date range."""
 
-    rows = (
+    query = (
         db.query(models.Booking, models.Service, models.User)
         .join(models.Service, models.Booking.service_id == models.Service.id)
         .join(models.Provider, models.Service.provider_id == models.Provider.id)
         .join(models.User, models.Booking.customer_id == models.User.id)
         .filter(models.Provider.id == provider_id)
-        .order_by(models.Booking.start_time.desc())
-        .all()
     )
+
+    if range_start is not None:
+        query = query.filter(models.Booking.start_time >= range_start)
+    if range_end is not None:
+        query = query.filter(models.Booking.start_time <= range_end)
+
+    rows = query.order_by(models.Booking.start_time.desc()).all()
 
     return [
         {

@@ -40,6 +40,12 @@ import Constants from "expo-constants";
 import * as ImagePicker from "expo-image-picker";
 import { Ionicons } from "@expo/vector-icons";
 import {
+  CalendarProvider,
+  Calendar,
+  WeekCalendar,
+  Timeline,
+} from "react-native-calendars";
+import {
   SafeAreaProvider,
   SafeAreaView,
   useSafeAreaInsets,
@@ -6498,6 +6504,311 @@ function ProviderBillingScreen({ token, showFlash }) {
 }
 
 
+
+function ProviderCalendarScreen({ token, showFlash }) {
+  const [viewMode, setViewMode] = useState("month");
+  const [selectedDate, setSelectedDate] = useState(
+    new Date().toISOString().slice(0, 10)
+  );
+  const [bookingsByDate, setBookingsByDate] = useState({});
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  const dateRange = useMemo(() => {
+    const base = new Date(`${selectedDate}T00:00:00`);
+    const monthStart = new Date(base.getFullYear(), base.getMonth(), 1);
+    const monthEnd = new Date(base.getFullYear(), base.getMonth() + 1, 0);
+    return {
+      start: monthStart.toISOString().slice(0, 10),
+      end: monthEnd.toISOString().slice(0, 10),
+    };
+  }, [selectedDate]);
+
+  const formatDayKey = useCallback((iso) => {
+    if (!iso) return null;
+    const parsed = new Date(iso);
+    if (Number.isNaN(parsed.getTime())) return null;
+    const yyyy = parsed.getFullYear();
+    const mm = String(parsed.getMonth() + 1).padStart(2, "0");
+    const dd = String(parsed.getDate()).padStart(2, "0");
+    return `${yyyy}-${mm}-${dd}`;
+  }, []);
+
+  const isBookingCompleted = useCallback((booking) => {
+    const now = Date.now();
+    const endTime = booking?.end_time || booking?.end;
+    if (endTime) {
+      const endMs = new Date(endTime).getTime();
+      return Number.isFinite(endMs) && endMs < now;
+    }
+
+    const startTime = booking?.start_time || booking?.start;
+    const durationMin = Number(booking?.duration_minutes || booking?.duration || 0);
+    if (!startTime) return false;
+    const startMs = new Date(startTime).getTime();
+    if (!Number.isFinite(startMs)) return false;
+    return startMs + Math.max(durationMin, 0) * 60_000 < now;
+  }, []);
+
+  const loadBookingsForRange = useCallback(async () => {
+    try {
+      setLoading(true);
+      setError("");
+
+      const authToken = await getAuthToken(token);
+      if (!authToken) {
+        setError("No access token found. Please log in again.");
+        return;
+      }
+
+      const res = await axios.get(`${API}/providers/me/bookings`, {
+        headers: {
+          Authorization: `Bearer ${authToken}`,
+        },
+        params: {
+          start: dateRange.start,
+          end: dateRange.end,
+        },
+      });
+
+      const rows = Array.isArray(res.data)
+        ? res.data
+        : res.data?.bookings || res.data?.results || [];
+
+      const grouped = rows.reduce((acc, booking) => {
+        const key = formatDayKey(booking?.start_time || booking?.start);
+        if (!key) return acc;
+        if (!acc[key]) acc[key] = [];
+        acc[key].push(booking);
+        return acc;
+      }, {});
+
+      setBookingsByDate(grouped);
+    } catch (err) {
+      console.log("Error loading provider calendar bookings", err?.response?.data || err?.message || err);
+      setError("Could not load calendar bookings.");
+      if (showFlash) {
+        showFlash("error", "Could not load calendar bookings.");
+      }
+    } finally {
+      setLoading(false);
+    }
+  }, [dateRange.end, dateRange.start, formatDayKey, showFlash, token]);
+
+  useEffect(() => {
+    loadBookingsForRange();
+  }, [loadBookingsForRange]);
+
+  const selectedBookings = useMemo(() => bookingsByDate[selectedDate] || [], [bookingsByDate, selectedDate]);
+
+  const markedDates = useMemo(() => {
+    const marked = {};
+
+    Object.keys(bookingsByDate).forEach((day) => {
+      const dayBookings = bookingsByDate[day] || [];
+      if (!dayBookings.length) return;
+      const allCompleted = dayBookings.every((b) => isBookingCompleted(b));
+      marked[day] = {
+        marked: true,
+        dotColor: allCompleted ? colors.textMuted : colors.primary,
+      };
+    });
+
+    marked[selectedDate] = {
+      ...(marked[selectedDate] || {}),
+      selected: true,
+      selectedColor: colors.primarySoft,
+      selectedTextColor: colors.textPrimary,
+    };
+
+    return marked;
+  }, [bookingsByDate, isBookingCompleted, selectedDate]);
+
+  const timelineEvents = useMemo(
+    () =>
+      selectedBookings
+        .map((booking) => {
+          const startIso = booking?.start_time || booking?.start;
+          if (!startIso) return null;
+          const startDate = new Date(startIso);
+          if (Number.isNaN(startDate.getTime())) return null;
+
+          let endDate = booking?.end_time || booking?.end ? new Date(booking?.end_time || booking?.end) : null;
+          if (!endDate || Number.isNaN(endDate.getTime())) {
+            const durationMin = Number(booking?.duration_minutes || booking?.duration || 30);
+            endDate = new Date(startDate.getTime() + Math.max(durationMin, 1) * 60_000);
+          }
+
+          const completed = isBookingCompleted(booking);
+
+          return {
+            id: String(booking?.id || booking?.booking_id || `${startIso}-${booking?.service_name || "service"}`),
+            start: startDate,
+            end: endDate,
+            title: booking?.service_name || "Service",
+            summary: booking?.customer_name || "Customer",
+            color: completed ? colors.textMuted : colors.primary,
+          };
+        })
+        .filter(Boolean),
+    [isBookingCompleted, selectedBookings]
+  );
+
+  const calendarTheme = useMemo(
+    () => ({
+      backgroundColor: colors.surface,
+      calendarBackground: colors.surface,
+      dayTextColor: colors.textPrimary,
+      monthTextColor: colors.textPrimary,
+      textSectionTitleColor: colors.textSecondary,
+      selectedDayBackgroundColor: colors.primarySoft,
+      selectedDayTextColor: colors.textPrimary,
+      todayTextColor: colors.primary,
+      arrowColor: colors.primary,
+      textDisabledColor: colors.textMuted,
+      dotColor: colors.primary,
+      selectedDotColor: colors.textPrimary,
+      timelineContainerBackground: colors.surface,
+      timelineBackgroundColor: colors.surface,
+      timelineLineColor: colors.border,
+      timelineTextColor: colors.textPrimary,
+    }),
+    []
+  );
+
+  const onSelectDate = useCallback((value) => {
+    if (!value) return;
+    const nextDate = typeof value === "string" ? value : value.dateString;
+    if (!nextDate) return;
+    setSelectedDate(nextDate);
+  }, []);
+
+  return (
+    <SafeAreaView style={styles.providerCalendarScreen} edges={["left", "right", "bottom"]}>
+      <View style={styles.providerCalendarModeSwitch}>
+        {[
+          { key: "day", label: "Daily" },
+          { key: "week", label: "Weekly" },
+          { key: "month", label: "Monthly" },
+        ].map((mode) => {
+          const active = mode.key === viewMode;
+          return (
+            <TouchableOpacity
+              key={mode.key}
+              style={[
+                styles.providerCalendarModeButton,
+                active && styles.providerCalendarModeButtonActive,
+              ]}
+              onPress={() => setViewMode(mode.key)}
+            >
+              <Text
+                style={[
+                  styles.providerCalendarModeText,
+                  active && styles.providerCalendarModeTextActive,
+                ]}
+              >
+                {mode.label}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+
+      <CalendarProvider date={selectedDate} onDateChanged={onSelectDate}>
+        <View style={styles.providerCalendarCard}>
+          {viewMode === "month" ? (
+            <Calendar
+              current={selectedDate}
+              markedDates={markedDates}
+              onDayPress={onSelectDate}
+              theme={calendarTheme}
+            />
+          ) : viewMode === "week" ? (
+            <WeekCalendar
+              firstDay={1}
+              current={selectedDate}
+              markedDates={markedDates}
+              onDayPress={onSelectDate}
+              theme={calendarTheme}
+            />
+          ) : (
+            <Timeline
+              events={timelineEvents}
+              date={selectedDate}
+              showNowIndicator
+              theme={calendarTheme}
+            />
+          )}
+        </View>
+      </CalendarProvider>
+
+      <View style={styles.providerCalendarListSection}>
+        <Text style={styles.sectionTitle}>Appointments for {selectedDate}</Text>
+        {loading ? (
+          <ActivityIndicator color={colors.primary} style={{ marginTop: 12 }} />
+        ) : error ? (
+          <Text style={styles.errorText}>{error}</Text>
+        ) : selectedBookings.length === 0 ? (
+          <Text style={styles.providerCalendarEmpty}>No appointments for this date.</Text>
+        ) : (
+          <ScrollView style={styles.providerCalendarList} contentContainerStyle={{ paddingBottom: 12 }}>
+            {selectedBookings
+              .slice()
+              .sort((a, b) => new Date(a?.start_time || a?.start) - new Date(b?.start_time || b?.start))
+              .map((booking) => {
+                const completed = isBookingCompleted(booking);
+                const startIso = booking?.start_time || booking?.start;
+                const startLabel = startIso
+                  ? new Date(startIso).toLocaleTimeString([], {
+                      hour: "numeric",
+                      minute: "2-digit",
+                    })
+                  : "--:--";
+
+                return (
+                  <View
+                    key={String(
+                      booking?.id || booking?.booking_id || `${startIso}-${booking?.service_name || "service"}`
+                    )}
+                    style={[
+                      styles.providerCalendarRow,
+                      completed && styles.providerCalendarRowCompleted,
+                    ]}
+                  >
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.providerCalendarTime}>{startLabel}</Text>
+                      <Text
+                        style={[
+                          styles.providerCalendarService,
+                          completed && styles.providerCalendarTextCompleted,
+                        ]}
+                      >
+                        {booking?.service_name || "Service"}
+                      </Text>
+                      <Text
+                        style={[
+                          styles.providerCalendarCustomer,
+                          completed && styles.providerCalendarTextCompleted,
+                        ]}
+                      >
+                        {booking?.customer_name || "Customer"}
+                      </Text>
+                    </View>
+                    {completed ? (
+                      <View style={styles.providerCalendarCompletedBadge}>
+                        <Text style={styles.providerCalendarCompletedText}>Completed</Text>
+                      </View>
+                    ) : null}
+                  </View>
+                );
+              })}
+          </ScrollView>
+        )}
+      </View>
+    </SafeAreaView>
+  );
+}
+
 // Tabs after login
 function MainApp({
   apiClient,
@@ -6563,6 +6874,7 @@ function MainApp({
               let iconName = "home-outline";
 
               if (route.name === "Dashboard") iconName = "speedometer-outline";
+              else if (route.name === "Calendar") iconName = "calendar-outline";
               else if (route.name === "Billing") iconName = "card-outline";
               else if (route.name === "Profile") iconName = "person-outline";
 
@@ -6595,6 +6907,12 @@ function MainApp({
                 token={token}
                 showFlash={showFlash}
               />
+            )}
+          </Tab.Screen>
+
+          <Tab.Screen name="Calendar">
+            {() => (
+              <ProviderCalendarScreen token={token} showFlash={showFlash} />
             )}
           </Tab.Screen>
 
@@ -8975,8 +9293,101 @@ signupTextButtonText: {
     backgroundColor: colors.surfaceElevated,
   },
 
-
-
+  providerCalendarScreen: {
+    flex: 1,
+    backgroundColor: colors.background,
+    paddingHorizontal: 16,
+    paddingTop: 8,
+  },
+  providerCalendarModeSwitch: {
+    flexDirection: "row",
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 12,
+    overflow: "hidden",
+    marginBottom: 12,
+  },
+  providerCalendarModeButton: {
+    flex: 1,
+    paddingVertical: 10,
+    alignItems: "center",
+  },
+  providerCalendarModeButtonActive: {
+    backgroundColor: colors.primarySoft,
+  },
+  providerCalendarModeText: {
+    color: colors.textSecondary,
+    fontWeight: "600",
+    fontSize: 13,
+  },
+  providerCalendarModeTextActive: {
+    color: colors.textPrimary,
+  },
+  providerCalendarCard: {
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 14,
+    padding: 8,
+    marginBottom: 12,
+    minHeight: 280,
+  },
+  providerCalendarListSection: {
+    flex: 1,
+  },
+  providerCalendarList: {
+    marginTop: 8,
+  },
+  providerCalendarEmpty: {
+    color: colors.textMuted,
+    marginTop: 10,
+    fontSize: 14,
+  },
+  providerCalendarRow: {
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+    borderWidth: 1,
+    borderRadius: 10,
+    padding: 12,
+    marginBottom: 8,
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  providerCalendarRowCompleted: {
+    opacity: 0.75,
+  },
+  providerCalendarTime: {
+    color: colors.textSecondary,
+    fontSize: 12,
+    marginBottom: 4,
+  },
+  providerCalendarService: {
+    color: colors.textPrimary,
+    fontSize: 15,
+    fontWeight: "700",
+  },
+  providerCalendarCustomer: {
+    color: colors.textSecondary,
+    fontSize: 13,
+    marginTop: 2,
+  },
+  providerCalendarTextCompleted: {
+    color: colors.textMuted,
+  },
+  providerCalendarCompletedBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: colors.textMuted,
+    backgroundColor: colors.surfaceElevated,
+  },
+  providerCalendarCompletedText: {
+    color: colors.textMuted,
+    fontSize: 11,
+    fontWeight: "700",
+  },
 
 })
 
