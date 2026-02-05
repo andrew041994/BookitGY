@@ -1,16 +1,9 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
 diff --git a/mobile/App.js b/mobile/App.js
-index 9510f65ff7c8a1b6eec4897b66f14f7fb2015db2..9bdd92eebf0abe6d6a306f7c8adc21109e85b643 100644
+index 9bdd92eebf0abe6d6a306f7c8adc21109e85b643..1a607e1708b27ac47e172b678d5bcd5a51faf37a 100644
 --- a/mobile/App.js
 +++ b/mobile/App.js
-@@ -6847,50 +6847,84 @@ function ProviderCalendarScreen({ token, showFlash }) {
-   );
- 
-   const calendarTheme = useMemo(
-     () => ({
-       backgroundColor: colors.surface,
-       calendarBackground: colors.surface,
-       dayTextColor: colors.textPrimary,
+@@ -6854,67 +6854,67 @@ function ProviderCalendarScreen({ token, showFlash }) {
        monthTextColor: colors.textPrimary,
        textSectionTitleColor: colors.textSecondary,
        selectedDayBackgroundColor: colors.primarySoft,
@@ -29,40 +22,42 @@ index 9510f65ff7c8a1b6eec4897b66f14f7fb2015db2..9bdd92eebf0abe6d6a306f7c8adc2110
      []
    );
  
-+  const weeklyTheme = useMemo(
-+    () => ({
-+      ...calendarTheme,
-+      "stylesheet.calendar.header": {
-+        week: {
-+          flexDirection: "row",
-+          alignItems: "center",
-+          justifyContent: "space-between",
-+          paddingLeft: 0,
-+          paddingRight: 0,
-+          marginLeft: 0,
-+          marginRight: 0,
-+        },
-+        dayHeader: {
-+          flex: 1,
-+          textAlign: "center",
-+          color: colors.textSecondary,
-+          fontWeight: "600",
-+        },
-+      },
-+      "stylesheet.calendar.main": {
-+        week: {
-+          flexDirection: "row",
-+          justifyContent: "space-between",
-+          marginLeft: 0,
-+          marginRight: 0,
-+          paddingLeft: 0,
-+          paddingRight: 0,
-+        },
-+      },
-+    }),
-+    [calendarTheme]
-+  );
-+
+   const weeklyTheme = useMemo(
+     () => ({
+       ...calendarTheme,
+       "stylesheet.calendar.header": {
+         week: {
+           flexDirection: "row",
+           alignItems: "center",
+-          justifyContent: "space-between",
++          justifyContent: "space-around",
+           paddingLeft: 0,
+           paddingRight: 0,
+           marginLeft: 0,
+           marginRight: 0,
+         },
+         dayHeader: {
+           flex: 1,
+           textAlign: "center",
+           color: colors.textSecondary,
+           fontWeight: "600",
+         },
+       },
+       "stylesheet.calendar.main": {
+         week: {
+           flexDirection: "row",
+-          justifyContent: "space-between",
++          justifyContent: "space-around",
+           marginLeft: 0,
+           marginRight: 0,
+           paddingLeft: 0,
+           paddingRight: 0,
+         },
+       },
+     }),
+     [calendarTheme]
+   );
+ 
    const onSelectDate = useCallback((value) => {
      if (!value) return;
      const raw = typeof value === "string" ? value : value.dateString;
@@ -78,17 +73,13 @@ index 9510f65ff7c8a1b6eec4897b66f14f7fb2015db2..9bdd92eebf0abe6d6a306f7c8adc2110
        console.log("[ProviderCalendarScreen][WeeklyDebug] invalid selectedDate", { selectedDate });
        return;
      }
-     console.log("[ProviderCalendarScreen][WeeklyDebug]", {
-       selectedDate,
-       selectedWeekday: selected.getDay(),
-       firstDay: WEEKLY_FIRST_DAY,
-     });
-   }, [PROVIDER_CALENDAR_DEBUG, WEEKLY_FIRST_DAY, parseLocalMidday, selectedDate]);
- 
-   const dayGridEvents = useMemo(
-     () =>
-       timelineEvents
-@@ -6941,51 +6975,51 @@ function ProviderCalendarScreen({ token, showFlash }) {
+@@ -6969,58 +6969,65 @@ function ProviderCalendarScreen({ token, showFlash }) {
+                 >
+                   {mode.label}
+                 </Text>
+               </TouchableOpacity>
+             );
+           })}
          </View>
  
          <CalendarProvider date={selectedDate} onDateChanged={onSelectDate}>
@@ -108,15 +99,29 @@ index 9510f65ff7c8a1b6eec4897b66f14f7fb2015db2..9bdd92eebf0abe6d6a306f7c8adc2110
                  />
                </View>
              ) : viewMode === "week" ? (
-               <View style={styles.providerCalendarViewportWeek}>
-                 <WeekCalendar
-                   firstDay={WEEKLY_FIRST_DAY}
-                   current={selectedDate}
-                   markedDates={markedDates}
-                   onDayPress={onSelectDate}
--                  theme={calendarTheme}
-+                  theme={weeklyTheme}
-                 />
+-              <View style={styles.providerCalendarViewportWeek}>
+-                <WeekCalendar
+-                  firstDay={WEEKLY_FIRST_DAY}
+-                  current={selectedDate}
+-                  markedDates={markedDates}
+-                  onDayPress={onSelectDate}
+-                  theme={weeklyTheme}
+-                />
++              <View
++                style={[
++                  styles.providerCalendarViewport,
++                  styles.providerCalendarViewportWeek,
++                ]}
++              >
++                <View style={styles.providerCalendarWeekInner}>
++                  <WeekCalendar
++                    firstDay={WEEKLY_FIRST_DAY}
++                    current={selectedDate}
++                    markedDates={markedDates}
++                    onDayPress={onSelectDate}
++                    theme={weeklyTheme}
++                  />
++                </View>
                </View>
              ) : (
                // Daily layout structure: WeekCalendar strip -> custom vertical day schedule grid.
@@ -141,7 +146,8 @@ index 9510f65ff7c8a1b6eec4897b66f14f7fb2015db2..9bdd92eebf0abe6d6a306f7c8adc2110
          {loading ? <ActivityIndicator color={colors.primary} style={{ marginTop: 12 }} /> : null}
          {error ? <Text style={styles.errorText}>{error}</Text> : null}
          {!loading && !error && viewMode !== "day" ? (
-@@ -9572,50 +9606,51 @@ signupTextButtonText: {
+           <>
+@@ -9606,52 +9613,54 @@ signupTextButtonText: {
    providerCalendarModeText: {
      color: colors.textSecondary,
      fontWeight: "600",
@@ -167,8 +173,11 @@ index 9510f65ff7c8a1b6eec4897b66f14f7fb2015db2..9bdd92eebf0abe6d6a306f7c8adc2110
    providerCalendarViewportWeek: {
      minHeight: 168,
      paddingTop: 4,
-+    marginHorizontal: -8,
-     overflow: "visible",
++    overflow: "hidden",
++  },
++  providerCalendarWeekInner: {
+     marginHorizontal: -8,
+-    overflow: "visible",
    },
    providerCalendarDailyLayout: {
      borderRadius: 10,
@@ -193,6 +202,7 @@ index 9510f65ff7c8a1b6eec4897b66f14f7fb2015db2..9bdd92eebf0abe6d6a306f7c8adc2110
    },
    providerDayScheduleScrollContent: {
      minWidth: "100%",
+   },
  
 EOF
 )
