@@ -6652,33 +6652,34 @@ function DayScheduleGrid({ events, startHour, endHour }) {
 
 function ProviderCalendarScreen({ token, showFlash }) {
   // Keep the calendar in fixed-height view wrappers so it cannot expand into the appointments header/list area.
-  const [viewMode, setViewMode] = useState("month");
-  const [selectedDate, setSelectedDate] = useState(
-    new Date().toISOString().slice(0, 10)
-  );
-  const [bookingsByDate, setBookingsByDate] = useState({});
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
-
-  const dateRange = useMemo(() => {
-    const base = new Date(`${selectedDate}T00:00:00`);
-    const monthStart = new Date(base.getFullYear(), base.getMonth(), 1);
-    const monthEnd = new Date(base.getFullYear(), base.getMonth() + 1, 0);
-    return {
-      start: monthStart.toISOString().slice(0, 10),
-      end: monthEnd.toISOString().slice(0, 10),
-    };
-  }, [selectedDate]);
-
-  const formatDayKey = useCallback((iso) => {
-    if (!iso) return null;
-    const parsed = new Date(iso);
+  const WEEKLY_FIRST_DAY = 1;
+  const PROVIDER_CALENDAR_DEBUG = false;
+  const toLocalDateString = useCallback((dateLike) => {
+    if (!dateLike) return null;
+    const parsed = dateLike instanceof Date ? dateLike : new Date(dateLike);
     if (Number.isNaN(parsed.getTime())) return null;
     const yyyy = parsed.getFullYear();
     const mm = String(parsed.getMonth() + 1).padStart(2, "0");
     const dd = String(parsed.getDate()).padStart(2, "0");
     return `${yyyy}-${mm}-${dd}`;
   }, []);
+  const [viewMode, setViewMode] = useState("month");
+  const [selectedDate, setSelectedDate] = useState(() => toLocalDateString(new Date()) || "");
+  const [bookingsByDate, setBookingsByDate] = useState({});
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  const dateRange = useMemo(() => {
+    const base = new Date(`${selectedDate}T12:00:00`);
+    const monthStart = new Date(base.getFullYear(), base.getMonth(), 1);
+    const monthEnd = new Date(base.getFullYear(), base.getMonth() + 1, 0);
+    return {
+      start: toLocalDateString(monthStart),
+      end: toLocalDateString(monthEnd),
+    };
+  }, [selectedDate, toLocalDateString]);
+
+  const formatDayKey = useCallback((iso) => toLocalDateString(iso), [toLocalDateString]);
 
   const isBookingCompleted = useCallback((booking) => {
     const now = Date.now();
@@ -6849,6 +6850,20 @@ function ProviderCalendarScreen({ token, showFlash }) {
     setSelectedDate(nextDate);
   }, []);
 
+  useEffect(() => {
+    if (!PROVIDER_CALENDAR_DEBUG) return;
+    const selected = new Date(`${selectedDate}T12:00:00`);
+    if (Number.isNaN(selected.getTime())) {
+      console.log("[ProviderCalendarScreen][WeeklyDebug] invalid selectedDate", { selectedDate });
+      return;
+    }
+    console.log("[ProviderCalendarScreen][WeeklyDebug]", {
+      selectedDate,
+      weekStartDayIndex: selected.getDay(),
+      firstDay: WEEKLY_FIRST_DAY,
+    });
+  }, [PROVIDER_CALENDAR_DEBUG, WEEKLY_FIRST_DAY, selectedDate]);
+
   const dayGridEvents = useMemo(
     () =>
       timelineEvents
@@ -6922,7 +6937,7 @@ function ProviderCalendarScreen({ token, showFlash }) {
                 ]}
               >
                 <WeekCalendar
-                  firstDay={1}
+                  firstDay={WEEKLY_FIRST_DAY}
                   current={selectedDate}
                   markedDates={markedDates}
                   onDayPress={onSelectDate}
