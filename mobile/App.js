@@ -6504,7 +6504,7 @@ function ProviderBillingScreen({ token, showFlash }) {
 
 
 function DayScheduleGrid({ events, startHour, endHour }) {
-  const hourHeight = 104;
+  const hourHeight = 130;
   const timeGutterWidth = 56;
   const gridVerticalPadding = 12;
   const gridStart = Number.isFinite(startHour) ? startHour : 0;
@@ -6957,12 +6957,7 @@ function ProviderCalendarScreen({ token, showFlash }) {
                 />
               </View>
             ) : viewMode === "week" ? (
-              <View
-                style={[
-                  styles.providerCalendarViewport,
-                  styles.providerCalendarViewportWeek,
-                ]}
-              >
+              <View style={styles.providerCalendarViewportWeek}>
                 <WeekCalendar
                   firstDay={WEEKLY_FIRST_DAY}
                   current={selectedDate}
@@ -9597,7 +9592,9 @@ signupTextButtonText: {
     height: 360,
   },
   providerCalendarViewportWeek: {
-    height: 140,
+    minHeight: 168,
+    paddingTop: 4,
+    overflow: "visible",
   },
   providerCalendarDailyLayout: {
     borderRadius: 10,
