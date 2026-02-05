@@ -20,6 +20,7 @@ import {
   RefreshControl,
   Share,
   Modal,
+  FlatList,
 } from "react-native";
 import * as ExpoLinking from "expo-linking";
 import {
@@ -6902,6 +6903,13 @@ function ProviderCalendarScreen({ token, showFlash }) {
   }, [loadBookingsForRange]);
 
   const selectedBookings = useMemo(() => bookingsByDate[selectedDate] || [], [bookingsByDate, selectedDate]);
+  const sortedSelectedBookings = useMemo(
+    () =>
+      selectedBookings
+        .slice()
+        .sort((a, b) => new Date(a?.start_time || a?.start) - new Date(b?.start_time || b?.start)),
+    [selectedBookings]
+  );
 
   const formatTimelineTime = useCallback((isoDateLike) => {
     const parsed = new Date(isoDateLike);
@@ -7095,33 +7103,42 @@ function ProviderCalendarScreen({ token, showFlash }) {
                   ]}
                   onLayout={(event) => {
                     const width = Math.round(event?.nativeEvent?.layout?.width || 0);
-                    if (width > 0 && width !== weekPagerWidth) {
+                    if (width > 0 && weekPagerWidth === 0) {
                       setWeekPagerWidth(width);
                     }
                   }}
                 >
-                  <ScrollView
-                    ref={weekPagerRef}
-                    horizontal
-                    pagingEnabled
-                    showsHorizontalScrollIndicator={false}
-                    onMomentumScrollEnd={onWeekPagerMomentumEnd}
-                    contentOffset={{ x: weekPagerWidth, y: 0 }}
-                  >
-                    {weekPages.map((pageWeekStartKey) => (
-                      <View key={pageWeekStartKey} style={{ width: weekPagerWidth || undefined }}>
-                        <WeeklyStrip
-                          weekStartKey={pageWeekStartKey}
-                          selectedDate={selectedDate}
-                          onSelectDate={(dayKey) => setSelectedDate(dayKey)}
-                          bookingsByDate={bookingsByDate}
-                          isBookingCompleted={isBookingCompleted}
-                          colors={colors}
-                          getWeekDays={getWeekDays}
-                        />
-                      </View>
-                    ))}
-                  </ScrollView>
+                  {weekPagerWidth > 0 ? (
+                    <ScrollView
+                      ref={weekPagerRef}
+                      horizontal
+                      pagingEnabled
+                      showsHorizontalScrollIndicator={false}
+                      onMomentumScrollEnd={onWeekPagerMomentumEnd}
+                      contentOffset={{ x: weekPagerWidth, y: 0 }}
+                      nestedScrollEnabled={false}
+                      directionalLockEnabled={true}
+                      alwaysBounceVertical={false}
+                      alwaysBounceHorizontal={true}
+                      scrollEventThrottle={16}
+                    >
+                      {weekPages.map((pageWeekStartKey) => (
+                        <View key={pageWeekStartKey} style={{ width: weekPagerWidth }}>
+                          <WeeklyStrip
+                            weekStartKey={pageWeekStartKey}
+                            selectedDate={selectedDate}
+                            onSelectDate={(dayKey) => setSelectedDate(dayKey)}
+                            bookingsByDate={bookingsByDate}
+                            isBookingCompleted={isBookingCompleted}
+                            colors={colors}
+                            getWeekDays={getWeekDays}
+                          />
+                        </View>
+                      ))}
+                    </ScrollView>
+                  ) : (
+                    <View style={{ flex: 1 }} />
+                  )}
                 </View>
               ) : (
                 // Daily layout structure: WeekCalendar strip -> custom vertical day schedule grid.
@@ -7153,68 +7170,68 @@ function ProviderCalendarScreen({ token, showFlash }) {
               <Text style={styles.sectionTitle}>Appointments for {selectedDate}</Text>
             </View>
             <View style={styles.providerCalendarListSection}>
-              <ScrollView
+              <FlatList
                 style={styles.providerCalendarList}
+                data={sortedSelectedBookings}
+                keyExtractor={(booking) =>
+                  String(
+                    booking?.id ||
+                      booking?.booking_id ||
+                      `${booking?.start_time || booking?.start}-${booking?.service_name || "service"}`
+                  )
+                }
+                renderItem={({ item: booking }) => {
+                  const completed = isBookingCompleted(booking);
+                  const startIso = booking?.start_time || booking?.start;
+                  const startLabel = startIso
+                    ? new Date(startIso).toLocaleTimeString([], {
+                        hour: "numeric",
+                        minute: "2-digit",
+                      })
+                    : "--:--";
+
+                  return (
+                    <View
+                      style={[
+                        styles.providerCalendarRow,
+                        completed && styles.providerCalendarRowCompleted,
+                      ]}
+                    >
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.providerCalendarTime}>{startLabel}</Text>
+                        <Text
+                          style={[
+                            styles.providerCalendarService,
+                            completed && styles.providerCalendarTextCompleted,
+                          ]}
+                        >
+                          {booking?.service_name || "Service"}
+                        </Text>
+                        <Text
+                          style={[
+                            styles.providerCalendarCustomer,
+                            completed && styles.providerCalendarTextCompleted,
+                          ]}
+                        >
+                          {booking?.customer_name || "Customer"}
+                        </Text>
+                      </View>
+                      {completed ? (
+                        <View style={styles.providerCalendarCompletedBadge}>
+                          <Text style={styles.providerCalendarCompletedText}>Completed</Text>
+                        </View>
+                      ) : null}
+                    </View>
+                  );
+                }}
+                ListEmptyComponent={
+                  <Text style={styles.providerCalendarEmpty}>No appointments for this date.</Text>
+                }
                 contentContainerStyle={styles.providerCalendarListContent}
                 showsVerticalScrollIndicator={false}
-              >
-                {selectedBookings.length === 0 ? (
-                  <Text style={styles.providerCalendarEmpty}>No appointments for this date.</Text>
-                ) : (
-                  <>
-                    {selectedBookings
-                      .slice()
-                      .sort((a, b) => new Date(a?.start_time || a?.start) - new Date(b?.start_time || b?.start))
-                      .map((booking) => {
-                        const completed = isBookingCompleted(booking);
-                        const startIso = booking?.start_time || booking?.start;
-                        const startLabel = startIso
-                          ? new Date(startIso).toLocaleTimeString([], {
-                              hour: "numeric",
-                              minute: "2-digit",
-                            })
-                          : "--:--";
-
-                        return (
-                          <View
-                            key={String(
-                              booking?.id || booking?.booking_id || `${startIso}-${booking?.service_name || "service"}`
-                            )}
-                            style={[
-                              styles.providerCalendarRow,
-                              completed && styles.providerCalendarRowCompleted,
-                            ]}
-                          >
-                            <View style={{ flex: 1 }}>
-                              <Text style={styles.providerCalendarTime}>{startLabel}</Text>
-                              <Text
-                                style={[
-                                  styles.providerCalendarService,
-                                  completed && styles.providerCalendarTextCompleted,
-                                ]}
-                              >
-                                {booking?.service_name || "Service"}
-                              </Text>
-                              <Text
-                                style={[
-                                  styles.providerCalendarCustomer,
-                                  completed && styles.providerCalendarTextCompleted,
-                                ]}
-                              >
-                                {booking?.customer_name || "Customer"}
-                              </Text>
-                            </View>
-                            {completed ? (
-                              <View style={styles.providerCalendarCompletedBadge}>
-                                <Text style={styles.providerCalendarCompletedText}>Completed</Text>
-                              </View>
-                            ) : null}
-                          </View>
-                        );
-                      })}
-                  </>
-                )}
-              </ScrollView>
+                removeClippedSubviews={true}
+                keyboardShouldPersistTaps="handled"
+              />
             </View>
           </View>
         ) : null}
@@ -9718,8 +9735,7 @@ signupTextButtonText: {
     paddingBottom: 12,
   },
   providerCalendarTop: {
-    zIndex: 10,
-    elevation: 10,
+    flexShrink: 0,
   },
   providerCalendarTopArea: {
     flexShrink: 0,
@@ -9755,9 +9771,6 @@ signupTextButtonText: {
     borderColor: colors.border,
     borderRadius: 14,
     padding: 8,
-    position: "relative",
-    zIndex: 10,
-    elevation: 10,
   },
   providerCalendarViewport: {
     overflow: "hidden",
@@ -9768,7 +9781,6 @@ signupTextButtonText: {
   },
   providerCalendarViewportWeek: {
     height: 168,
-    paddingTop: 4,
     overflow: "hidden",
   },
   providerWeeklyStrip: {
