@@ -6885,6 +6885,7 @@ function ProviderCalendarScreen({ token, showFlash }) {
         dayHeader: {
           flex: 1,
           textAlign: "center",
+          alignSelf: "stretch",
           color: colors.textSecondary,
           fontWeight: "600",
         },
@@ -6897,6 +6898,24 @@ function ProviderCalendarScreen({ token, showFlash }) {
           marginRight: 0,
           paddingLeft: 0,
           paddingRight: 0,
+        },
+        dayContainer: {
+          flex: 1,
+          alignItems: "center",
+        },
+      },
+      "stylesheet.weekCalendar.main": {
+        week: {
+          flexDirection: "row",
+          justifyContent: "space-around",
+          marginLeft: 0,
+          marginRight: 0,
+          paddingLeft: 0,
+          paddingRight: 0,
+        },
+        dayContainer: {
+          flex: 1,
+          alignItems: "center",
         },
       },
     }),

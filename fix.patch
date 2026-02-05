@@ -1,18 +1,9 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
 diff --git a/mobile/App.js b/mobile/App.js
-index 9bdd92eebf0abe6d6a306f7c8adc21109e85b643..1a607e1708b27ac47e172b678d5bcd5a51faf37a 100644
+index 1a607e1708b27ac47e172b678d5bcd5a51faf37a..4f72e44ac92807ff581d073d3a819959d403e8a9 100644
 --- a/mobile/App.js
 +++ b/mobile/App.js
-@@ -6854,67 +6854,67 @@ function ProviderCalendarScreen({ token, showFlash }) {
-       monthTextColor: colors.textPrimary,
-       textSectionTitleColor: colors.textSecondary,
-       selectedDayBackgroundColor: colors.primarySoft,
-       selectedDayTextColor: colors.textPrimary,
-       todayTextColor: colors.primary,
-       arrowColor: colors.primary,
-       textDisabledColor: colors.textMuted,
-       dotColor: colors.primary,
-       selectedDotColor: colors.textPrimary,
+@@ -6863,63 +6863,82 @@ function ProviderCalendarScreen({ token, showFlash }) {
        timelineContainerBackground: colors.surface,
        timelineBackgroundColor: colors.surface,
        timelineLineColor: colors.border,
@@ -29,8 +20,7 @@ index 9bdd92eebf0abe6d6a306f7c8adc21109e85b643..1a607e1708b27ac47e172b678d5bcd5a
          week: {
            flexDirection: "row",
            alignItems: "center",
--          justifyContent: "space-between",
-+          justifyContent: "space-around",
+           justifyContent: "space-around",
            paddingLeft: 0,
            paddingRight: 0,
            marginLeft: 0,
@@ -39,6 +29,7 @@ index 9bdd92eebf0abe6d6a306f7c8adc21109e85b643..1a607e1708b27ac47e172b678d5bcd5a
          dayHeader: {
            flex: 1,
            textAlign: "center",
++          alignSelf: "stretch",
            color: colors.textSecondary,
            fontWeight: "600",
          },
@@ -46,13 +37,30 @@ index 9bdd92eebf0abe6d6a306f7c8adc21109e85b643..1a607e1708b27ac47e172b678d5bcd5a
        "stylesheet.calendar.main": {
          week: {
            flexDirection: "row",
--          justifyContent: "space-between",
-+          justifyContent: "space-around",
+           justifyContent: "space-around",
            marginLeft: 0,
            marginRight: 0,
            paddingLeft: 0,
            paddingRight: 0,
          },
++        dayContainer: {
++          flex: 1,
++          alignItems: "center",
++        },
++      },
++      "stylesheet.weekCalendar.main": {
++        week: {
++          flexDirection: "row",
++          justifyContent: "space-around",
++          marginLeft: 0,
++          marginRight: 0,
++          paddingLeft: 0,
++          paddingRight: 0,
++        },
++        dayContainer: {
++          flex: 1,
++          alignItems: "center",
++        },
        },
      }),
      [calendarTheme]
@@ -73,136 +81,11 @@ index 9bdd92eebf0abe6d6a306f7c8adc21109e85b643..1a607e1708b27ac47e172b678d5bcd5a
        console.log("[ProviderCalendarScreen][WeeklyDebug] invalid selectedDate", { selectedDate });
        return;
      }
-@@ -6969,58 +6969,65 @@ function ProviderCalendarScreen({ token, showFlash }) {
-                 >
-                   {mode.label}
-                 </Text>
-               </TouchableOpacity>
-             );
-           })}
-         </View>
- 
-         <CalendarProvider date={selectedDate} onDateChanged={onSelectDate}>
-           <View style={styles.providerCalendarCard}>
-             {viewMode === "month" ? (
-               <View
-                 style={[
-                   styles.providerCalendarViewport,
-                   styles.providerCalendarViewportMonth,
-                 ]}
-               >
-                 <Calendar
-                   current={selectedDate}
-                   markedDates={markedDates}
-                   onDayPress={onSelectDate}
-                   theme={calendarTheme}
-                 />
-               </View>
-             ) : viewMode === "week" ? (
--              <View style={styles.providerCalendarViewportWeek}>
--                <WeekCalendar
--                  firstDay={WEEKLY_FIRST_DAY}
--                  current={selectedDate}
--                  markedDates={markedDates}
--                  onDayPress={onSelectDate}
--                  theme={weeklyTheme}
--                />
-+              <View
-+                style={[
-+                  styles.providerCalendarViewport,
-+                  styles.providerCalendarViewportWeek,
-+                ]}
-+              >
-+                <View style={styles.providerCalendarWeekInner}>
-+                  <WeekCalendar
-+                    firstDay={WEEKLY_FIRST_DAY}
-+                    current={selectedDate}
-+                    markedDates={markedDates}
-+                    onDayPress={onSelectDate}
-+                    theme={weeklyTheme}
-+                  />
-+                </View>
-               </View>
-             ) : (
-               // Daily layout structure: WeekCalendar strip -> custom vertical day schedule grid.
-               <View style={styles.providerCalendarDailyLayout}>
-                 <View style={styles.providerCalendarDayStrip}>
-                   <WeekCalendar
-                     firstDay={0}
-                     current={selectedDate}
-                     markedDates={markedDates}
-                     onDayPress={onSelectDate}
-                     theme={calendarTheme}
-                   />
-                 </View>
-                 <View style={styles.providerCalendarViewportDay}>
-                   <DayScheduleGrid events={dayGridEvents} startHour={0} endHour={24} />
-                 </View>
-               </View>
-             )}
-           </View>
-         </CalendarProvider>
- 
-         {loading ? <ActivityIndicator color={colors.primary} style={{ marginTop: 12 }} /> : null}
-         {error ? <Text style={styles.errorText}>{error}</Text> : null}
-         {!loading && !error && viewMode !== "day" ? (
-           <>
-@@ -9606,52 +9613,54 @@ signupTextButtonText: {
-   providerCalendarModeText: {
-     color: colors.textSecondary,
-     fontWeight: "600",
-     fontSize: 13,
-   },
-   providerCalendarModeTextActive: {
-     color: colors.textPrimary,
-   },
-   providerCalendarCard: {
-     backgroundColor: colors.surface,
-     borderWidth: 1,
-     borderColor: colors.border,
-     borderRadius: 14,
-     padding: 8,
-   },
-   providerCalendarViewport: {
-     overflow: "hidden",
-     borderRadius: 10,
-   },
-   providerCalendarViewportMonth: {
-     height: 360,
-   },
-   providerCalendarViewportWeek: {
-     minHeight: 168,
-     paddingTop: 4,
-+    overflow: "hidden",
-+  },
-+  providerCalendarWeekInner: {
-     marginHorizontal: -8,
--    overflow: "visible",
-   },
-   providerCalendarDailyLayout: {
-     borderRadius: 10,
-     overflow: "hidden",
-   },
-   providerCalendarDayStrip: {
-     minHeight: 104,
-     borderBottomWidth: 1,
-     borderBottomColor: colors.border,
-     backgroundColor: colors.surface,
-   },
-   providerCalendarViewportDay: {
-     height: 500,
-     backgroundColor: colors.surface,
-     width: "100%",
-     overflow: "hidden",
-   },
-   providerDayScheduleScroll: {
-     flex: 1,
-     width: "100%",
-     overflow: "hidden",
-   },
-   providerDayScheduleScrollContent: {
-     minWidth: "100%",
-   },
+     console.log("[ProviderCalendarScreen][WeeklyDebug]", {
+       selectedDate,
+       selectedWeekday: selected.getDay(),
+       firstDay: WEEKLY_FIRST_DAY,
+     });
  
 EOF
 )
