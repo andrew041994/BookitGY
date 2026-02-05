@@ -6869,6 +6869,40 @@ function ProviderCalendarScreen({ token, showFlash }) {
     []
   );
 
+  const weeklyTheme = useMemo(
+    () => ({
+      ...calendarTheme,
+      "stylesheet.calendar.header": {
+        week: {
+          flexDirection: "row",
+          alignItems: "center",
+          justifyContent: "space-between",
+          paddingLeft: 0,
+          paddingRight: 0,
+          marginLeft: 0,
+          marginRight: 0,
+        },
+        dayHeader: {
+          flex: 1,
+          textAlign: "center",
+          color: colors.textSecondary,
+          fontWeight: "600",
+        },
+      },
+      "stylesheet.calendar.main": {
+        week: {
+          flexDirection: "row",
+          justifyContent: "space-between",
+          marginLeft: 0,
+          marginRight: 0,
+          paddingLeft: 0,
+          paddingRight: 0,
+        },
+      },
+    }),
+    [calendarTheme]
+  );
+
   const onSelectDate = useCallback((value) => {
     if (!value) return;
     const raw = typeof value === "string" ? value : value.dateString;
@@ -6963,7 +6997,7 @@ function ProviderCalendarScreen({ token, showFlash }) {
                   current={selectedDate}
                   markedDates={markedDates}
                   onDayPress={onSelectDate}
-                  theme={calendarTheme}
+                  theme={weeklyTheme}
                 />
               </View>
             ) : (
@@ -9594,6 +9628,7 @@ signupTextButtonText: {
   providerCalendarViewportWeek: {
     minHeight: 168,
     paddingTop: 4,
+    marginHorizontal: -8,
     overflow: "visible",
   },
   providerCalendarDailyLayout: {
