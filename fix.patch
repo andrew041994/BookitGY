@@ -1,11 +1,9 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
 diff --git a/mobile/App.js b/mobile/App.js
-index d2cf1bb6d84a6cb0f3b85926686fccbe3fbed3fc..a50580c6cc748d28466583e34c149264bb00a6e7 100644
+index a50580c6cc748d28466583e34c149264bb00a6e7..a0205b8e966624f606b5eb15f97890c4c832df89 100644
 --- a/mobile/App.js
 +++ b/mobile/App.js
-@@ -6630,77 +6630,78 @@ function DayScheduleGrid({ events, startHour, endHour }) {
-                     {event?.title || "Service"}
-                   </Text>
+@@ -6632,120 +6632,146 @@ function DayScheduleGrid({ events, startHour, endHour }) {
                    <Text style={styles.providerDayScheduleEventSummary} numberOfLines={1} ellipsizeMode="tail">
                      {event?.summary || "Customer"}
                    </Text>
@@ -29,50 +27,68 @@ index d2cf1bb6d84a6cb0f3b85926686fccbe3fbed3fc..a50580c6cc748d28466583e34c149264
  
  function ProviderCalendarScreen({ token, showFlash }) {
    // Keep the calendar in fixed-height view wrappers so it cannot expand into the appointments header/list area.
-+  const WEEKLY_FIRST_DAY = 1;
-+  const PROVIDER_CALENDAR_DEBUG = false;
-+  const toLocalDateString = useCallback((dateLike) => {
-+    if (!dateLike) return null;
-+    const parsed = dateLike instanceof Date ? dateLike : new Date(dateLike);
+   const WEEKLY_FIRST_DAY = 1;
+   const PROVIDER_CALENDAR_DEBUG = false;
+-  const toLocalDateString = useCallback((dateLike) => {
++  const parseLocalMidday = useCallback((dateKey) => {
++    if (typeof dateKey !== "string") return null;
++    const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateKey);
++    if (!match) return null;
++    const [, yyyyStr, mmStr, ddStr] = match;
++    const yyyy = Number(yyyyStr);
++    const mm = Number(mmStr);
++    const dd = Number(ddStr);
++    if (!Number.isInteger(yyyy) || !Number.isInteger(mm) || !Number.isInteger(dd)) return null;
++    const parsed = new Date(yyyy, mm - 1, dd, 12, 0, 0);
 +    if (Number.isNaN(parsed.getTime())) return null;
-+    const yyyy = parsed.getFullYear();
-+    const mm = String(parsed.getMonth() + 1).padStart(2, "0");
-+    const dd = String(parsed.getDate()).padStart(2, "0");
-+    return `${yyyy}-${mm}-${dd}`;
++    return parsed;
 +  }, []);
++  const normalizeDateKey = useCallback((dateLike) => {
+     if (!dateLike) return null;
+-    const parsed = dateLike instanceof Date ? dateLike : new Date(dateLike);
++    let parsed = null;
++    if (dateLike instanceof Date) {
++      parsed = dateLike;
++    } else if (typeof dateLike === "string") {
++      if (/^\d{4}-\d{2}-\d{2}$/.test(dateLike)) {
++        parsed = parseLocalMidday(dateLike);
++      } else if (dateLike.includes("T")) {
++        parsed = new Date(dateLike);
++      } else {
++        return null;
++      }
++    } else {
++      return null;
++    }
+     if (Number.isNaN(parsed.getTime())) return null;
+     const yyyy = parsed.getFullYear();
+     const mm = String(parsed.getMonth() + 1).padStart(2, "0");
+     const dd = String(parsed.getDate()).padStart(2, "0");
+     return `${yyyy}-${mm}-${dd}`;
+-  }, []);
++  }, [parseLocalMidday]);
    const [viewMode, setViewMode] = useState("month");
--  const [selectedDate, setSelectedDate] = useState(
--    new Date().toISOString().slice(0, 10)
--  );
-+  const [selectedDate, setSelectedDate] = useState(() => toLocalDateString(new Date()) || "");
+-  const [selectedDate, setSelectedDate] = useState(() => toLocalDateString(new Date()) || "");
++  const [selectedDate, setSelectedDate] = useState(() => normalizeDateKey(new Date()) || "");
    const [bookingsByDate, setBookingsByDate] = useState({});
    const [loading, setLoading] = useState(false);
    const [error, setError] = useState("");
  
    const dateRange = useMemo(() => {
--    const base = new Date(`${selectedDate}T00:00:00`);
-+    const base = new Date(`${selectedDate}T12:00:00`);
+     const base = new Date(`${selectedDate}T12:00:00`);
      const monthStart = new Date(base.getFullYear(), base.getMonth(), 1);
      const monthEnd = new Date(base.getFullYear(), base.getMonth() + 1, 0);
      return {
--      start: monthStart.toISOString().slice(0, 10),
--      end: monthEnd.toISOString().slice(0, 10),
-+      start: toLocalDateString(monthStart),
-+      end: toLocalDateString(monthEnd),
+-      start: toLocalDateString(monthStart),
+-      end: toLocalDateString(monthEnd),
++      start: normalizeDateKey(monthStart),
++      end: normalizeDateKey(monthEnd),
      };
--  }, [selectedDate]);
-+  }, [selectedDate, toLocalDateString]);
+-  }, [selectedDate, toLocalDateString]);
++  }, [normalizeDateKey, selectedDate]);
  
--  const formatDayKey = useCallback((iso) => {
--    if (!iso) return null;
--    const parsed = new Date(iso);
--    if (Number.isNaN(parsed.getTime())) return null;
--    const yyyy = parsed.getFullYear();
--    const mm = String(parsed.getMonth() + 1).padStart(2, "0");
--    const dd = String(parsed.getDate()).padStart(2, "0");
--    return `${yyyy}-${mm}-${dd}`;
--  }, []);
-+  const formatDayKey = useCallback((iso) => toLocalDateString(iso), [toLocalDateString]);
+-  const formatDayKey = useCallback((iso) => toLocalDateString(iso), [toLocalDateString]);
++  const formatDayKey = useCallback((bookingStartTime) => normalizeDateKey(bookingStartTime), [normalizeDateKey]);
  
    const isBookingCompleted = useCallback((booking) => {
      const now = Date.now();
@@ -98,7 +114,57 @@ index d2cf1bb6d84a6cb0f3b85926686fccbe3fbed3fc..a50580c6cc748d28466583e34c149264
        const authToken = await getAuthToken(token);
        if (!authToken) {
          setError("No access token found. Please log in again.");
-@@ -6827,50 +6828,64 @@ function ProviderCalendarScreen({ token, showFlash }) {
+         return;
+       }
+ 
+       const res = await axios.get(`${API}/providers/me/bookings`, {
+         headers: {
+           Authorization: `Bearer ${authToken}`,
+         },
+         params: {
+           start: dateRange.start,
+           end: dateRange.end,
+         },
+       });
+ 
+       const rows = Array.isArray(res.data)
+         ? res.data
+         : res.data?.bookings || res.data?.results || [];
+ 
+       const grouped = rows.reduce((acc, booking) => {
+-        const key = formatDayKey(booking?.start_time || booking?.start);
++        const key = formatDayKey(booking?.start_time);
+         if (!key) return acc;
+         if (!acc[key]) acc[key] = [];
+         acc[key].push(booking);
+         return acc;
+       }, {});
+ 
+       setBookingsByDate(grouped);
+     } catch (err) {
+       console.log("Error loading provider calendar bookings", err?.response?.data || err?.message || err);
+       setError("Could not load calendar bookings.");
+       if (showFlash) {
+         showFlash("error", "Could not load calendar bookings.");
+       }
+     } finally {
+       setLoading(false);
+     }
+   }, [dateRange.end, dateRange.start, formatDayKey, showFlash, token]);
+ 
+   useEffect(() => {
+     loadBookingsForRange();
+   }, [loadBookingsForRange]);
+ 
+   const selectedBookings = useMemo(() => bookingsByDate[selectedDate] || [], [bookingsByDate, selectedDate]);
+ 
+   const formatTimelineTime = useCallback((isoDateLike) => {
+@@ -6823,68 +6849,69 @@ function ProviderCalendarScreen({ token, showFlash }) {
+   const calendarTheme = useMemo(
+     () => ({
+       backgroundColor: colors.surface,
+       calendarBackground: colors.surface,
+       dayTextColor: colors.textPrimary,
        monthTextColor: colors.textPrimary,
        textSectionTitleColor: colors.textSecondary,
        selectedDayBackgroundColor: colors.primarySoft,
@@ -119,25 +185,32 @@ index d2cf1bb6d84a6cb0f3b85926686fccbe3fbed3fc..a50580c6cc748d28466583e34c149264
  
    const onSelectDate = useCallback((value) => {
      if (!value) return;
-     const nextDate = typeof value === "string" ? value : value.dateString;
+-    const nextDate = typeof value === "string" ? value : value.dateString;
++    const raw = typeof value === "string" ? value : value.dateString;
++    const nextDate = normalizeDateKey(raw);
      if (!nextDate) return;
      setSelectedDate(nextDate);
-   }, []);
+-  }, []);
++  }, [normalizeDateKey]);
  
-+  useEffect(() => {
-+    if (!PROVIDER_CALENDAR_DEBUG) return;
-+    const selected = new Date(`${selectedDate}T12:00:00`);
-+    if (Number.isNaN(selected.getTime())) {
-+      console.log("[ProviderCalendarScreen][WeeklyDebug] invalid selectedDate", { selectedDate });
-+      return;
-+    }
-+    console.log("[ProviderCalendarScreen][WeeklyDebug]", {
-+      selectedDate,
-+      weekStartDayIndex: selected.getDay(),
-+      firstDay: WEEKLY_FIRST_DAY,
-+    });
-+  }, [PROVIDER_CALENDAR_DEBUG, WEEKLY_FIRST_DAY, selectedDate]);
-+
+   useEffect(() => {
+     if (!PROVIDER_CALENDAR_DEBUG) return;
+-    const selected = new Date(`${selectedDate}T12:00:00`);
+-    if (Number.isNaN(selected.getTime())) {
++    const selected = parseLocalMidday(selectedDate);
++    if (!selected) {
+       console.log("[ProviderCalendarScreen][WeeklyDebug] invalid selectedDate", { selectedDate });
+       return;
+     }
+     console.log("[ProviderCalendarScreen][WeeklyDebug]", {
+       selectedDate,
+-      weekStartDayIndex: selected.getDay(),
++      selectedWeekday: selected.getDay(),
+       firstDay: WEEKLY_FIRST_DAY,
+     });
+-  }, [PROVIDER_CALENDAR_DEBUG, WEEKLY_FIRST_DAY, selectedDate]);
++  }, [PROVIDER_CALENDAR_DEBUG, WEEKLY_FIRST_DAY, parseLocalMidday, selectedDate]);
+ 
    const dayGridEvents = useMemo(
      () =>
        timelineEvents
@@ -162,60 +235,6 @@ index d2cf1bb6d84a6cb0f3b85926686fccbe3fbed3fc..a50580c6cc748d28466583e34c149264
            {[
              { key: "day", label: "Daily" },
              { key: "week", label: "Weekly" },
-             { key: "month", label: "Monthly" },
-@@ -6900,51 +6915,51 @@ function ProviderCalendarScreen({ token, showFlash }) {
- 
-         <CalendarProvider date={selectedDate} onDateChanged={onSelectDate}>
-           <View style={styles.providerCalendarCard}>
-             {viewMode === "month" ? (
-               <View
-                 style={[
-                   styles.providerCalendarViewport,
-                   styles.providerCalendarViewportMonth,
-                 ]}
-               >
-                 <Calendar
-                   current={selectedDate}
-                   markedDates={markedDates}
-                   onDayPress={onSelectDate}
-                   theme={calendarTheme}
-                 />
-               </View>
-             ) : viewMode === "week" ? (
-               <View
-                 style={[
-                   styles.providerCalendarViewport,
-                   styles.providerCalendarViewportWeek,
-                 ]}
-               >
-                 <WeekCalendar
--                  firstDay={1}
-+                  firstDay={WEEKLY_FIRST_DAY}
-                   current={selectedDate}
-                   markedDates={markedDates}
-                   onDayPress={onSelectDate}
-                   theme={calendarTheme}
-                 />
-               </View>
-             ) : (
-               // Daily layout structure: WeekCalendar strip -> custom vertical day schedule grid.
-               <View style={styles.providerCalendarDailyLayout}>
-                 <View style={styles.providerCalendarDayStrip}>
-                   <WeekCalendar
-                     firstDay={0}
-                     current={selectedDate}
-                     markedDates={markedDates}
-                     onDayPress={onSelectDate}
-                     theme={calendarTheme}
-                   />
-                 </View>
-                 <View style={styles.providerCalendarViewportDay}>
-                   <DayScheduleGrid events={dayGridEvents} startHour={0} endHour={24} />
-                 </View>
-               </View>
-             )}
-           </View>
-         </CalendarProvider>
  
 EOF
 )

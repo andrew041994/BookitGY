@@ -6654,17 +6654,43 @@ function ProviderCalendarScreen({ token, showFlash }) {
   // Keep the calendar in fixed-height view wrappers so it cannot expand into the appointments header/list area.
   const WEEKLY_FIRST_DAY = 1;
   const PROVIDER_CALENDAR_DEBUG = false;
-  const toLocalDateString = useCallback((dateLike) => {
+  const parseLocalMidday = useCallback((dateKey) => {
+    if (typeof dateKey !== "string") return null;
+    const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateKey);
+    if (!match) return null;
+    const [, yyyyStr, mmStr, ddStr] = match;
+    const yyyy = Number(yyyyStr);
+    const mm = Number(mmStr);
+    const dd = Number(ddStr);
+    if (!Number.isInteger(yyyy) || !Number.isInteger(mm) || !Number.isInteger(dd)) return null;
+    const parsed = new Date(yyyy, mm - 1, dd, 12, 0, 0);
+    if (Number.isNaN(parsed.getTime())) return null;
+    return parsed;
+  }, []);
+  const normalizeDateKey = useCallback((dateLike) => {
     if (!dateLike) return null;
-    const parsed = dateLike instanceof Date ? dateLike : new Date(dateLike);
+    let parsed = null;
+    if (dateLike instanceof Date) {
+      parsed = dateLike;
+    } else if (typeof dateLike === "string") {
+      if (/^\d{4}-\d{2}-\d{2}$/.test(dateLike)) {
+        parsed = parseLocalMidday(dateLike);
+      } else if (dateLike.includes("T")) {
+        parsed = new Date(dateLike);
+      } else {
+        return null;
+      }
+    } else {
+      return null;
+    }
     if (Number.isNaN(parsed.getTime())) return null;
     const yyyy = parsed.getFullYear();
     const mm = String(parsed.getMonth() + 1).padStart(2, "0");
     const dd = String(parsed.getDate()).padStart(2, "0");
     return `${yyyy}-${mm}-${dd}`;
-  }, []);
+  }, [parseLocalMidday]);
   const [viewMode, setViewMode] = useState("month");
-  const [selectedDate, setSelectedDate] = useState(() => toLocalDateString(new Date()) || "");
+  const [selectedDate, setSelectedDate] = useState(() => normalizeDateKey(new Date()) || "");
   const [bookingsByDate, setBookingsByDate] = useState({});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -6674,12 +6700,12 @@ function ProviderCalendarScreen({ token, showFlash }) {
     const monthStart = new Date(base.getFullYear(), base.getMonth(), 1);
     const monthEnd = new Date(base.getFullYear(), base.getMonth() + 1, 0);
     return {
-      start: toLocalDateString(monthStart),
-      end: toLocalDateString(monthEnd),
+      start: normalizeDateKey(monthStart),
+      end: normalizeDateKey(monthEnd),
     };
-  }, [selectedDate, toLocalDateString]);
+  }, [normalizeDateKey, selectedDate]);
 
-  const formatDayKey = useCallback((iso) => toLocalDateString(iso), [toLocalDateString]);
+  const formatDayKey = useCallback((bookingStartTime) => normalizeDateKey(bookingStartTime), [normalizeDateKey]);
 
   const isBookingCompleted = useCallback((booking) => {
     const now = Date.now();
@@ -6723,7 +6749,7 @@ function ProviderCalendarScreen({ token, showFlash }) {
         : res.data?.bookings || res.data?.results || [];
 
       const grouped = rows.reduce((acc, booking) => {
-        const key = formatDayKey(booking?.start_time || booking?.start);
+        const key = formatDayKey(booking?.start_time);
         if (!key) return acc;
         if (!acc[key]) acc[key] = [];
         acc[key].push(booking);
@@ -6845,24 +6871,25 @@ function ProviderCalendarScreen({ token, showFlash }) {
 
   const onSelectDate = useCallback((value) => {
     if (!value) return;
-    const nextDate = typeof value === "string" ? value : value.dateString;
+    const raw = typeof value === "string" ? value : value.dateString;
+    const nextDate = normalizeDateKey(raw);
     if (!nextDate) return;
     setSelectedDate(nextDate);
-  }, []);
+  }, [normalizeDateKey]);
 
   useEffect(() => {
     if (!PROVIDER_CALENDAR_DEBUG) return;
-    const selected = new Date(`${selectedDate}T12:00:00`);
-    if (Number.isNaN(selected.getTime())) {
+    const selected = parseLocalMidday(selectedDate);
+    if (!selected) {
       console.log("[ProviderCalendarScreen][WeeklyDebug] invalid selectedDate", { selectedDate });
       return;
     }
     console.log("[ProviderCalendarScreen][WeeklyDebug]", {
       selectedDate,
-      weekStartDayIndex: selected.getDay(),
+      selectedWeekday: selected.getDay(),
       firstDay: WEEKLY_FIRST_DAY,
     });
-  }, [PROVIDER_CALENDAR_DEBUG, WEEKLY_FIRST_DAY, selectedDate]);
+  }, [PROVIDER_CALENDAR_DEBUG, WEEKLY_FIRST_DAY, parseLocalMidday, selectedDate]);
 
   const dayGridEvents = useMemo(
     () =>
