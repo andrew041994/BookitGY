@@ -6749,10 +6749,10 @@ function ProviderCalendarScreen({ token, showFlash }) {
           <View style={[styles.providerTimelineEventAccent, { backgroundColor: event?.accentColor || colors.primary }]} />
           <View style={styles.providerTimelineEventBody}>
             <Text style={styles.providerTimelineEventTime}>{event?.startLabel || "--:--"}</Text>
-            <Text style={styles.providerTimelineEventService} numberOfLines={2}>
+            <Text style={styles.providerTimelineEventService} numberOfLines={1} ellipsizeMode="tail">
               {event?.title || "Service"}
             </Text>
-            <Text style={styles.providerTimelineEventCustomer} numberOfLines={1}>
+            <Text style={styles.providerTimelineEventCustomer} numberOfLines={1} ellipsizeMode="tail">
               {event?.summary || "Customer"}
             </Text>
           </View>
@@ -6843,23 +6843,27 @@ function ProviderCalendarScreen({ token, showFlash }) {
                   />
                 </View>
                 <View style={styles.providerCalendarViewportDay}>
-                  <Timeline
-                    events={timelineEvents}
-                    date={selectedDate}
-                    start={timelineBounds.start}
-                    end={timelineBounds.end}
-                    format24h
-                    showNowIndicator
-                    overlapEventsSpacing={8}
-                    rightEdgeSpacing={8}
-                    renderEvent={renderTimelineEvent}
-                    theme={{
-                      ...calendarTheme,
-                      timelineHoursBackgroundColor: colors.surface,
-                      timelineHoursLineColor: "rgba(255,255,255,0.06)",
-                      timelineTextColor: colors.textMuted,
-                    }}
-                  />
+                  <View style={styles.providerCalendarTimelineWrapper}>
+                    <Timeline
+                      events={timelineEvents}
+                      date={selectedDate}
+                      start={timelineBounds.start}
+                      end={timelineBounds.end}
+                      format24h
+                      showNowIndicator
+                      overlapEventsSpacing={8}
+                      rightEdgeSpacing={6}
+                      timelineLeftInset={62}
+                      style={styles.providerCalendarTimeline}
+                      renderEvent={renderTimelineEvent}
+                      theme={{
+                        ...calendarTheme,
+                        timelineHoursBackgroundColor: colors.surface,
+                        timelineHoursLineColor: "rgba(255,255,255,0.06)",
+                        timelineTextColor: colors.textMuted,
+                      }}
+                    />
+                  </View>
                 </View>
               </View>
             )}
@@ -9487,15 +9491,30 @@ signupTextButtonText: {
   providerCalendarViewportDay: {
     height: 500,
     backgroundColor: colors.surface,
+    width: "100%",
+    overflow: "hidden",
+  },
+  providerCalendarTimelineWrapper: {
+    width: "100%",
+    flex: 1,
+    overflow: "hidden",
+    borderRadius: 10,
+    paddingHorizontal: 4,
+  },
+  providerCalendarTimeline: {
+    width: "100%",
   },
   providerTimelineEvent: {
     flex: 1,
+    maxWidth: "100%",
+    minWidth: 0,
     borderRadius: 12,
     backgroundColor: colors.surfaceElevated,
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.08)",
     overflow: "hidden",
     flexDirection: "row",
+    alignItems: "flex-start",
   },
   providerTimelineEventCompleted: {
     opacity: 0.58,
@@ -9505,6 +9524,8 @@ signupTextButtonText: {
   },
   providerTimelineEventBody: {
     flex: 1,
+    minWidth: 0,
+    flexShrink: 1,
     paddingHorizontal: 8,
     paddingVertical: 7,
   },
@@ -9525,9 +9546,9 @@ signupTextButtonText: {
     marginTop: 1,
   },
   providerTimelineEventCompletedBadge: {
-    position: "absolute",
-    top: 6,
-    right: 6,
+    alignSelf: "flex-start",
+    marginTop: 6,
+    marginRight: 6,
     paddingHorizontal: 6,
     paddingVertical: 2,
     borderRadius: 999,
