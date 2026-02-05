@@ -7070,8 +7070,9 @@ function ProviderCalendarScreen({ token, showFlash }) {
             })}
           </View>
 
-          <CalendarProvider date={selectedDate} onDateChanged={onSelectDate}>
-            <View style={styles.providerCalendarCard}>
+          <View style={styles.providerCalendarTopArea}>
+            <CalendarProvider date={selectedDate} onDateChanged={onSelectDate}>
+              <View style={styles.providerCalendarCard}>
               {viewMode === "month" ? (
                 <View
                   style={[
@@ -7139,79 +7140,82 @@ function ProviderCalendarScreen({ token, showFlash }) {
                   </View>
                 </View>
               )}
-            </View>
-          </CalendarProvider>
+              </View>
+            </CalendarProvider>
+          </View>
         </View>
 
         {loading ? <ActivityIndicator color={colors.primary} style={{ marginTop: 12 }} /> : null}
         {error ? <Text style={styles.errorText}>{error}</Text> : null}
         {!loading && !error && viewMode !== "day" ? (
-          <View style={styles.providerCalendarBottom}>
+          <View style={styles.providerCalendarBottomArea}>
             <View style={styles.providerCalendarHeaderBlock}>
               <Text style={styles.sectionTitle}>Appointments for {selectedDate}</Text>
             </View>
-            <ScrollView
-              style={styles.providerCalendarList}
-              contentContainerStyle={styles.providerCalendarListContent}
-              showsVerticalScrollIndicator={false}
-            >
-              {selectedBookings.length === 0 ? (
-                <Text style={styles.providerCalendarEmpty}>No appointments for this date.</Text>
-              ) : (
-                <>
-                  {selectedBookings
-                    .slice()
-                    .sort((a, b) => new Date(a?.start_time || a?.start) - new Date(b?.start_time || b?.start))
-                    .map((booking) => {
-                      const completed = isBookingCompleted(booking);
-                      const startIso = booking?.start_time || booking?.start;
-                      const startLabel = startIso
-                        ? new Date(startIso).toLocaleTimeString([], {
-                            hour: "numeric",
-                            minute: "2-digit",
-                          })
-                        : "--:--";
+            <View style={styles.providerCalendarListSection}>
+              <ScrollView
+                style={styles.providerCalendarList}
+                contentContainerStyle={styles.providerCalendarListContent}
+                showsVerticalScrollIndicator={false}
+              >
+                {selectedBookings.length === 0 ? (
+                  <Text style={styles.providerCalendarEmpty}>No appointments for this date.</Text>
+                ) : (
+                  <>
+                    {selectedBookings
+                      .slice()
+                      .sort((a, b) => new Date(a?.start_time || a?.start) - new Date(b?.start_time || b?.start))
+                      .map((booking) => {
+                        const completed = isBookingCompleted(booking);
+                        const startIso = booking?.start_time || booking?.start;
+                        const startLabel = startIso
+                          ? new Date(startIso).toLocaleTimeString([], {
+                              hour: "numeric",
+                              minute: "2-digit",
+                            })
+                          : "--:--";
 
-                      return (
-                        <View
-                          key={String(
-                            booking?.id || booking?.booking_id || `${startIso}-${booking?.service_name || "service"}`
-                          )}
-                          style={[
-                            styles.providerCalendarRow,
-                            completed && styles.providerCalendarRowCompleted,
-                          ]}
-                        >
-                          <View style={{ flex: 1 }}>
-                            <Text style={styles.providerCalendarTime}>{startLabel}</Text>
-                            <Text
-                              style={[
-                                styles.providerCalendarService,
-                                completed && styles.providerCalendarTextCompleted,
-                              ]}
-                            >
-                              {booking?.service_name || "Service"}
-                            </Text>
-                            <Text
-                              style={[
-                                styles.providerCalendarCustomer,
-                                completed && styles.providerCalendarTextCompleted,
-                              ]}
-                            >
-                              {booking?.customer_name || "Customer"}
-                            </Text>
-                          </View>
-                          {completed ? (
-                            <View style={styles.providerCalendarCompletedBadge}>
-                              <Text style={styles.providerCalendarCompletedText}>Completed</Text>
+                        return (
+                          <View
+                            key={String(
+                              booking?.id || booking?.booking_id || `${startIso}-${booking?.service_name || "service"}`
+                            )}
+                            style={[
+                              styles.providerCalendarRow,
+                              completed && styles.providerCalendarRowCompleted,
+                            ]}
+                          >
+                            <View style={{ flex: 1 }}>
+                              <Text style={styles.providerCalendarTime}>{startLabel}</Text>
+                              <Text
+                                style={[
+                                  styles.providerCalendarService,
+                                  completed && styles.providerCalendarTextCompleted,
+                                ]}
+                              >
+                                {booking?.service_name || "Service"}
+                              </Text>
+                              <Text
+                                style={[
+                                  styles.providerCalendarCustomer,
+                                  completed && styles.providerCalendarTextCompleted,
+                                ]}
+                              >
+                                {booking?.customer_name || "Customer"}
+                              </Text>
                             </View>
-                          ) : null}
-                        </View>
-                      );
-                    })}
-                </>
-              )}
-            </ScrollView>
+                            {completed ? (
+                              <View style={styles.providerCalendarCompletedBadge}>
+                                <Text style={styles.providerCalendarCompletedText}>Completed</Text>
+                              </View>
+                            ) : null}
+                          </View>
+                        );
+                      })}
+                  </>
+                )}
+              </ScrollView>
+            </View>
           </View>
         ) : null}
       </View>
@@ -9717,6 +9721,9 @@ signupTextButtonText: {
     zIndex: 10,
     elevation: 10,
   },
+  providerCalendarTopArea: {
+    flexShrink: 0,
+  },
   providerCalendarModeSwitch: {
     flexDirection: "row",
     backgroundColor: colors.surface,
@@ -9760,7 +9767,7 @@ signupTextButtonText: {
     height: 360,
   },
   providerCalendarViewportWeek: {
-    minHeight: 168,
+    height: 168,
     paddingTop: 4,
     overflow: "hidden",
   },
@@ -9932,9 +9939,15 @@ signupTextButtonText: {
   providerCalendarHeaderBlock: {
     marginTop: 0,
   },
-  providerCalendarBottom: {
+  providerCalendarBottomArea: {
     flex: 1,
+    minHeight: 0,
     marginTop: 12,
+  },
+  providerCalendarListSection: {
+    flex: 1,
+    minHeight: 0,
+    marginTop: 8,
   },
   providerCalendarList: {
     flex: 1,
