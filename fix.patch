@@ -1,83 +1,9 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
 diff --git a/mobile/App.js b/mobile/App.js
-index b3fead2c1e0931cc1a6ab9511140895e3dce3491..082b328c60a629582a17b79d7207fca6568dd5f1 100644
+index 082b328c60a629582a17b79d7207fca6568dd5f1..d2cf1bb6d84a6cb0f3b85926686fccbe3fbed3fc 100644
 --- a/mobile/App.js
 +++ b/mobile/App.js
-@@ -1,72 +1,70 @@
- import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
- import {
-   Text,
-   View,
-   StyleSheet,
-   TextInput,
-   Button,
-   Alert,
-   ActivityIndicator,
-   ScrollView,
-   TouchableOpacity,
-   Switch,
-   Linking,
-   Platform,
-   Image,
-   KeyboardAvoidingView,
-   TouchableWithoutFeedback,
-   Keyboard,
-   Pressable,
-   RefreshControl,
-   Share,
-   Modal,
--  PanResponder,
- } from "react-native";
- import * as ExpoLinking from "expo-linking";
- import {
-   NavigationContainer,
-   CommonActions,
-   useFocusEffect,
-   useIsFocused,
- } from "@react-navigation/native";
- import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
- import { enableScreens } from "react-native-screens";
- import axios from "axios";
- import AsyncStorage from "@react-native-async-storage/async-storage";
- import { clearToken, loadToken, saveToken } from "./src/components/tokenStorage";
- import ProviderCard from "./src/components/ProviderCard";
- import { createApiClient } from "./src/api/client";
- import * as Location from "expo-location";
- import Constants from "expo-constants";
- import * as ImagePicker from "expo-image-picker";
- import { Ionicons } from "@expo/vector-icons";
- import {
-   CalendarProvider,
-   Calendar,
-   WeekCalendar,
--  Timeline,
- } from "react-native-calendars";
- import {
-   SafeAreaProvider,
-   SafeAreaView,
-   useSafeAreaInsets,
- } from "react-native-safe-area-context";
- import BookitGYLogoTransparent from "./assets/bookitgy-logo-transparent.png"
- import { theme } from "./src/theme";
- // import * as Sentry from "sentry-expo";
- 
- let Clipboard = null;
- try {
-   Clipboard = require("expo-clipboard");
- } catch (e) {}
- 
- enableScreens(false);
- 
- 
- 
- 
- // import { API } from "./App"; // wherever you define your base URL
- 
- 
- 
- 
-@@ -6483,50 +6481,180 @@ function ProviderBillingScreen({ token, showFlash }) {
-             <View style={styles.billingTotalsRow}>
+@@ -6482,116 +6482,132 @@ function ProviderBillingScreen({ token, showFlash }) {
                <Text style={styles.billingTotalsLabel}>Platform fee</Text>
                <Text style={styles.billingTotalsValue}>
                  {formatMoney(bill.platform_fee_gyd)}
@@ -102,162 +28,185 @@ index b3fead2c1e0931cc1a6ab9511140895e3dce3491..082b328c60a629582a17b79d7207fca6
  }
  
  
-+function DayScheduleGrid({ events, startHour, endHour }) {
-+  const hourHeight = 80;
-+  const timeGutterWidth = 56;
-+  const gridStart = Number.isFinite(startHour) ? startHour : 8;
-+  const gridEnd = Number.isFinite(endHour) ? Math.max(endHour, gridStart + 1) : 20;
-+  const totalHours = Math.max(gridEnd - gridStart, 1);
-+  const totalHeight = totalHours * hourHeight;
-+
-+  const hourTicks = useMemo(
-+    () => Array.from({ length: totalHours + 1 }, (_, idx) => gridStart + idx),
+ function DayScheduleGrid({ events, startHour, endHour }) {
+-  const hourHeight = 80;
++  const hourHeight = 104;
+   const timeGutterWidth = 56;
+-  const gridStart = Number.isFinite(startHour) ? startHour : 8;
+-  const gridEnd = Number.isFinite(endHour) ? Math.max(endHour, gridStart + 1) : 20;
++  const gridVerticalPadding = 12;
++  const gridStart = Number.isFinite(startHour) ? startHour : 0;
++  const gridEnd = Number.isFinite(endHour) ? Math.max(endHour, gridStart + 1) : 24;
+   const totalHours = Math.max(gridEnd - gridStart, 1);
+   const totalHeight = totalHours * hourHeight;
++  const trackHeight = totalHeight + gridVerticalPadding * 2;
+ 
+   const hourTicks = useMemo(
++    () => Array.from({ length: totalHours }, (_, idx) => gridStart + idx),
 +    [gridStart, totalHours]
 +  );
 +
-+  const positionedEvents = useMemo(() => {
-+    const minuteToPx = hourHeight / 60;
-+    return (events || [])
-+      .map((event) => {
-+        const startDate = event?.startDate || new Date(event?.start);
-+        const endDate = event?.endDate || new Date(event?.end);
-+        if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) return null;
-+
-+        const startMinutes = startDate.getHours() * 60 + startDate.getMinutes();
-+        const endMinutes = endDate.getHours() * 60 + endDate.getMinutes();
-+        const gridStartMinutes = gridStart * 60;
-+        const gridEndMinutes = gridEnd * 60;
-+        const clampedStart = Math.max(startMinutes, gridStartMinutes);
-+        const clampedEnd = Math.min(Math.max(endMinutes, clampedStart + 1), gridEndMinutes);
-+        const durationMinutes = Math.max(clampedEnd - clampedStart, 1);
-+
-+        const top = (clampedStart - gridStartMinutes) * minuteToPx;
-+        const height = Math.max(durationMinutes * minuteToPx - 4, 28);
-+
-+        return {
-+          ...event,
-+          top,
-+          height,
-+        };
-+      })
-+      .filter(Boolean)
-+      .sort((a, b) => a.top - b.top);
-+  }, [events, gridEnd, gridStart]);
-+
-+  return (
-+    <ScrollView
-+      style={styles.providerDayScheduleScroll}
-+      contentContainerStyle={styles.providerDayScheduleScrollContent}
-+      showsVerticalScrollIndicator={false}
-+      bounces={false}
-+      alwaysBounceHorizontal={false}
-+      horizontal={false}
-+    >
-+      <View style={styles.providerDayScheduleRow}>
-+        <View style={[styles.providerDayScheduleGutter, { width: timeGutterWidth, height: totalHeight }]}>
-+          {hourTicks.map((hour) => {
-+            const y = (hour - gridStart) * hourHeight;
-+            const hourLabel = `${hour}:00`;
-+            return (
-+              <Text key={`label-${hour}`} style={[styles.providerDayScheduleTimeLabel, { top: y - 8 }]}>
-+                {hourLabel}
-+              </Text>
-+            );
-+          })}
-+        </View>
-+
-+        <View style={[styles.providerDayScheduleGrid, { height: totalHeight }]}>
-+          {hourTicks.map((hour) => {
-+            const y = (hour - gridStart) * hourHeight;
-+            const hasHalfHour = hour < gridEnd;
-+            return (
-+              <React.Fragment key={`line-${hour}`}>
-+                <View style={[styles.providerDayScheduleHourLine, { top: y }]} />
-+                {hasHalfHour ? <View style={[styles.providerDayScheduleHalfHourLine, { top: y + hourHeight / 2 }]} /> : null}
-+              </React.Fragment>
-+            );
-+          })}
-+
-+          {positionedEvents.map((event) => {
-+            const completed = Boolean(event?.completed);
-+            return (
-+              <TouchableOpacity
-+                key={event.id}
-+                activeOpacity={0.9}
-+                style={[
-+                  styles.providerDayScheduleEvent,
-+                  completed && styles.providerDayScheduleEventCompleted,
-+                  {
-+                    top: event.top,
-+                    height: event.height,
-+                  },
-+                ]}
-+                onPress={() => {
-+                  Alert.alert(
-+                    event?.title || "Appointment",
-+                    `${event?.summary || "Customer"}\n${event?.startLabel || "--:--"}`
-+                  );
-+                }}
-+              >
-+                <View
-+                  style={[
-+                    styles.providerDayScheduleEventAccent,
-+                    { backgroundColor: event?.accentColor || colors.primary },
-+                  ]}
-+                />
-+                <View style={styles.providerDayScheduleEventBody}>
-+                  <Text style={styles.providerDayScheduleEventTime} numberOfLines={1} ellipsizeMode="tail">
-+                    {event?.startLabel || "--:--"}
-+                  </Text>
-+                  <Text style={styles.providerDayScheduleEventTitle} numberOfLines={1} ellipsizeMode="tail">
-+                    {event?.title || "Service"}
-+                  </Text>
-+                  <Text style={styles.providerDayScheduleEventSummary} numberOfLines={1} ellipsizeMode="tail">
-+                    {event?.summary || "Customer"}
-+                  </Text>
-+                </View>
-+                {completed ? (
-+                  <View style={styles.providerDayScheduleCompletedBadge}>
-+                    <Text style={styles.providerDayScheduleCompletedText}>Completed</Text>
-+                  </View>
-+                ) : null}
-+              </TouchableOpacity>
-+            );
-+          })}
-+        </View>
-+      </View>
-+    </ScrollView>
-+  );
-+}
-+
-+
-+
- 
- function ProviderCalendarScreen({ token, showFlash }) {
-   // Keep the calendar in fixed-height view wrappers so it cannot expand into the appointments header/list area.
-   const [viewMode, setViewMode] = useState("month");
-   const [selectedDate, setSelectedDate] = useState(
-     new Date().toISOString().slice(0, 10)
++  const lineTicks = useMemo(
+     () => Array.from({ length: totalHours + 1 }, (_, idx) => gridStart + idx),
+     [gridStart, totalHours]
    );
-   const [bookingsByDate, setBookingsByDate] = useState({});
-   const [loading, setLoading] = useState(false);
-   const [error, setError] = useState("");
  
-   const dateRange = useMemo(() => {
-     const base = new Date(`${selectedDate}T00:00:00`);
-     const monthStart = new Date(base.getFullYear(), base.getMonth(), 1);
-     const monthEnd = new Date(base.getFullYear(), base.getMonth() + 1, 0);
-     return {
-       start: monthStart.toISOString().slice(0, 10),
-       end: monthEnd.toISOString().slice(0, 10),
-     };
-   }, [selectedDate]);
++  const formatHourLabel = useCallback((hour) => {
++    const normalizedHour = ((hour % 24) + 24) % 24;
++    const meridiem = normalizedHour >= 12 ? "PM" : "AM";
++    const displayHour = normalizedHour % 12 === 0 ? 12 : normalizedHour % 12;
++    return `${displayHour}${meridiem}`;
++  }, []);
++
+   const positionedEvents = useMemo(() => {
+     const minuteToPx = hourHeight / 60;
+     return (events || [])
+       .map((event) => {
+         const startDate = event?.startDate || new Date(event?.start);
+         const endDate = event?.endDate || new Date(event?.end);
+         if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) return null;
  
-   const formatDayKey = useCallback((iso) => {
-     if (!iso) return null;
-     const parsed = new Date(iso);
-     if (Number.isNaN(parsed.getTime())) return null;
-@@ -6708,103 +6836,65 @@ function ProviderCalendarScreen({ token, showFlash }) {
+         const startMinutes = startDate.getHours() * 60 + startDate.getMinutes();
+         const endMinutes = endDate.getHours() * 60 + endDate.getMinutes();
+         const gridStartMinutes = gridStart * 60;
+         const gridEndMinutes = gridEnd * 60;
+         const clampedStart = Math.max(startMinutes, gridStartMinutes);
+         const clampedEnd = Math.min(Math.max(endMinutes, clampedStart + 1), gridEndMinutes);
+         const durationMinutes = Math.max(clampedEnd - clampedStart, 1);
+ 
+-        const top = (clampedStart - gridStartMinutes) * minuteToPx;
+-        const height = Math.max(durationMinutes * minuteToPx - 4, 28);
++        const top = (clampedStart - gridStartMinutes) * minuteToPx + gridVerticalPadding;
++        const height = Math.max(durationMinutes * minuteToPx - 6, 50);
+ 
+         return {
+           ...event,
+           top,
+           height,
+         };
+       })
+       .filter(Boolean)
+       .sort((a, b) => a.top - b.top);
+-  }, [events, gridEnd, gridStart]);
++  }, [events, gridEnd, gridStart, gridVerticalPadding, hourHeight]);
+ 
+   return (
+     <ScrollView
+       style={styles.providerDayScheduleScroll}
+-      contentContainerStyle={styles.providerDayScheduleScrollContent}
++      contentContainerStyle={[
++        styles.providerDayScheduleScrollContent,
++        { paddingTop: gridVerticalPadding, paddingBottom: gridVerticalPadding + 24 },
++      ]}
+       showsVerticalScrollIndicator={false}
+       bounces={false}
+       alwaysBounceHorizontal={false}
+       horizontal={false}
+     >
+       <View style={styles.providerDayScheduleRow}>
+-        <View style={[styles.providerDayScheduleGutter, { width: timeGutterWidth, height: totalHeight }]}>
++        <View style={[styles.providerDayScheduleGutter, { width: timeGutterWidth, height: trackHeight }]}>
+           {hourTicks.map((hour) => {
+-            const y = (hour - gridStart) * hourHeight;
+-            const hourLabel = `${hour}:00`;
++            const y = (hour - gridStart) * hourHeight + gridVerticalPadding;
+             return (
+-              <Text key={`label-${hour}`} style={[styles.providerDayScheduleTimeLabel, { top: y - 8 }]}>
+-                {hourLabel}
++              <Text key={`label-${hour}`} style={[styles.providerDayScheduleTimeLabel, { top: y + hourHeight / 2 }]}>
++                {formatHourLabel(hour)}
+               </Text>
+             );
+           })}
+         </View>
+ 
+-        <View style={[styles.providerDayScheduleGrid, { height: totalHeight }]}>
+-          {hourTicks.map((hour) => {
+-            const y = (hour - gridStart) * hourHeight;
++        <View style={[styles.providerDayScheduleGrid, { height: trackHeight }]}>
++          {lineTicks.map((hour) => {
++            const y = (hour - gridStart) * hourHeight + gridVerticalPadding;
+             const hasHalfHour = hour < gridEnd;
+             return (
+               <React.Fragment key={`line-${hour}`}>
+                 <View style={[styles.providerDayScheduleHourLine, { top: y }]} />
+                 {hasHalfHour ? <View style={[styles.providerDayScheduleHalfHourLine, { top: y + hourHeight / 2 }]} /> : null}
+               </React.Fragment>
+             );
+           })}
+ 
+           {positionedEvents.map((event) => {
+             const completed = Boolean(event?.completed);
+             return (
+               <TouchableOpacity
+                 key={event.id}
+                 activeOpacity={0.9}
+                 style={[
+                   styles.providerDayScheduleEvent,
+                   completed && styles.providerDayScheduleEventCompleted,
+                   {
+                     top: event.top,
+                     height: event.height,
+                   },
+                 ]}
+                 onPress={() => {
+                   Alert.alert(
+@@ -6781,75 +6797,50 @@ function ProviderCalendarScreen({ token, showFlash }) {
+           let endDate = booking?.end_time || booking?.end ? new Date(booking?.end_time || booking?.end) : null;
+           if (!endDate || Number.isNaN(endDate.getTime())) {
+             const durationMin = Number(booking?.duration_minutes || booking?.duration || 30);
+             endDate = new Date(startDate.getTime() + Math.max(durationMin, 1) * 60_000);
+           }
+ 
+           const completed = isBookingCompleted(booking);
+           const accentColor = getEventAccentColor(booking);
+ 
+           return {
+             id: String(booking?.id || booking?.booking_id || `${startIso}-${booking?.service_name || "service"}`),
+             start: startDate.toISOString(),
+             end: endDate.toISOString(),
+             title: booking?.service_name || "Service",
+             summary: booking?.customer_name || "Customer",
+             color: accentColor,
+             accentColor,
+             completed,
+             startLabel: `${formatTimelineTime(startDate)} - ${formatTimelineTime(endDate)}`,
+           };
+         })
+         .filter(Boolean),
+     [formatTimelineTime, getEventAccentColor, isBookingCompleted, selectedBookings]
+   );
+ 
+-  const timelineBounds = useMemo(() => {
+-    if (!timelineEvents.length) return { start: 8, end: 20 };
+-
+-    const mins = timelineEvents.reduce(
+-      (acc, event) => {
+-        const start = new Date(event.start);
+-        const end = new Date(event.end);
+-        if (!Number.isNaN(start.getTime())) {
+-          acc.start = Math.min(acc.start, start.getHours());
+-        }
+-        if (!Number.isNaN(end.getTime())) {
+-          const roundedEndHour = end.getMinutes() > 0 ? end.getHours() + 1 : end.getHours();
+-          acc.end = Math.max(acc.end, roundedEndHour);
+-        }
+-        return acc;
+-      },
+-      { start: 8, end: 20 }
+-    );
+-
+-    return {
+-      start: Math.max(6, mins.start),
+-      end: Math.min(22, Math.max(mins.end, mins.start + 1)),
+-    };
+-  }, [timelineEvents]);
+-
+   const calendarTheme = useMemo(
+     () => ({
+       backgroundColor: colors.surface,
+       calendarBackground: colors.surface,
+       dayTextColor: colors.textPrimary,
        monthTextColor: colors.textPrimary,
        textSectionTitleColor: colors.textSecondary,
        selectedDayBackgroundColor: colors.primarySoft,
@@ -278,116 +227,7 @@ index b3fead2c1e0931cc1a6ab9511140895e3dce3491..082b328c60a629582a17b79d7207fca6
  
    const onSelectDate = useCallback((value) => {
      if (!value) return;
-     const nextDate = typeof value === "string" ? value : value.dateString;
-     if (!nextDate) return;
-     setSelectedDate(nextDate);
-   }, []);
- 
--  const renderTimelineEvent = useCallback(
--    (event) => {
--      const completed = Boolean(event?.completed);
--      return (
--        <TouchableOpacity
--          activeOpacity={0.9}
--          style={[
--            styles.providerTimelineEvent,
--            completed && styles.providerTimelineEventCompleted,
--          ]}
--          onPress={() => {
--            Alert.alert(
--              event?.title || "Appointment",
--              `${event?.summary || "Customer"}\n${event?.startLabel || "--:--"}`
--            );
--          }}
--        >
--          <View style={[styles.providerTimelineEventAccent, { backgroundColor: event?.accentColor || colors.primary }]} />
--          <View style={styles.providerTimelineEventBody}>
--            <Text style={styles.providerTimelineEventTime}>{event?.startLabel || "--:--"}</Text>
--            <Text style={styles.providerTimelineEventService} numberOfLines={1} ellipsizeMode="tail">
--              {event?.title || "Service"}
--            </Text>
--            <Text style={styles.providerTimelineEventCustomer} numberOfLines={1} ellipsizeMode="tail">
--              {event?.summary || "Customer"}
--            </Text>
--          </View>
--          {completed ? (
--            <View style={styles.providerTimelineEventCompletedBadge}>
--              <Text style={styles.providerTimelineEventCompletedText}>Completed</Text>
--            </View>
--          ) : null}
--        </TouchableOpacity>
--      );
--    },
--    []
--  );
--
--  const horizontalTimelinePanLock = useMemo(
-+  const dayGridEvents = useMemo(
-     () =>
--      PanResponder.create({
--        onStartShouldSetPanResponder: () => false,
--        onStartShouldSetPanResponderCapture: () => false,
--        onMoveShouldSetPanResponder: (_, gestureState) =>
--          Math.abs(gestureState.dx) > Math.abs(gestureState.dy) && Math.abs(gestureState.dx) > 5,
--        onMoveShouldSetPanResponderCapture: (_, gestureState) =>
--          Math.abs(gestureState.dx) > Math.abs(gestureState.dy) && Math.abs(gestureState.dx) > 5,
--        onPanResponderMove: () => {
--          // Capture horizontal gestures so Timeline cannot pan sideways; vertical scrolling remains native.
--        },
--        onPanResponderTerminationRequest: () => true,
--      }),
--    []
-+      timelineEvents
-+        .map((event) => {
-+          const startDate = new Date(event.start);
-+          const endDate = new Date(event.end);
-+          if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) return null;
-+          return {
-+            ...event,
-+            startDate,
-+            endDate,
-+          };
-+        })
-+        .filter(Boolean),
-+    [timelineEvents]
-   );
- 
-   return (
-     <SafeAreaView style={styles.providerCalendarScreen} edges={["left", "right", "bottom"]}>
-       <View style={styles.providerCalendarContentContainer}>
-         <View style={styles.providerCalendarModeSwitch}>
-           {[
-             { key: "day", label: "Daily" },
-             { key: "week", label: "Weekly" },
-             { key: "month", label: "Monthly" },
-           ].map((mode) => {
-             const active = mode.key === viewMode;
-             return (
-               <TouchableOpacity
-                 key={mode.key}
-                 style={[
-                   styles.providerCalendarModeButton,
-                   active && styles.providerCalendarModeButtonActive,
-                 ]}
-                 onPress={() => setViewMode(mode.key)}
-               >
-                 <Text
-                   style={[
-                     styles.providerCalendarModeText,
-                     active && styles.providerCalendarModeTextActive,
-@@ -6827,83 +6917,63 @@ function ProviderCalendarScreen({ token, showFlash }) {
-                 ]}
-               >
-                 <Calendar
-                   current={selectedDate}
-                   markedDates={markedDates}
-                   onDayPress={onSelectDate}
-                   theme={calendarTheme}
-                 />
-               </View>
-             ) : viewMode === "week" ? (
-               <View
-                 style={[
+@@ -6929,51 +6920,51 @@ function ProviderCalendarScreen({ token, showFlash }) {
                    styles.providerCalendarViewport,
                    styles.providerCalendarViewportWeek,
                  ]}
@@ -401,8 +241,7 @@ index b3fead2c1e0931cc1a6ab9511140895e3dce3491..082b328c60a629582a17b79d7207fca6
                  />
                </View>
              ) : (
--              // Daily layout structure: WeekCalendar strip -> Timeline schedule grid (scrollable) -> optional list toggle.
-+              // Daily layout structure: WeekCalendar strip -> custom vertical day schedule grid.
+               // Daily layout structure: WeekCalendar strip -> custom vertical day schedule grid.
                <View style={styles.providerCalendarDailyLayout}>
                  <View style={styles.providerCalendarDayStrip}>
                    <WeekCalendar
@@ -414,28 +253,8 @@ index b3fead2c1e0931cc1a6ab9511140895e3dce3491..082b328c60a629582a17b79d7207fca6
                    />
                  </View>
                  <View style={styles.providerCalendarViewportDay}>
--                  <View style={styles.providerCalendarTimelineWrapper} {...horizontalTimelinePanLock.panHandlers}>
--                    <Timeline
--                      events={timelineEvents}
--                      date={selectedDate}
--                      start={timelineBounds.start}
--                      end={timelineBounds.end}
--                      format24h
--                      showNowIndicator
--                      overlapEventsSpacing={8}
--                      rightEdgeSpacing={6}
--                      timelineLeftInset={62}
--                      style={styles.providerCalendarTimeline}
--                      renderEvent={renderTimelineEvent}
--                      theme={{
--                        ...calendarTheme,
--                        timelineHoursBackgroundColor: colors.surface,
--                        timelineHoursLineColor: "rgba(255,255,255,0.06)",
--                        timelineTextColor: colors.textMuted,
--                      }}
--                    />
--                  </View>
-+                  <DayScheduleGrid events={dayGridEvents} startHour={timelineBounds.start} endHour={timelineBounds.end} />
+-                  <DayScheduleGrid events={dayGridEvents} startHour={timelineBounds.start} endHour={timelineBounds.end} />
++                  <DayScheduleGrid events={dayGridEvents} startHour={0} endHour={24} />
                  </View>
                </View>
              )}
@@ -461,13 +280,7 @@ index b3fead2c1e0931cc1a6ab9511140895e3dce3491..082b328c60a629582a17b79d7207fca6
                        const completed = isBookingCompleted(booking);
                        const startIso = booking?.start_time || booking?.start;
                        const startLabel = startIso
-@@ -9490,113 +9560,150 @@ signupTextButtonText: {
-     overflow: "hidden",
-     borderRadius: 10,
-   },
-   providerCalendarViewportMonth: {
-     height: 360,
-   },
+@@ -9566,75 +9557,74 @@ signupTextButtonText: {
    providerCalendarViewportWeek: {
      height: 140,
    },
@@ -487,158 +300,64 @@ index b3fead2c1e0931cc1a6ab9511140895e3dce3491..082b328c60a629582a17b79d7207fca6
      width: "100%",
      overflow: "hidden",
    },
--  providerCalendarTimelineWrapper: {
--    width: "100%",
-+  providerDayScheduleScroll: {
+   providerDayScheduleScroll: {
      flex: 1,
-+    width: "100%",
-     overflow: "hidden",
--    borderRadius: 10,
--    paddingHorizontal: 4,
-   },
--  providerCalendarTimeline: {
-+  providerDayScheduleScrollContent: {
-+    paddingBottom: 12,
-+  },
-+  providerDayScheduleRow: {
-+    flexDirection: "row",
      width: "100%",
-+    overflow: "hidden",
-+  },
-+  providerDayScheduleGutter: {
-+    position: "relative",
-+    backgroundColor: colors.surface,
-+    borderRightWidth: 1,
-+    borderRightColor: "rgba(255,255,255,0.06)",
+     overflow: "hidden",
    },
--  providerTimelineEvent: {
-+  providerDayScheduleTimeLabel: {
-+    position: "absolute",
-+    left: 6,
-+    color: colors.textMuted,
-+    fontSize: 11,
-+    fontWeight: "600",
-+  },
-+  providerDayScheduleGrid: {
+   providerDayScheduleScrollContent: {
+-    paddingBottom: 12,
++    minWidth: "100%",
+   },
+   providerDayScheduleRow: {
+     flexDirection: "row",
+     width: "100%",
+-    overflow: "hidden",
+   },
+   providerDayScheduleGutter: {
+     position: "relative",
+     backgroundColor: colors.surface,
+     borderRightWidth: 1,
+     borderRightColor: "rgba(255,255,255,0.06)",
+   },
+   providerDayScheduleTimeLabel: {
+     position: "absolute",
+     left: 6,
+     color: colors.textMuted,
+     fontSize: 11,
+     fontWeight: "600",
++    transform: [{ translateY: -8 }],
+   },
+   providerDayScheduleGrid: {
      flex: 1,
--    maxWidth: "100%",
--    minWidth: 0,
-+    position: "relative",
-+    backgroundColor: colors.surface,
-+    overflow: "hidden",
-+  },
-+  providerDayScheduleHourLine: {
-+    position: "absolute",
-+    left: 0,
-+    right: 0,
-+    borderTopWidth: 1,
-+    borderTopColor: "rgba(255,255,255,0.10)",
-+  },
-+  providerDayScheduleHalfHourLine: {
-+    position: "absolute",
-+    left: 0,
-+    right: 0,
-+    borderTopWidth: 1,
-+    borderTopColor: "rgba(255,255,255,0.05)",
-+  },
-+  providerDayScheduleEvent: {
-+    position: "absolute",
-+    left: 8,
-+    right: 8,
+     position: "relative",
+     backgroundColor: colors.surface,
+-    overflow: "hidden",
+   },
+   providerDayScheduleHourLine: {
+     position: "absolute",
+     left: 0,
+     right: 0,
+     borderTopWidth: 1,
+     borderTopColor: "rgba(255,255,255,0.10)",
+   },
+   providerDayScheduleHalfHourLine: {
+     position: "absolute",
+     left: 0,
+     right: 0,
+     borderTopWidth: 1,
+     borderTopColor: "rgba(255,255,255,0.05)",
+   },
+   providerDayScheduleEvent: {
+     position: "absolute",
+     left: 8,
+     right: 8,
      borderRadius: 12,
      backgroundColor: colors.surfaceElevated,
      borderWidth: 1,
      borderColor: "rgba(255,255,255,0.08)",
      overflow: "hidden",
      flexDirection: "row",
-     alignItems: "flex-start",
-   },
--  providerTimelineEventCompleted: {
--    opacity: 0.58,
-+  providerDayScheduleEventCompleted: {
-+    opacity: 0.6,
-   },
--  providerTimelineEventAccent: {
-+  providerDayScheduleEventAccent: {
-     width: 4,
-+    borderTopLeftRadius: 12,
-+    borderBottomLeftRadius: 12,
-   },
--  providerTimelineEventBody: {
-+  providerDayScheduleEventBody: {
-     flex: 1,
-     minWidth: 0,
--    flexShrink: 1,
--    paddingHorizontal: 8,
--    paddingVertical: 7,
-+    paddingHorizontal: 9,
-+    paddingVertical: 8,
-   },
--  providerTimelineEventTime: {
--    color: colors.textPrimary,
--    fontSize: 12,
--    fontWeight: "700",
-+  providerDayScheduleEventTime: {
-+    color: colors.textSecondary,
-+    fontSize: 11,
-+    fontWeight: "600",
-   },
--  providerTimelineEventService: {
-+  providerDayScheduleEventTitle: {
-     color: colors.textPrimary,
-     fontSize: 13,
-     fontWeight: "700",
-     marginTop: 2,
-   },
--  providerTimelineEventCustomer: {
-+  providerDayScheduleEventSummary: {
-     color: colors.textMuted,
-     fontSize: 12,
--    marginTop: 1,
-+    marginTop: 2,
-   },
--  providerTimelineEventCompletedBadge: {
-+  providerDayScheduleCompletedBadge: {
-     alignSelf: "flex-start",
--    marginTop: 6,
--    marginRight: 6,
-+    marginTop: 7,
-+    marginRight: 7,
-     paddingHorizontal: 6,
-     paddingVertical: 2,
-     borderRadius: 999,
-     borderWidth: 1,
-     borderColor: colors.textMuted,
--    backgroundColor: "rgba(0,0,0,0.25)",
-+    backgroundColor: "rgba(0,0,0,0.2)",
-   },
--  providerTimelineEventCompletedText: {
-+  providerDayScheduleCompletedText: {
-     color: colors.textMuted,
-     fontSize: 9,
-     fontWeight: "700",
-   },
-   providerCalendarHeaderBlock: {
-     marginTop: 12,
-   },
-   providerCalendarListSection: {
-     marginTop: 8,
-   },
-   providerCalendarList: {
-     marginTop: 0,
-   },
-   providerCalendarEmpty: {
-     color: colors.textMuted,
-     marginTop: 10,
-     fontSize: 14,
-   },
-   providerCalendarRow: {
-     backgroundColor: colors.surface,
-     borderColor: colors.border,
-     borderWidth: 1,
-     borderRadius: 10,
-     padding: 12,
-     marginBottom: 8,
  
 EOF
 )
