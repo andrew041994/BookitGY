@@ -1,212 +1,104 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
 diff --git a/mobile/App.js b/mobile/App.js
-index 082b328c60a629582a17b79d7207fca6568dd5f1..d2cf1bb6d84a6cb0f3b85926686fccbe3fbed3fc 100644
+index d2cf1bb6d84a6cb0f3b85926686fccbe3fbed3fc..a50580c6cc748d28466583e34c149264bb00a6e7 100644
 --- a/mobile/App.js
 +++ b/mobile/App.js
-@@ -6482,116 +6482,132 @@ function ProviderBillingScreen({ token, showFlash }) {
-               <Text style={styles.billingTotalsLabel}>Platform fee</Text>
-               <Text style={styles.billingTotalsValue}>
-                 {formatMoney(bill.platform_fee_gyd)}
-               </Text>
-             </View>
-               <View style={styles.billingTotalsRow}>
-                 <Text style={styles.billingTotalsLabel}>Bill credits</Text>
-                 <Text style={styles.billingTotalsValue}>
-                   -{formatMoney(bill.bill_credits_gyd)}
-                 </Text>
-               </View>
-             <View style={styles.billingTotalsRow}>
-               <Text style={styles.billingTotalsLabel}>Total due</Text>
-               <Text style={styles.billingTotalsValue}>
-                 {formatMoney(bill.total_due_gyd)}
-               </Text>
-             </View>
-           </View>
-         )})}
+@@ -6630,77 +6630,78 @@ function DayScheduleGrid({ events, startHour, endHour }) {
+                     {event?.title || "Service"}
+                   </Text>
+                   <Text style={styles.providerDayScheduleEventSummary} numberOfLines={1} ellipsizeMode="tail">
+                     {event?.summary || "Customer"}
+                   </Text>
+                 </View>
+                 {completed ? (
+                   <View style={styles.providerDayScheduleCompletedBadge}>
+                     <Text style={styles.providerDayScheduleCompletedText}>Completed</Text>
+                   </View>
+                 ) : null}
+               </TouchableOpacity>
+             );
+           })}
+         </View>
+       </View>
      </ScrollView>
    );
  }
  
  
- function DayScheduleGrid({ events, startHour, endHour }) {
--  const hourHeight = 80;
-+  const hourHeight = 104;
-   const timeGutterWidth = 56;
--  const gridStart = Number.isFinite(startHour) ? startHour : 8;
--  const gridEnd = Number.isFinite(endHour) ? Math.max(endHour, gridStart + 1) : 20;
-+  const gridVerticalPadding = 12;
-+  const gridStart = Number.isFinite(startHour) ? startHour : 0;
-+  const gridEnd = Number.isFinite(endHour) ? Math.max(endHour, gridStart + 1) : 24;
-   const totalHours = Math.max(gridEnd - gridStart, 1);
-   const totalHeight = totalHours * hourHeight;
-+  const trackHeight = totalHeight + gridVerticalPadding * 2;
  
-   const hourTicks = useMemo(
-+    () => Array.from({ length: totalHours }, (_, idx) => gridStart + idx),
-+    [gridStart, totalHours]
-+  );
-+
-+  const lineTicks = useMemo(
-     () => Array.from({ length: totalHours + 1 }, (_, idx) => gridStart + idx),
-     [gridStart, totalHours]
-   );
  
-+  const formatHourLabel = useCallback((hour) => {
-+    const normalizedHour = ((hour % 24) + 24) % 24;
-+    const meridiem = normalizedHour >= 12 ? "PM" : "AM";
-+    const displayHour = normalizedHour % 12 === 0 ? 12 : normalizedHour % 12;
-+    return `${displayHour}${meridiem}`;
+ function ProviderCalendarScreen({ token, showFlash }) {
+   // Keep the calendar in fixed-height view wrappers so it cannot expand into the appointments header/list area.
++  const WEEKLY_FIRST_DAY = 1;
++  const PROVIDER_CALENDAR_DEBUG = false;
++  const toLocalDateString = useCallback((dateLike) => {
++    if (!dateLike) return null;
++    const parsed = dateLike instanceof Date ? dateLike : new Date(dateLike);
++    if (Number.isNaN(parsed.getTime())) return null;
++    const yyyy = parsed.getFullYear();
++    const mm = String(parsed.getMonth() + 1).padStart(2, "0");
++    const dd = String(parsed.getDate()).padStart(2, "0");
++    return `${yyyy}-${mm}-${dd}`;
 +  }, []);
-+
-   const positionedEvents = useMemo(() => {
-     const minuteToPx = hourHeight / 60;
-     return (events || [])
-       .map((event) => {
-         const startDate = event?.startDate || new Date(event?.start);
-         const endDate = event?.endDate || new Date(event?.end);
-         if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) return null;
+   const [viewMode, setViewMode] = useState("month");
+-  const [selectedDate, setSelectedDate] = useState(
+-    new Date().toISOString().slice(0, 10)
+-  );
++  const [selectedDate, setSelectedDate] = useState(() => toLocalDateString(new Date()) || "");
+   const [bookingsByDate, setBookingsByDate] = useState({});
+   const [loading, setLoading] = useState(false);
+   const [error, setError] = useState("");
  
-         const startMinutes = startDate.getHours() * 60 + startDate.getMinutes();
-         const endMinutes = endDate.getHours() * 60 + endDate.getMinutes();
-         const gridStartMinutes = gridStart * 60;
-         const gridEndMinutes = gridEnd * 60;
-         const clampedStart = Math.max(startMinutes, gridStartMinutes);
-         const clampedEnd = Math.min(Math.max(endMinutes, clampedStart + 1), gridEndMinutes);
-         const durationMinutes = Math.max(clampedEnd - clampedStart, 1);
+   const dateRange = useMemo(() => {
+-    const base = new Date(`${selectedDate}T00:00:00`);
++    const base = new Date(`${selectedDate}T12:00:00`);
+     const monthStart = new Date(base.getFullYear(), base.getMonth(), 1);
+     const monthEnd = new Date(base.getFullYear(), base.getMonth() + 1, 0);
+     return {
+-      start: monthStart.toISOString().slice(0, 10),
+-      end: monthEnd.toISOString().slice(0, 10),
++      start: toLocalDateString(monthStart),
++      end: toLocalDateString(monthEnd),
+     };
+-  }, [selectedDate]);
++  }, [selectedDate, toLocalDateString]);
  
--        const top = (clampedStart - gridStartMinutes) * minuteToPx;
--        const height = Math.max(durationMinutes * minuteToPx - 4, 28);
-+        const top = (clampedStart - gridStartMinutes) * minuteToPx + gridVerticalPadding;
-+        const height = Math.max(durationMinutes * minuteToPx - 6, 50);
+-  const formatDayKey = useCallback((iso) => {
+-    if (!iso) return null;
+-    const parsed = new Date(iso);
+-    if (Number.isNaN(parsed.getTime())) return null;
+-    const yyyy = parsed.getFullYear();
+-    const mm = String(parsed.getMonth() + 1).padStart(2, "0");
+-    const dd = String(parsed.getDate()).padStart(2, "0");
+-    return `${yyyy}-${mm}-${dd}`;
+-  }, []);
++  const formatDayKey = useCallback((iso) => toLocalDateString(iso), [toLocalDateString]);
  
-         return {
-           ...event,
-           top,
-           height,
-         };
-       })
-       .filter(Boolean)
-       .sort((a, b) => a.top - b.top);
--  }, [events, gridEnd, gridStart]);
-+  }, [events, gridEnd, gridStart, gridVerticalPadding, hourHeight]);
+   const isBookingCompleted = useCallback((booking) => {
+     const now = Date.now();
+     const endTime = booking?.end_time || booking?.end;
+     if (endTime) {
+       const endMs = new Date(endTime).getTime();
+       return Number.isFinite(endMs) && endMs < now;
+     }
  
-   return (
-     <ScrollView
-       style={styles.providerDayScheduleScroll}
--      contentContainerStyle={styles.providerDayScheduleScrollContent}
-+      contentContainerStyle={[
-+        styles.providerDayScheduleScrollContent,
-+        { paddingTop: gridVerticalPadding, paddingBottom: gridVerticalPadding + 24 },
-+      ]}
-       showsVerticalScrollIndicator={false}
-       bounces={false}
-       alwaysBounceHorizontal={false}
-       horizontal={false}
-     >
-       <View style={styles.providerDayScheduleRow}>
--        <View style={[styles.providerDayScheduleGutter, { width: timeGutterWidth, height: totalHeight }]}>
-+        <View style={[styles.providerDayScheduleGutter, { width: timeGutterWidth, height: trackHeight }]}>
-           {hourTicks.map((hour) => {
--            const y = (hour - gridStart) * hourHeight;
--            const hourLabel = `${hour}:00`;
-+            const y = (hour - gridStart) * hourHeight + gridVerticalPadding;
-             return (
--              <Text key={`label-${hour}`} style={[styles.providerDayScheduleTimeLabel, { top: y - 8 }]}>
--                {hourLabel}
-+              <Text key={`label-${hour}`} style={[styles.providerDayScheduleTimeLabel, { top: y + hourHeight / 2 }]}>
-+                {formatHourLabel(hour)}
-               </Text>
-             );
-           })}
-         </View>
+     const startTime = booking?.start_time || booking?.start;
+     const durationMin = Number(booking?.duration_minutes || booking?.duration || 0);
+     if (!startTime) return false;
+     const startMs = new Date(startTime).getTime();
+     if (!Number.isFinite(startMs)) return false;
+     return startMs + Math.max(durationMin, 0) * 60_000 < now;
+   }, []);
  
--        <View style={[styles.providerDayScheduleGrid, { height: totalHeight }]}>
--          {hourTicks.map((hour) => {
--            const y = (hour - gridStart) * hourHeight;
-+        <View style={[styles.providerDayScheduleGrid, { height: trackHeight }]}>
-+          {lineTicks.map((hour) => {
-+            const y = (hour - gridStart) * hourHeight + gridVerticalPadding;
-             const hasHalfHour = hour < gridEnd;
-             return (
-               <React.Fragment key={`line-${hour}`}>
-                 <View style={[styles.providerDayScheduleHourLine, { top: y }]} />
-                 {hasHalfHour ? <View style={[styles.providerDayScheduleHalfHourLine, { top: y + hourHeight / 2 }]} /> : null}
-               </React.Fragment>
-             );
-           })}
+   const loadBookingsForRange = useCallback(async () => {
+     try {
+       setLoading(true);
+       setError("");
  
-           {positionedEvents.map((event) => {
-             const completed = Boolean(event?.completed);
-             return (
-               <TouchableOpacity
-                 key={event.id}
-                 activeOpacity={0.9}
-                 style={[
-                   styles.providerDayScheduleEvent,
-                   completed && styles.providerDayScheduleEventCompleted,
-                   {
-                     top: event.top,
-                     height: event.height,
-                   },
-                 ]}
-                 onPress={() => {
-                   Alert.alert(
-@@ -6781,75 +6797,50 @@ function ProviderCalendarScreen({ token, showFlash }) {
-           let endDate = booking?.end_time || booking?.end ? new Date(booking?.end_time || booking?.end) : null;
-           if (!endDate || Number.isNaN(endDate.getTime())) {
-             const durationMin = Number(booking?.duration_minutes || booking?.duration || 30);
-             endDate = new Date(startDate.getTime() + Math.max(durationMin, 1) * 60_000);
-           }
- 
-           const completed = isBookingCompleted(booking);
-           const accentColor = getEventAccentColor(booking);
- 
-           return {
-             id: String(booking?.id || booking?.booking_id || `${startIso}-${booking?.service_name || "service"}`),
-             start: startDate.toISOString(),
-             end: endDate.toISOString(),
-             title: booking?.service_name || "Service",
-             summary: booking?.customer_name || "Customer",
-             color: accentColor,
-             accentColor,
-             completed,
-             startLabel: `${formatTimelineTime(startDate)} - ${formatTimelineTime(endDate)}`,
-           };
-         })
-         .filter(Boolean),
-     [formatTimelineTime, getEventAccentColor, isBookingCompleted, selectedBookings]
-   );
- 
--  const timelineBounds = useMemo(() => {
--    if (!timelineEvents.length) return { start: 8, end: 20 };
--
--    const mins = timelineEvents.reduce(
--      (acc, event) => {
--        const start = new Date(event.start);
--        const end = new Date(event.end);
--        if (!Number.isNaN(start.getTime())) {
--          acc.start = Math.min(acc.start, start.getHours());
--        }
--        if (!Number.isNaN(end.getTime())) {
--          const roundedEndHour = end.getMinutes() > 0 ? end.getHours() + 1 : end.getHours();
--          acc.end = Math.max(acc.end, roundedEndHour);
--        }
--        return acc;
--      },
--      { start: 8, end: 20 }
--    );
--
--    return {
--      start: Math.max(6, mins.start),
--      end: Math.min(22, Math.max(mins.end, mins.start + 1)),
--    };
--  }, [timelineEvents]);
--
-   const calendarTheme = useMemo(
-     () => ({
-       backgroundColor: colors.surface,
-       calendarBackground: colors.surface,
-       dayTextColor: colors.textPrimary,
+       const authToken = await getAuthToken(token);
+       if (!authToken) {
+         setError("No access token found. Please log in again.");
+@@ -6827,50 +6828,64 @@ function ProviderCalendarScreen({ token, showFlash }) {
        monthTextColor: colors.textPrimary,
        textSectionTitleColor: colors.textSecondary,
        selectedDayBackgroundColor: colors.primarySoft,
@@ -227,13 +119,78 @@ index 082b328c60a629582a17b79d7207fca6568dd5f1..d2cf1bb6d84a6cb0f3b85926686fccbe
  
    const onSelectDate = useCallback((value) => {
      if (!value) return;
-@@ -6929,51 +6920,51 @@ function ProviderCalendarScreen({ token, showFlash }) {
+     const nextDate = typeof value === "string" ? value : value.dateString;
+     if (!nextDate) return;
+     setSelectedDate(nextDate);
+   }, []);
+ 
++  useEffect(() => {
++    if (!PROVIDER_CALENDAR_DEBUG) return;
++    const selected = new Date(`${selectedDate}T12:00:00`);
++    if (Number.isNaN(selected.getTime())) {
++      console.log("[ProviderCalendarScreen][WeeklyDebug] invalid selectedDate", { selectedDate });
++      return;
++    }
++    console.log("[ProviderCalendarScreen][WeeklyDebug]", {
++      selectedDate,
++      weekStartDayIndex: selected.getDay(),
++      firstDay: WEEKLY_FIRST_DAY,
++    });
++  }, [PROVIDER_CALENDAR_DEBUG, WEEKLY_FIRST_DAY, selectedDate]);
++
+   const dayGridEvents = useMemo(
+     () =>
+       timelineEvents
+         .map((event) => {
+           const startDate = new Date(event.start);
+           const endDate = new Date(event.end);
+           if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) return null;
+           return {
+             ...event,
+             startDate,
+             endDate,
+           };
+         })
+         .filter(Boolean),
+     [timelineEvents]
+   );
+ 
+   return (
+     <SafeAreaView style={styles.providerCalendarScreen} edges={["left", "right", "bottom"]}>
+       <View style={styles.providerCalendarContentContainer}>
+         <View style={styles.providerCalendarModeSwitch}>
+           {[
+             { key: "day", label: "Daily" },
+             { key: "week", label: "Weekly" },
+             { key: "month", label: "Monthly" },
+@@ -6900,51 +6915,51 @@ function ProviderCalendarScreen({ token, showFlash }) {
+ 
+         <CalendarProvider date={selectedDate} onDateChanged={onSelectDate}>
+           <View style={styles.providerCalendarCard}>
+             {viewMode === "month" ? (
+               <View
+                 style={[
+                   styles.providerCalendarViewport,
+                   styles.providerCalendarViewportMonth,
+                 ]}
+               >
+                 <Calendar
+                   current={selectedDate}
+                   markedDates={markedDates}
+                   onDayPress={onSelectDate}
+                   theme={calendarTheme}
+                 />
+               </View>
+             ) : viewMode === "week" ? (
+               <View
+                 style={[
                    styles.providerCalendarViewport,
                    styles.providerCalendarViewportWeek,
                  ]}
                >
                  <WeekCalendar
-                   firstDay={1}
+-                  firstDay={1}
++                  firstDay={WEEKLY_FIRST_DAY}
                    current={selectedDate}
                    markedDates={markedDates}
                    onDayPress={onSelectDate}
@@ -253,111 +210,12 @@ index 082b328c60a629582a17b79d7207fca6568dd5f1..d2cf1bb6d84a6cb0f3b85926686fccbe
                    />
                  </View>
                  <View style={styles.providerCalendarViewportDay}>
--                  <DayScheduleGrid events={dayGridEvents} startHour={timelineBounds.start} endHour={timelineBounds.end} />
-+                  <DayScheduleGrid events={dayGridEvents} startHour={0} endHour={24} />
+                   <DayScheduleGrid events={dayGridEvents} startHour={0} endHour={24} />
                  </View>
                </View>
              )}
            </View>
          </CalendarProvider>
- 
-         {loading ? <ActivityIndicator color={colors.primary} style={{ marginTop: 12 }} /> : null}
-         {error ? <Text style={styles.errorText}>{error}</Text> : null}
-         {!loading && !error && viewMode !== "day" ? (
-           <>
-             <View style={styles.providerCalendarHeaderBlock}>
-               <Text style={styles.sectionTitle}>Appointments for {selectedDate}</Text>
-             </View>
-             <View style={styles.providerCalendarListSection}>
-               {selectedBookings.length === 0 ? (
-                 <Text style={styles.providerCalendarEmpty}>No appointments for this date.</Text>
-               ) : (
-                 <ScrollView style={styles.providerCalendarList} showsVerticalScrollIndicator={false}>
-                   {selectedBookings
-                     .slice()
-                     .sort((a, b) => new Date(a?.start_time || a?.start) - new Date(b?.start_time || b?.start))
-                     .map((booking) => {
-                       const completed = isBookingCompleted(booking);
-                       const startIso = booking?.start_time || booking?.start;
-                       const startLabel = startIso
-@@ -9566,75 +9557,74 @@ signupTextButtonText: {
-   providerCalendarViewportWeek: {
-     height: 140,
-   },
-   providerCalendarDailyLayout: {
-     borderRadius: 10,
-     overflow: "hidden",
-   },
-   providerCalendarDayStrip: {
-     minHeight: 104,
-     borderBottomWidth: 1,
-     borderBottomColor: colors.border,
-     backgroundColor: colors.surface,
-   },
-   providerCalendarViewportDay: {
-     height: 500,
-     backgroundColor: colors.surface,
-     width: "100%",
-     overflow: "hidden",
-   },
-   providerDayScheduleScroll: {
-     flex: 1,
-     width: "100%",
-     overflow: "hidden",
-   },
-   providerDayScheduleScrollContent: {
--    paddingBottom: 12,
-+    minWidth: "100%",
-   },
-   providerDayScheduleRow: {
-     flexDirection: "row",
-     width: "100%",
--    overflow: "hidden",
-   },
-   providerDayScheduleGutter: {
-     position: "relative",
-     backgroundColor: colors.surface,
-     borderRightWidth: 1,
-     borderRightColor: "rgba(255,255,255,0.06)",
-   },
-   providerDayScheduleTimeLabel: {
-     position: "absolute",
-     left: 6,
-     color: colors.textMuted,
-     fontSize: 11,
-     fontWeight: "600",
-+    transform: [{ translateY: -8 }],
-   },
-   providerDayScheduleGrid: {
-     flex: 1,
-     position: "relative",
-     backgroundColor: colors.surface,
--    overflow: "hidden",
-   },
-   providerDayScheduleHourLine: {
-     position: "absolute",
-     left: 0,
-     right: 0,
-     borderTopWidth: 1,
-     borderTopColor: "rgba(255,255,255,0.10)",
-   },
-   providerDayScheduleHalfHourLine: {
-     position: "absolute",
-     left: 0,
-     right: 0,
-     borderTopWidth: 1,
-     borderTopColor: "rgba(255,255,255,0.05)",
-   },
-   providerDayScheduleEvent: {
-     position: "absolute",
-     left: 8,
-     right: 8,
-     borderRadius: 12,
-     backgroundColor: colors.surfaceElevated,
-     borderWidth: 1,
-     borderColor: "rgba(255,255,255,0.08)",
-     overflow: "hidden",
-     flexDirection: "row",
  
 EOF
 )

@@ -6504,7 +6504,7 @@ function ProviderBillingScreen({ token, showFlash }) {
 
 
 function DayScheduleGrid({ events, startHour, endHour }) {
-  const hourHeight = 104;
+  const hourHeight = 130;
   const timeGutterWidth = 56;
   const gridVerticalPadding = 12;
   const gridStart = Number.isFinite(startHour) ? startHour : 0;
