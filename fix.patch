@@ -1,56 +1,476 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
-diff --git a/mobile/package.json b/mobile/package.json
-index b5d60bcb42f0cc08ada052537db0a57f4a369dbf..f5b3e34be9c3d701551251fd9566f5c9aa8dc58b 100644
---- a/mobile/package.json
-+++ b/mobile/package.json
-@@ -1,46 +1,47 @@
- {
-   "name": "guyana-booker-mobile",
-   "version": "1.0.0",
-   "main": "node_modules/expo/AppEntry.js",
-   "scripts": {
-     "start": "expo start",
-     "android": "expo run:android",
-     "ios": "expo run:ios"
-   },
-   "dependencies": {
-     "@react-native-async-storage/async-storage": "2.2.0",
-     "@react-native-community/datetimepicker": "8.4.4",
-     "@react-navigation/bottom-tabs": "^6.6.1",
-     "@react-navigation/native": "^6.1.18",
-     "axios": "^1.13.2",
-     "babel-preset-expo": "~54.0.0",
-     "expo": "^54.0.24",
-     "expo-constants": "~18.0.12",
-     "expo-image-picker": "~17.0.8",
-     "expo-linking": "~8.0.11",
-     "expo-location": "~19.0.7",
-     "expo-secure-store": "~15.0.8",
-     "react": "19.1.0",
-     "react-dom": "19.1.0",
-     "react-native": "0.81.5",
-+    "react-native-calendars": "^1.1310.0",
-     "react-native-dotenv": "^3.4.11",
-     "react-native-gesture-handler": "~2.28.0",
-     "react-native-maps": "1.20.1",
-     "react-native-safe-area-context": "~5.6.0",
-     "react-native-screens": "~4.16.0",
-     "react-native-web": "^0.21.0",
-     "sentry-expo": "^7.2.0",
-     "tslib": "^2.8.1"
-   },
-   "devDependencies": {
-     "@babel/core": "^7.20.0",
-     "@react-native-community/cli": "^20.0.2",
-     "@types/react": "~19.1.10",
-     "typescript": "~5.9.2"
-   },
-   "private": true,
-   "overrides": {
-     "react": "19.1.0",
-     "react-dom": "19.1.0"
-   }
+diff --git a/mobile/App.js b/mobile/App.js
+index 5f4a3f69eb0a16832206af1c6599c89e57574416..6d07559051bb657efcfe8e81bd89aff70c64c50a 100644
+--- a/mobile/App.js
++++ b/mobile/App.js
+@@ -6484,50 +6484,51 @@ function ProviderBillingScreen({ token, showFlash }) {
+               <Text style={styles.billingTotalsValue}>
+                 {formatMoney(bill.platform_fee_gyd)}
+               </Text>
+             </View>
+               <View style={styles.billingTotalsRow}>
+                 <Text style={styles.billingTotalsLabel}>Bill credits</Text>
+                 <Text style={styles.billingTotalsValue}>
+                   -{formatMoney(bill.bill_credits_gyd)}
+                 </Text>
+               </View>
+             <View style={styles.billingTotalsRow}>
+               <Text style={styles.billingTotalsLabel}>Total due</Text>
+               <Text style={styles.billingTotalsValue}>
+                 {formatMoney(bill.total_due_gyd)}
+               </Text>
+             </View>
+           </View>
+         )})}
+     </ScrollView>
+   );
  }
+ 
+ 
+ 
+ function ProviderCalendarScreen({ token, showFlash }) {
++  // Keep the calendar in fixed-height view wrappers so it cannot expand into the appointments header/list area.
+   const [viewMode, setViewMode] = useState("month");
+   const [selectedDate, setSelectedDate] = useState(
+     new Date().toISOString().slice(0, 10)
+   );
+   const [bookingsByDate, setBookingsByDate] = useState({});
+   const [loading, setLoading] = useState(false);
+   const [error, setError] = useState("");
+ 
+   const dateRange = useMemo(() => {
+     const base = new Date(`${selectedDate}T00:00:00`);
+     const monthStart = new Date(base.getFullYear(), base.getMonth(), 1);
+     const monthEnd = new Date(base.getFullYear(), base.getMonth() + 1, 0);
+     return {
+       start: monthStart.toISOString().slice(0, 10),
+       end: monthEnd.toISOString().slice(0, 10),
+     };
+   }, [selectedDate]);
+ 
+   const formatDayKey = useCallback((iso) => {
+     if (!iso) return null;
+     const parsed = new Date(iso);
+     if (Number.isNaN(parsed.getTime())) return null;
+     const yyyy = parsed.getFullYear();
+     const mm = String(parsed.getMonth() + 1).padStart(2, "0");
+     const dd = String(parsed.getDate()).padStart(2, "0");
+@@ -6663,170 +6664,188 @@ function ProviderCalendarScreen({ token, showFlash }) {
+       textSectionTitleColor: colors.textSecondary,
+       selectedDayBackgroundColor: colors.primarySoft,
+       selectedDayTextColor: colors.textPrimary,
+       todayTextColor: colors.primary,
+       arrowColor: colors.primary,
+       textDisabledColor: colors.textMuted,
+       dotColor: colors.primary,
+       selectedDotColor: colors.textPrimary,
+       timelineContainerBackground: colors.surface,
+       timelineBackgroundColor: colors.surface,
+       timelineLineColor: colors.border,
+       timelineTextColor: colors.textPrimary,
+     }),
+     []
+   );
+ 
+   const onSelectDate = useCallback((value) => {
+     if (!value) return;
+     const nextDate = typeof value === "string" ? value : value.dateString;
+     if (!nextDate) return;
+     setSelectedDate(nextDate);
+   }, []);
+ 
+   return (
+     <SafeAreaView style={styles.providerCalendarScreen} edges={["left", "right", "bottom"]}>
+-      <View style={styles.providerCalendarModeSwitch}>
+-        {[
+-          { key: "day", label: "Daily" },
+-          { key: "week", label: "Weekly" },
+-          { key: "month", label: "Monthly" },
+-        ].map((mode) => {
+-          const active = mode.key === viewMode;
+-          return (
+-            <TouchableOpacity
+-              key={mode.key}
+-              style={[
+-                styles.providerCalendarModeButton,
+-                active && styles.providerCalendarModeButtonActive,
+-              ]}
+-              onPress={() => setViewMode(mode.key)}
+-            >
+-              <Text
++      <ScrollView
++        contentContainerStyle={styles.providerCalendarContentContainer}
++        showsVerticalScrollIndicator={false}
++      >
++        <View style={styles.providerCalendarModeSwitch}>
++          {[
++            { key: "day", label: "Daily" },
++            { key: "week", label: "Weekly" },
++            { key: "month", label: "Monthly" },
++          ].map((mode) => {
++            const active = mode.key === viewMode;
++            return (
++              <TouchableOpacity
++                key={mode.key}
+                 style={[
+-                  styles.providerCalendarModeText,
+-                  active && styles.providerCalendarModeTextActive,
++                  styles.providerCalendarModeButton,
++                  active && styles.providerCalendarModeButtonActive,
+                 ]}
++                onPress={() => setViewMode(mode.key)}
+               >
+-                {mode.label}
+-              </Text>
+-            </TouchableOpacity>
+-          );
+-        })}
+-      </View>
++                <Text
++                  style={[
++                    styles.providerCalendarModeText,
++                    active && styles.providerCalendarModeTextActive,
++                  ]}
++                >
++                  {mode.label}
++                </Text>
++              </TouchableOpacity>
++            );
++          })}
++        </View>
+ 
+-      <CalendarProvider date={selectedDate} onDateChanged={onSelectDate}>
+-        <View style={styles.providerCalendarCard}>
+-          {viewMode === "month" ? (
+-            <Calendar
+-              current={selectedDate}
+-              markedDates={markedDates}
+-              onDayPress={onSelectDate}
+-              theme={calendarTheme}
+-            />
+-          ) : viewMode === "week" ? (
+-            <WeekCalendar
+-              firstDay={1}
+-              current={selectedDate}
+-              markedDates={markedDates}
+-              onDayPress={onSelectDate}
+-              theme={calendarTheme}
+-            />
+-          ) : (
+-            <Timeline
+-              events={timelineEvents}
+-              date={selectedDate}
+-              showNowIndicator
+-              theme={calendarTheme}
+-            />
+-          )}
++        <CalendarProvider date={selectedDate} onDateChanged={onSelectDate}>
++          <View style={styles.providerCalendarCard}>
++            <View
++              style={[
++                styles.providerCalendarViewport,
++                viewMode === "month"
++                  ? styles.providerCalendarViewportMonth
++                  : viewMode === "week"
++                  ? styles.providerCalendarViewportWeek
++                  : styles.providerCalendarViewportDay,
++              ]}
++            >
++              {viewMode === "month" ? (
++                <Calendar
++                  current={selectedDate}
++                  markedDates={markedDates}
++                  onDayPress={onSelectDate}
++                  theme={calendarTheme}
++                />
++              ) : viewMode === "week" ? (
++                <WeekCalendar
++                  firstDay={1}
++                  current={selectedDate}
++                  markedDates={markedDates}
++                  onDayPress={onSelectDate}
++                  theme={calendarTheme}
++                />
++              ) : (
++                <Timeline
++                  events={timelineEvents}
++                  date={selectedDate}
++                  showNowIndicator
++                  theme={calendarTheme}
++                />
++              )}
++            </View>
++          </View>
++        </CalendarProvider>
++
++        <View style={styles.providerCalendarHeaderBlock}>
++          <Text style={styles.sectionTitle}>Appointments for {selectedDate}</Text>
+         </View>
+-      </CalendarProvider>
+-
+-      <View style={styles.providerCalendarListSection}>
+-        <Text style={styles.sectionTitle}>Appointments for {selectedDate}</Text>
+-        {loading ? (
+-          <ActivityIndicator color={colors.primary} style={{ marginTop: 12 }} />
+-        ) : error ? (
+-          <Text style={styles.errorText}>{error}</Text>
+-        ) : selectedBookings.length === 0 ? (
+-          <Text style={styles.providerCalendarEmpty}>No appointments for this date.</Text>
+-        ) : (
+-          <ScrollView style={styles.providerCalendarList} contentContainerStyle={{ paddingBottom: 12 }}>
+-            {selectedBookings
+-              .slice()
+-              .sort((a, b) => new Date(a?.start_time || a?.start) - new Date(b?.start_time || b?.start))
+-              .map((booking) => {
+-                const completed = isBookingCompleted(booking);
+-                const startIso = booking?.start_time || booking?.start;
+-                const startLabel = startIso
+-                  ? new Date(startIso).toLocaleTimeString([], {
+-                      hour: "numeric",
+-                      minute: "2-digit",
+-                    })
+-                  : "--:--";
++        <View style={styles.providerCalendarListSection}>
++          {loading ? (
++            <ActivityIndicator color={colors.primary} style={{ marginTop: 12 }} />
++          ) : error ? (
++            <Text style={styles.errorText}>{error}</Text>
++          ) : selectedBookings.length === 0 ? (
++            <Text style={styles.providerCalendarEmpty}>No appointments for this date.</Text>
++          ) : (
++            <View style={styles.providerCalendarList}>
++              {selectedBookings
++                .slice()
++                .sort((a, b) => new Date(a?.start_time || a?.start) - new Date(b?.start_time || b?.start))
++                .map((booking) => {
++                  const completed = isBookingCompleted(booking);
++                  const startIso = booking?.start_time || booking?.start;
++                  const startLabel = startIso
++                    ? new Date(startIso).toLocaleTimeString([], {
++                        hour: "numeric",
++                        minute: "2-digit",
++                      })
++                    : "--:--";
+ 
+-                return (
+-                  <View
+-                    key={String(
+-                      booking?.id || booking?.booking_id || `${startIso}-${booking?.service_name || "service"}`
+-                    )}
+-                    style={[
+-                      styles.providerCalendarRow,
+-                      completed && styles.providerCalendarRowCompleted,
+-                    ]}
+-                  >
+-                    <View style={{ flex: 1 }}>
+-                      <Text style={styles.providerCalendarTime}>{startLabel}</Text>
+-                      <Text
+-                        style={[
+-                          styles.providerCalendarService,
+-                          completed && styles.providerCalendarTextCompleted,
+-                        ]}
+-                      >
+-                        {booking?.service_name || "Service"}
+-                      </Text>
+-                      <Text
+-                        style={[
+-                          styles.providerCalendarCustomer,
+-                          completed && styles.providerCalendarTextCompleted,
+-                        ]}
+-                      >
+-                        {booking?.customer_name || "Customer"}
+-                      </Text>
+-                    </View>
+-                    {completed ? (
+-                      <View style={styles.providerCalendarCompletedBadge}>
+-                        <Text style={styles.providerCalendarCompletedText}>Completed</Text>
++                  return (
++                    <View
++                      key={String(
++                        booking?.id || booking?.booking_id || `${startIso}-${booking?.service_name || "service"}`
++                      )}
++                      style={[
++                        styles.providerCalendarRow,
++                        completed && styles.providerCalendarRowCompleted,
++                      ]}
++                    >
++                      <View style={{ flex: 1 }}>
++                        <Text style={styles.providerCalendarTime}>{startLabel}</Text>
++                        <Text
++                          style={[
++                            styles.providerCalendarService,
++                            completed && styles.providerCalendarTextCompleted,
++                          ]}
++                        >
++                          {booking?.service_name || "Service"}
++                        </Text>
++                        <Text
++                          style={[
++                            styles.providerCalendarCustomer,
++                            completed && styles.providerCalendarTextCompleted,
++                          ]}
++                        >
++                          {booking?.customer_name || "Customer"}
++                        </Text>
+                       </View>
+-                    ) : null}
+-                  </View>
+-                );
+-              })}
+-          </ScrollView>
+-        )}
+-      </View>
++                      {completed ? (
++                        <View style={styles.providerCalendarCompletedBadge}>
++                          <Text style={styles.providerCalendarCompletedText}>Completed</Text>
++                        </View>
++                      ) : null}
++                    </View>
++                  );
++                })}
++            </View>
++          )}
++        </View>
++      </ScrollView>
+     </SafeAreaView>
+   );
+ }
+ 
+ // Tabs after login
+ function MainApp({
+   apiClient,
+   authLoading,
+   token,
+   setToken,
+   showFlash,
+   navigationRef,
+   setNavReady,
+ }) {
+   const {
+     favoriteIds,
+     favoriteProviders,
+     favoritesLoading,
+     toggleFavorite,
+     isFavorite,
+     syncFavoritesFromList,
+     refreshFavoriteProviders,
+   } = useFavoriteProviders(token?.email || token?.userId);
+   return (
+ 
+@@ -9274,92 +9293,109 @@ signupTextButtonText: {
+     fontSize: 11,
+     color: colors.textSecondary,
+     marginTop: 4,
+   },
+   catalogDeleteText: {
+     fontSize: 11,
+     color: colors.error,
+     marginTop: 2,
+   },
+ 
+     searchCatalogStrip: {
+     marginTop: 8,
+     marginBottom: 8,
+   },
+   searchCatalogImage: {
+     width: 140,
+     height: 180,
+     borderRadius: 8,
+     marginRight: 8,
+     backgroundColor: colors.surfaceElevated,
+   },
+ 
+   providerCalendarScreen: {
+     flex: 1,
+     backgroundColor: colors.background,
++  },
++  providerCalendarContentContainer: {
+     paddingHorizontal: 16,
+     paddingTop: 8,
++    paddingBottom: 28,
+   },
+   providerCalendarModeSwitch: {
+     flexDirection: "row",
+     backgroundColor: colors.surface,
+     borderWidth: 1,
+     borderColor: colors.border,
+     borderRadius: 12,
+     overflow: "hidden",
+     marginBottom: 12,
+   },
+   providerCalendarModeButton: {
+     flex: 1,
+     paddingVertical: 10,
+     alignItems: "center",
+   },
+   providerCalendarModeButtonActive: {
+     backgroundColor: colors.primarySoft,
+   },
+   providerCalendarModeText: {
+     color: colors.textSecondary,
+     fontWeight: "600",
+     fontSize: 13,
+   },
+   providerCalendarModeTextActive: {
+     color: colors.textPrimary,
+   },
+   providerCalendarCard: {
+     backgroundColor: colors.surface,
+     borderWidth: 1,
+     borderColor: colors.border,
+     borderRadius: 14,
+     padding: 8,
+-    marginBottom: 12,
+-    minHeight: 280,
++  },
++  providerCalendarViewport: {
++    overflow: "hidden",
++    borderRadius: 10,
++  },
++  providerCalendarViewportMonth: {
++    height: 360,
++  },
++  providerCalendarViewportWeek: {
++    height: 140,
++  },
++  providerCalendarViewportDay: {
++    height: 420,
++  },
++  providerCalendarHeaderBlock: {
++    marginTop: 12,
+   },
+   providerCalendarListSection: {
+-    flex: 1,
++    marginTop: 8,
+   },
+   providerCalendarList: {
+-    marginTop: 8,
++    marginTop: 0,
+   },
+   providerCalendarEmpty: {
+     color: colors.textMuted,
+     marginTop: 10,
+     fontSize: 14,
+   },
+   providerCalendarRow: {
+     backgroundColor: colors.surface,
+     borderColor: colors.border,
+     borderWidth: 1,
+     borderRadius: 10,
+     padding: 12,
+     marginBottom: 8,
+     flexDirection: "row",
+     alignItems: "center",
+   },
+   providerCalendarRowCompleted: {
+     opacity: 0.75,
+   },
+   providerCalendarTime: {
+     color: colors.textSecondary,
+     fontSize: 12,
+     marginBottom: 4,
+   },
+   providerCalendarService: {
  
 EOF
 )

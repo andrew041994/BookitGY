@@ -6506,6 +6506,7 @@ function ProviderBillingScreen({ token, showFlash }) {
 
 
 function ProviderCalendarScreen({ token, showFlash }) {
+  // Keep the calendar in fixed-height view wrappers so it cannot expand into the appointments header/list area.
   const [viewMode, setViewMode] = useState("month");
   const [selectedDate, setSelectedDate] = useState(
     new Date().toISOString().slice(0, 10)
@@ -6685,126 +6686,144 @@ function ProviderCalendarScreen({ token, showFlash }) {
 
   return (
     <SafeAreaView style={styles.providerCalendarScreen} edges={["left", "right", "bottom"]}>
-      <View style={styles.providerCalendarModeSwitch}>
-        {[
-          { key: "day", label: "Daily" },
-          { key: "week", label: "Weekly" },
-          { key: "month", label: "Monthly" },
-        ].map((mode) => {
-          const active = mode.key === viewMode;
-          return (
-            <TouchableOpacity
-              key={mode.key}
-              style={[
-                styles.providerCalendarModeButton,
-                active && styles.providerCalendarModeButtonActive,
-              ]}
-              onPress={() => setViewMode(mode.key)}
-            >
-              <Text
+      <ScrollView
+        contentContainerStyle={styles.providerCalendarContentContainer}
+        showsVerticalScrollIndicator={false}
+      >
+        <View style={styles.providerCalendarModeSwitch}>
+          {[
+            { key: "day", label: "Daily" },
+            { key: "week", label: "Weekly" },
+            { key: "month", label: "Monthly" },
+          ].map((mode) => {
+            const active = mode.key === viewMode;
+            return (
+              <TouchableOpacity
+                key={mode.key}
                 style={[
-                  styles.providerCalendarModeText,
-                  active && styles.providerCalendarModeTextActive,
+                  styles.providerCalendarModeButton,
+                  active && styles.providerCalendarModeButtonActive,
                 ]}
+                onPress={() => setViewMode(mode.key)}
               >
-                {mode.label}
-              </Text>
-            </TouchableOpacity>
-          );
-        })}
-      </View>
+                <Text
+                  style={[
+                    styles.providerCalendarModeText,
+                    active && styles.providerCalendarModeTextActive,
+                  ]}
+                >
+                  {mode.label}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
 
-      <CalendarProvider date={selectedDate} onDateChanged={onSelectDate}>
-        <View style={styles.providerCalendarCard}>
-          {viewMode === "month" ? (
-            <Calendar
-              current={selectedDate}
-              markedDates={markedDates}
-              onDayPress={onSelectDate}
-              theme={calendarTheme}
-            />
-          ) : viewMode === "week" ? (
-            <WeekCalendar
-              firstDay={1}
-              current={selectedDate}
-              markedDates={markedDates}
-              onDayPress={onSelectDate}
-              theme={calendarTheme}
-            />
+        <CalendarProvider date={selectedDate} onDateChanged={onSelectDate}>
+          <View style={styles.providerCalendarCard}>
+            <View
+              style={[
+                styles.providerCalendarViewport,
+                viewMode === "month"
+                  ? styles.providerCalendarViewportMonth
+                  : viewMode === "week"
+                  ? styles.providerCalendarViewportWeek
+                  : styles.providerCalendarViewportDay,
+              ]}
+            >
+              {viewMode === "month" ? (
+                <Calendar
+                  current={selectedDate}
+                  markedDates={markedDates}
+                  onDayPress={onSelectDate}
+                  theme={calendarTheme}
+                />
+              ) : viewMode === "week" ? (
+                <WeekCalendar
+                  firstDay={1}
+                  current={selectedDate}
+                  markedDates={markedDates}
+                  onDayPress={onSelectDate}
+                  theme={calendarTheme}
+                />
+              ) : (
+                <Timeline
+                  events={timelineEvents}
+                  date={selectedDate}
+                  showNowIndicator
+                  theme={calendarTheme}
+                />
+              )}
+            </View>
+          </View>
+        </CalendarProvider>
+
+        <View style={styles.providerCalendarHeaderBlock}>
+          <Text style={styles.sectionTitle}>Appointments for {selectedDate}</Text>
+        </View>
+        <View style={styles.providerCalendarListSection}>
+          {loading ? (
+            <ActivityIndicator color={colors.primary} style={{ marginTop: 12 }} />
+          ) : error ? (
+            <Text style={styles.errorText}>{error}</Text>
+          ) : selectedBookings.length === 0 ? (
+            <Text style={styles.providerCalendarEmpty}>No appointments for this date.</Text>
           ) : (
-            <Timeline
-              events={timelineEvents}
-              date={selectedDate}
-              showNowIndicator
-              theme={calendarTheme}
-            />
+            <View style={styles.providerCalendarList}>
+              {selectedBookings
+                .slice()
+                .sort((a, b) => new Date(a?.start_time || a?.start) - new Date(b?.start_time || b?.start))
+                .map((booking) => {
+                  const completed = isBookingCompleted(booking);
+                  const startIso = booking?.start_time || booking?.start;
+                  const startLabel = startIso
+                    ? new Date(startIso).toLocaleTimeString([], {
+                        hour: "numeric",
+                        minute: "2-digit",
+                      })
+                    : "--:--";
+
+                  return (
+                    <View
+                      key={String(
+                        booking?.id || booking?.booking_id || `${startIso}-${booking?.service_name || "service"}`
+                      )}
+                      style={[
+                        styles.providerCalendarRow,
+                        completed && styles.providerCalendarRowCompleted,
+                      ]}
+                    >
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.providerCalendarTime}>{startLabel}</Text>
+                        <Text
+                          style={[
+                            styles.providerCalendarService,
+                            completed && styles.providerCalendarTextCompleted,
+                          ]}
+                        >
+                          {booking?.service_name || "Service"}
+                        </Text>
+                        <Text
+                          style={[
+                            styles.providerCalendarCustomer,
+                            completed && styles.providerCalendarTextCompleted,
+                          ]}
+                        >
+                          {booking?.customer_name || "Customer"}
+                        </Text>
+                      </View>
+                      {completed ? (
+                        <View style={styles.providerCalendarCompletedBadge}>
+                          <Text style={styles.providerCalendarCompletedText}>Completed</Text>
+                        </View>
+                      ) : null}
+                    </View>
+                  );
+                })}
+            </View>
           )}
         </View>
-      </CalendarProvider>
-
-      <View style={styles.providerCalendarListSection}>
-        <Text style={styles.sectionTitle}>Appointments for {selectedDate}</Text>
-        {loading ? (
-          <ActivityIndicator color={colors.primary} style={{ marginTop: 12 }} />
-        ) : error ? (
-          <Text style={styles.errorText}>{error}</Text>
-        ) : selectedBookings.length === 0 ? (
-          <Text style={styles.providerCalendarEmpty}>No appointments for this date.</Text>
-        ) : (
-          <ScrollView style={styles.providerCalendarList} contentContainerStyle={{ paddingBottom: 12 }}>
-            {selectedBookings
-              .slice()
-              .sort((a, b) => new Date(a?.start_time || a?.start) - new Date(b?.start_time || b?.start))
-              .map((booking) => {
-                const completed = isBookingCompleted(booking);
-                const startIso = booking?.start_time || booking?.start;
-                const startLabel = startIso
-                  ? new Date(startIso).toLocaleTimeString([], {
-                      hour: "numeric",
-                      minute: "2-digit",
-                    })
-                  : "--:--";
-
-                return (
-                  <View
-                    key={String(
-                      booking?.id || booking?.booking_id || `${startIso}-${booking?.service_name || "service"}`
-                    )}
-                    style={[
-                      styles.providerCalendarRow,
-                      completed && styles.providerCalendarRowCompleted,
-                    ]}
-                  >
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.providerCalendarTime}>{startLabel}</Text>
-                      <Text
-                        style={[
-                          styles.providerCalendarService,
-                          completed && styles.providerCalendarTextCompleted,
-                        ]}
-                      >
-                        {booking?.service_name || "Service"}
-                      </Text>
-                      <Text
-                        style={[
-                          styles.providerCalendarCustomer,
-                          completed && styles.providerCalendarTextCompleted,
-                        ]}
-                      >
-                        {booking?.customer_name || "Customer"}
-                      </Text>
-                    </View>
-                    {completed ? (
-                      <View style={styles.providerCalendarCompletedBadge}>
-                        <Text style={styles.providerCalendarCompletedText}>Completed</Text>
-                      </View>
-                    ) : null}
-                  </View>
-                );
-              })}
-          </ScrollView>
-        )}
-      </View>
+      </ScrollView>
     </SafeAreaView>
   );
 }
@@ -9296,8 +9315,11 @@ signupTextButtonText: {
   providerCalendarScreen: {
     flex: 1,
     backgroundColor: colors.background,
+  },
+  providerCalendarContentContainer: {
     paddingHorizontal: 16,
     paddingTop: 8,
+    paddingBottom: 28,
   },
   providerCalendarModeSwitch: {
     flexDirection: "row",
@@ -9330,14 +9352,28 @@ signupTextButtonText: {
     borderColor: colors.border,
     borderRadius: 14,
     padding: 8,
-    marginBottom: 12,
-    minHeight: 280,
+  },
+  providerCalendarViewport: {
+    overflow: "hidden",
+    borderRadius: 10,
+  },
+  providerCalendarViewportMonth: {
+    height: 360,
+  },
+  providerCalendarViewportWeek: {
+    height: 140,
+  },
+  providerCalendarViewportDay: {
+    height: 420,
+  },
+  providerCalendarHeaderBlock: {
+    marginTop: 12,
   },
   providerCalendarListSection: {
-    flex: 1,
+    marginTop: 8,
   },
   providerCalendarList: {
-    marginTop: 8,
+    marginTop: 0,
   },
   providerCalendarEmpty: {
     color: colors.textMuted,
