@@ -43,7 +43,6 @@ import { Ionicons } from "@expo/vector-icons";
 import {
   CalendarProvider,
   Calendar,
-  WeekCalendar,
 } from "react-native-calendars";
 import {
   SafeAreaProvider,
@@ -7197,16 +7196,50 @@ function ProviderCalendarScreen({ token, showFlash }) {
                     )}
                   </View>
                 ) : (
-                  // Daily layout structure: WeekCalendar strip -> custom vertical day schedule grid.
                   <View style={styles.providerCalendarDailyLayout}>
-                    <View style={styles.providerCalendarDayStrip}>
-                      <WeekCalendar
-                        firstDay={0}
-                        current={selectedDate}
-                        markedDates={markedDates}
-                        onDayPress={onSelectDate}
-                        theme={calendarTheme}
-                      />
+                    <View
+                      style={[
+                        styles.providerCalendarViewport,
+                        styles.providerCalendarViewportWeek,
+                      ]}
+                      onLayout={(event) => {
+                        const width = Math.round(event?.nativeEvent?.layout?.width || 0);
+                        if (width > 0 && weekPagerWidth === 0) {
+                          setWeekPagerWidth(width);
+                        }
+                      }}
+                    >
+                      {weekPagerWidth > 0 ? (
+                        <ScrollView
+                          ref={weekPagerRef}
+                          horizontal
+                          pagingEnabled
+                          showsHorizontalScrollIndicator={false}
+                          onMomentumScrollEnd={onWeekPagerMomentumEnd}
+                          contentOffset={{ x: weekPagerWidth, y: 0 }}
+                          nestedScrollEnabled={false}
+                          directionalLockEnabled={true}
+                          alwaysBounceVertical={false}
+                          alwaysBounceHorizontal={true}
+                          scrollEventThrottle={16}
+                        >
+                          {weekPages.map((pageWeekStartKey) => (
+                            <View key={pageWeekStartKey} style={{ width: weekPagerWidth }}>
+                              <WeeklyStrip
+                                weekStartKey={pageWeekStartKey}
+                                selectedDate={selectedDate}
+                                onSelectDate={(dayKey) => setSelectedDate(dayKey)}
+                                bookingsByDate={bookingsByDate}
+                                isBookingCompleted={isBookingCompleted}
+                                colors={colors}
+                                getWeekDays={getWeekDays}
+                              />
+                            </View>
+                          ))}
+                        </ScrollView>
+                      ) : (
+                        <View style={{ flex: 1 }} />
+                      )}
                     </View>
                     <View style={styles.providerCalendarViewportDay}>
                       <DayScheduleGrid events={dayGridEvents} startHour={0} endHour={24} />
