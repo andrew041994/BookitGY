@@ -20,6 +20,7 @@ import {
   RefreshControl,
   Share,
   Modal,
+  PanResponder,
 } from "react-native";
 import * as ExpoLinking from "expo-linking";
 import {
@@ -6767,6 +6768,23 @@ function ProviderCalendarScreen({ token, showFlash }) {
     []
   );
 
+  const horizontalTimelinePanLock = useMemo(
+    () =>
+      PanResponder.create({
+        onStartShouldSetPanResponder: () => false,
+        onStartShouldSetPanResponderCapture: () => false,
+        onMoveShouldSetPanResponder: (_, gestureState) =>
+          Math.abs(gestureState.dx) > Math.abs(gestureState.dy) && Math.abs(gestureState.dx) > 5,
+        onMoveShouldSetPanResponderCapture: (_, gestureState) =>
+          Math.abs(gestureState.dx) > Math.abs(gestureState.dy) && Math.abs(gestureState.dx) > 5,
+        onPanResponderMove: () => {
+          // Capture horizontal gestures so Timeline cannot pan sideways; vertical scrolling remains native.
+        },
+        onPanResponderTerminationRequest: () => true,
+      }),
+    []
+  );
+
   return (
     <SafeAreaView style={styles.providerCalendarScreen} edges={["left", "right", "bottom"]}>
       <View style={styles.providerCalendarContentContainer}>
@@ -6843,7 +6861,7 @@ function ProviderCalendarScreen({ token, showFlash }) {
                   />
                 </View>
                 <View style={styles.providerCalendarViewportDay}>
-                  <View style={styles.providerCalendarTimelineWrapper}>
+                  <View style={styles.providerCalendarTimelineWrapper} {...horizontalTimelinePanLock.panHandlers}>
                     <Timeline
                       events={timelineEvents}
                       date={selectedDate}

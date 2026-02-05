@@ -1,27 +1,58 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
 diff --git a/mobile/App.js b/mobile/App.js
-index 0f9f37228b03339e13cde04c9c9fde2c4b011d4f..b20b4dc6a49c010f2294466a12e7b29bb19104c3 100644
+index b20b4dc6a49c010f2294466a12e7b29bb19104c3..b3fead2c1e0931cc1a6ab9511140895e3dce3491 100644
 --- a/mobile/App.js
 +++ b/mobile/App.js
-@@ -6727,54 +6727,54 @@ function ProviderCalendarScreen({ token, showFlash }) {
-     const nextDate = typeof value === "string" ? value : value.dateString;
-     if (!nextDate) return;
-     setSelectedDate(nextDate);
-   }, []);
- 
-   const renderTimelineEvent = useCallback(
-     (event) => {
-       const completed = Boolean(event?.completed);
-       return (
-         <TouchableOpacity
-           activeOpacity={0.9}
-           style={[
-             styles.providerTimelineEvent,
-             completed && styles.providerTimelineEventCompleted,
-           ]}
-           onPress={() => {
-             Alert.alert(
-               event?.title || "Appointment",
+@@ -1,47 +1,48 @@
+ import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
+ import {
+   Text,
+   View,
+   StyleSheet,
+   TextInput,
+   Button,
+   Alert,
+   ActivityIndicator,
+   ScrollView,
+   TouchableOpacity,
+   Switch,
+   Linking,
+   Platform,
+   Image,
+   KeyboardAvoidingView,
+   TouchableWithoutFeedback,
+   Keyboard,
+   Pressable,
+   RefreshControl,
+   Share,
+   Modal,
++  PanResponder,
+ } from "react-native";
+ import * as ExpoLinking from "expo-linking";
+ import {
+   NavigationContainer,
+   CommonActions,
+   useFocusEffect,
+   useIsFocused,
+ } from "@react-navigation/native";
+ import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
+ import { enableScreens } from "react-native-screens";
+ import axios from "axios";
+ import AsyncStorage from "@react-native-async-storage/async-storage";
+ import { clearToken, loadToken, saveToken } from "./src/components/tokenStorage";
+ import ProviderCard from "./src/components/ProviderCard";
+ import { createApiClient } from "./src/api/client";
+ import * as Location from "expo-location";
+ import Constants from "expo-constants";
+ import * as ImagePicker from "expo-image-picker";
+ import { Ionicons } from "@expo/vector-icons";
+ import {
+   CalendarProvider,
+   Calendar,
+   WeekCalendar,
+   Timeline,
+ } from "react-native-calendars";
+@@ -6745,50 +6746,67 @@ function ProviderCalendarScreen({ token, showFlash }) {
                `${event?.summary || "Customer"}\n${event?.startLabel || "--:--"}`
              );
            }}
@@ -29,12 +60,10 @@ index 0f9f37228b03339e13cde04c9c9fde2c4b011d4f..b20b4dc6a49c010f2294466a12e7b29b
            <View style={[styles.providerTimelineEventAccent, { backgroundColor: event?.accentColor || colors.primary }]} />
            <View style={styles.providerTimelineEventBody}>
              <Text style={styles.providerTimelineEventTime}>{event?.startLabel || "--:--"}</Text>
--            <Text style={styles.providerTimelineEventService} numberOfLines={2}>
-+            <Text style={styles.providerTimelineEventService} numberOfLines={1} ellipsizeMode="tail">
+             <Text style={styles.providerTimelineEventService} numberOfLines={1} ellipsizeMode="tail">
                {event?.title || "Service"}
              </Text>
--            <Text style={styles.providerTimelineEventCustomer} numberOfLines={1}>
-+            <Text style={styles.providerTimelineEventCustomer} numberOfLines={1} ellipsizeMode="tail">
+             <Text style={styles.providerTimelineEventCustomer} numberOfLines={1} ellipsizeMode="tail">
                {event?.summary || "Customer"}
              </Text>
            </View>
@@ -49,6 +78,23 @@ index 0f9f37228b03339e13cde04c9c9fde2c4b011d4f..b20b4dc6a49c010f2294466a12e7b29b
      []
    );
  
++  const horizontalTimelinePanLock = useMemo(
++    () =>
++      PanResponder.create({
++        onStartShouldSetPanResponder: () => false,
++        onStartShouldSetPanResponderCapture: () => false,
++        onMoveShouldSetPanResponder: (_, gestureState) =>
++          Math.abs(gestureState.dx) > Math.abs(gestureState.dy) && Math.abs(gestureState.dx) > 5,
++        onMoveShouldSetPanResponderCapture: (_, gestureState) =>
++          Math.abs(gestureState.dx) > Math.abs(gestureState.dy) && Math.abs(gestureState.dx) > 5,
++        onPanResponderMove: () => {
++          // Capture horizontal gestures so Timeline cannot pan sideways; vertical scrolling remains native.
++        },
++        onPanResponderTerminationRequest: () => true,
++      }),
++    []
++  );
++
    return (
      <SafeAreaView style={styles.providerCalendarScreen} edges={["left", "right", "bottom"]}>
        <View style={styles.providerCalendarContentContainer}>
@@ -60,7 +106,21 @@ index 0f9f37228b03339e13cde04c9c9fde2c4b011d4f..b20b4dc6a49c010f2294466a12e7b29b
            ].map((mode) => {
              const active = mode.key === viewMode;
              return (
-@@ -6821,67 +6821,71 @@ function ProviderCalendarScreen({ token, showFlash }) {
+               <TouchableOpacity
+                 key={mode.key}
+                 style={[
+                   styles.providerCalendarModeButton,
+                   active && styles.providerCalendarModeButtonActive,
+                 ]}
+                 onPress={() => setViewMode(mode.key)}
+               >
+                 <Text
+                   style={[
+                     styles.providerCalendarModeText,
+                     active && styles.providerCalendarModeTextActive,
+                   ]}
+                 >
+@@ -6821,51 +6839,51 @@ function ProviderCalendarScreen({ token, showFlash }) {
                    styles.providerCalendarViewport,
                    styles.providerCalendarViewportWeek,
                  ]}
@@ -86,181 +146,33 @@ index 0f9f37228b03339e13cde04c9c9fde2c4b011d4f..b20b4dc6a49c010f2294466a12e7b29b
                    />
                  </View>
                  <View style={styles.providerCalendarViewportDay}>
--                  <Timeline
--                    events={timelineEvents}
--                    date={selectedDate}
--                    start={timelineBounds.start}
--                    end={timelineBounds.end}
--                    format24h
--                    showNowIndicator
--                    overlapEventsSpacing={8}
--                    rightEdgeSpacing={8}
--                    renderEvent={renderTimelineEvent}
--                    theme={{
--                      ...calendarTheme,
--                      timelineHoursBackgroundColor: colors.surface,
--                      timelineHoursLineColor: "rgba(255,255,255,0.06)",
--                      timelineTextColor: colors.textMuted,
--                    }}
--                  />
-+                  <View style={styles.providerCalendarTimelineWrapper}>
-+                    <Timeline
-+                      events={timelineEvents}
-+                      date={selectedDate}
-+                      start={timelineBounds.start}
-+                      end={timelineBounds.end}
-+                      format24h
-+                      showNowIndicator
-+                      overlapEventsSpacing={8}
-+                      rightEdgeSpacing={6}
-+                      timelineLeftInset={62}
-+                      style={styles.providerCalendarTimeline}
-+                      renderEvent={renderTimelineEvent}
-+                      theme={{
-+                        ...calendarTheme,
-+                        timelineHoursBackgroundColor: colors.surface,
-+                        timelineHoursLineColor: "rgba(255,255,255,0.06)",
-+                        timelineTextColor: colors.textMuted,
-+                      }}
-+                    />
-+                  </View>
+-                  <View style={styles.providerCalendarTimelineWrapper}>
++                  <View style={styles.providerCalendarTimelineWrapper} {...horizontalTimelinePanLock.panHandlers}>
+                     <Timeline
+                       events={timelineEvents}
+                       date={selectedDate}
+                       start={timelineBounds.start}
+                       end={timelineBounds.end}
+                       format24h
+                       showNowIndicator
+                       overlapEventsSpacing={8}
+                       rightEdgeSpacing={6}
+                       timelineLeftInset={62}
+                       style={styles.providerCalendarTimeline}
+                       renderEvent={renderTimelineEvent}
+                       theme={{
+                         ...calendarTheme,
+                         timelineHoursBackgroundColor: colors.surface,
+                         timelineHoursLineColor: "rgba(255,255,255,0.06)",
+                         timelineTextColor: colors.textMuted,
+                       }}
+                     />
+                   </View>
                  </View>
                </View>
              )}
            </View>
          </CalendarProvider>
- 
-         {loading ? <ActivityIndicator color={colors.primary} style={{ marginTop: 12 }} /> : null}
-         {error ? <Text style={styles.errorText}>{error}</Text> : null}
-         {!loading && !error && viewMode !== "day" ? (
-           <>
-             <View style={styles.providerCalendarHeaderBlock}>
-               <Text style={styles.sectionTitle}>Appointments for {selectedDate}</Text>
-             </View>
-             <View style={styles.providerCalendarListSection}>
-               {selectedBookings.length === 0 ? (
-                 <Text style={styles.providerCalendarEmpty}>No appointments for this date.</Text>
-               ) : (
-                 <ScrollView style={styles.providerCalendarList} showsVerticalScrollIndicator={false}>
-                   {selectedBookings
-                     .slice()
-                     .sort((a, b) => new Date(a?.start_time || a?.start) - new Date(b?.start_time || b?.start))
-                     .map((booking) => {
-                       const completed = isBookingCompleted(booking);
-                       const startIso = booking?.start_time || booking?.start;
-                       const startLabel = startIso
-@@ -9465,91 +9469,108 @@ signupTextButtonText: {
-     padding: 8,
-   },
-   providerCalendarViewport: {
-     overflow: "hidden",
-     borderRadius: 10,
-   },
-   providerCalendarViewportMonth: {
-     height: 360,
-   },
-   providerCalendarViewportWeek: {
-     height: 140,
-   },
-   providerCalendarDailyLayout: {
-     borderRadius: 10,
-     overflow: "hidden",
-   },
-   providerCalendarDayStrip: {
-     minHeight: 104,
-     borderBottomWidth: 1,
-     borderBottomColor: colors.border,
-     backgroundColor: colors.surface,
-   },
-   providerCalendarViewportDay: {
-     height: 500,
-     backgroundColor: colors.surface,
-+    width: "100%",
-+    overflow: "hidden",
-+  },
-+  providerCalendarTimelineWrapper: {
-+    width: "100%",
-+    flex: 1,
-+    overflow: "hidden",
-+    borderRadius: 10,
-+    paddingHorizontal: 4,
-+  },
-+  providerCalendarTimeline: {
-+    width: "100%",
-   },
-   providerTimelineEvent: {
-     flex: 1,
-+    maxWidth: "100%",
-+    minWidth: 0,
-     borderRadius: 12,
-     backgroundColor: colors.surfaceElevated,
-     borderWidth: 1,
-     borderColor: "rgba(255,255,255,0.08)",
-     overflow: "hidden",
-     flexDirection: "row",
-+    alignItems: "flex-start",
-   },
-   providerTimelineEventCompleted: {
-     opacity: 0.58,
-   },
-   providerTimelineEventAccent: {
-     width: 4,
-   },
-   providerTimelineEventBody: {
-     flex: 1,
-+    minWidth: 0,
-+    flexShrink: 1,
-     paddingHorizontal: 8,
-     paddingVertical: 7,
-   },
-   providerTimelineEventTime: {
-     color: colors.textPrimary,
-     fontSize: 12,
-     fontWeight: "700",
-   },
-   providerTimelineEventService: {
-     color: colors.textPrimary,
-     fontSize: 13,
-     fontWeight: "700",
-     marginTop: 2,
-   },
-   providerTimelineEventCustomer: {
-     color: colors.textMuted,
-     fontSize: 12,
-     marginTop: 1,
-   },
-   providerTimelineEventCompletedBadge: {
--    position: "absolute",
--    top: 6,
--    right: 6,
-+    alignSelf: "flex-start",
-+    marginTop: 6,
-+    marginRight: 6,
-     paddingHorizontal: 6,
-     paddingVertical: 2,
-     borderRadius: 999,
-     borderWidth: 1,
-     borderColor: colors.textMuted,
-     backgroundColor: "rgba(0,0,0,0.25)",
-   },
-   providerTimelineEventCompletedText: {
-     color: colors.textMuted,
-     fontSize: 9,
-     fontWeight: "700",
-   },
-   providerCalendarHeaderBlock: {
-     marginTop: 12,
-   },
-   providerCalendarListSection: {
-     marginTop: 8,
-   },
-   providerCalendarList: {
-     marginTop: 0,
-   },
-   providerCalendarEmpty: {
-     color: colors.textMuted,
-     marginTop: 10,
-     fontSize: 14,
  
 EOF
 )
