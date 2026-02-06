@@ -6832,6 +6832,7 @@ function ProviderCalendarScreen({ token, showFlash }) {
   const [bookingsByDate, setBookingsByDate] = useState({});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [refreshing, setRefreshing] = useState(false);
   const weekPagerRef = useRef(null);
 
   const dateRange = useMemo(() => {
@@ -6921,8 +6922,9 @@ function ProviderCalendarScreen({ token, showFlash }) {
     return { type: "scheduled", label: "Scheduled" };
   }, [isBookingCompleted]);
 
-  const loadBookingsForRange = useCallback(async () => {
+  const loadBookingsForRange = useCallback(async (useRefresh = false) => {
     try {
+      if (useRefresh) setRefreshing(true);
       setLoading(true);
       setError("");
 
@@ -6963,8 +6965,11 @@ function ProviderCalendarScreen({ token, showFlash }) {
       }
     } finally {
       setLoading(false);
+      if (useRefresh) setRefreshing(false);
     }
   }, [dateRange.end, dateRange.start, formatDayKey, showFlash, token]);
+
+  const handleRefresh = useCallback(() => loadBookingsForRange(true), [loadBookingsForRange]);
 
   useEffect(() => {
     loadBookingsForRange();
@@ -7350,6 +7355,9 @@ function ProviderCalendarScreen({ token, showFlash }) {
           contentContainerStyle={styles.providerCalendarListContent}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
+          }
         />
       </View>
     </SafeAreaView>
