@@ -1,10 +1,9 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
 diff --git a/mobile/App.js b/mobile/App.js
-index f97f24fcd76515405f4fa964deec0b18b92c393a..dcc26b65313c7c5d3c401a1d42a081f7d9ccc0ce 100644
+index 6f0bc972e6e30f66c3e87da91cd58ef3eb6e5523..e154ac85c90e90e3a7195ef05e0693b53ec6be23 100644
 --- a/mobile/App.js
 +++ b/mobile/App.js
-@@ -6599,92 +6599,107 @@ function DayScheduleGrid({ events, startHour, endHour }) {
-       <View style={styles.providerDayScheduleRow}>
+@@ -6600,91 +6600,106 @@ function DayScheduleGrid({ events, startHour, endHour }) {
          <View style={[styles.providerDayScheduleGutter, { width: timeGutterWidth, height: trackHeight }]}>
            {hourTicks.map((hour) => {
              const y = (hour - gridStartClamped) * hourHeight + gridVerticalPadding;
@@ -29,10 +28,9 @@ index f97f24fcd76515405f4fa964deec0b18b92c393a..dcc26b65313c7c5d3c401a1d42a081f7
            })}
  
            {positionedEvents.map((event) => {
--            const completed = Boolean(event?.completed);
-+            const status = event?.statusLabel || "Scheduled";
-+            const statusTone = event?.statusTone || "scheduled";
-+            const completed = statusTone === "completed";
+             const completed = Boolean(event?.completed);
++            const statusType = event?.status?.type || "scheduled";
++            const statusLabel = event?.status?.label || "Scheduled";
              return (
                <TouchableOpacity
                  key={event.id}
@@ -77,19 +75,19 @@ index f97f24fcd76515405f4fa964deec0b18b92c393a..dcc26b65313c7c5d3c401a1d42a081f7
 +                <View
 +                  style={[
 +                    styles.providerDayScheduleStatusBadge,
-+                    statusTone === "cancelled" && styles.providerDayScheduleStatusBadgeCancelled,
-+                    statusTone === "completed" && styles.providerDayScheduleStatusBadgeCompleted,
++                    statusType === "cancelled" && styles.providerDayScheduleStatusBadgeCancelled,
++                    statusType === "completed" && styles.providerDayScheduleStatusBadgeCompleted,
 +                  ]}
 +                >
 +                  <Text
 +                    style={[
 +                      styles.providerDayScheduleStatusText,
-+                      statusTone === "cancelled" && styles.providerDayScheduleStatusTextCancelled,
-+                      statusTone === "completed" && styles.providerDayScheduleStatusTextCompleted,
++                      statusType === "cancelled" && styles.providerDayScheduleStatusTextCancelled,
++                      statusType === "completed" && styles.providerDayScheduleStatusTextCompleted,
 +                    ]}
 +                    numberOfLines={1}
 +                  >
-+                    {status}
++                    {statusLabel}
 +                  </Text>
 +                </View>
                </TouchableOpacity>
@@ -117,7 +115,7 @@ index f97f24fcd76515405f4fa964deec0b18b92c393a..dcc26b65313c7c5d3c401a1d42a081f7
        <View style={styles.providerWeeklyRow}>
          {weekDays.map((day) => {
            const bookings = bookingsByDate?.[day.key] || [];
-@@ -6858,50 +6873,74 @@ function ProviderCalendarScreen({ token, showFlash }) {
+@@ -6858,50 +6873,76 @@ function ProviderCalendarScreen({ token, showFlash }) {
      const nextSelectedDate = addDaysKey(selectedDate, deltaWeeks * 7);
      if (nextSelectedDate) {
        setSelectedDate(nextSelectedDate);
@@ -144,27 +142,29 @@ index f97f24fcd76515405f4fa964deec0b18b92c393a..dcc26b65313c7c5d3c401a1d42a081f7
    }, []);
  
 +  const getBookingStatusLabel = useCallback((booking) => {
-+    const normalizedStatus = String(booking?.status || booking?.state || "").toLowerCase();
-+    const cancelled =
-+      booking?.is_cancelled === true ||
-+      booking?.cancelled_at ||
++    const normalizedStatus = String(booking?.status || booking?.state || "")
++      .trim()
++      .toLowerCase();
++
++    const isCancelled =
 +      normalizedStatus === "cancelled" ||
-+      normalizedStatus === "canceled";
++      normalizedStatus === "canceled" ||
++      Boolean(booking?.cancelled_at || booking?.canceled_at || booking?.is_cancelled || booking?.isCanceled);
 +
-+    if (cancelled) {
-+      return { label: "Cancelled", tone: "cancelled" };
++    if (isCancelled) {
++      return { type: "cancelled", label: "Cancelled" };
 +    }
 +
-+    if (
-+      booking?.is_completed === true ||
-+      booking?.completed_at ||
++    const isCompleted =
 +      normalizedStatus === "completed" ||
-+      isBookingCompleted(booking)
-+    ) {
-+      return { label: "Completed", tone: "completed" };
++      Boolean(booking?.completed_at || booking?.is_completed) ||
++      isBookingCompleted(booking);
++
++    if (isCompleted) {
++      return { type: "completed", label: "Completed" };
 +    }
 +
-+    return { label: "Scheduled", tone: "scheduled" };
++    return { type: "scheduled", label: "Scheduled" };
 +  }, [isBookingCompleted]);
 +
    const loadBookingsForRange = useCallback(async () => {
@@ -192,7 +192,9 @@ index f97f24fcd76515405f4fa964deec0b18b92c393a..dcc26b65313c7c5d3c401a1d42a081f7
          ? res.data
          : res.data?.bookings || res.data?.results || [];
  
-@@ -6971,65 +7010,68 @@ function ProviderCalendarScreen({ token, showFlash }) {
+@@ -6969,67 +7010,69 @@ function ProviderCalendarScreen({ token, showFlash }) {
+     marked[selectedDate] = {
+       ...(marked[selectedDate] || {}),
        selected: true,
        selectedColor: colors.primarySoft,
        selectedTextColor: colors.textPrimary,
@@ -216,9 +218,10 @@ index f97f24fcd76515405f4fa964deec0b18b92c393a..dcc26b65313c7c5d3c401a1d42a081f7
              endDate = new Date(startDate.getTime() + Math.max(durationMin, 1) * 60_000);
            }
  
-           const completed = isBookingCompleted(booking);
+-          const completed = isBookingCompleted(booking);
++          const status = getBookingStatusLabel(booking);
++          const completed = status.type === "completed";
            const accentColor = getEventAccentColor(booking);
-+          const bookingStatus = getBookingStatusLabel(booking);
  
            return {
              id: String(booking?.id || booking?.booking_id || `${startIso}-${booking?.service_name || "service"}`),
@@ -229,14 +232,13 @@ index f97f24fcd76515405f4fa964deec0b18b92c393a..dcc26b65313c7c5d3c401a1d42a081f7
              color: accentColor,
              accentColor,
              completed,
-+            statusLabel: bookingStatus.label,
-+            statusTone: bookingStatus.tone,
++            status,
              startLabel: `${formatTimelineTime(startDate)} - ${formatTimelineTime(endDate)}`,
            };
          })
          .filter(Boolean),
 -    [formatTimelineTime, getEventAccentColor, isBookingCompleted, selectedBookings]
-+    [formatTimelineTime, getBookingStatusLabel, getEventAccentColor, isBookingCompleted, selectedBookings]
++    [formatTimelineTime, getBookingStatusLabel, getEventAccentColor, selectedBookings]
    );
  
    const calendarTheme = useMemo(
@@ -262,7 +264,7 @@ index f97f24fcd76515405f4fa964deec0b18b92c393a..dcc26b65313c7c5d3c401a1d42a081f7
      []
    );
  
-@@ -7066,90 +7108,103 @@ function ProviderCalendarScreen({ token, showFlash }) {
+@@ -7066,90 +7109,104 @@ function ProviderCalendarScreen({ token, showFlash }) {
              ...event,
              startDate,
              endDate,
@@ -289,8 +291,8 @@ index f97f24fcd76515405f4fa964deec0b18b92c393a..dcc26b65313c7c5d3c401a1d42a081f7
            }
            renderItem={({ item: booking }) => {
 -            const completed = isBookingCompleted(booking);
-+            const bookingStatus = getBookingStatusLabel(booking);
-+            const completed = bookingStatus.tone === "completed";
++            const status = getBookingStatusLabel(booking);
++            const completed = status.type === "completed";
              const startIso = booking?.start_time || booking?.start;
              const startLabel = startIso
                ? new Date(startIso).toLocaleTimeString([], {
@@ -333,18 +335,19 @@ index f97f24fcd76515405f4fa964deec0b18b92c393a..dcc26b65313c7c5d3c401a1d42a081f7
 +                <View
 +                  style={[
 +                    styles.providerCalendarStatusBadge,
-+                    bookingStatus.tone === "cancelled" && styles.providerCalendarStatusBadgeCancelled,
-+                    bookingStatus.tone === "completed" && styles.providerCalendarStatusBadgeCompleted,
++                    status.type === "cancelled" && styles.providerCalendarStatusBadgeCancelled,
++                    status.type === "completed" && styles.providerCalendarStatusBadgeCompleted,
 +                  ]}
 +                >
 +                  <Text
 +                    style={[
 +                      styles.providerCalendarStatusText,
-+                      bookingStatus.tone === "cancelled" && styles.providerCalendarStatusTextCancelled,
-+                      bookingStatus.tone === "completed" && styles.providerCalendarStatusTextCompleted,
++                      status.type === "cancelled" && styles.providerCalendarStatusTextCancelled,
++                      status.type === "completed" && styles.providerCalendarStatusTextCompleted,
 +                    ]}
++                    numberOfLines={1}
 +                  >
-+                    {bookingStatus.label}
++                    {status.label}
 +                  </Text>
 +                </View>
                </View>
@@ -372,7 +375,7 @@ index f97f24fcd76515405f4fa964deec0b18b92c393a..dcc26b65313c7c5d3c401a1d42a081f7
                          style={[
                            styles.providerCalendarModeText,
                            active && styles.providerCalendarModeTextActive,
-@@ -9977,100 +10032,128 @@ signupTextButtonText: {
+@@ -9977,100 +10034,124 @@ signupTextButtonText: {
      borderTopLeftRadius: 12,
      borderBottomLeftRadius: 12,
    },
@@ -407,22 +410,21 @@ index f97f24fcd76515405f4fa964deec0b18b92c393a..dcc26b65313c7c5d3c401a1d42a081f7
      paddingVertical: 2,
      borderRadius: 999,
      borderWidth: 1,
-     borderColor: colors.textMuted,
+-    borderColor: colors.textMuted,
++    borderColor: colors.textSecondary,
      backgroundColor: "rgba(0,0,0,0.2)",
    },
 -  providerDayScheduleCompletedText: {
+-    color: colors.textMuted,
 +  providerDayScheduleStatusBadgeCancelled: {
 +    borderColor: colors.error,
-+    backgroundColor: "rgba(239,68,68,0.12)",
 +  },
 +  providerDayScheduleStatusBadgeCompleted: {
 +    borderColor: colors.success,
-+    backgroundColor: "rgba(34,197,94,0.12)",
 +  },
 +  providerDayScheduleStatusText: {
-     color: colors.textMuted,
--    fontSize: 9,
-+    fontSize: 11,
++    color: colors.textSecondary,
+     fontSize: 9,
      fontWeight: "700",
    },
 +  providerDayScheduleStatusTextCancelled: {
@@ -479,20 +481,20 @@ index f97f24fcd76515405f4fa964deec0b18b92c393a..dcc26b65313c7c5d3c401a1d42a081f7
      paddingVertical: 5,
      borderRadius: 999,
      borderWidth: 1,
-     borderColor: colors.textMuted,
+-    borderColor: colors.textMuted,
++    borderColor: colors.textSecondary,
      backgroundColor: colors.surfaceElevated,
    },
 -  providerCalendarCompletedText: {
+-    color: colors.textMuted,
 +  providerCalendarStatusBadgeCancelled: {
 +    borderColor: colors.error,
-+    backgroundColor: "rgba(239,68,68,0.12)",
 +  },
 +  providerCalendarStatusBadgeCompleted: {
 +    borderColor: colors.success,
-+    backgroundColor: "rgba(34,197,94,0.12)",
 +  },
 +  providerCalendarStatusText: {
-     color: colors.textMuted,
++    color: colors.textSecondary,
      fontSize: 11,
      fontWeight: "700",
    },
