@@ -97,7 +97,7 @@ def signup(user: schemas.UserCreate, db: Session = Depends(get_db)):
     return response
 
 
-def _create_access_token(subject: str, token_version: int) -> str:
+def _create_access_token(subject: str, token_version: int, user_id: int) -> str:
     """
     Create a signed JWT access token for a given subject (user email).
 
@@ -114,6 +114,7 @@ def _create_access_token(subject: str, token_version: int) -> str:
         "exp": expire,               # jose can handle datetime
         "iat": int(aware_now.timestamp()), # numeric timestamp for freshness checks
         "tv": token_version,
+        "uid": user_id,
     }
 
     return jwt.encode(
@@ -195,7 +196,7 @@ def login(
             detail="Please verify your email before logging in.",
         )
 
-    access_token = _create_access_token(user.email, user.token_version)
+    access_token = _create_access_token(user.email, user.token_version, user.id)
 
     return {
         "access_token": access_token,
@@ -233,7 +234,7 @@ def login_by_email(
             detail="Please verify your email before logging in.",
         )
 
-    access_token = _create_access_token(user.email, user.token_version)
+    access_token = _create_access_token(user.email, user.token_version, user.id)
 
     return {
         "access_token": access_token,

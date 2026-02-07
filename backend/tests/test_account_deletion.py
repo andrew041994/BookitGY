@@ -1,3 +1,6 @@
+from fastapi.testclient import TestClient
+
+
 def test_delete_user_account_anonymizes_and_hides_provider(db_session):
     session, models, crud = db_session
 
@@ -69,3 +72,62 @@ def test_delete_user_account_anonymizes_and_hides_provider(db_session):
 
     providers = crud.list_providers(session)
     assert providers == []
+
+
+def test_deleted_user_cannot_login_or_use_old_token(db_session):
+    session, models, crud = db_session
+
+    user = models.User(
+        username="deleted-login",
+        email="deleted@login.test",
+        hashed_password=crud.hash_password("Secret123!"),
+        is_email_verified=True,
+    )
+    session.add(user)
+    session.commit()
+    session.refresh(user)
+
+    from app.main import app
+    from app.database import get_db
+
+    def override_get_db():
+        try:
+            yield session
+        finally:
+            pass
+
+    app.dependency_overrides[get_db] = override_get_db
+    client = TestClient(app)
+
+    try:
+        login_resp = client.post(
+            "/auth/login",
+            data={"username": user.email, "password": "Secret123!"},
+        )
+        assert login_resp.status_code == 200
+        token = login_resp.json()["access_token"]
+        headers = {"Authorization": f"Bearer {token}"}
+
+        me_resp = client.get("/users/me", headers=headers)
+        assert me_resp.status_code == 200
+
+        delete_resp = client.post(
+            "/users/me/delete",
+            json={"password": "Secret123!"},
+            headers=headers,
+        )
+        assert delete_resp.status_code == 200
+
+        session.refresh(user)
+        assert user.token_version == 1
+
+        login_after = client.post(
+            "/auth/login",
+            data={"username": "deleted@login.test", "password": "Secret123!"},
+        )
+        assert login_after.status_code == 401
+
+        me_after = client.get("/users/me", headers=headers)
+        assert me_after.status_code == 401
+    finally:
+        app.dependency_overrides = {}

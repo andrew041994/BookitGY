@@ -122,7 +122,7 @@ def delete_my_account(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user_from_header),
 ):
-    if getattr(current_user, "is_deleted", False):
+    if crud.user_is_deleted(current_user):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Account deleted",

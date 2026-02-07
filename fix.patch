@@ -1,215 +1,122 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
-diff --git a/mobile/App.js b/mobile/App.js
-index e154ac85c90e90e3a7195ef05e0693b53ec6be23..a0b3bae8301e779027a9e0c1f4d8662f189c2aec 100644
---- a/mobile/App.js
-+++ b/mobile/App.js
-@@ -6810,50 +6810,51 @@ function ProviderCalendarScreen({ token, showFlash }) {
-     const start = parseLocalMidday(weekStartKey);
-     if (!start) return [];
- 
-     return Array.from({ length: 7 }, (_, index) => {
-       const current = new Date(start.getFullYear(), start.getMonth(), start.getDate() + index, 12, 0, 0);
-       const yyyy = current.getFullYear();
-       const mm = String(current.getMonth() + 1).padStart(2, "0");
-       const dd = String(current.getDate()).padStart(2, "0");
-       return {
-         key: `${yyyy}-${mm}-${dd}`,
-         label: weekdayLabels[index],
-         dayNumber: String(current.getDate()),
-       };
-     });
-   }, [parseLocalMidday]);
-   const [viewMode, setViewMode] = useState("month");
-   const [selectedDate, setSelectedDate] = useState(() => normalizeDateKey(new Date()) || "");
-   const [weekStartKey, setWeekStartKey] = useState(() => {
-     const todayKey = normalizeDateKey(new Date()) || "";
-     return startOfWeekKey(todayKey) || todayKey;
-   });
-   const [weekPagerWidth, setWeekPagerWidth] = useState(0);
-   const [bookingsByDate, setBookingsByDate] = useState({});
-   const [loading, setLoading] = useState(false);
-   const [error, setError] = useState("");
-+  const [refreshing, setRefreshing] = useState(false);
-   const weekPagerRef = useRef(null);
- 
-   const dateRange = useMemo(() => {
-     const base = new Date(`${selectedDate}T12:00:00`);
-     const monthStart = new Date(base.getFullYear(), base.getMonth(), 1);
-     const monthEnd = new Date(base.getFullYear(), base.getMonth() + 1, 0);
-     return {
-       start: normalizeDateKey(monthStart),
-       end: normalizeDateKey(monthEnd),
-     };
-   }, [normalizeDateKey, selectedDate]);
- 
-   const formatDayKey = useCallback((bookingStartTime) => normalizeDateKey(bookingStartTime), [normalizeDateKey]);
- 
-   useEffect(() => {
-     const nextWeekStart = startOfWeekKey(selectedDate);
-     if (nextWeekStart) {
-       setWeekStartKey(nextWeekStart);
-     }
-   }, [selectedDate, startOfWeekKey]);
- 
-   const weekPages = useMemo(() => {
-     const previousWeek = addDaysKey(weekStartKey, -7);
-     const nextWeek = addDaysKey(weekStartKey, 7);
-     return [previousWeek, weekStartKey, nextWeek].filter(Boolean);
-@@ -6899,95 +6900,99 @@ function ProviderCalendarScreen({ token, showFlash }) {
-     const normalizedStatus = String(booking?.status || booking?.state || "")
-       .trim()
-       .toLowerCase();
- 
-     const isCancelled =
-       normalizedStatus === "cancelled" ||
-       normalizedStatus === "canceled" ||
-       Boolean(booking?.cancelled_at || booking?.canceled_at || booking?.is_cancelled || booking?.isCanceled);
- 
-     if (isCancelled) {
-       return { type: "cancelled", label: "Cancelled" };
-     }
- 
-     const isCompleted =
-       normalizedStatus === "completed" ||
-       Boolean(booking?.completed_at || booking?.is_completed) ||
-       isBookingCompleted(booking);
- 
-     if (isCompleted) {
-       return { type: "completed", label: "Completed" };
-     }
- 
-     return { type: "scheduled", label: "Scheduled" };
-   }, [isBookingCompleted]);
- 
--  const loadBookingsForRange = useCallback(async () => {
-+  const loadBookingsForRange = useCallback(async (useRefresh = false) => {
-     try {
-+      if (useRefresh) setRefreshing(true);
-       setLoading(true);
-       setError("");
- 
-       const authToken = await getAuthToken(token);
-       if (!authToken) {
-         setError("No access token found. Please log in again.");
-         return;
-       }
- 
-       const res = await axios.get(`${API}/providers/me/bookings`, {
-         headers: {
-           Authorization: `Bearer ${authToken}`,
-         },
-         params: {
-           start: dateRange.start,
-           end: dateRange.end,
-         },
-       });
- 
-       const rows = Array.isArray(res.data)
-         ? res.data
-         : res.data?.bookings || res.data?.results || [];
- 
-       const grouped = rows.reduce((acc, booking) => {
-         const key = formatDayKey(booking?.start_time);
-         if (!key) return acc;
-         if (!acc[key]) acc[key] = [];
-         acc[key].push(booking);
-         return acc;
-       }, {});
- 
-       setBookingsByDate(grouped);
-     } catch (err) {
-       console.log("Error loading provider calendar bookings", err?.response?.data || err?.message || err);
-       setError("Could not load calendar bookings.");
-       if (showFlash) {
-         showFlash("error", "Could not load calendar bookings.");
-       }
-     } finally {
-       setLoading(false);
-+      if (useRefresh) setRefreshing(false);
-     }
-   }, [dateRange.end, dateRange.start, formatDayKey, showFlash, token]);
- 
-+  const handleRefresh = useCallback(() => loadBookingsForRange(true), [loadBookingsForRange]);
+diff --git a/backend/tests/test_account_deletion.py b/backend/tests/test_account_deletion.py
+index e14d4c44b820bf3cc7a1a1e7ed780bd295f7a1c8..39eb3623709284a8fea4c73d71ab9cd74b1dd179 100644
+--- a/backend/tests/test_account_deletion.py
++++ b/backend/tests/test_account_deletion.py
+@@ -1,25 +1,28 @@
++from fastapi.testclient import TestClient
 +
-   useEffect(() => {
-     loadBookingsForRange();
-   }, [loadBookingsForRange]);
++
+ def test_delete_user_account_anonymizes_and_hides_provider(db_session):
+     session, models, crud = db_session
  
-   const selectedBookings = useMemo(() => bookingsByDate[selectedDate] || [], [bookingsByDate, selectedDate]);
-   const sortedSelectedBookings = useMemo(
-     () =>
-       selectedBookings
-         .slice()
-         .sort((a, b) => new Date(a?.start_time || a?.start) - new Date(b?.start_time || b?.start)),
-     [selectedBookings]
-   );
+     user = models.User(
+         username="providerone",
+         email="providerone@example.com",
+         phone="5921234",
+         whatsapp="whatsapp:+5921234",
+         hashed_password=crud.hash_password("Secret123!"),
+         is_provider=True,
+         is_email_verified=True,
+         expo_push_token="expo-token",
+         location="Georgetown",
+         lat=6.8,
+         long=-58.1,
+         avatar_url="https://example.com/user.png",
+     )
+     session.add(user)
+     session.commit()
+     session.refresh(user)
  
-   const formatTimelineTime = useCallback((isoDateLike) => {
-     const parsed = new Date(isoDateLike);
-     if (Number.isNaN(parsed.getTime())) return "--:--";
-     const hh = String(parsed.getHours()).padStart(2, "0");
-     const mm = String(parsed.getMinutes()).padStart(2, "0");
-     return `${hh}:${mm}`;
-   }, []);
+     provider = models.Provider(
+         user_id=user.id,
+         account_number="ACC-DELETE-1",
+         bio="Provider bio",
+@@ -47,25 +50,84 @@ def test_delete_user_account_anonymizes_and_hides_provider(db_session):
+     session.refresh(provider)
+     session.refresh(service)
  
-   const getEventAccentColor = useCallback((booking) => {
-     const palette = [colors.primary, "#1CA7A8", "#4C8BF5", "#8A63D2"];
-     const hashSource = String(booking?.service_id || booking?.service_name || "service");
-     const hash = Array.from(hashSource).reduce((acc, ch) => acc + ch.charCodeAt(0), 0);
-@@ -7328,50 +7333,53 @@ function ProviderCalendarScreen({ token, showFlash }) {
-                     </View>
-                     <View style={styles.providerCalendarViewportDay}>
-                       <DayScheduleGrid events={dayGridEvents} startHour={0} endHour={24} />
-                     </View>
-                   </View>
-                 )}
-                 </View>
-               </CalendarProvider>
+     assert user.is_deleted is True
+     assert user.deleted_at is not None
+     assert user.token_version == 1
+     assert user.email.startswith("deleted_")
+     assert user.username.startswith("deleted_user_")
+     assert user.phone is None
+     assert user.whatsapp is None
+     assert user.expo_push_token is None
+     assert user.location is None
+     assert user.lat is None
+     assert user.long is None
+     assert user.avatar_url is None
+     assert user.deleted_email_hash is not None
+     assert user.deleted_phone_hash is not None
  
-               {loading ? <ActivityIndicator color={colors.primary} style={{ marginTop: 12 }} /> : null}
-               {error ? <Text style={styles.errorText}>{error}</Text> : null}
-               <View style={{ height: 12 }} />
-               <View style={styles.providerCalendarHeaderBlock}>
-                 <Text style={styles.sectionTitle}>Appointments for {selectedDate}</Text>
-               </View>
-             </View>
-           }
-           ListEmptyComponent={
-             showAppointmentsEmptyState ? (
-               <Text style={styles.providerCalendarEmpty}>No appointments for this date.</Text>
-             ) : null
-           }
-           contentContainerStyle={styles.providerCalendarListContent}
-           showsVerticalScrollIndicator={false}
-           keyboardShouldPersistTaps="handled"
-+          refreshControl={
-+            <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
-+          }
-         />
-       </View>
-     </SafeAreaView>
-   );
- }
+     assert provider.is_locked is True
+     assert provider.bio is None
+     assert provider.avatar_url is None
+     assert service.is_active is False
  
- // Tabs after login
- function MainApp({
-   apiClient,
-   authLoading,
-   token,
-   setToken,
-   showFlash,
-   navigationRef,
-   setNavReady,
- }) {
-   const {
-     favoriteIds,
-     favoriteProviders,
-     favoritesLoading,
-     toggleFavorite,
-     isFavorite,
-     syncFavoritesFromList,
-     refreshFavoriteProviders,
-   } = useFavoriteProviders(token?.email || token?.userId);
+     providers = crud.list_providers(session)
+     assert providers == []
++
++
++def test_deleted_user_cannot_login_or_use_old_token(db_session):
++    session, models, crud = db_session
++
++    user = models.User(
++        username="deleted-login",
++        email="deleted@login.test",
++        hashed_password=crud.hash_password("Secret123!"),
++        is_email_verified=True,
++    )
++    session.add(user)
++    session.commit()
++    session.refresh(user)
++
++    from app.main import app
++    from app.database import get_db
++
++    def override_get_db():
++        try:
++            yield session
++        finally:
++            pass
++
++    app.dependency_overrides[get_db] = override_get_db
++    client = TestClient(app)
++
++    try:
++        login_resp = client.post(
++            "/auth/login",
++            data={"username": user.email, "password": "Secret123!"},
++        )
++        assert login_resp.status_code == 200
++        token = login_resp.json()["access_token"]
++        headers = {"Authorization": f"Bearer {token}"}
++
++        me_resp = client.get("/users/me", headers=headers)
++        assert me_resp.status_code == 200
++
++        delete_resp = client.post(
++            "/users/me/delete",
++            json={"password": "Secret123!"},
++            headers=headers,
++        )
++        assert delete_resp.status_code == 200
++
++        session.refresh(user)
++        assert user.token_version == 1
++
++        login_after = client.post(
++            "/auth/login",
++            data={"username": "deleted@login.test", "password": "Secret123!"},
++        )
++        assert login_after.status_code == 401
++
++        me_after = client.get("/users/me", headers=headers)
++        assert me_after.status_code == 401
++    finally:
++        app.dependency_overrides = {}
  
 EOF
 )

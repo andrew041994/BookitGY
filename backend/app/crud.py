@@ -157,7 +157,10 @@ def list_providers(db: Session, profession: Optional[str] = None):
     q = (
         db.query(models.Provider)
         .join(models.User, models.Provider.user_id == models.User.id)
-        .filter(models.User.is_deleted.is_(False))
+        .filter(
+            models.User.is_deleted.is_(False),
+            models.User.deleted_at.is_(None),
+        )
         .options(joinedload(models.Provider.user))
     )
 
@@ -604,21 +607,38 @@ def create_user(db: Session, user: schemas.UserCreate) -> models.User:
     return db_user
 
 
-def get_user_by_email(db: Session, email: str):
+def user_is_deleted(user: Optional[models.User]) -> bool:
+    if not user:
+        return False
+    return bool(getattr(user, "is_deleted", False)) or getattr(
+        user, "deleted_at", None
+    ) is not None
+
+
+def _apply_not_deleted_filter(query):
+    return query.filter(
+        models.User.is_deleted.is_(False),
+        models.User.deleted_at.is_(None),
+    )
+
+
+def get_user_by_email(db: Session, email: str, *, include_deleted: bool = False):
     """Return user by email, or None if not found."""
     if not email:
         return None
     normalized = email.strip().lower()
-    return (
-        db.query(models.User)
-        .filter(func.lower(models.User.email) == normalized)
-        .first()
-    )
+    query = db.query(models.User).filter(func.lower(models.User.email) == normalized)
+    if not include_deleted:
+        query = _apply_not_deleted_filter(query)
+    return query.first()
 
 
-def get_user_by_id(db: Session, user_id: int):
+def get_user_by_id(db: Session, user_id: int, *, include_deleted: bool = False):
     """Return user by id, or None if not found."""
-    return db.query(models.User).filter(models.User.id == user_id).first()
+    query = db.query(models.User).filter(models.User.id == user_id)
+    if not include_deleted:
+        query = _apply_not_deleted_filter(query)
+    return query.first()
 
 
 def set_user_suspension(
@@ -648,14 +668,18 @@ def assert_provider_not_suspended(
     return user
 
 
-def get_user_by_username(db: Session, username: str):
+def get_user_by_username(
+    db: Session,
+    username: str,
+    *,
+    include_deleted: bool = False,
+):
     """Return user by username, or None if not found."""
     normalized = normalize_username(username)
-    return (
-        db.query(models.User)
-        .filter(func.lower(models.User.username) == normalized)
-        .first()
-    )
+    query = db.query(models.User).filter(func.lower(models.User.username) == normalized)
+    if not include_deleted:
+        query = _apply_not_deleted_filter(query)
+    return query.first()
 
 
 def authenticate_user(db: Session, email: str, password: str):
@@ -666,11 +690,11 @@ def authenticate_user(db: Session, email: str, password: str):
         - user object if credentials are valid
         - None if invalid
     """
-    user = get_user_by_email(db, email)
+    user = get_user_by_email(db, email, include_deleted=True)
     if not user:
         return None
 
-    if getattr(user, "is_deleted", False):
+    if user_is_deleted(user):
         return None
 
     if not verify_password(password, user.hashed_password):

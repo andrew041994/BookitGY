@@ -51,24 +51,29 @@ def get_current_user_from_header(
             detail="Invalid or expired token",
         )
 
+    user_id = payload.get("uid")
     user_email: Optional[str] = payload.get("sub")
-    if not user_email:
+    if not user_id and not user_email:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid token payload",
         )
 
-    user = crud.get_user_by_email(db, user_email)
+    if user_id:
+        user = crud.get_user_by_id(db, user_id, include_deleted=True)
+    else:
+        user = crud.get_user_by_email(db, user_email, include_deleted=True)
+
     if not user:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="User not found",
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired token",
         )
 
-    if getattr(user, "is_deleted", False):
+    if crud.user_is_deleted(user):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Account deleted",
+            detail="Invalid or expired token",
         )
 
     token_version = payload.get("tv")
