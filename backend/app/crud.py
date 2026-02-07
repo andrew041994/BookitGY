@@ -727,37 +727,46 @@ def delete_user_account(
     deleted_email_hash = _hash_deleted_value(user.email)
     deleted_phone_hash = _hash_deleted_value(user.phone)
 
+    provider = None
     transaction = db.begin_nested() if db.in_transaction() else db.begin()
-    with transaction:
-        user.is_deleted = True
-        user.deleted_at = now_guyana()
-        user.token_version = (user.token_version or 0) + 1
-        user.deleted_email_hash = deleted_email_hash
-        user.deleted_phone_hash = deleted_phone_hash
-        user.email = placeholder_email
-        user.username = placeholder_username
-        user.phone = None
-        user.whatsapp = None
-        user.expo_push_token = None
-        user.location = None
-        user.lat = None
-        user.long = None
-        user.avatar_url = None
-        user.is_email_verified = False
-        user.email_verified_at = None
-        user.password_reset_at = None
+    try:
+        with transaction:
+            user.is_deleted = True
+            user.deleted_at = now_guyana()
+            user.token_version = (user.token_version or 0) + 1
+            user.deleted_email_hash = deleted_email_hash
+            user.deleted_phone_hash = deleted_phone_hash
+            user.email = placeholder_email
+            user.username = placeholder_username
+            user.phone = None
+            user.whatsapp = None
+            user.expo_push_token = None
+            user.location = None
+            user.lat = None
+            user.long = None
+            user.avatar_url = None
+            user.is_email_verified = False
+            user.email_verified_at = None
+            user.password_reset_at = None
 
-        provider = get_provider_by_user_id(db, user.id)
+            provider = get_provider_by_user_id(db, user.id)
+            if provider:
+                provider.is_locked = True
+                provider.bio = None
+                provider.avatar_url = None
+                db.query(models.Service).filter(
+                    models.Service.provider_id == provider.id
+                ).update(
+                    {models.Service.is_active: False},
+                    synchronize_session=False,
+                )
+        db.commit()
+        db.refresh(user)
         if provider:
-            provider.is_locked = True
-            provider.bio = None
-            provider.avatar_url = None
-            db.query(models.Service).filter(
-                models.Service.provider_id == provider.id
-            ).update(
-                {models.Service.is_active: False},
-                synchronize_session=False,
-            )
+            db.refresh(provider)
+    except Exception:
+        db.rollback()
+        raise
 
 
 def verify_user_email(db: Session, user: models.User) -> models.User:

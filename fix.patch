@@ -1,122 +1,128 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
-diff --git a/backend/tests/test_account_deletion.py b/backend/tests/test_account_deletion.py
-index e14d4c44b820bf3cc7a1a1e7ed780bd295f7a1c8..39eb3623709284a8fea4c73d71ab9cd74b1dd179 100644
---- a/backend/tests/test_account_deletion.py
-+++ b/backend/tests/test_account_deletion.py
-@@ -1,25 +1,28 @@
-+from fastapi.testclient import TestClient
-+
-+
- def test_delete_user_account_anonymizes_and_hides_provider(db_session):
-     session, models, crud = db_session
+diff --git a/backend/app/crud.py b/backend/app/crud.py
+index 44aeaab39af6dcfbb5f96295ca1ef9857f147a3c..8da68bf12bc473cf4e23ce9c5e9a523b8171999e 100644
+--- a/backend/app/crud.py
++++ b/backend/app/crud.py
+@@ -705,81 +705,90 @@ def authenticate_user(db: Session, email: str, password: str):
  
-     user = models.User(
-         username="providerone",
-         email="providerone@example.com",
-         phone="5921234",
-         whatsapp="whatsapp:+5921234",
-         hashed_password=crud.hash_password("Secret123!"),
-         is_provider=True,
-         is_email_verified=True,
-         expo_push_token="expo-token",
-         location="Georgetown",
-         lat=6.8,
-         long=-58.1,
-         avatar_url="https://example.com/user.png",
-     )
-     session.add(user)
-     session.commit()
-     session.refresh(user)
+ def _hash_deleted_value(value: Optional[str]) -> Optional[str]:
+     if not value:
+         return None
+     normalized = value.strip().lower()
+     if not normalized:
+         return None
+     return hashlib.sha256(normalized.encode("utf-8")).hexdigest()
  
-     provider = models.Provider(
-         user_id=user.id,
-         account_number="ACC-DELETE-1",
-         bio="Provider bio",
-@@ -47,25 +50,84 @@ def test_delete_user_account_anonymizes_and_hides_provider(db_session):
-     session.refresh(provider)
-     session.refresh(service)
  
-     assert user.is_deleted is True
-     assert user.deleted_at is not None
-     assert user.token_version == 1
-     assert user.email.startswith("deleted_")
-     assert user.username.startswith("deleted_user_")
-     assert user.phone is None
-     assert user.whatsapp is None
-     assert user.expo_push_token is None
-     assert user.location is None
-     assert user.lat is None
-     assert user.long is None
-     assert user.avatar_url is None
-     assert user.deleted_email_hash is not None
-     assert user.deleted_phone_hash is not None
+ def delete_user_account(
+     db: Session,
+     user: models.User,
+     password: str,
+ ) -> None:
+     if not verify_password(password, user.hashed_password):
+         raise ValueError("Incorrect password")
  
-     assert provider.is_locked is True
-     assert provider.bio is None
-     assert provider.avatar_url is None
-     assert service.is_active is False
+     deletion_id = os.urandom(16).hex()
+     placeholder_email = f"deleted_{deletion_id}@deleted.bookitgy"
+     placeholder_username = f"deleted_user_{deletion_id[:8]}"
  
-     providers = crud.list_providers(session)
-     assert providers == []
-+
-+
-+def test_deleted_user_cannot_login_or_use_old_token(db_session):
-+    session, models, crud = db_session
-+
-+    user = models.User(
-+        username="deleted-login",
-+        email="deleted@login.test",
-+        hashed_password=crud.hash_password("Secret123!"),
-+        is_email_verified=True,
-+    )
-+    session.add(user)
-+    session.commit()
-+    session.refresh(user)
-+
-+    from app.main import app
-+    from app.database import get_db
-+
-+    def override_get_db():
-+        try:
-+            yield session
-+        finally:
-+            pass
-+
-+    app.dependency_overrides[get_db] = override_get_db
-+    client = TestClient(app)
-+
+     deleted_email_hash = _hash_deleted_value(user.email)
+     deleted_phone_hash = _hash_deleted_value(user.phone)
+ 
++    provider = None
+     transaction = db.begin_nested() if db.in_transaction() else db.begin()
+-    with transaction:
+-        user.is_deleted = True
+-        user.deleted_at = now_guyana()
+-        user.token_version = (user.token_version or 0) + 1
+-        user.deleted_email_hash = deleted_email_hash
+-        user.deleted_phone_hash = deleted_phone_hash
+-        user.email = placeholder_email
+-        user.username = placeholder_username
+-        user.phone = None
+-        user.whatsapp = None
+-        user.expo_push_token = None
+-        user.location = None
+-        user.lat = None
+-        user.long = None
+-        user.avatar_url = None
+-        user.is_email_verified = False
+-        user.email_verified_at = None
+-        user.password_reset_at = None
+-
+-        provider = get_provider_by_user_id(db, user.id)
 +    try:
-+        login_resp = client.post(
-+            "/auth/login",
-+            data={"username": user.email, "password": "Secret123!"},
-+        )
-+        assert login_resp.status_code == 200
-+        token = login_resp.json()["access_token"]
-+        headers = {"Authorization": f"Bearer {token}"}
++        with transaction:
++            user.is_deleted = True
++            user.deleted_at = now_guyana()
++            user.token_version = (user.token_version or 0) + 1
++            user.deleted_email_hash = deleted_email_hash
++            user.deleted_phone_hash = deleted_phone_hash
++            user.email = placeholder_email
++            user.username = placeholder_username
++            user.phone = None
++            user.whatsapp = None
++            user.expo_push_token = None
++            user.location = None
++            user.lat = None
++            user.long = None
++            user.avatar_url = None
++            user.is_email_verified = False
++            user.email_verified_at = None
++            user.password_reset_at = None
 +
-+        me_resp = client.get("/users/me", headers=headers)
-+        assert me_resp.status_code == 200
-+
-+        delete_resp = client.post(
-+            "/users/me/delete",
-+            json={"password": "Secret123!"},
-+            headers=headers,
-+        )
-+        assert delete_resp.status_code == 200
-+
-+        session.refresh(user)
-+        assert user.token_version == 1
-+
-+        login_after = client.post(
-+            "/auth/login",
-+            data={"username": "deleted@login.test", "password": "Secret123!"},
-+        )
-+        assert login_after.status_code == 401
-+
-+        me_after = client.get("/users/me", headers=headers)
-+        assert me_after.status_code == 401
-+    finally:
-+        app.dependency_overrides = {}
++            provider = get_provider_by_user_id(db, user.id)
++            if provider:
++                provider.is_locked = True
++                provider.bio = None
++                provider.avatar_url = None
++                db.query(models.Service).filter(
++                    models.Service.provider_id == provider.id
++                ).update(
++                    {models.Service.is_active: False},
++                    synchronize_session=False,
++                )
++        db.commit()
++        db.refresh(user)
+         if provider:
+-            provider.is_locked = True
+-            provider.bio = None
+-            provider.avatar_url = None
+-            db.query(models.Service).filter(
+-                models.Service.provider_id == provider.id
+-            ).update(
+-                {models.Service.is_active: False},
+-                synchronize_session=False,
+-            )
++            db.refresh(provider)
++    except Exception:
++        db.rollback()
++        raise
+ 
+ 
+ def verify_user_email(db: Session, user: models.User) -> models.User:
+     """Mark a user's email as verified."""
+     user.is_email_verified = True
+     user.email_verified_at = now_guyana()
+     db.commit()
+     db.refresh(user)
+     return user
+ 
+ def update_user(
+     db: Session,
+     user_id: int,
+     user_update: schemas.UserUpdate,
+ ) -> Optional[models.User]:
+     """
+     Partially update a user using fields from UserUpdate.
+     Only fields that are actually provided (exclude_unset=True) are changed.
+     """
+     user = db.query(models.User).filter(models.User.id == user_id).first()
+     if not user:
+         return None
+ 
+     # Only apply fields that were sent in the request
+     update_data = user_update.dict(exclude_unset=True)
  
 EOF
 )
