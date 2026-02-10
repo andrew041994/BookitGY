@@ -1,128 +1,111 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
-diff --git a/backend/app/crud.py b/backend/app/crud.py
-index 44aeaab39af6dcfbb5f96295ca1ef9857f147a3c..8da68bf12bc473cf4e23ce9c5e9a523b8171999e 100644
---- a/backend/app/crud.py
-+++ b/backend/app/crud.py
-@@ -705,81 +705,90 @@ def authenticate_user(db: Session, email: str, password: str):
+diff --git a/mobile/src/components/tokenStorage.js b/mobile/src/components/tokenStorage.js
+index 69f03f51c7b7f50946bacc333287a9e5dbbb9303..14d0435307c3e919d47966b199163f8f29536caf 100644
+--- a/mobile/src/components/tokenStorage.js
++++ b/mobile/src/components/tokenStorage.js
+@@ -1,70 +1,102 @@
+ import AsyncStorage from "@react-native-async-storage/async-storage";
+ import * as SecureStore from "expo-secure-store";
+ import * as Sentry from "sentry-expo";
  
- def _hash_deleted_value(value: Optional[str]) -> Optional[str]:
-     if not value:
-         return None
-     normalized = value.strip().lower()
-     if not normalized:
-         return None
-     return hashlib.sha256(normalized.encode("utf-8")).hexdigest()
+ const TOKEN_KEY = "accessToken";
++const REFRESH_TOKEN_KEY = "refreshToken";
  
+ const reportStorageError = (stage, err) => {
+   const message = err?.message || err;
+   console.log(`[tokenStorage] ${stage}`, message);
  
- def delete_user_account(
-     db: Session,
-     user: models.User,
-     password: str,
- ) -> None:
-     if not verify_password(password, user.hashed_password):
-         raise ValueError("Incorrect password")
+   try {
+     Sentry.Native.captureException(err, {
+       extra: {
+         scope: "tokenStorage",
+         stage,
+       },
+     });
+   } catch (captureErr) {
+     console.log(
+       "[tokenStorage] Unable to send error to Sentry",
+       captureErr?.message || captureErr
+     );
+   }
+ };
  
-     deletion_id = os.urandom(16).hex()
-     placeholder_email = f"deleted_{deletion_id}@deleted.bookitgy"
-     placeholder_username = f"deleted_user_{deletion_id[:8]}"
+ export async function saveToken(token) {
+   try {
+     await SecureStore.setItemAsync(TOKEN_KEY, token);
+     return;
+   } catch (err) {
+     reportStorageError("SecureStore.setItemAsync failed, falling back", err);
+   }
  
-     deleted_email_hash = _hash_deleted_value(user.email)
-     deleted_phone_hash = _hash_deleted_value(user.phone)
+   try {
+     await AsyncStorage.setItem(TOKEN_KEY, token);
+   } catch (err) {
+     console.log("[tokenStorage] AsyncStorage.setItem failed", err?.message || err);
+   }
+ }
  
-+    provider = None
-     transaction = db.begin_nested() if db.in_transaction() else db.begin()
--    with transaction:
--        user.is_deleted = True
--        user.deleted_at = now_guyana()
--        user.token_version = (user.token_version or 0) + 1
--        user.deleted_email_hash = deleted_email_hash
--        user.deleted_phone_hash = deleted_phone_hash
--        user.email = placeholder_email
--        user.username = placeholder_username
--        user.phone = None
--        user.whatsapp = None
--        user.expo_push_token = None
--        user.location = None
--        user.lat = None
--        user.long = None
--        user.avatar_url = None
--        user.is_email_verified = False
--        user.email_verified_at = None
--        user.password_reset_at = None
--
--        provider = get_provider_by_user_id(db, user.id)
-+    try:
-+        with transaction:
-+            user.is_deleted = True
-+            user.deleted_at = now_guyana()
-+            user.token_version = (user.token_version or 0) + 1
-+            user.deleted_email_hash = deleted_email_hash
-+            user.deleted_phone_hash = deleted_phone_hash
-+            user.email = placeholder_email
-+            user.username = placeholder_username
-+            user.phone = None
-+            user.whatsapp = None
-+            user.expo_push_token = None
-+            user.location = None
-+            user.lat = None
-+            user.long = None
-+            user.avatar_url = None
-+            user.is_email_verified = False
-+            user.email_verified_at = None
-+            user.password_reset_at = None
++export async function saveRefreshToken(token) {
++  if (!token) return;
++  try {
++    await SecureStore.setItemAsync(REFRESH_TOKEN_KEY, token);
++  } catch (err) {
++    reportStorageError("SecureStore.setItemAsync refresh failed", err);
++  }
++}
 +
-+            provider = get_provider_by_user_id(db, user.id)
-+            if provider:
-+                provider.is_locked = True
-+                provider.bio = None
-+                provider.avatar_url = None
-+                db.query(models.Service).filter(
-+                    models.Service.provider_id == provider.id
-+                ).update(
-+                    {models.Service.is_active: False},
-+                    synchronize_session=False,
-+                )
-+        db.commit()
-+        db.refresh(user)
-         if provider:
--            provider.is_locked = True
--            provider.bio = None
--            provider.avatar_url = None
--            db.query(models.Service).filter(
--                models.Service.provider_id == provider.id
--            ).update(
--                {models.Service.is_active: False},
--                synchronize_session=False,
--            )
-+            db.refresh(provider)
-+    except Exception:
-+        db.rollback()
-+        raise
+ export async function loadToken() {
+   try {
+     const secureToken = await SecureStore.getItemAsync(TOKEN_KEY);
+     if (secureToken) return secureToken;
+   } catch (err) {
+     reportStorageError("SecureStore.getItemAsync failed, trying AsyncStorage", err);
+   }
  
+   try {
+     return await AsyncStorage.getItem(TOKEN_KEY);
+   } catch (err) {
+     reportStorageError("AsyncStorage.getItem failed", err);
+     return null;
+   }
+ }
  
- def verify_user_email(db: Session, user: models.User) -> models.User:
-     """Mark a user's email as verified."""
-     user.is_email_verified = True
-     user.email_verified_at = now_guyana()
-     db.commit()
-     db.refresh(user)
-     return user
++export async function loadRefreshToken() {
++  try {
++    return await SecureStore.getItemAsync(REFRESH_TOKEN_KEY);
++  } catch (err) {
++    reportStorageError("SecureStore.getItemAsync refresh failed", err);
++    return null;
++  }
++}
++
+ export async function clearToken() {
+   try {
+     await SecureStore.deleteItemAsync(TOKEN_KEY);
+     return;
+   } catch (err) {
+     reportStorageError("SecureStore.deleteItemAsync failed, falling back", err);
+   }
  
- def update_user(
-     db: Session,
-     user_id: int,
-     user_update: schemas.UserUpdate,
- ) -> Optional[models.User]:
-     """
-     Partially update a user using fields from UserUpdate.
-     Only fields that are actually provided (exclude_unset=True) are changed.
-     """
-     user = db.query(models.User).filter(models.User.id == user_id).first()
-     if not user:
-         return None
- 
-     # Only apply fields that were sent in the request
-     update_data = user_update.dict(exclude_unset=True)
+   try {
+     await AsyncStorage.removeItem(TOKEN_KEY);
+   } catch (err) {
+     reportStorageError("AsyncStorage.removeItem failed", err);
+   }
+ }
++
++export async function clearRefreshToken() {
++  try {
++    await SecureStore.deleteItemAsync(REFRESH_TOKEN_KEY);
++  } catch (err) {
++    reportStorageError("SecureStore.deleteItemAsync refresh failed", err);
++  }
++}
++
++export async function clearAllAuthTokens() {
++  await clearToken();
++  await clearRefreshToken();
++}
  
 EOF
 )

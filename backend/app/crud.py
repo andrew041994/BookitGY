@@ -814,7 +814,10 @@ def update_user(
 def set_user_password(db: Session, user: models.User, new_password: str) -> models.User:
     """Update a user's password with a freshly hashed value."""
 
+    now = now_guyana()
     user.hashed_password = hash_password(new_password)
+    user.password_changed_at = now
+    revoke_user_refresh_tokens(db, user.id)
     db.commit()
     db.refresh(user)
     return user
@@ -827,8 +830,11 @@ def set_user_password_reset(
 ) -> models.User:
     """Update a user's password and mark the reset timestamp."""
 
+    now = now_guyana()
     user.hashed_password = hash_password(new_password)
-    user.password_reset_at = now_guyana()
+    user.password_reset_at = now
+    user.password_changed_at = now
+    revoke_user_refresh_tokens(db, user.id)
     db.commit()
     db.refresh(user)
     return user
@@ -891,6 +897,65 @@ def mark_password_reset_token_used(
     db.commit()
     db.refresh(token)
     return token
+
+
+def create_refresh_token_record(
+    db: Session,
+    user_id: int,
+    token_hash: str,
+) -> models.RefreshToken:
+    now = now_guyana()
+    token = models.RefreshToken(
+        user_id=user_id,
+        token_hash=token_hash,
+        created_at=now,
+        last_used_at=now,
+    )
+    db.add(token)
+    db.commit()
+    db.refresh(token)
+    return token
+
+
+def get_refresh_token_by_hash(
+    db: Session,
+    token_hash: str,
+) -> Optional[models.RefreshToken]:
+    return (
+        db.query(models.RefreshToken)
+        .filter(models.RefreshToken.token_hash == token_hash)
+        .first()
+    )
+
+
+def revoke_refresh_token(
+    db: Session,
+    token: models.RefreshToken,
+    replaced_by_token_id: Optional[int] = None,
+) -> models.RefreshToken:
+    if token.revoked_at is None:
+        token.revoked_at = now_guyana()
+    token.replaced_by_token_id = replaced_by_token_id
+    db.commit()
+    db.refresh(token)
+    return token
+
+
+def revoke_user_refresh_tokens(db: Session, user_id: int) -> int:
+    now = now_guyana()
+    tokens = (
+        db.query(models.RefreshToken)
+        .filter(
+            models.RefreshToken.user_id == user_id,
+            models.RefreshToken.revoked_at.is_(None),
+        )
+        .all()
+    )
+    for token in tokens:
+        token.revoked_at = now
+    if tokens:
+        db.commit()
+    return len(tokens)
 
 # ---------------------------------------------------------------------------
 # Promotion CRUD
@@ -2105,7 +2170,9 @@ def get_billable_bookings_for_provider(
     period_start = period_start or default_start
     period_end = period_end or default_end
     rows = (
-        _billable_bookings_base_query(db, provider_id, as_of=cutoff)
+        # removed as_of=cutoff from parenthesis below, this 
+        # was redundant as if not r.end_time or r.end_time > cutoff: does the same thing
+        _billable_bookings_base_query(db, provider_id,)
         .filter(
             models.Booking.end_time >= period_start,
             models.Booking.end_time < period_end,

@@ -38,6 +38,7 @@ class User(Base):
     is_email_verified = Column(Boolean, default=False)
     email_verified_at = Column(DateTime, nullable=True)
     password_reset_at = Column(DateTime, nullable=True)
+    password_changed_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=now_guyana)
     avatar_url = Column(String, nullable=True)   # 👈 NEW
     deleted_at = Column(DateTime, nullable=True)
@@ -56,6 +57,22 @@ class PasswordResetToken(Base):
     expires_at = Column(DateTime, nullable=False)
     used_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=now_guyana)
+
+
+class RefreshToken(Base):
+    __tablename__ = "refresh_tokens"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), index=True, nullable=False)
+    token_hash = Column(String, unique=True, index=True, nullable=False)
+    created_at = Column(DateTime, default=now_guyana, nullable=False)
+    last_used_at = Column(DateTime, default=now_guyana, nullable=False)
+    revoked_at = Column(DateTime, nullable=True)
+    replaced_by_token_id = Column(
+        Integer,
+        ForeignKey("refresh_tokens.id"),
+        nullable=True,
+    )
 
 
 class Provider(Base):

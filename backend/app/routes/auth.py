@@ -31,6 +31,27 @@ settings = get_settings()
 logger = logging.getLogger(__name__)
 
 
+REFRESH_TOKEN_INACTIVITY_DAYS = 90
+
+
+def _new_refresh_token_raw() -> str:
+    return secrets.token_urlsafe(48)
+
+
+def _create_refresh_token(db: Session, user_id: int) -> tuple[str, models.RefreshToken]:
+    raw_token = _new_refresh_token_raw()
+    token_hash = hash_token(raw_token)
+    token_record = crud.create_refresh_token_record(db, user_id, token_hash)
+    return raw_token, token_record
+
+
+def _session_expired_error() -> HTTPException:
+    return HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail={"detail": "session_expired", "code": "SESSION_EXPIRED"},
+    )
+
+
 @router.post("/auth/signup")
 def signup(user: schemas.UserCreate, db: Session = Depends(get_db)):
     try:
@@ -197,9 +218,11 @@ def login(
         )
 
     access_token = _create_access_token(user.email, user.token_version, user.id)
+    refresh_token, _ = _create_refresh_token(db, user.id)
 
     return {
         "access_token": access_token,
+        "refresh_token": refresh_token,
         "token_type": "bearer",
         "user_id": user.id,
         "email": user.email,
@@ -235,15 +258,78 @@ def login_by_email(
         )
 
     access_token = _create_access_token(user.email, user.token_version, user.id)
+    refresh_token, _ = _create_refresh_token(db, user.id)
 
     return {
         "access_token": access_token,
+        "refresh_token": refresh_token,
         "token_type": "bearer",
         "user_id": user.id,
         "email": user.email,
         "is_provider": user.is_provider,
         "is_admin": getattr(user, "is_admin", False),
     }
+
+
+@router.post("/auth/refresh")
+def refresh_session(
+    payload: schemas.RefreshTokenRequest,
+    db: Session = Depends(get_db),
+):
+    raw_token = (payload.refresh_token or "").strip()
+    if not raw_token:
+        raise _session_expired_error()
+
+    token_hash = hash_token(raw_token)
+    token_record = crud.get_refresh_token_by_hash(db, token_hash)
+    if not token_record:
+        raise _session_expired_error()
+
+    if token_record.revoked_at is not None:
+        raise _session_expired_error()
+
+    user = crud.get_user_by_id(db, token_record.user_id, include_deleted=True)
+    if not user or crud.user_is_deleted(user):
+        raise _session_expired_error()
+
+    now = datetime.now(GUYANA_TIMEZONE).replace(tzinfo=None)
+    inactivity_cutoff = token_record.last_used_at + timedelta(days=REFRESH_TOKEN_INACTIVITY_DAYS)
+    if now > inactivity_cutoff:
+        crud.revoke_refresh_token(db, token_record)
+        raise _session_expired_error()
+
+    if user.password_changed_at and token_record.created_at <= user.password_changed_at:
+        crud.revoke_refresh_token(db, token_record)
+        raise _session_expired_error()
+
+    new_refresh_token, new_record = _create_refresh_token(db, user.id)
+    crud.revoke_refresh_token(db, token_record, replaced_by_token_id=new_record.id)
+
+    access_token = _create_access_token(user.email, user.token_version, user.id)
+    return {
+        "access_token": access_token,
+        "refresh_token": new_refresh_token,
+        "token_type": "bearer",
+        "user_id": user.id,
+        "email": user.email,
+        "is_provider": user.is_provider,
+        "is_admin": getattr(user, "is_admin", False),
+    }
+
+
+@router.post("/auth/logout")
+def logout(
+    payload: schemas.RefreshTokenRequest,
+    db: Session = Depends(get_db),
+):
+    raw_token = (payload.refresh_token or "").strip()
+    if raw_token:
+        token_hash = hash_token(raw_token)
+        token_record = crud.get_refresh_token_by_hash(db, token_hash)
+        if token_record and token_record.revoked_at is None:
+            crud.revoke_refresh_token(db, token_record)
+
+    return {"ok": True}
 
 
 @router.post("/auth/forgot-password")

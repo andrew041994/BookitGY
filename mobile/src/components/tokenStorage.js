@@ -3,6 +3,7 @@ import * as SecureStore from "expo-secure-store";
 import * as Sentry from "sentry-expo";
 
 const TOKEN_KEY = "accessToken";
+const REFRESH_TOKEN_KEY = "refreshToken";
 
 const reportStorageError = (stage, err) => {
   const message = err?.message || err;
@@ -38,6 +39,15 @@ export async function saveToken(token) {
   }
 }
 
+export async function saveRefreshToken(token) {
+  if (!token) return;
+  try {
+    await SecureStore.setItemAsync(REFRESH_TOKEN_KEY, token);
+  } catch (err) {
+    reportStorageError("SecureStore.setItemAsync refresh failed", err);
+  }
+}
+
 export async function loadToken() {
   try {
     const secureToken = await SecureStore.getItemAsync(TOKEN_KEY);
@@ -50,6 +60,15 @@ export async function loadToken() {
     return await AsyncStorage.getItem(TOKEN_KEY);
   } catch (err) {
     reportStorageError("AsyncStorage.getItem failed", err);
+    return null;
+  }
+}
+
+export async function loadRefreshToken() {
+  try {
+    return await SecureStore.getItemAsync(REFRESH_TOKEN_KEY);
+  } catch (err) {
+    reportStorageError("SecureStore.getItemAsync refresh failed", err);
     return null;
   }
 }
@@ -67,4 +86,17 @@ export async function clearToken() {
   } catch (err) {
     reportStorageError("AsyncStorage.removeItem failed", err);
   }
+}
+
+export async function clearRefreshToken() {
+  try {
+    await SecureStore.deleteItemAsync(REFRESH_TOKEN_KEY);
+  } catch (err) {
+    reportStorageError("SecureStore.deleteItemAsync refresh failed", err);
+  }
+}
+
+export async function clearAllAuthTokens() {
+  await clearToken();
+  await clearRefreshToken();
 }

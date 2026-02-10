@@ -535,8 +535,13 @@ class ProviderSummary(BaseModel):
     total_fees_due_gyd: float
     service_charge_percentage: Optional[float] = None
 
+class RefreshTokenRequest(BaseModel):
+    refresh_token: str
+
+
 class TokenResponse(BaseModel):
     access_token: str
+    refresh_token: str
     token_type: str = "bearer"
     user_id: int
     email: str
