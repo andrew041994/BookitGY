@@ -17,7 +17,18 @@ export default {
   },
   assetBundlePatterns: ["**/*"],
   newArchEnabled: false,
-  // plugins: ["sentry-expo"],
+  plugins: [
+    [
+      "react-native-fbsdk-next",
+      {
+        appID: (process.env.FACEBOOK_APP_ID || "").trim(),
+        clientToken: (process.env.FACEBOOK_CLIENT_TOKEN || "").trim(),
+        displayName: "BookitGY",
+        scheme: `fb${(process.env.FACEBOOK_APP_ID || "").trim()}`,
+        isAutoInitEnabled: true,
+      },
+    ],
+  ],
 
   ios: {
     deploymentTarget: "16.0",
@@ -39,6 +50,8 @@ export default {
     },
     config: {
       googleMapsApiKey: (process.env.IOS_GOOGLE_MAPS_API_KEY || "").trim(),
+      facebookAppId: (process.env.FACEBOOK_APP_ID || "").trim(),
+      facebookClientToken: (process.env.FACEBOOK_CLIENT_TOKEN || "").trim(),
 
     },
   },
@@ -67,6 +80,8 @@ export default {
         apiKey: (process.env.ANDROID_GOOGLE_MAPS_API_KEY || "").trim(),
 
       },
+      facebookAppId: (process.env.FACEBOOK_APP_ID || "").trim(),
+      facebookClientToken: (process.env.FACEBOOK_CLIENT_TOKEN || "").trim(),
     },
   },
 

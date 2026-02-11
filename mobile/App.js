@@ -33,7 +33,12 @@ import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { enableScreens } from "react-native-screens";
 import axios from "axios";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { clearToken, loadToken, saveToken } from "./src/components/tokenStorage";
+import {
+  clearToken,
+  loadToken,
+  saveRefreshToken,
+  saveToken,
+} from "./src/components/tokenStorage";
 import ProviderCard from "./src/components/ProviderCard";
 import { createApiClient } from "./src/api/client";
 import * as Location from "expo-location";
@@ -49,6 +54,7 @@ import {
   SafeAreaView,
   useSafeAreaInsets,
 } from "react-native-safe-area-context";
+import { AccessToken, LoginManager } from "react-native-fbsdk-next";
 import BookitGYLogoTransparent from "./assets/bookitgy-logo-transparent.png"
 import { theme } from "./src/theme";
 // import * as Sentry from "sentry-expo";
@@ -99,6 +105,60 @@ const withTimeout = (promise, ms, label) => {
 const AUTH_BOOTSTRAP_WATCHDOG_MS = 15000;
 const AUTH_TOKEN_TIMEOUT_MS = 2000;
 const AUTH_ME_TIMEOUT_MS = 12000;
+const FB_COMPLETE_ERROR_MESSAGES = {
+  EMAIL_REQUIRED: "Please provide an email address to continue.",
+  PHONE_REQUIRED: "Please provide your phone number to continue.",
+  PHONE_TAKEN: "This phone number is already in use.",
+  FB_TOKEN_INVALID: "Facebook login session expired. Please try again.",
+};
+
+const normalizeErrorCode = (payload) => {
+  if (!payload) return null;
+  const detailCode = payload?.detail?.code;
+  if (typeof detailCode === "string") return detailCode;
+  if (typeof payload?.code === "string") return payload.code;
+  if (typeof payload?.detail === "string") return payload.detail;
+  return null;
+};
+
+const getFacebookCompleteErrorMessage = (code) =>
+  FB_COMPLETE_ERROR_MESSAGES[code] || "Unable to complete Facebook login. Please try again.";
+
+const persistFacebookSession = async ({
+  responseData,
+  setToken,
+  setIsAdmin,
+}) => {
+  await saveToken(responseData.access_token);
+  await saveRefreshToken(responseData.refresh_token);
+
+  let meData = null;
+  try {
+    const meRes = await axios.get(`${API}/users/me`, {
+      headers: { Authorization: `Bearer ${responseData.access_token}` },
+    });
+    meData = meRes.data;
+  } catch (meError) {
+    console.log("[auth] Failed to fetch /users/me after Facebook login", meError?.message || meError);
+  }
+
+  setToken({
+    token: responseData.access_token,
+    userId: meData?.id || meData?.user_id || responseData.user_id,
+    email: meData?.email || responseData.email,
+    username: meData?.username,
+    isProvider:
+      typeof meData?.is_provider === "boolean"
+        ? meData?.is_provider
+        : responseData.is_provider,
+    isAdmin:
+      typeof meData?.is_admin === "boolean" ? meData?.is_admin : responseData.is_admin,
+  });
+
+  setIsAdmin(
+    typeof meData?.is_admin === "boolean" ? meData?.is_admin : !!responseData.is_admin
+  );
+};
   const isValidEmail = (value) => {
   const trimmed = value.trim();
   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -533,6 +593,7 @@ function LandingScreen({ goToLogin, goToSignup }) {
 function LoginScreen({
   setToken,
   setIsAdmin,
+  onFacebookSetupRequired,
   goToSignup,
   goToForgot,
   goBack,
@@ -541,6 +602,7 @@ function LoginScreen({
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
+  const [facebookLoading, setFacebookLoading] = useState(false);
 
 
   const login = async () => {
@@ -636,6 +698,64 @@ function LoginScreen({
     }
   };
 
+  const loginWithFacebook = async () => {
+    setFacebookLoading(true);
+    try {
+      const loginResult = await LoginManager.logInWithPermissions([
+        "public_profile",
+        "email",
+      ]);
+
+      if (loginResult?.isCancelled) {
+        return;
+      }
+
+      const accessTokenData = await AccessToken.getCurrentAccessToken();
+      const facebookAccessToken = accessTokenData?.accessToken;
+
+      if (!facebookAccessToken) {
+        showFlash?.("error", "Could not get Facebook access token. Please try again.");
+        return;
+      }
+
+      const payload = {
+        facebook_access_token: facebookAccessToken,
+        phone: "",
+        is_provider: false,
+      };
+
+      try {
+        const res = await axios.post(`${API}/auth/facebook/complete`, payload);
+        await persistFacebookSession({
+          responseData: res.data,
+          setToken,
+          setIsAdmin,
+        });
+        showFlash?.("success", "Logged in successfully");
+      } catch (requestError) {
+        const errorCode = normalizeErrorCode(requestError?.response?.data);
+        if (errorCode === "EMAIL_REQUIRED" || errorCode === "PHONE_REQUIRED") {
+          onFacebookSetupRequired?.({
+            facebookAccessToken,
+            requiresEmail: errorCode === "EMAIL_REQUIRED",
+            requiresPhone: true,
+            initialPhone: "",
+            initialEmail: "",
+            initialIsProvider: false,
+          });
+          return;
+        }
+
+        showFlash?.("error", getFacebookCompleteErrorMessage(errorCode));
+      }
+    } catch (error) {
+      console.log("Facebook login error:", error?.response?.data || error?.message || error);
+      showFlash?.("error", "Facebook login failed. Please try again.");
+    } finally {
+      setFacebookLoading(false);
+    }
+  };
+
 return (
     <KeyboardAvoidingView
       style={styles.avoider}
@@ -701,6 +821,19 @@ return (
               )}
             </View>
           )}
+
+          <View style={{ width: "100%", marginBottom: 12 }}>
+            {facebookLoading ? (
+              <ActivityIndicator size="large" color={colors.primary} />
+            ) : (
+              <TouchableOpacity
+                style={styles.facebookButton}
+                onPress={loginWithFacebook}
+              >
+                <Text style={styles.facebookButtonText}>Continue with Facebook</Text>
+              </TouchableOpacity>
+            )}
+          </View>
 
           {goToForgot && (
             <TouchableOpacity onPress={goToForgot} style={styles.forgotLink}>
@@ -850,6 +983,140 @@ function ForgotPasswordScreen({ goToLogin, goBack, showFlash }) {
                 <Button title="Back" onPress={goBack} color={colors.textMuted} />
               </View>
             )}
+          </View>
+        </TouchableWithoutFeedback>
+      </ScrollView>
+    </KeyboardAvoidingView>
+  );
+}
+
+function FinishSetupScreen({
+  facebookSetup,
+  setToken,
+  setIsAdmin,
+  goBackToLogin,
+  showFlash,
+}) {
+  const [phone, setPhone] = useState(facebookSetup?.initialPhone || "");
+  const [email, setEmail] = useState(facebookSetup?.initialEmail || "");
+  const [isProvider, setIsProvider] = useState(
+    facebookSetup?.initialIsProvider || false
+  );
+  const [submitting, setSubmitting] = useState(false);
+
+  const requiresEmail = !!facebookSetup?.requiresEmail;
+
+  const submitFinishSetup = async () => {
+    const trimmedPhone = phone.trim();
+    const trimmedEmail = email.trim();
+
+    if (!trimmedPhone) {
+      showFlash?.("error", "Phone is required.");
+      return;
+    }
+
+    if (requiresEmail && !trimmedEmail) {
+      showFlash?.("error", "Email is required.");
+      return;
+    }
+
+    if (trimmedEmail && !isValidEmail(trimmedEmail)) {
+      showFlash?.("error", "Please enter a valid email address.");
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      const payload = {
+        facebook_access_token: facebookSetup?.facebookAccessToken,
+        phone: trimmedPhone,
+        is_provider: isProvider,
+      };
+
+      if (trimmedEmail) {
+        payload.email = trimmedEmail.toLowerCase();
+      }
+
+      const res = await axios.post(`${API}/auth/facebook/complete`, payload);
+      await persistFacebookSession({
+        responseData: res.data,
+        setToken,
+        setIsAdmin,
+      });
+      showFlash?.("success", "Logged in successfully");
+    } catch (error) {
+      const errorCode = normalizeErrorCode(error?.response?.data);
+      showFlash?.("error", getFacebookCompleteErrorMessage(errorCode));
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <KeyboardAvoidingView
+      style={styles.avoider}
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
+      keyboardVerticalOffset={Platform.OS === "ios" ? 40 : 0}
+    >
+      <ScrollView
+        contentContainerStyle={styles.scrollContent}
+        keyboardShouldPersistTaps="handled"
+      >
+        <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+          <View style={styles.container}>
+            <Text style={styles.title}>Finish setup</Text>
+
+            <TextInput
+              style={styles.input}
+              placeholder="Phone"
+              placeholderTextColor={styles.inputPlaceholder.color}
+              value={phone}
+              onChangeText={setPhone}
+              keyboardType="phone-pad"
+            />
+
+            {requiresEmail && (
+              <TextInput
+                style={styles.input}
+                placeholder="Email"
+                placeholderTextColor={styles.inputPlaceholder.color}
+                value={email}
+                onChangeText={setEmail}
+                keyboardType="email-address"
+                autoCapitalize="none"
+              />
+            )}
+
+            <Pressable
+              style={({ pressed }) => [
+                styles.toggleCard,
+                pressed && styles.toggleCardPressed,
+              ]}
+              onPress={() => setIsProvider((prev) => !prev)}
+              accessibilityRole="switch"
+              accessibilityState={{ checked: isProvider }}
+            >
+              <View style={styles.toggleTextGroup}>
+                <Text style={styles.toggleLabel}>I’m a provider</Text>
+              </View>
+              <Switch value={isProvider} onValueChange={setIsProvider} />
+            </Pressable>
+
+            <View style={{ width: "100%", marginBottom: 10 }}>
+              {submitting ? (
+                <ActivityIndicator size="large" color={colors.primary} />
+              ) : (
+                <Button
+                  title="Continue"
+                  onPress={submitFinishSetup}
+                  color={colors.primary}
+                />
+              )}
+            </View>
+
+            <View style={{ width: "100%" }}>
+              <Button title="Back" onPress={goBackToLogin} color={colors.textMuted} />
+            </View>
           </View>
         </TouchableWithoutFeedback>
       </ScrollView>
@@ -7645,8 +7912,9 @@ function App() {
 
   const [token, setToken] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
-  const [authMode, setAuthMode] = useState("landing"); // 'landing' | 'login' | 'signup' | 'forgot'
+  const [authMode, setAuthMode] = useState("landing"); // 'landing' | 'login' | 'signup' | 'forgot' | 'finishSetup'
   const [isAdmin, setIsAdmin] = useState(false);
+  const [facebookSetup, setFacebookSetup] = useState(null);
   const [pendingDeepLinkUsername, setPendingDeepLinkUsername] = useState(null);
   const [navReady, setNavReady] = useState(false);
   const navReadyRef = useRef(false);
@@ -8012,6 +8280,10 @@ function App() {
               <LoginScreen
                 setToken={setToken}
                 setIsAdmin={setIsAdmin}
+                onFacebookSetupRequired={(payload) => {
+                  setFacebookSetup(payload);
+                  setAuthMode("finishSetup");
+                }}
                 goToSignup={() => setAuthMode("signup")}
                 goToForgot={() => setAuthMode("forgot")}
                 goBack={() => setAuthMode("landing")}
@@ -8030,6 +8302,19 @@ function App() {
               <ForgotPasswordScreen
                 goToLogin={() => setAuthMode("login")}
                 goBack={() => setAuthMode("landing")}
+                showFlash={showFlash}
+              />
+            )}
+
+            {authMode === "finishSetup" && (
+              <FinishSetupScreen
+                facebookSetup={facebookSetup}
+                setToken={setToken}
+                setIsAdmin={setIsAdmin}
+                goBackToLogin={() => {
+                  setFacebookSetup(null);
+                  setAuthMode("login");
+                }}
                 showFlash={showFlash}
               />
             )}
@@ -9714,8 +9999,19 @@ authSecondaryButton: {
   elevation: 3,
 },
 
-authSecondaryButtonText: {
+  authSecondaryButtonText: {
   color: colors.primary,
+  fontSize: 16,
+  fontWeight: "600",
+},
+facebookButton: {
+  backgroundColor: "#1877F2",
+  paddingVertical: 12,
+  borderRadius: 8,
+  alignItems: "center",
+},
+facebookButtonText: {
+  color: "#ffffff",
   fontSize: 16,
   fontWeight: "600",
 },

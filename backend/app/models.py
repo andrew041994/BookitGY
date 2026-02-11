@@ -75,6 +75,21 @@ class RefreshToken(Base):
     )
 
 
+class OAuthIdentity(Base):
+    __tablename__ = "oauth_identities"
+    __table_args__ = (
+        UniqueConstraint("provider", "provider_user_id", name="uq_oauth_provider_user"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), index=True, nullable=False)
+    provider = Column(String, index=True, nullable=False)
+    provider_user_id = Column(String, index=True, nullable=False)
+    email = Column(String, nullable=True)
+    created_at = Column(DateTime, default=now_guyana, nullable=False)
+    updated_at = Column(DateTime, default=now_guyana, onupdate=now_guyana, nullable=False)
+
+
 class Provider(Base):
     __tablename__ = "providers"
     id = Column(Integer, primary_key=True, index=True)

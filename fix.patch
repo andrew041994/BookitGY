@@ -1,111 +1,112 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
-diff --git a/mobile/src/components/tokenStorage.js b/mobile/src/components/tokenStorage.js
-index 69f03f51c7b7f50946bacc333287a9e5dbbb9303..14d0435307c3e919d47966b199163f8f29536caf 100644
---- a/mobile/src/components/tokenStorage.js
-+++ b/mobile/src/components/tokenStorage.js
-@@ -1,70 +1,102 @@
- import AsyncStorage from "@react-native-async-storage/async-storage";
- import * as SecureStore from "expo-secure-store";
- import * as Sentry from "sentry-expo";
+diff --git a/mobile/app.config.js b/mobile/app.config.js
+index b282ae704181cb1daa9899ddc797faf56afbf9e2..ffb2204b62c870ca21ff5e52b1e96ff8cefa483b 100644
+--- a/mobile/app.config.js
++++ b/mobile/app.config.js
+@@ -1,87 +1,102 @@
+ import "dotenv/config";
  
- const TOKEN_KEY = "accessToken";
-+const REFRESH_TOKEN_KEY = "refreshToken";
+ console.log(">>> USING app.config.js <<<");
  
- const reportStorageError = (stage, err) => {
-   const message = err?.message || err;
-   console.log(`[tokenStorage] ${stage}`, message);
+ export default {
+   name: "BookitGY",
+   slug: "bookitgy",
+   scheme: "bookitgy",
+   version: "1.0.0",
+   orientation: "portrait",
+   icon: "./assets/icon.png",
+   userInterfaceStyle: "light",
+   splash: {
+     image: "./assets/splash.png",
+     resizeMode: "contain",
+     backgroundColor: "#16a34a",
+   },
+   assetBundlePatterns: ["**/*"],
+   newArchEnabled: false,
+-  // plugins: ["sentry-expo"],
++  plugins: [
++    [
++      "react-native-fbsdk-next",
++      {
++        appID: (process.env.FACEBOOK_APP_ID || "").trim(),
++        clientToken: (process.env.FACEBOOK_CLIENT_TOKEN || "").trim(),
++        displayName: "BookitGY",
++        scheme: `fb${(process.env.FACEBOOK_APP_ID || "").trim()}`,
++        isAutoInitEnabled: true,
++      },
++    ],
++  ],
  
-   try {
-     Sentry.Native.captureException(err, {
-       extra: {
-         scope: "tokenStorage",
-         stage,
+   ios: {
+     deploymentTarget: "16.0",
+     supportsTablet: true,
+     bundleIdentifier: "com.bookitgy.app",
+     buildNumber: "1",
+     associatedDomains: ["applinks:bookitgy.com", "applinks:www.bookitgy.com"],
+     privacyManifest: {
+       NSPrivacyAccessedAPITypes: [],
+       NSPrivacyCollectedDataTypes: [],
+       NSPrivacyTracking: false,
+     },
+     infoPlist: {
+       NSLocationWhenInUseUsageDescription:
+         "BookitGY uses your location to show nearby service providers and enable navigation.",
+       NSLocationAlwaysAndWhenInUseUsageDescription:
+         "Location access allows providers to share their business location with customers.",
+       ITSAppUsesNonExemptEncryption: false,
+     },
+     config: {
+       googleMapsApiKey: (process.env.IOS_GOOGLE_MAPS_API_KEY || "").trim(),
++      facebookAppId: (process.env.FACEBOOK_APP_ID || "").trim(),
++      facebookClientToken: (process.env.FACEBOOK_CLIENT_TOKEN || "").trim(),
+ 
+     },
+   },
+ 
+   android: {
+     package: "com.bookitgy.app",
+     versionCode: 1,
+     permissions: ["ACCESS_FINE_LOCATION", "ACCESS_COARSE_LOCATION"],
+     intentFilters: [
+       {
+         action: "VIEW",
+         autoVerify: true,
+         data: [
+           { scheme: "https", host: "bookitgy.com", pathPrefix: "/u" },
+           { scheme: "https", host: "www.bookitgy.com", pathPrefix: "/u" },
+         ],
+         category: ["BROWSABLE", "DEFAULT"],
        },
-     });
-   } catch (captureErr) {
-     console.log(
-       "[tokenStorage] Unable to send error to Sentry",
-       captureErr?.message || captureErr
-     );
-   }
+     ],
+     adaptiveIcon: {
+       foregroundImage: "./assets/adaptive-icon.png",
+       backgroundColor: "#16a34a",
+     },
+     config: {
+       googleMaps: {
+         apiKey: (process.env.ANDROID_GOOGLE_MAPS_API_KEY || "").trim(),
+ 
+       },
++      facebookAppId: (process.env.FACEBOOK_APP_ID || "").trim(),
++      facebookClientToken: (process.env.FACEBOOK_CLIENT_TOKEN || "").trim(),
+     },
+   },
+ 
+   web: { favicon: "./assets/favicon.png" },
+ 
+   extra: {
+     eas: {
+       projectId: "ba67429b-0180-4382-bb17-633982e5a5f8",
+       API_URL: process.env.API_URL || "https://bookitgy.onrender.com",
+     },
+     SENTRY_DSN: process.env.SENTRY_DSN || "",
+   },
  };
  
- export async function saveToken(token) {
-   try {
-     await SecureStore.setItemAsync(TOKEN_KEY, token);
-     return;
-   } catch (err) {
-     reportStorageError("SecureStore.setItemAsync failed, falling back", err);
-   }
- 
-   try {
-     await AsyncStorage.setItem(TOKEN_KEY, token);
-   } catch (err) {
-     console.log("[tokenStorage] AsyncStorage.setItem failed", err?.message || err);
-   }
- }
- 
-+export async function saveRefreshToken(token) {
-+  if (!token) return;
-+  try {
-+    await SecureStore.setItemAsync(REFRESH_TOKEN_KEY, token);
-+  } catch (err) {
-+    reportStorageError("SecureStore.setItemAsync refresh failed", err);
-+  }
-+}
-+
- export async function loadToken() {
-   try {
-     const secureToken = await SecureStore.getItemAsync(TOKEN_KEY);
-     if (secureToken) return secureToken;
-   } catch (err) {
-     reportStorageError("SecureStore.getItemAsync failed, trying AsyncStorage", err);
-   }
- 
-   try {
-     return await AsyncStorage.getItem(TOKEN_KEY);
-   } catch (err) {
-     reportStorageError("AsyncStorage.getItem failed", err);
-     return null;
-   }
- }
- 
-+export async function loadRefreshToken() {
-+  try {
-+    return await SecureStore.getItemAsync(REFRESH_TOKEN_KEY);
-+  } catch (err) {
-+    reportStorageError("SecureStore.getItemAsync refresh failed", err);
-+    return null;
-+  }
-+}
-+
- export async function clearToken() {
-   try {
-     await SecureStore.deleteItemAsync(TOKEN_KEY);
-     return;
-   } catch (err) {
-     reportStorageError("SecureStore.deleteItemAsync failed, falling back", err);
-   }
- 
-   try {
-     await AsyncStorage.removeItem(TOKEN_KEY);
-   } catch (err) {
-     reportStorageError("AsyncStorage.removeItem failed", err);
-   }
- }
-+
-+export async function clearRefreshToken() {
-+  try {
-+    await SecureStore.deleteItemAsync(REFRESH_TOKEN_KEY);
-+  } catch (err) {
-+    reportStorageError("SecureStore.deleteItemAsync refresh failed", err);
-+  }
-+}
-+
-+export async function clearAllAuthTokens() {
-+  await clearToken();
-+  await clearRefreshToken();
-+}
+ // iOS requires apple-app-site-association hosted at:
+ // https://bookitgy.com/.well-known/apple-app-site-association
+ // Android requires assetlinks.json hosted at:
+ // https://bookitgy.com/.well-known/assetlinks.json
  
 EOF
 )

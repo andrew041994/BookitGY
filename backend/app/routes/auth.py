@@ -8,6 +8,7 @@ from jose import JWTError, jwt
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
 import secrets
+import requests
 
 from app.config import get_settings
 from app.database import get_db
@@ -50,6 +51,85 @@ def _session_expired_error() -> HTTPException:
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail={"detail": "session_expired", "code": "SESSION_EXPIRED"},
     )
+
+
+
+
+def _facebook_error(status_code: int, code: str) -> HTTPException:
+    return HTTPException(status_code=status_code, detail={"detail": code, "code": code})
+
+
+def _facebook_graph_version() -> str:
+    return settings.FACEBOOK_GRAPH_VERSION
+
+
+def _verify_facebook_access_token(user_token: str) -> dict:
+    app_id = settings.FACEBOOK_APP_ID
+    app_secret = settings.FACEBOOK_APP_SECRET
+    if not app_id or not app_secret:
+        raise _facebook_error(status.HTTP_401_UNAUTHORIZED, "FB_TOKEN_INVALID")
+
+    version = _facebook_graph_version()
+    try:
+        debug_resp = requests.get(
+            f"https://graph.facebook.com/{version}/debug_token",
+            params={
+                "input_token": user_token,
+                "access_token": f"{app_id}|{app_secret}",
+            },
+            timeout=10,
+        )
+        debug_data = debug_resp.json().get("data", {}) if debug_resp.ok else {}
+    except Exception:
+        raise _facebook_error(status.HTTP_401_UNAUTHORIZED, "FB_TOKEN_INVALID")
+
+    if (
+        not debug_data.get("is_valid")
+        or str(debug_data.get("app_id") or "") != str(app_id)
+        or not debug_data.get("user_id")
+    ):
+        raise _facebook_error(status.HTTP_401_UNAUTHORIZED, "FB_TOKEN_INVALID")
+
+    try:
+        profile_resp = requests.get(
+            f"https://graph.facebook.com/{version}/me",
+            params={
+                "fields": "id,name,email",
+                "access_token": user_token,
+            },
+            timeout=10,
+        )
+        profile = profile_resp.json() if profile_resp.ok else {}
+    except Exception:
+        raise _facebook_error(status.HTTP_401_UNAUTHORIZED, "FB_TOKEN_INVALID")
+
+    fb_user_id = profile.get("id") or debug_data.get("user_id")
+    if not fb_user_id:
+        raise _facebook_error(status.HTTP_401_UNAUTHORIZED, "FB_TOKEN_INVALID")
+
+    return {
+        "id": str(fb_user_id),
+        "name": (profile.get("name") or "").strip(),
+        "email": (profile.get("email") or "").strip().lower() or None,
+    }
+
+
+def _facebook_auth_response(db: Session, user: models.User) -> dict:
+    access_token = _create_access_token(user.email, user.token_version, user.id)
+    refresh_token, _ = _create_refresh_token(db, user.id)
+    return {
+        "access_token": access_token,
+        "refresh_token": refresh_token,
+        "token_type": "bearer",
+        "user": {
+            "id": user.id,
+            "email": user.email,
+            "username": user.username,
+            "phone": user.phone,
+            "is_provider": user.is_provider,
+            "is_admin": getattr(user, "is_admin", False),
+        },
+    }
 
 
 @router.post("/auth/signup")
@@ -269,6 +349,81 @@ def login_by_email(
         "is_provider": user.is_provider,
         "is_admin": getattr(user, "is_admin", False),
     }
+
+
+
+
+@router.post("/auth/facebook/complete")
+def facebook_complete(
+    payload: schemas.FacebookCompleteRequest,
+    db: Session = Depends(get_db),
+):
+    phone = crud.normalize_phone(payload.phone)
+    if not phone:
+        raise _facebook_error(status.HTTP_400_BAD_REQUEST, "PHONE_REQUIRED")
+
+    fb_profile = _verify_facebook_access_token(payload.facebook_access_token)
+    fb_email = fb_profile.get("email")
+    request_email = (payload.email or "").strip().lower() or None
+    final_email = fb_email or request_email
+
+    if not final_email:
+        raise _facebook_error(status.HTTP_400_BAD_REQUEST, "EMAIL_REQUIRED")
+
+    phone_owner = crud.get_user_by_phone(db, phone)
+    fb_identity = crud.get_oauth_identity(db, "facebook", fb_profile["id"])
+    if fb_identity:
+        user = crud.get_user_by_id(db, fb_identity.user_id)
+        if not user:
+            raise _facebook_error(status.HTTP_401_UNAUTHORIZED, "FB_TOKEN_INVALID")
+        return _facebook_auth_response(db, user)
+
+    if phone_owner:
+        raise _facebook_error(status.HTTP_400_BAD_REQUEST, "PHONE_TAKEN")
+
+    user = None
+    if fb_email:
+        user = crud.get_user_by_email(db, fb_email)
+
+    if user:
+        crud.create_oauth_identity(
+            db,
+            user_id=user.id,
+            provider="facebook",
+            provider_user_id=fb_profile["id"],
+            email=fb_email,
+        )
+        return _facebook_auth_response(db, user)
+
+    username_seed = fb_profile.get("name") or final_email.split("@")[0] or "facebook_user"
+    unique_username = crud.generate_unique_username(db, username_seed)
+
+    try:
+        user = crud.create_user_for_oauth(
+            db,
+            email=final_email,
+            phone=phone,
+            username=unique_username,
+            is_provider=payload.is_provider,
+        )
+    except IntegrityError as exc:
+        detail = str(getattr(exc, "orig", exc))
+        if "users_phone" in detail or "phone" in detail:
+            raise _facebook_error(status.HTTP_400_BAD_REQUEST, "PHONE_TAKEN")
+        raise
+
+    if payload.is_provider:
+        crud.get_or_create_provider_for_user(db, user.id)
+
+    crud.create_oauth_identity(
+        db,
+        user_id=user.id,
+        provider="facebook",
+        provider_user_id=fb_profile["id"],
+        email=fb_email or request_email,
+    )
+
+    return _facebook_auth_response(db, user)
 
 
 @router.post("/auth/refresh")

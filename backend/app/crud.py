@@ -622,6 +622,94 @@ def _apply_not_deleted_filter(query):
     )
 
 
+
+
+def normalize_phone(phone: Optional[str]) -> str:
+    normalized = (phone or "").strip()
+    if not normalized:
+        return ""
+    return "".join(ch for ch in normalized if not ch.isspace())
+
+
+def get_user_by_phone(db: Session, phone: str, *, include_deleted: bool = False):
+    normalized = normalize_phone(phone)
+    if not normalized:
+        return None
+    query = db.query(models.User).filter(models.User.phone == normalized)
+    if not include_deleted:
+        query = _apply_not_deleted_filter(query)
+    return query.first()
+
+
+def get_oauth_identity(db: Session, provider: str, provider_user_id: str):
+    return (
+        db.query(models.OAuthIdentity)
+        .filter(
+            models.OAuthIdentity.provider == provider,
+            models.OAuthIdentity.provider_user_id == provider_user_id,
+        )
+        .first()
+    )
+
+
+def create_oauth_identity(
+    db: Session,
+    *,
+    user_id: int,
+    provider: str,
+    provider_user_id: str,
+    email: Optional[str] = None,
+) -> models.OAuthIdentity:
+    record = models.OAuthIdentity(
+        user_id=user_id,
+        provider=provider,
+        provider_user_id=provider_user_id,
+        email=(email.strip().lower() if email else None),
+    )
+    db.add(record)
+    db.commit()
+    db.refresh(record)
+    return record
+
+
+def create_user_for_oauth(
+    db: Session,
+    *,
+    email: str,
+    phone: str,
+    username: str,
+    is_provider: bool,
+) -> models.User:
+    normalized_email = (email or "").strip().lower()
+    normalized_phone = normalize_phone(phone)
+    normalized_username = normalize_username(username)
+
+    user = models.User(
+        email=normalized_email,
+        phone=normalized_phone,
+        username=normalized_username,
+        is_provider=is_provider,
+        is_email_verified=False,
+        hashed_password=hash_password(os.urandom(16).hex()),
+    )
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    return user
+
+
+def generate_unique_username(db: Session, seed: str) -> str:
+    base = normalize_username(seed)
+    if not base:
+        base = "facebook_user"
+    candidate = base
+    counter = 1
+    while get_user_by_username(db, candidate):
+        counter += 1
+        candidate = f"{base}{counter}"
+    return candidate
+
+
 def get_user_by_email(db: Session, email: str, *, include_deleted: bool = False):
     """Return user by email, or None if not found."""
     if not email:

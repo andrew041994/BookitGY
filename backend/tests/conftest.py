@@ -18,6 +18,7 @@ def _reload_app_modules():
         "app.models",
         "app.crud",
         "app.main",
+        "app.routes.auth",
         "app.routes.providers",
         "app.routes.bookings",
         "app.workers.cron",

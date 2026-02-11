@@ -152,6 +152,14 @@ class Settings:
             email_token_secret = self.JWT_SECRET_KEY
         self.EMAIL_TOKEN_SECRET: str = email_token_secret
 
+
+        # -----------------------------
+        # Facebook OAuth
+        # -----------------------------
+        self.FACEBOOK_APP_ID: str = os.getenv("FACEBOOK_APP_ID", "")
+        self.FACEBOOK_APP_SECRET: str = os.getenv("FACEBOOK_APP_SECRET", "")
+        self.FACEBOOK_GRAPH_VERSION: str = os.getenv("FACEBOOK_GRAPH_VERSION", "v19.0")
+
         # -----------------------------
         # SendGrid email
         # -----------------------------

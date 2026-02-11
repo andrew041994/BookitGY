@@ -56,6 +56,27 @@ class ProviderUpdate(BaseModel):
 
 
 
+
+
+class FacebookCompleteRequest(BaseModel):
+    facebook_access_token: str
+    phone: Optional[str] = None
+    is_provider: bool = False
+    email: Optional[EmailStr] = None
+
+
+class FacebookProfileUser(BaseModel):
+    id: int
+    email: Optional[EmailStr] = None
+    username: str
+    phone: Optional[str] = None
+    is_provider: bool
+    is_admin: bool
+
+    class Config:
+        from_attributes = True
+
+
 class LoginByEmailPayload(BaseModel):
     email: str
     password: str
