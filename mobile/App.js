@@ -7025,6 +7025,13 @@ function WeeklyStrip({
 
 
 function ProviderCalendarScreen({ token, showFlash }) {
+  // Manual checklist:
+  // - confirmed booking shows Cancel
+  // - cancelled/completed booking hides Cancel
+  // - tapping Cancel prompts confirm
+  // - confirm triggers request
+  // - success refreshes and shows toast
+  // - failure shows toast
   // Keep the calendar in fixed-height view wrappers so it cannot expand into the appointments header/list area.
   const WEEKLY_FIRST_DAY = 1;
   const PROVIDER_CALENDAR_DEBUG = false;
@@ -7101,6 +7108,7 @@ function ProviderCalendarScreen({ token, showFlash }) {
   });
   const [weekPagerWidth, setWeekPagerWidth] = useState(0);
   const [bookingsByDate, setBookingsByDate] = useState({});
+  const [cancellingByBookingId, setCancellingByBookingId] = useState({});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [refreshing, setRefreshing] = useState(false);
@@ -7193,6 +7201,25 @@ function ProviderCalendarScreen({ token, showFlash }) {
     return { type: "scheduled", label: "Scheduled" };
   }, [isBookingCompleted]);
 
+  const getBookingId = useCallback(
+    (booking) => String(booking?.id || booking?.booking_id || ""),
+    []
+  );
+
+  const isBookingCancellable = useCallback(
+    (booking) => {
+      const status = getBookingStatusLabel(booking);
+      if (status.type === "cancelled" || status.type === "completed") return false;
+
+      const normalizedStatus = String(booking?.status || booking?.state || "")
+        .trim()
+        .toLowerCase();
+
+      return normalizedStatus === "confirmed";
+    },
+    [getBookingStatusLabel]
+  );
+
   const loadBookingsForRange = useCallback(async (useRefresh = false) => {
     try {
       if (useRefresh) setRefreshing(true);
@@ -7241,6 +7268,71 @@ function ProviderCalendarScreen({ token, showFlash }) {
   }, [dateRange.end, dateRange.start, formatDayKey, showFlash, token]);
 
   const handleRefresh = useCallback(() => loadBookingsForRange(true), [loadBookingsForRange]);
+
+  const handleCancelAppointment = useCallback(
+    (booking) => {
+      const bookingId = getBookingId(booking);
+      if (!bookingId || cancellingByBookingId[bookingId]) return;
+
+      Alert.alert(
+        "Cancel appointment?",
+        "This will notify the customer.",
+        [
+          { text: "Keep", style: "cancel" },
+          {
+            text: "Cancel appointment",
+            style: "destructive",
+            onPress: async () => {
+              if (cancellingByBookingId[bookingId]) return;
+
+              setCancellingByBookingId((prev) => ({ ...prev, [bookingId]: true }));
+              try {
+                const authToken = await getAuthToken(token);
+                if (!authToken) {
+                  if (showFlash) showFlash("error", "No access token found. Please log in again.");
+                  return;
+                }
+
+                await axios.post(
+                  `${API}/providers/me/bookings/${bookingId}/cancel`,
+                  {},
+                  {
+                    headers: {
+                      Authorization: `Bearer ${authToken}`,
+                    },
+                  }
+                );
+
+                setBookingsByDate((prev) => {
+                  const next = { ...prev };
+                  Object.keys(next).forEach((dayKey) => {
+                    next[dayKey] = (next[dayKey] || []).map((item) =>
+                      getBookingId(item) === bookingId
+                        ? { ...item, status: "cancelled", canceled_at: new Date().toISOString(), canceled_by_role: "provider" }
+                        : item
+                    );
+                  });
+                  return next;
+                });
+
+                if (showFlash) showFlash("success", "Appointment cancelled");
+                await loadBookingsForRange();
+              } catch (err) {
+                const message =
+                  err?.response?.data?.detail ||
+                  err?.response?.data?.message ||
+                  "Could not cancel appointment. Please try again.";
+                if (showFlash) showFlash("error", message);
+              } finally {
+                setCancellingByBookingId((prev) => ({ ...prev, [bookingId]: false }));
+              }
+            },
+          },
+        ]
+      );
+    },
+    [cancellingByBookingId, getBookingId, loadBookingsForRange, showFlash, token]
+  );
 
   useEffect(() => {
     loadBookingsForRange();
@@ -7400,15 +7492,14 @@ function ProviderCalendarScreen({ token, showFlash }) {
         <FlatList
           data={appointmentListData}
           keyExtractor={(booking) =>
-            String(
-              booking?.id ||
-                booking?.booking_id ||
-                `${booking?.start_time || booking?.start}-${booking?.service_name || "service"}`
-            )
+            getBookingId(booking) || `${booking?.start_time || booking?.start}-${booking?.service_name || "service"}`
           }
           renderItem={({ item: booking }) => {
+            const bookingId = getBookingId(booking);
             const status = getBookingStatusLabel(booking);
             const completed = status.type === "completed";
+            const isCancelling = !!(bookingId && cancellingByBookingId[bookingId]);
+            const canCancel = isBookingCancellable(booking);
             const startIso = booking?.start_time || booking?.start;
             const startLabel = startIso
               ? new Date(startIso).toLocaleTimeString([], {
@@ -7443,23 +7534,44 @@ function ProviderCalendarScreen({ token, showFlash }) {
                     {booking?.customer_name || "Customer"}
                   </Text>
                 </View>
-                <View
-                  style={[
-                    styles.providerCalendarStatusBadge,
-                    status.type === "cancelled" && styles.providerCalendarStatusBadgeCancelled,
-                    status.type === "completed" && styles.providerCalendarStatusBadgeCompleted,
-                  ]}
-                >
-                  <Text
+                <View style={styles.providerCalendarRightActions}>
+                  <View
                     style={[
-                      styles.providerCalendarStatusText,
-                      status.type === "cancelled" && styles.providerCalendarStatusTextCancelled,
-                      status.type === "completed" && styles.providerCalendarStatusTextCompleted,
+                      styles.providerCalendarStatusBadge,
+                      status.type === "cancelled" && styles.providerCalendarStatusBadgeCancelled,
+                      status.type === "completed" && styles.providerCalendarStatusBadgeCompleted,
                     ]}
-                    numberOfLines={1}
                   >
-                    {status.label}
-                  </Text>
+                    <Text
+                      style={[
+                        styles.providerCalendarStatusText,
+                        status.type === "cancelled" && styles.providerCalendarStatusTextCancelled,
+                        status.type === "completed" && styles.providerCalendarStatusTextCompleted,
+                      ]}
+                      numberOfLines={1}
+                    >
+                      {status.label}
+                    </Text>
+                  </View>
+                  {canCancel ? (
+                    <TouchableOpacity
+                      style={[
+                        styles.providerCalendarCancelButton,
+                        isCancelling && styles.providerCalendarCancelButtonDisabled,
+                      ]}
+                      onPress={() => handleCancelAppointment(booking)}
+                      disabled={isCancelling}
+                    >
+                      {isCancelling ? (
+                        <View style={styles.providerCalendarCancelButtonLoadingRow}>
+                          <ActivityIndicator size="small" color={colors.error} />
+                          <Text style={styles.providerCalendarCancelButtonText}>Cancelling…</Text>
+                        </View>
+                      ) : (
+                        <Text style={styles.providerCalendarCancelButtonText}>Cancel</Text>
+                      )}
+                    </TouchableOpacity>
+                  ) : null}
                 </View>
               </View>
             );
@@ -10458,6 +10570,31 @@ signupTextButtonText: {
   },
   providerCalendarStatusTextCompleted: {
     color: colors.success,
+  },
+  providerCalendarRightActions: {
+    alignItems: "flex-end",
+  },
+  providerCalendarCancelButton: {
+    marginTop: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: colors.error,
+    backgroundColor: "rgba(255,107,107,0.10)",
+  },
+  providerCalendarCancelButtonDisabled: {
+    opacity: 0.7,
+  },
+  providerCalendarCancelButtonLoadingRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  providerCalendarCancelButtonText: {
+    color: colors.error,
+    fontSize: 11,
+    fontWeight: "700",
   },
 
 })
