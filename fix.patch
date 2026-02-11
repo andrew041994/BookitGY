@@ -1,112 +1,138 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
-diff --git a/mobile/app.config.js b/mobile/app.config.js
-index b282ae704181cb1daa9899ddc797faf56afbf9e2..ffb2204b62c870ca21ff5e52b1e96ff8cefa483b 100644
---- a/mobile/app.config.js
-+++ b/mobile/app.config.js
-@@ -1,87 +1,102 @@
- import "dotenv/config";
+diff --git a/mobile/App.js b/mobile/App.js
+index 9fb75439b9ee627533b47cf3d38d4bf8d6f2b0bc..e1f70cf4dff315b27dca2891f8ead15356675d86 100644
+--- a/mobile/App.js
++++ b/mobile/App.js
+@@ -568,50 +568,52 @@ function LandingScreen({ goToLogin, goToSignup }) {
+         >
+           Find and book services in {"\n"}Guyana
+         </Text>
+         
  
- console.log(">>> USING app.config.js <<<");
+           <View style={{ marginTop: 30, width: "100%" }}>
+             <TouchableOpacity
+               style={styles.authPrimaryButton}
+               onPress={goToLogin}
+             >
+               <Text style={styles.authPrimaryButtonText}>LOGIN</Text>
+             </TouchableOpacity>
  
- export default {
-   name: "BookitGY",
-   slug: "bookitgy",
-   scheme: "bookitgy",
-   version: "1.0.0",
-   orientation: "portrait",
-   icon: "./assets/icon.png",
-   userInterfaceStyle: "light",
-   splash: {
-     image: "./assets/splash.png",
-     resizeMode: "contain",
-     backgroundColor: "#16a34a",
-   },
-   assetBundlePatterns: ["**/*"],
-   newArchEnabled: false,
--  // plugins: ["sentry-expo"],
-+  plugins: [
-+    [
-+      "react-native-fbsdk-next",
-+      {
-+        appID: (process.env.FACEBOOK_APP_ID || "").trim(),
-+        clientToken: (process.env.FACEBOOK_CLIENT_TOKEN || "").trim(),
-+        displayName: "BookitGY",
-+        scheme: `fb${(process.env.FACEBOOK_APP_ID || "").trim()}`,
-+        isAutoInitEnabled: true,
-+      },
-+    ],
-+  ],
+             <TouchableOpacity
+               style={styles.authSecondaryButton}
+               onPress={goToSignup}
+             >
+               <Text style={styles.authSecondaryButtonText}>SIGN UP</Text>
+             </TouchableOpacity>
+           </View>
+         </View>
+       );
+     }
  
-   ios: {
-     deploymentTarget: "16.0",
-     supportsTablet: true,
-     bundleIdentifier: "com.bookitgy.app",
-     buildNumber: "1",
-     associatedDomains: ["applinks:bookitgy.com", "applinks:www.bookitgy.com"],
-     privacyManifest: {
-       NSPrivacyAccessedAPITypes: [],
-       NSPrivacyCollectedDataTypes: [],
-       NSPrivacyTracking: false,
-     },
-     infoPlist: {
-       NSLocationWhenInUseUsageDescription:
-         "BookitGY uses your location to show nearby service providers and enable navigation.",
-       NSLocationAlwaysAndWhenInUseUsageDescription:
-         "Location access allows providers to share their business location with customers.",
-       ITSAppUsesNonExemptEncryption: false,
-     },
-     config: {
-       googleMapsApiKey: (process.env.IOS_GOOGLE_MAPS_API_KEY || "").trim(),
-+      facebookAppId: (process.env.FACEBOOK_APP_ID || "").trim(),
-+      facebookClientToken: (process.env.FACEBOOK_CLIENT_TOKEN || "").trim(),
+ // 🔹 Dedicated login screen component
++const ENABLE_FACEBOOK_AUTH = process.env.EXPO_PUBLIC_ENABLE_FACEBOOK_AUTH === "true";
++
+ function LoginScreen({
+   setToken,
+   setIsAdmin,
+   onFacebookSetupRequired,
+   goToSignup,
+   goToForgot,
+   goBack,
+   showFlash,
+ }) {
+   const [email, setEmail] = useState("");
+   const [password, setPassword] = useState("");
+   const [loading, setLoading] = useState(false);
+   const [facebookLoading, setFacebookLoading] = useState(false);
  
-     },
-   },
  
-   android: {
-     package: "com.bookitgy.app",
-     versionCode: 1,
-     permissions: ["ACCESS_FINE_LOCATION", "ACCESS_COARSE_LOCATION"],
-     intentFilters: [
-       {
-         action: "VIEW",
-         autoVerify: true,
-         data: [
-           { scheme: "https", host: "bookitgy.com", pathPrefix: "/u" },
-           { scheme: "https", host: "www.bookitgy.com", pathPrefix: "/u" },
-         ],
-         category: ["BROWSABLE", "DEFAULT"],
-       },
-     ],
-     adaptiveIcon: {
-       foregroundImage: "./assets/adaptive-icon.png",
-       backgroundColor: "#16a34a",
-     },
-     config: {
-       googleMaps: {
-         apiKey: (process.env.ANDROID_GOOGLE_MAPS_API_KEY || "").trim(),
+   const login = async () => {
+     const trimmedEmail = email.trim();
+     const normalizedEmail = trimmedEmail.toLowerCase();
  
-       },
-+      facebookAppId: (process.env.FACEBOOK_APP_ID || "").trim(),
-+      facebookClientToken: (process.env.FACEBOOK_CLIENT_TOKEN || "").trim(),
-     },
-   },
+     if (!trimmedEmail || !isValidEmail(trimmedEmail)) {
+       if (showFlash) {
+         showFlash("error", "Please enter a valid email address");
+       } else {
+         Alert.alert("Error", "Please enter a valid email address");
+       }
+@@ -800,62 +802,64 @@ return (
+           value={password}
+           onChangeText={setPassword}
+           textContentType="password"
+           autoComplete="password"
+           importantForAutofill="yes"
+           secureTextEntry={true}
+           keyboardType="default"
+           autoCapitalize="none"
+           autoCorrect={false}
+           spellCheck={false}
+           underlineColorAndroid="transparent"
+           selectionColor={colors.primary}
+           cursorColor={colors.primary}
+         />
  
-   web: { favicon: "./assets/favicon.png" },
+           {goToSignup && (
+             <View style={{ width: "100%", marginBottom: 10 }}>
+                {loading ? (
+                 <ActivityIndicator size="large" color={colors.primary} />
+               ) : (
+                 <Button title="Login" onPress={login} color={colors.primary} />
+               )}
+             </View>
+           )}
  
-   extra: {
-     eas: {
-       projectId: "ba67429b-0180-4382-bb17-633982e5a5f8",
-       API_URL: process.env.API_URL || "https://bookitgy.onrender.com",
-     },
-     SENTRY_DSN: process.env.SENTRY_DSN || "",
-   },
- };
+-          <View style={{ width: "100%", marginBottom: 12 }}>
+-            {facebookLoading ? (
+-              <ActivityIndicator size="large" color={colors.primary} />
+-            ) : (
+-              <TouchableOpacity
+-                style={styles.facebookButton}
+-                onPress={loginWithFacebook}
+-              >
+-                <Text style={styles.facebookButtonText}>Continue with Facebook</Text>
+-              </TouchableOpacity>
+-            )}
+-          </View>
++          {ENABLE_FACEBOOK_AUTH && (
++            <View style={{ width: "100%", marginBottom: 12 }}>
++              {facebookLoading ? (
++                <ActivityIndicator size="large" color={colors.primary} />
++              ) : (
++                <TouchableOpacity
++                  style={styles.facebookButton}
++                  onPress={loginWithFacebook}
++                >
++                  <Text style={styles.facebookButtonText}>Continue with Facebook</Text>
++                </TouchableOpacity>
++              )}
++            </View>
++          )}
  
- // iOS requires apple-app-site-association hosted at:
- // https://bookitgy.com/.well-known/apple-app-site-association
- // Android requires assetlinks.json hosted at:
- // https://bookitgy.com/.well-known/assetlinks.json
+           {goToForgot && (
+             <TouchableOpacity onPress={goToForgot} style={styles.forgotLink}>
+               <Text
+                 style={styles.forgotLinkText}
+                 numberOfLines={1}
+                 adjustsFontSizeToFit
+                 minimumFontScale={0.85}
+               >
+                 Forgot password?
+               </Text>
+             </TouchableOpacity>
+           )}
+ 
+             {goToSignup && (
+               <View style={{ width: "100%", marginBottom: 10 }}>
+                 <Button
+                   title="Need an account? Sign Up"
+                   onPress={goToSignup}
+                   color={colors.primary}
+                 />
+               </View>
+             )}
+ 
+             {goBack && (
  
 EOF
 )

@@ -54,7 +54,7 @@ import {
   SafeAreaView,
   useSafeAreaInsets,
 } from "react-native-safe-area-context";
-import { AccessToken, LoginManager } from "react-native-fbsdk-next";
+// import { AccessToken, LoginManager } from "react-native-fbsdk-next";
 import BookitGYLogoTransparent from "./assets/bookitgy-logo-transparent.png"
 import { theme } from "./src/theme";
 // import * as Sentry from "sentry-expo";
@@ -590,6 +590,8 @@ function LandingScreen({ goToLogin, goToSignup }) {
     }
 
 // 🔹 Dedicated login screen component
+const ENABLE_FACEBOOK_AUTH = process.env.EXPO_PUBLIC_ENABLE_FACEBOOK_AUTH === "true";
+
 function LoginScreen({
   setToken,
   setIsAdmin,
@@ -822,18 +824,20 @@ return (
             </View>
           )}
 
-          <View style={{ width: "100%", marginBottom: 12 }}>
-            {facebookLoading ? (
-              <ActivityIndicator size="large" color={colors.primary} />
-            ) : (
-              <TouchableOpacity
-                style={styles.facebookButton}
-                onPress={loginWithFacebook}
-              >
-                <Text style={styles.facebookButtonText}>Continue with Facebook</Text>
-              </TouchableOpacity>
-            )}
-          </View>
+          {ENABLE_FACEBOOK_AUTH && (
+            <View style={{ width: "100%", marginBottom: 12 }}>
+              {facebookLoading ? (
+                <ActivityIndicator size="large" color={colors.primary} />
+              ) : (
+                <TouchableOpacity
+                  style={styles.facebookButton}
+                  onPress={loginWithFacebook}
+                >
+                  <Text style={styles.facebookButtonText}>Continue with Facebook</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          )}
 
           {goToForgot && (
             <TouchableOpacity onPress={goToForgot} style={styles.forgotLink}>
