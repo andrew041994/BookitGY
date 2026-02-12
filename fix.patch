@@ -1,178 +1,48 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
-diff --git a/mobile/App.js b/mobile/App.js
-index a4cda01d77936e66396f8303a2a550b7ee75caf5..4bb0acaeaa4743c2e247ed5e70e55ee684c265c5 100644
---- a/mobile/App.js
-+++ b/mobile/App.js
-@@ -195,50 +195,60 @@ const persistFacebookSession = async ({
- const isValidUsername = (value) => {
-   const trimmed = String(value || "").trim();
-   if (!trimmed) return false;
-   return /^[a-zA-Z0-9._-]+$/.test(trimmed);
- };
- 
- const normalizeSearchValue = (value) =>
-   String(value || "")
-     .replace(/[\u200B-\u200D\uFEFF]/g, "")
-     .trim()
-     .toLowerCase();
- 
- const resolveImageUrl = (url) => {
-     if (!url || typeof url !== "string") return null;
-     if (url.startsWith("http")) return url;
-     if (url.startsWith("//")) return `https:${url}`;
-     const normalizedPath = url.startsWith("/") ? url : `/${url}`;
-     return `${API}${normalizedPath}`;
-   };
- 
- const toNum = (value) => {
-   const n = typeof value === "string" ? parseFloat(value) : value;
-   return Number.isFinite(n) ? n : null;
- };
- 
-+function formatTimeRange(start, end) {
-+  if (!(start instanceof Date) || Number.isNaN(start.getTime())) return "--:--";
-+  const fmt = (d) =>
-+    d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }).replace(" ", "");
-+  if (end instanceof Date && !Number.isNaN(end.getTime())) {
-+    return `${fmt(start)} – ${fmt(end)}`;
-+  }
-+  return `${fmt(start)} – --:--`;
-+}
-+
- const getDistanceKm = (lat1, lon1, lat2, lon2) => {
-   if (lat1 == null || lon1 == null || lat2 == null || lon2 == null) {
-     return null;
-   }
-   const toRad = (value) => (value * Math.PI) / 180;
-   const R = 6371;
-   const dLat = toRad(lat2 - lat1);
-   const dLon = toRad(lon2 - lon1);
-   const a =
-     Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-     Math.cos(toRad(lat1)) *
-       Math.cos(toRad(lat2)) *
-       Math.sin(dLon / 2) *
-       Math.sin(dLon / 2);
-   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-   const distance = R * c;
-   return Number.isFinite(distance) ? distance : null;
- };
- 
- function dedupeById(list) {
-   const map = new Map();
-   for (const item of list || []) {
-     const k = item?.id != null ? String(item.id) : null;
-     if (!k) continue;
-     map.set(k, item);
-@@ -7731,78 +7741,97 @@ function ProviderCalendarScreen({ token, showFlash }) {
-   const dayGridEvents = useMemo(
-     () =>
-       timelineEvents
-         .map((event) => {
-           const startDate = new Date(event.start);
-           const endDate = new Date(event.end);
-           if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) return null;
-           return {
-             ...event,
-             startDate,
-             endDate,
-           };
-         })
-         .filter(Boolean),
-     [timelineEvents]
-   );
- 
-   const appointmentListData = viewMode === "day" ? [] : sortedSelectedBookings;
-   const showAppointmentsEmptyState = viewMode !== "day";
-   const getBookingCardKey = useCallback((booking) => {
-     if (booking?.id != null) return String(booking.id);
-     return `${booking?.booking_id || booking?.id || ""}-${booking?.start_time || booking?.start || ""}`;
-   }, []);
- 
-   const ProviderBookingCard = useCallback(
--    ({ booking, startDate, endDate: _endDate, compact = false, token: _token, showFlash: _showFlash }) => {
-+    ({ booking, startDate: propsStartDate, endDate: propsEndDate, compact = false, token: _token, showFlash: _showFlash }) => {
-       const bookingId = getBookingId(booking);
-       const status = getBookingStatusLabel(booking);
-       const statusThemeKey = getAppointmentStatusThemeKey(status?.type || status?.label);
-       const statusTheme = APPOINTMENT_STATUS_THEME[statusThemeKey];
-       const completed = status.type === "completed";
-       const isCancelling = !!(bookingId && cancellingByBookingId[bookingId]);
-       const canCancel = isBookingCancellable(booking);
--      const parsedStart = startDate instanceof Date
--        ? startDate
--        : (booking?.start_time ? new Date(booking.start_time) : (booking?.start ? new Date(booking.start) : null));
--      const startLabel = parsedStart && !Number.isNaN(parsedStart.getTime())
--        ? parsedStart.toLocaleTimeString([], {
--            hour: "numeric",
--            minute: "2-digit",
--          })
--        : "--:--";
-+      const parsedStart = propsStartDate instanceof Date
-+        ? propsStartDate
-+        : (booking?.start_time
-+          ? new Date(booking.start_time)
-+          : (booking?.start ? new Date(booking.start) : null));
-+      const start = parsedStart instanceof Date && !Number.isNaN(parsedStart.getTime())
-+        ? parsedStart
-+        : null;
-+
-+      let parsedEnd = propsEndDate instanceof Date
-+        ? propsEndDate
-+        : (booking?.end_time
-+          ? new Date(booking.end_time)
-+          : (booking?.end ? new Date(booking.end) : null));
-+
-+      if (
-+        (!parsedEnd || Number.isNaN(parsedEnd.getTime())) &&
-+        start &&
-+        booking?.duration_minutes
-+      ) {
-+        parsedEnd = new Date(start.getTime() + Number(booking.duration_minutes) * 60000);
-+      }
-+
-+      const end = parsedEnd instanceof Date && !Number.isNaN(parsedEnd.getTime())
-+        ? parsedEnd
-+        : null;
-+
-+      const timeLabel = start ? formatTimeRange(start, end) : "--:--";
-       return (
-         <View
-           style={[
-             styles.providerCalendarRow,
-             completed && styles.providerCalendarRowCompleted,
-             { borderColor: statusTheme.border, backgroundColor: statusTheme.bgTint },
-           ]}
-         >
-           <View style={[styles.providerCalendarLeftAccentBar, { backgroundColor: statusTheme.accent }]} />
-           <View style={{ flex: 1 }}>
--            <Text style={styles.providerCalendarTime}>{startLabel}</Text>
-+            <Text style={styles.providerCalendarTime}>{timeLabel}</Text>
-             <Text
-               style={[
-                 styles.providerCalendarService,
-                 completed && styles.providerCalendarTextCompleted,
-               ]}
-             >
-               {booking?.service_name || "Service"}
-             </Text>
-             {!compact ? (
-               <Text
-                 style={[
-                   styles.providerCalendarCustomer,
-                   completed && styles.providerCalendarTextCompleted,
-                 ]}
-               >
-                 {booking?.customer_name || "Customer"}
-               </Text>
-             ) : null}
-           </View>
-           <View style={styles.providerCalendarRightActions}>
-             <View
-               style={[
-                 styles.providerCalendarStatusBadge,
-                 { borderColor: statusTheme.accent, backgroundColor: statusTheme.bgTint },
-               ]}
+diff --git a/mobile/android/app/src/main/AndroidManifest.xml b/mobile/android/app/src/main/AndroidManifest.xml
+index 682b2d2eac5a654bcf8e9aa06845195265c65b9f..1f0016229fa81087ec0af57b2c1441edd002093e 100644
+--- a/mobile/android/app/src/main/AndroidManifest.xml
++++ b/mobile/android/app/src/main/AndroidManifest.xml
+@@ -1,34 +1,39 @@
+ <manifest xmlns:android="http://schemas.android.com/apk/res/android" xmlns:tools="http://schemas.android.com/tools">
+   <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
+   <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
+   <uses-permission android:name="android.permission.INTERNET"/>
+   <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"/>
+   <uses-permission android:name="android.permission.RECORD_AUDIO"/>
+   <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW"/>
+   <uses-permission android:name="android.permission.VIBRATE"/>
+   <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"/>
++  <uses-permission android:name="com.google.android.gms.permission.AD_ID" tools:node="remove"/>
++  <uses-permission android:name="android.permission.ACCESS_ADSERVICES_AD_ID" tools:node="remove"/>
++  <uses-permission android:name="android.permission.ACCESS_ADSERVICES_ATTRIBUTION" tools:node="remove"/>
++  <uses-permission android:name="android.permission.ACCESS_ADSERVICES_CUSTOM_AUDIENCE" tools:node="remove"/>
++  <uses-permission android:name="android.permission.ACCESS_ADSERVICES_TOPICS" tools:node="remove"/>
+   <queries>
+     <intent>
+       <action android:name="android.intent.action.VIEW"/>
+       <category android:name="android.intent.category.BROWSABLE"/>
+       <data android:scheme="https"/>
+     </intent>
+   </queries>
+   <application android:name=".MainApplication" android:label="@string/app_name" android:icon="@mipmap/ic_launcher" android:roundIcon="@mipmap/ic_launcher_round" android:allowBackup="true" android:theme="@style/AppTheme" android:supportsRtl="true" android:enableOnBackInvokedCallback="false">
+     <meta-data android:name="com.google.android.geo.API_KEY" android:value="${GOOGLE_MAPS_API_KEY}"/>
+     <meta-data android:name="expo.modules.updates.ENABLED" android:value="false"/>
+     <meta-data android:name="expo.modules.updates.EXPO_UPDATES_CHECK_ON_LAUNCH" android:value="ALWAYS"/>
+     <meta-data android:name="expo.modules.updates.EXPO_UPDATES_LAUNCH_WAIT_MS" android:value="0"/>
+     <activity android:name=".MainActivity" android:configChanges="keyboard|keyboardHidden|orientation|screenSize|screenLayout|uiMode" android:launchMode="singleTask" android:windowSoftInputMode="adjustResize" android:theme="@style/Theme.App.SplashScreen" android:exported="true" android:screenOrientation="portrait">
+       <intent-filter>
+         <action android:name="android.intent.action.MAIN"/>
+         <category android:name="android.intent.category.LAUNCHER"/>
+       </intent-filter>
+       <intent-filter>
+         <action android:name="android.intent.action.VIEW"/>
+         <category android:name="android.intent.category.DEFAULT"/>
+         <category android:name="android.intent.category.BROWSABLE"/>
+         <data android:scheme="exp+bookitgy"/>
+       </intent-filter>
+     </activity>
+   </application>
  
 EOF
 )
