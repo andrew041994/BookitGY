@@ -35,6 +35,7 @@ import axios from "axios";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
   clearToken,
+  clearAllAuthTokens,
   loadToken,
   saveRefreshToken,
   saveToken,
@@ -103,7 +104,7 @@ const withTimeout = (promise, ms, label) => {
 };
 
 const AUTH_BOOTSTRAP_WATCHDOG_MS = 15000;
-const AUTH_TOKEN_TIMEOUT_MS = 2000;
+const AUTH_TOKEN_TIMEOUT_MS = 10000;
 const AUTH_ME_TIMEOUT_MS = 12000;
 const FB_COMPLETE_ERROR_MESSAGES = {
   EMAIL_REQUIRED: "Please provide an email address to continue.",
@@ -636,6 +637,7 @@ function LoginScreen({
 
     try {
       await saveToken(res.data.access_token);
+      await saveRefreshToken(res.data.refresh_token);
       const persistedToken = await loadToken();
       console.log("[auth] login success -> token saved:", Boolean(persistedToken));
       if (!persistedToken) {
@@ -1579,7 +1581,7 @@ function ProfileScreen({ apiClient, authLoading, setToken, showFlash, token }) {
   const forceLogout = useCallback(
     async (flashMessage) => {
       try {
-        await clearToken();
+        await clearAllAuthTokens();
       } catch (err) {
         console.log("Error clearing token", err?.message || err);
       }
@@ -1697,20 +1699,41 @@ function ProfileScreen({ apiClient, authLoading, setToken, showFlash, token }) {
 
   const logout = async () => {
     try {
-      await clearToken();
-      if (setToken) {
-        setToken(null);
+        await clearAllAuthTokens(); // ✅ clears access + refresh
+      
+        // Optional cleanup (keeps old installs from reviving stale tokens)
+        try {
+          await AsyncStorage.removeItem(LEGACY_ACCESS_TOKEN_KEY);
+        } catch (e) {
+          console.log("Error clearing legacy token", e?.message || e);
+        }
+      
+        if (setToken) setToken(null);
+      
+        if (showFlash) showFlash("success", "Logged out successfully");
+      } catch (err) {
+        console.error("Error during logout", err);
+        if (showFlash) showFlash("error", "Could not log out. Please try again.");
       }
-      if (showFlash) {
-        showFlash("success", "Logged out successfully");
-      }
-    } catch (err) {
-      console.error("Error during logout", err);
-      if (showFlash) {
-        showFlash("error", "Could not log out. Please try again.");
-      }
-    }
-  };
+    };
+
+
+  // const logout = async () => {
+  //   try {
+  //     await clearToken();
+  //     if (setToken) {
+  //       setToken(null);
+  //     }
+  //     if (showFlash) {
+  //       showFlash("success", "Logged out successfully");
+  //     }
+  //   } catch (err) {
+  //     console.error("Error during logout", err);
+  //     if (showFlash) {
+  //       showFlash("error", "Could not log out. Please try again.");
+  //     }
+  //   }
+  // };
 
   const handleDeleteAccountRequest = () => {
     Alert.alert(
@@ -2670,71 +2693,180 @@ function ClientHomeScreen({
   };
 
   const loadNearbyProviders = useCallback(async () => {
-    try {
-      setNearbyLoading(true);
-      setNearbyError("");
-      setLocationDenied(false);
+  let didSetLoading = false;
+  const t0 = Date.now();
 
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== "granted") {
-        setLocationDenied(true);
-        setClientLocation(null);
-        setNearbyProviders([]);
-        setCurrentProvider(null);
-        return;
-      }
+  try {
+    setNearbyLoading(true);
+    didSetLoading = true;
+    setNearbyError("");
+    setLocationDenied(false);
 
-      const loc = await Location.getCurrentPositionAsync({});
-      const coords = {
-        lat: toNum(loc.coords.latitude),
-        long: toNum(loc.coords.longitude),
-      };
-      setClientLocation(coords);
-      await AsyncStorage.setItem("clientLocation", JSON.stringify(coords));
-      const clientCoords =
-        coords.lat != null && coords.long != null
-          ? { lat: coords.lat, lng: coords.long }
-          : null;
-
-      const res = await axios.get(`${API}/providers`);
-      const list = Array.isArray(res.data)
-        ? res.data
-        : res.data?.providers || [];
-
-      const withinRadius = list
-        .map((p) => {
-          const providerCoords = getProviderCoords(p);
-          const distance = clientCoords && providerCoords
-            ? haversineKm(
-                clientCoords.lat,
-                clientCoords.lng,
-                providerCoords.lat,
-                providerCoords.lng
-              )
-            : null;
-          const distance_km = Number.isFinite(distance) ? distance : null;
-          return { ...p, distance_km };
-        })
-        .filter(
-          (p) => typeof p.distance_km === "number" && p.distance_km <= 15
-        )
-        .sort(
-          (a, b) => (a.distance_km ?? Infinity) - (b.distance_km ?? Infinity)
-        );
-
-      setNearbyProviders(withinRadius);
-      setCurrentProvider(withinRadius[0] || null);
-      syncFavoritesFromList(withinRadius);
-    } catch (err) {
-      console.log(
-        "Error loading nearby providers",
-        err?.response?.data || err?.message
-      );
-      setNearbyError("Could not load nearby providers.");
-    } finally {
-      setNearbyLoading(false);
+    // Permissions (don’t re-prompt unless needed)
+    const perm = await Location.getForegroundPermissionsAsync();
+    let status = perm?.status;
+    if (status !== "granted") {
+      const req = await Location.requestForegroundPermissionsAsync();
+      status = req?.status;
     }
-  }, [syncFavoritesFromList]);
+    if (status !== "granted") {
+      setLocationDenied(true);
+      setClientLocation(null);
+      setNearbyProviders([]);
+      setCurrentProvider(null);
+      return;
+    }
+
+    // 1) Fast coords: last known -> stored
+    let coords = null;
+
+    try {
+      const last = await Location.getLastKnownPositionAsync({});
+      if (last?.coords?.latitude != null && last?.coords?.longitude != null) {
+        coords = { lat: toNum(last.coords.latitude), long: toNum(last.coords.longitude) };
+      }
+    } catch {}
+
+    if (!coords) {
+      try {
+        const saved = await AsyncStorage.getItem("clientLocation");
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          const lat = toNum(parsed?.lat ?? parsed?.latitude);
+          const long = toNum(parsed?.long ?? parsed?.lng ?? parsed?.longitude);
+          if (lat != null && long != null) coords = { lat, long };
+        }
+      } catch {}
+    }
+
+    if (!coords?.lat || !coords?.long) {
+      // If we can’t get fast coords, try quick fresh GPS once (short timeout)
+      try {
+        const fresh = await Location.getCurrentPositionAsync({
+          accuracy: Location.Accuracy.Balanced,
+          timeout: 2000,
+        });
+        if (fresh?.coords?.latitude != null && fresh?.coords?.longitude != null) {
+          coords = { lat: toNum(fresh.coords.latitude), long: toNum(fresh.coords.longitude) };
+        }
+      } catch {}
+    }
+
+    if (!coords?.lat || !coords?.long) {
+      setNearbyError("Could not determine your location.");
+      setNearbyProviders([]);
+      setCurrentProvider(null);
+      return;
+    }
+
+    // Store + set location (fast)
+    setClientLocation(coords);
+    AsyncStorage.setItem("clientLocation", JSON.stringify(coords)).catch(() => {});
+
+    // 2) Fetch providers NOW (don’t wait on long GPS)
+    const clientCoords = { lat: coords.lat, lng: coords.long };
+
+    const res = await axios.get(`${API}/providers`, { timeout: 8000 });
+    const list = Array.isArray(res.data) ? res.data : res.data?.providers || [];
+
+    // 3) Compute + sort (keep it cheap)
+    const withinRadius = [];
+    for (const p of list) {
+      const pc = getProviderCoords(p);
+      if (!pc) continue;
+
+      const d = haversineKm(clientCoords.lat, clientCoords.lng, pc.lat, pc.lng);
+      if (!Number.isFinite(d) || d > 15) continue;
+
+      withinRadius.push({ ...p, distance_km: d });
+    }
+    withinRadius.sort((a, b) => (a.distance_km ?? Infinity) - (b.distance_km ?? Infinity));
+
+    setNearbyProviders(withinRadius);
+    setCurrentProvider(withinRadius[0] || null);
+
+    // IMPORTANT: don’t make home wait on favorites syncing
+    Promise.resolve()
+      .then(() => syncFavoritesFromList(withinRadius))
+      .catch(() => {});
+
+  } catch (err) {
+    console.log("Error loading nearby providers", err?.response?.data || err?.message);
+    setNearbyError("Could not load nearby providers.");
+  } finally {
+    if (didSetLoading) setNearbyLoading(false);
+    console.log("[home] loadNearbyProviders done in", Date.now() - t0, "ms");
+  }
+}, [syncFavoritesFromList]);
+
+
+
+  // const loadNearbyProviders = useCallback(async () => {
+  //   try {
+  //     setNearbyLoading(true);
+  //     setNearbyError("");
+  //     setLocationDenied(false);
+
+  //     const { status } = await Location.requestForegroundPermissionsAsync();
+  //     if (status !== "granted") {
+  //       setLocationDenied(true);
+  //       setClientLocation(null);
+  //       setNearbyProviders([]);
+  //       setCurrentProvider(null);
+  //       return;
+  //     }
+
+  //     const loc = await Location.getCurrentPositionAsync({});
+  //     const coords = {
+  //       lat: toNum(loc.coords.latitude),
+  //       long: toNum(loc.coords.longitude),
+  //     };
+  //     setClientLocation(coords);
+  //     await AsyncStorage.setItem("clientLocation", JSON.stringify(coords));
+  //     const clientCoords =
+  //       coords.lat != null && coords.long != null
+  //         ? { lat: coords.lat, lng: coords.long }
+  //         : null;
+
+  //     const res = await axios.get(`${API}/providers`);
+  //     const list = Array.isArray(res.data)
+  //       ? res.data
+  //       : res.data?.providers || [];
+
+  //     const withinRadius = list
+  //       .map((p) => {
+  //         const providerCoords = getProviderCoords(p);
+  //         const distance = clientCoords && providerCoords
+  //           ? haversineKm(
+  //               clientCoords.lat,
+  //               clientCoords.lng,
+  //               providerCoords.lat,
+  //               providerCoords.lng
+  //             )
+  //           : null;
+  //         const distance_km = Number.isFinite(distance) ? distance : null;
+  //         return { ...p, distance_km };
+  //       })
+  //       .filter(
+  //         (p) => typeof p.distance_km === "number" && p.distance_km <= 15
+  //       )
+  //       .sort(
+  //         (a, b) => (a.distance_km ?? Infinity) - (b.distance_km ?? Infinity)
+  //       );
+
+  //     setNearbyProviders(withinRadius);
+  //     setCurrentProvider(withinRadius[0] || null);
+  //     syncFavoritesFromList(withinRadius);
+  //   } catch (err) {
+  //     console.log(
+  //       "Error loading nearby providers",
+  //       err?.response?.data || err?.message
+  //     );
+  //     setNearbyError("Could not load nearby providers.");
+  //   } finally {
+  //     setNearbyLoading(false);
+  //   }
+  // }, [syncFavoritesFromList]);
 
   useEffect(() => {
     loadNearbyProviders();
@@ -8042,17 +8174,41 @@ function App() {
   const url = ExpoLinking.useURL();
 
   const [flash, setFlash] = useState(null);
+
   const handleUnauthorized = useCallback(async () => {
-    try {
-      await AsyncStorage.removeItem(LEGACY_ACCESS_TOKEN_KEY);
-    } catch (storageError) {
-      console.log(
-        "[auth] Failed to clear legacy token",
-        storageError?.message || storageError
-      );
-    }
-    setToken(null);
-  }, []);
+     try {
+       await clearAllAuthTokens(); // ✅ clears access + refresh (and your new fallbacks)
+     } catch (storageError) {
+       console.log(
+         "[auth] Failed to clear all auth tokens",
+         storageError?.message || storageError
+       );
+     }
+
+     try {
+       await AsyncStorage.removeItem(LEGACY_ACCESS_TOKEN_KEY); // optional, but fine
+     } catch (storageError) {
+       console.log(
+         "[auth] Failed to clear legacy token",
+         storageError?.message || storageError
+       );
+     }
+
+     setToken(null);
+    }, []);
+
+
+  // const handleUnauthorized = useCallback(async () => {
+  //   try {
+  //     await AsyncStorage.removeItem(LEGACY_ACCESS_TOKEN_KEY);
+  //   } catch (storageError) {
+  //     console.log(
+  //       "[auth] Failed to clear legacy token",
+  //       storageError?.message || storageError
+  //     );
+  //   }
+  //   setToken(null);
+  // }, []);
 
   const apiClient = useMemo(
     () =>
@@ -8288,14 +8444,14 @@ function App() {
             );
             if (err?.response?.status === 401 || err?.response?.status === 403) {
               try {
-                await withTimeout(clearToken(), 1500, "clearToken");
+                await withTimeout(clearAllAuthTokens(), 2500, "clearAllAuthTokens");
               } catch (storageError) {
                 console.log(
-                  "[auth] Failed to clear secure token",
+                  "[auth] Failed to clear all auth tokens",
                   storageError?.message || storageError
                 );
               }
-
+            
               try {
                 await withTimeout(
                   AsyncStorage.removeItem(LEGACY_ACCESS_TOKEN_KEY),
@@ -8308,6 +8464,7 @@ function App() {
                   storageError?.message || storageError
                 );
               }
+            
               if (isActive) setToken(null);
             } else if (isActive) {
               setToken({ token: restoredToken });
