@@ -7877,6 +7877,29 @@ function ProviderCalendarScreen({ token, showFlash }) {
                 })}
               </View>
 
+              {viewMode === "day" && cancellableDayBookings.length > 0 ? (
+                <View style={styles.providerCalendarTopActionsRow}>
+                  <View style={{ flex: 1 }} />
+                  <TouchableOpacity
+                    style={[
+                      styles.providerCalendarCancelAllButton,
+                      cancelAllLoading && styles.providerCalendarCancelAllButtonDisabled,
+                    ]}
+                    onPress={handleCancelAllForSelectedDay}
+                    disabled={cancelAllLoading}
+                  >
+                    {cancelAllLoading ? (
+                      <View style={styles.providerCalendarCancelButtonLoadingRow}>
+                        <ActivityIndicator size="small" color={colors.error} />
+                        <Text style={styles.providerCalendarCancelAllButtonText}>Cancelling…</Text>
+                      </View>
+                    ) : (
+                      <Text style={styles.providerCalendarCancelAllButtonText}>Cancel All</Text>
+                    )}
+                  </TouchableOpacity>
+                </View>
+              ) : null}
+
               <CalendarProvider date={selectedDate} onDateChanged={onSelectDate}>
                 <View style={styles.providerCalendarCard}>
                 {viewMode === "month" ? (
@@ -7997,25 +8020,6 @@ function ProviderCalendarScreen({ token, showFlash }) {
               <View style={{ height: 12 }} />
               <View style={styles.providerCalendarHeaderBlock}>
                 <Text style={styles.sectionTitle}>Appointments for {selectedDate}</Text>
-                {viewMode === "day" && cancellableDayBookings.length > 0 ? (
-                  <TouchableOpacity
-                    style={[
-                      styles.providerCalendarCancelAllButton,
-                      cancelAllLoading && styles.providerCalendarCancelAllButtonDisabled,
-                    ]}
-                    onPress={handleCancelAllForSelectedDay}
-                    disabled={cancelAllLoading}
-                  >
-                    {cancelAllLoading ? (
-                      <View style={styles.providerCalendarCancelButtonLoadingRow}>
-                        <ActivityIndicator size="small" color={colors.error} />
-                        <Text style={styles.providerCalendarCancelAllButtonText}>Cancelling…</Text>
-                      </View>
-                    ) : (
-                      <Text style={styles.providerCalendarCancelAllButtonText}>Cancel All</Text>
-                    )}
-                  </TouchableOpacity>
-                ) : null}
               </View>
             </View>
           }
@@ -10631,6 +10635,14 @@ signupTextButtonText: {
   },
   providerCalendarModeTextActive: {
     color: colors.textPrimary,
+  },
+  providerCalendarTopActionsRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "flex-end",
+    paddingHorizontal: 0,
+    marginTop: 10,
+    marginBottom: 6,
   },
   providerCalendarCard: {
     backgroundColor: colors.surface,
