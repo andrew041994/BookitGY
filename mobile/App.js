@@ -7498,7 +7498,7 @@ function ProviderCalendarScreen({ token, showFlash }) {
   );
 
   const handleCancelAppointment = useCallback(
-    (booking) => {
+    (booking, onCancelled) => {
       if (cancelAllLoading) return;
       const bookingId = getBookingId(booking);
       if (!bookingId || cancellingByBookingId[bookingId]) return;
@@ -7520,6 +7520,7 @@ function ProviderCalendarScreen({ token, showFlash }) {
 
                 if (showFlash) showFlash("success", "Appointment cancelled");
                 await loadBookingsForRange();
+                if (typeof onCancelled === "function") onCancelled();
               } catch (err) {
                 const message =
                   err?.response?.data?.detail ||
@@ -7772,8 +7773,102 @@ function ProviderCalendarScreen({ token, showFlash }) {
     [timelineEvents]
   );
 
-  const appointmentListData = viewMode !== "day" ? sortedSelectedBookings : [];
-  const showAppointmentsEmptyState = viewMode !== "day";
+  const appointmentListData = sortedSelectedBookings;
+  const showAppointmentsEmptyState = true;
+
+  const ProviderBookingCard = useCallback(
+    ({ booking, token: _token, showFlash: _showFlash, onCancelled }) => {
+      const bookingId = getBookingId(booking);
+      const status = getBookingStatusLabel(booking);
+      const statusThemeKey = getAppointmentStatusThemeKey(status?.type || status?.label);
+      const statusTheme = APPOINTMENT_STATUS_THEME[statusThemeKey];
+      const completed = status.type === "completed";
+      const isCancelling = !!(bookingId && cancellingByBookingId[bookingId]);
+      const canCancel = isBookingCancellable(booking);
+      const startIso = booking?.start_time || booking?.start;
+      const startLabel = startIso
+        ? new Date(startIso).toLocaleTimeString([], {
+            hour: "numeric",
+            minute: "2-digit",
+          })
+        : "--:--";
+
+      return (
+        <View
+          style={[
+            styles.providerCalendarRow,
+            completed && styles.providerCalendarRowCompleted,
+            { borderColor: statusTheme.border, backgroundColor: statusTheme.bgTint },
+          ]}
+        >
+          <View style={[styles.providerCalendarLeftAccentBar, { backgroundColor: statusTheme.accent }]} />
+          <View style={{ flex: 1 }}>
+            <Text style={styles.providerCalendarTime}>{startLabel}</Text>
+            <Text
+              style={[
+                styles.providerCalendarService,
+                completed && styles.providerCalendarTextCompleted,
+              ]}
+            >
+              {booking?.service_name || "Service"}
+            </Text>
+            <Text
+              style={[
+                styles.providerCalendarCustomer,
+                completed && styles.providerCalendarTextCompleted,
+              ]}
+            >
+              {booking?.customer_name || "Customer"}
+            </Text>
+          </View>
+          <View style={styles.providerCalendarRightActions}>
+            <View
+              style={[
+                styles.providerCalendarStatusBadge,
+                { borderColor: statusTheme.accent, backgroundColor: statusTheme.bgTint },
+              ]}
+            >
+              <Text
+                style={[
+                  styles.providerCalendarStatusText,
+                  { color: statusTheme.accent },
+                ]}
+                numberOfLines={1}
+              >
+                {status.label}
+              </Text>
+            </View>
+            {canCancel ? (
+              <TouchableOpacity
+                style={[
+                  styles.providerCalendarCancelButton,
+                  isCancelling && styles.providerCalendarCancelButtonDisabled,
+                ]}
+                onPress={() => handleCancelAppointment(booking, onCancelled)}
+                disabled={isCancelling}
+              >
+                {isCancelling ? (
+                  <View style={styles.providerCalendarCancelButtonLoadingRow}>
+                    <ActivityIndicator size="small" color={colors.error} />
+                    <Text style={styles.providerCalendarCancelButtonText}>Cancelling…</Text>
+                  </View>
+                ) : (
+                  <Text style={styles.providerCalendarCancelButtonText}>Cancel</Text>
+                )}
+              </TouchableOpacity>
+            ) : null}
+          </View>
+        </View>
+      );
+    },
+    [
+      cancellingByBookingId,
+      getBookingId,
+      getBookingStatusLabel,
+      handleCancelAppointment,
+      isBookingCancellable,
+    ]
+  );
 
   return (
     <SafeAreaView style={styles.providerCalendarScreen} edges={["left", "right", "bottom"]}>
@@ -7783,94 +7878,14 @@ function ProviderCalendarScreen({ token, showFlash }) {
           keyExtractor={(booking) =>
             getBookingId(booking) || `${booking?.start_time || booking?.start}-${booking?.service_name || "service"}`
           }
-          renderItem={({ item: booking }) => {
-            const bookingId = getBookingId(booking);
-            const status = getBookingStatusLabel(booking);
-            // status color mapping
-            const statusThemeKey = getAppointmentStatusThemeKey(status?.type || status?.label);
-            const statusTheme = APPOINTMENT_STATUS_THEME[statusThemeKey];
-            const completed = status.type === "completed";
-            const isCancelling = !!(bookingId && cancellingByBookingId[bookingId]);
-            const canCancel = isBookingCancellable(booking);
-            const startIso = booking?.start_time || booking?.start;
-            const startLabel = startIso
-              ? new Date(startIso).toLocaleTimeString([], {
-                  hour: "numeric",
-                  minute: "2-digit",
-                })
-              : "--:--";
-
-            return (
-              <View
-                style={[
-                  styles.providerCalendarRow,
-                  completed && styles.providerCalendarRowCompleted,
-                  // tint based on status
-                  { borderColor: statusTheme.border, backgroundColor: statusTheme.bgTint },
-                ]}
-              >
-                {/* left accent bar */}
-                <View style={[styles.providerCalendarLeftAccentBar, { backgroundColor: statusTheme.accent }]} />
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.providerCalendarTime}>{startLabel}</Text>
-                  <Text
-                    style={[
-                      styles.providerCalendarService,
-                      completed && styles.providerCalendarTextCompleted,
-                    ]}
-                  >
-                    {booking?.service_name || "Service"}
-                  </Text>
-                  <Text
-                    style={[
-                      styles.providerCalendarCustomer,
-                      completed && styles.providerCalendarTextCompleted,
-                    ]}
-                  >
-                    {booking?.customer_name || "Customer"}
-                  </Text>
-                </View>
-                <View style={styles.providerCalendarRightActions}>
-                  <View
-                    style={[
-                      styles.providerCalendarStatusBadge,
-                      // tint based on status
-                      { borderColor: statusTheme.accent, backgroundColor: statusTheme.bgTint },
-                    ]}
-                  >
-                    <Text
-                      style={[
-                        styles.providerCalendarStatusText,
-                        { color: statusTheme.accent },
-                      ]}
-                      numberOfLines={1}
-                    >
-                      {status.label}
-                    </Text>
-                  </View>
-                  {canCancel ? (
-                    <TouchableOpacity
-                      style={[
-                        styles.providerCalendarCancelButton,
-                        isCancelling && styles.providerCalendarCancelButtonDisabled,
-                      ]}
-                      onPress={() => handleCancelAppointment(booking)}
-                      disabled={isCancelling}
-                    >
-                      {isCancelling ? (
-                        <View style={styles.providerCalendarCancelButtonLoadingRow}>
-                          <ActivityIndicator size="small" color={colors.error} />
-                          <Text style={styles.providerCalendarCancelButtonText}>Cancelling…</Text>
-                        </View>
-                      ) : (
-                        <Text style={styles.providerCalendarCancelButtonText}>Cancel</Text>
-                      )}
-                    </TouchableOpacity>
-                  ) : null}
-                </View>
-              </View>
-            );
-          }}
+          renderItem={({ item: booking }) => (
+            <ProviderBookingCard
+              booking={booking}
+              token={token}
+              showFlash={showFlash}
+              onCancelled={loadBookingsForRange}
+            />
+          )}
           ListHeaderComponent={
             <View style={{ backgroundColor: colors.background }}>
               <View style={styles.providerCalendarModeSwitch}>

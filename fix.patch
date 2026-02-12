@@ -1,169 +1,58 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
 diff --git a/mobile/App.js b/mobile/App.js
-index 12ba1f70423da7a505702fd43dc71237bcc699da..9102946209c3dca3ea063d1038ded75de6fa081b 100644
+index 9102946209c3dca3ea063d1038ded75de6fa081b..900cbd447fc1496bb9eec16669ee204052cb7540 100644
 --- a/mobile/App.js
 +++ b/mobile/App.js
-@@ -6971,78 +6971,87 @@ function DayScheduleGrid({ events, startHour, endHour }) {
-       endHour,
-       gridStartClamped,
-       gridEndClamped,
-       totalHours,
-       contentHeight,
-     });
-   }, [contentHeight, endHour, gridEndClamped, gridStartClamped, startHour, totalHours]);
+@@ -7476,72 +7476,73 @@ function ProviderCalendarScreen({ token, showFlash }) {
+           },
+         }
+       );
  
-   const hourTicks = useMemo(
-     () => Array.from({ length: totalHours }, (_, idx) => gridStartClamped + idx),
-     [gridStartClamped, totalHours]
+       setBookingsByDate((prev) => {
+         const next = { ...prev };
+         Object.keys(next).forEach((dayKey) => {
+           next[dayKey] = (next[dayKey] || []).map((item) =>
+             getBookingId(item) === bookingId
+               ? {
+                   ...item,
+                   status: "cancelled",
+                   canceled_at: new Date().toISOString(),
+                   canceled_by_role: "provider",
+                 }
+               : item
+           );
+         });
+         return next;
+       });
+     },
+     [getBookingId, token]
    );
  
-   const lineTicks = useMemo(
-     () => Array.from({ length: totalHours + 1 }, (_, idx) => gridStartClamped + idx),
-     [gridStartClamped, totalHours]
-   );
+   const handleCancelAppointment = useCallback(
+-    (booking) => {
++    (booking, onCancelled) => {
+       if (cancelAllLoading) return;
+       const bookingId = getBookingId(booking);
+       if (!bookingId || cancellingByBookingId[bookingId]) return;
  
-   const formatHourLabel = useCallback((hour) => {
-     const normalizedHour = ((hour % 24) + 24) % 24;
-     const meridiem = normalizedHour >= 12 ? "PM" : "AM";
-     const displayHour = normalizedHour % 12 === 0 ? 12 : normalizedHour % 12;
-     return `${displayHour}${meridiem}`;
-   }, []);
+       Alert.alert(
+         "Cancel appointment?",
+         "This will notify the customer.",
+         [
+           { text: "Keep", style: "cancel" },
+           {
+             text: "Cancel appointment",
+             style: "destructive",
+             onPress: async () => {
+               if (cancellingByBookingId[bookingId]) return;
  
-+  const visibleEvents = useMemo(
-+    () =>
-+      (events || []).filter((event) => {
-+        const rawStatus = String(event?.status?.type || event?.status || event?.state || "").trim().toLowerCase();
-+        return rawStatus !== "cancelled" && rawStatus !== "canceled";
-+      }),
-+    [events]
-+  );
-+
-   const positionedEvents = useMemo(() => {
-     const minuteToPx = hourHeight / 60;
--    return (events || [])
-+    return visibleEvents
-       .map((event) => {
-         const startDate = event?.startDate || new Date(event?.start);
-         const endDate = event?.endDate || new Date(event?.end);
-         if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) return null;
- 
-         const startMinutes = startDate.getHours() * 60 + startDate.getMinutes();
-         const endMinutes = endDate.getHours() * 60 + endDate.getMinutes();
-         const gridStartMinutes = gridStartClamped * 60;
-         const gridEndMinutes = gridEndClamped * 60;
-         const clampedStart = Math.max(startMinutes, gridStartMinutes);
-         const clampedEnd = Math.min(Math.max(endMinutes, clampedStart + 1), gridEndMinutes);
-         const durationMinutes = Math.max(clampedEnd - clampedStart, 1);
- 
-         const top = (clampedStart - gridStartMinutes) * minuteToPx + gridVerticalPadding;
-         const height = Math.max(durationMinutes * minuteToPx - 6, 50);
- 
-         return {
-           ...event,
-           top,
-           height,
-         };
-       })
-       .filter(Boolean)
-       .sort((a, b) => a.top - b.top);
--  }, [events, gridEndClamped, gridStartClamped, gridVerticalPadding, hourHeight]);
-+  }, [gridEndClamped, gridStartClamped, gridVerticalPadding, hourHeight, visibleEvents]);
- 
-   return (
-     <ScrollView
-       style={styles.providerDayScheduleScroll}
-       pointerEvents="auto"
-       contentContainerStyle={[
-         styles.providerDayScheduleScrollContent,
-         Platform.OS === "android" ? { minHeight: contentHeight + gridVerticalPadding * 2 + 24 } : null,
-         { paddingTop: gridVerticalPadding, paddingBottom: gridVerticalPadding + 24 },
-       ]}
-       showsVerticalScrollIndicator={false}
-       bounces={false}
-       alwaysBounceHorizontal={false}
-       horizontal={false}
-       nestedScrollEnabled={true}
-       scrollEnabled={true}
-       keyboardShouldPersistTaps="handled"
-       contentInsetAdjustmentBehavior="never"
-     >
-       <View style={styles.providerDayScheduleRow}>
-         <View style={[styles.providerDayScheduleGutter, { width: timeGutterWidth, height: trackHeight }]}>
-           {hourTicks.map((hour) => {
-             const y = (hour - gridStartClamped) * hourHeight + gridVerticalPadding;
-             return (
-               <Text key={`label-${hour}`} style={[styles.providerDayScheduleTimeLabel, { top: y + hourHeight / 2 }]}>
-@@ -7120,57 +7129,63 @@ function DayScheduleGrid({ events, startHour, endHour }) {
-                     numberOfLines={1}
-                   >
-                     {statusLabel}
-                   </Text>
-                 </View>
-               </TouchableOpacity>
-             );
-           })}
-         </View>
-       </View>
-     </ScrollView>
-   );
- }
- 
- function WeeklyStrip({
-   weekStartKey,
-   selectedDate,
-   onSelectDate,
-   bookingsByDate,
-   isBookingCompleted,
-   colors,
-   getWeekDays,
- }) {
-   const weekDays = useMemo(() => getWeekDays(weekStartKey), [getWeekDays, weekStartKey]);
- 
-+  const isBookingVisible = useCallback((booking) => {
-+    const normalizedStatus = String(booking?.status || booking?.state || "").trim().toLowerCase();
-+    return normalizedStatus !== "cancelled" && normalizedStatus !== "canceled";
-+  }, []);
-+
-   return (
-     <View style={styles.providerWeeklyStrip}>
-       <View style={styles.providerWeeklyRow}>
-         {weekDays.map((day) => {
-           const bookings = bookingsByDate?.[day.key] || [];
--          const hasBookings = bookings.length > 0;
--          const allCompleted = hasBookings && bookings.every((booking) => isBookingCompleted(booking));
-+          const activeBookings = bookings.filter(isBookingVisible);
-+          const hasBookings = activeBookings.length > 0;
-+          const allCompleted = hasBookings && activeBookings.every((booking) => isBookingCompleted(booking));
-           const isSelected = day.key === selectedDate;
- 
-           return (
-             <Pressable
-               key={day.key}
-               style={styles.providerWeeklyCell}
-               onPress={() => onSelectDate(day.key)}
-             >
-               <Text allowFontScaling={false} style={styles.providerWeeklyDow}>
-                 {day.label}
-               </Text>
-               <View
-                 style={[
-                   styles.providerWeeklyDayWrap,
-                   isSelected && styles.providerWeeklyDayWrapSelected,
-                 ]}
-               >
-                 <Text
-                   allowFontScaling={false}
-                   style={[
-                     styles.providerWeeklyDayText,
-                     !isSelected && styles.providerWeeklyDayTextMuted,
-                   ]}
-                 >
-                   {day.dayNumber}
-@@ -7504,51 +7519,59 @@ function ProviderCalendarScreen({ token, showFlash }) {
+               setCancellingByBookingId((prev) => ({ ...prev, [bookingId]: true }));
+               try {
                  await cancelBookingById(bookingId);
  
                  if (showFlash) showFlash("success", "Appointment cancelled");
                  await loadBookingsForRange();
++                if (typeof onCancelled === "function") onCancelled();
                } catch (err) {
                  const message =
                    err?.response?.data?.detail ||
@@ -185,114 +74,264 @@ index 12ba1f70423da7a505702fd43dc71237bcc699da..9102946209c3dca3ea063d1038ded75d
      loadBookingsForRange();
    }, [loadBookingsForRange]);
  
--  const selectedBookings = useMemo(() => bookingsByDate[selectedDate] || [], [bookingsByDate, selectedDate]);
-+  const isActiveBooking = useCallback((booking) => {
-+    const normalizedStatus = String(booking?.status || booking?.state || "").trim().toLowerCase();
-+    return normalizedStatus !== "cancelled" && normalizedStatus !== "canceled";
-+  }, []);
-+
-+  const selectedBookings = useMemo(
-+    () => (bookingsByDate[selectedDate] || []).filter(isActiveBooking),
-+    [bookingsByDate, isActiveBooking, selectedDate]
-+  );
-   const sortedSelectedBookings = useMemo(
-     () =>
-       selectedBookings
-         .slice()
-         .sort((a, b) => new Date(a?.start_time || a?.start) - new Date(b?.start_time || b?.start)),
-     [selectedBookings]
-   );
-   const cancellableDayBookings = useMemo(
-     () => sortedSelectedBookings.filter((booking) => isBookingCancellable(booking)),
-     [isBookingCancellable, sortedSelectedBookings]
-   );
- 
-   const handleCancelAllForSelectedDay = useCallback(() => {
-     if (cancelAllLoading || viewMode !== "day") return;
-     const cancellableBookings = sortedSelectedBookings.filter((booking) => isBookingCancellable(booking));
-     const totalToCancel = cancellableBookings.length;
-     if (!totalToCancel) return;
- 
-     Alert.alert(
-       "Cancel all appointments?",
-       `This will cancel ${totalToCancel} appointments on ${selectedDate}. This can’t be undone.`,
-       [
-         { text: "Keep", style: "cancel" },
-         {
-           text: "Cancel All",
-@@ -7609,67 +7632,69 @@ function ProviderCalendarScreen({ token, showFlash }) {
-     sortedSelectedBookings,
-     token,
-     viewMode,
-   ]);
- 
-   const formatTimelineTime = useCallback((isoDateLike) => {
-     const parsed = new Date(isoDateLike);
-     if (Number.isNaN(parsed.getTime())) return "--:--";
-     const hh = String(parsed.getHours()).padStart(2, "0");
-     const mm = String(parsed.getMinutes()).padStart(2, "0");
-     return `${hh}:${mm}`;
+   const isActiveBooking = useCallback((booking) => {
+     const normalizedStatus = String(booking?.status || booking?.state || "").trim().toLowerCase();
+     return normalizedStatus !== "cancelled" && normalizedStatus !== "canceled";
    }, []);
- 
-   const getEventAccentColor = useCallback((booking) => {
-     const palette = [colors.primary, "#1CA7A8", "#4C8BF5", "#8A63D2"];
-     const hashSource = String(booking?.service_id || booking?.service_name || "service");
-     const hash = Array.from(hashSource).reduce((acc, ch) => acc + ch.charCodeAt(0), 0);
-     return palette[hash % palette.length];
-   }, []);
- 
-   const markedDates = useMemo(() => {
-     const marked = {};
- 
-     Object.keys(bookingsByDate).forEach((day) => {
-       const dayBookings = bookingsByDate[day] || [];
--      if (!dayBookings.length) return;
--      const allCompleted = dayBookings.every((b) => isBookingCompleted(b));
-+      const activeBookings = dayBookings.filter(isActiveBooking);
-+      const hasBookings = activeBookings.some((booking) => isActiveBooking(booking));
-+      if (!hasBookings) return;
-+      const allCompleted = activeBookings.every((b) => isBookingCompleted(b));
-       marked[day] = {
-         marked: true,
-         dotColor: allCompleted ? colors.textMuted : colors.primary,
-       };
+@@ -7750,149 +7751,163 @@ function ProviderCalendarScreen({ token, showFlash }) {
+     }
+     console.log("[ProviderCalendarScreen][WeeklyDebug]", {
+       selectedDate,
+       selectedWeekday: selected.getDay(),
+       firstDay: WEEKLY_FIRST_DAY,
      });
+   }, [PROVIDER_CALENDAR_DEBUG, WEEKLY_FIRST_DAY, parseLocalMidday, selectedDate]);
  
-     marked[selectedDate] = {
-       ...(marked[selectedDate] || {}),
-       selected: true,
-       selectedColor: colors.primarySoft,
-       selectedTextColor: colors.textPrimary,
-     };
- 
-     return marked;
--  }, [bookingsByDate, isBookingCompleted, selectedDate]);
-+  }, [bookingsByDate, isActiveBooking, isBookingCompleted, selectedDate]);
- 
-   const timelineEvents = useMemo(
+   const dayGridEvents = useMemo(
      () =>
-       selectedBookings
-       .map((booking) => {
-           const startIso = booking?.start_time || booking?.start;
-           if (!startIso) return null;
-           const startDate = new Date(startIso);
-           if (Number.isNaN(startDate.getTime())) return null;
- 
-           let endDate = booking?.end_time || booking?.end ? new Date(booking?.end_time || booking?.end) : null;
-           if (!endDate || Number.isNaN(endDate.getTime())) {
-             const durationMin = Number(booking?.duration_minutes || booking?.duration || 30);
-             endDate = new Date(startDate.getTime() + Math.max(durationMin, 1) * 60_000);
-           }
- 
-           const status = getBookingStatusLabel(booking);
-           const completed = status.type === "completed";
-           const accentColor = getEventAccentColor(booking);
- 
+       timelineEvents
+         .map((event) => {
+           const startDate = new Date(event.start);
+           const endDate = new Date(event.end);
+           if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) return null;
            return {
-             id: String(booking?.id || booking?.booking_id || `${startIso}-${booking?.service_name || "service"}`),
-             start: startDate.toISOString(),
-             end: endDate.toISOString(),
-             title: booking?.service_name || "Service",
+             ...event,
+             startDate,
+             endDate,
+           };
+         })
+         .filter(Boolean),
+     [timelineEvents]
+   );
+ 
+-  const appointmentListData = viewMode !== "day" ? sortedSelectedBookings : [];
+-  const showAppointmentsEmptyState = viewMode !== "day";
++  const appointmentListData = sortedSelectedBookings;
++  const showAppointmentsEmptyState = true;
++
++  const ProviderBookingCard = useCallback(
++    ({ booking, token: _token, showFlash: _showFlash, onCancelled }) => {
++      const bookingId = getBookingId(booking);
++      const status = getBookingStatusLabel(booking);
++      const statusThemeKey = getAppointmentStatusThemeKey(status?.type || status?.label);
++      const statusTheme = APPOINTMENT_STATUS_THEME[statusThemeKey];
++      const completed = status.type === "completed";
++      const isCancelling = !!(bookingId && cancellingByBookingId[bookingId]);
++      const canCancel = isBookingCancellable(booking);
++      const startIso = booking?.start_time || booking?.start;
++      const startLabel = startIso
++        ? new Date(startIso).toLocaleTimeString([], {
++            hour: "numeric",
++            minute: "2-digit",
++          })
++        : "--:--";
++
++      return (
++        <View
++          style={[
++            styles.providerCalendarRow,
++            completed && styles.providerCalendarRowCompleted,
++            { borderColor: statusTheme.border, backgroundColor: statusTheme.bgTint },
++          ]}
++        >
++          <View style={[styles.providerCalendarLeftAccentBar, { backgroundColor: statusTheme.accent }]} />
++          <View style={{ flex: 1 }}>
++            <Text style={styles.providerCalendarTime}>{startLabel}</Text>
++            <Text
++              style={[
++                styles.providerCalendarService,
++                completed && styles.providerCalendarTextCompleted,
++              ]}
++            >
++              {booking?.service_name || "Service"}
++            </Text>
++            <Text
++              style={[
++                styles.providerCalendarCustomer,
++                completed && styles.providerCalendarTextCompleted,
++              ]}
++            >
++              {booking?.customer_name || "Customer"}
++            </Text>
++          </View>
++          <View style={styles.providerCalendarRightActions}>
++            <View
++              style={[
++                styles.providerCalendarStatusBadge,
++                { borderColor: statusTheme.accent, backgroundColor: statusTheme.bgTint },
++              ]}
++            >
++              <Text
++                style={[
++                  styles.providerCalendarStatusText,
++                  { color: statusTheme.accent },
++                ]}
++                numberOfLines={1}
++              >
++                {status.label}
++              </Text>
++            </View>
++            {canCancel ? (
++              <TouchableOpacity
++                style={[
++                  styles.providerCalendarCancelButton,
++                  isCancelling && styles.providerCalendarCancelButtonDisabled,
++                ]}
++                onPress={() => handleCancelAppointment(booking, onCancelled)}
++                disabled={isCancelling}
++              >
++                {isCancelling ? (
++                  <View style={styles.providerCalendarCancelButtonLoadingRow}>
++                    <ActivityIndicator size="small" color={colors.error} />
++                    <Text style={styles.providerCalendarCancelButtonText}>Cancelling…</Text>
++                  </View>
++                ) : (
++                  <Text style={styles.providerCalendarCancelButtonText}>Cancel</Text>
++                )}
++              </TouchableOpacity>
++            ) : null}
++          </View>
++        </View>
++      );
++    },
++    [
++      cancellingByBookingId,
++      getBookingId,
++      getBookingStatusLabel,
++      handleCancelAppointment,
++      isBookingCancellable,
++    ]
++  );
+ 
+   return (
+     <SafeAreaView style={styles.providerCalendarScreen} edges={["left", "right", "bottom"]}>
+       <View style={styles.providerCalendarContentContainer}>
+         <FlatList
+           data={appointmentListData}
+           keyExtractor={(booking) =>
+             getBookingId(booking) || `${booking?.start_time || booking?.start}-${booking?.service_name || "service"}`
+           }
+-          renderItem={({ item: booking }) => {
+-            const bookingId = getBookingId(booking);
+-            const status = getBookingStatusLabel(booking);
+-            // status color mapping
+-            const statusThemeKey = getAppointmentStatusThemeKey(status?.type || status?.label);
+-            const statusTheme = APPOINTMENT_STATUS_THEME[statusThemeKey];
+-            const completed = status.type === "completed";
+-            const isCancelling = !!(bookingId && cancellingByBookingId[bookingId]);
+-            const canCancel = isBookingCancellable(booking);
+-            const startIso = booking?.start_time || booking?.start;
+-            const startLabel = startIso
+-              ? new Date(startIso).toLocaleTimeString([], {
+-                  hour: "numeric",
+-                  minute: "2-digit",
+-                })
+-              : "--:--";
+-
+-            return (
+-              <View
+-                style={[
+-                  styles.providerCalendarRow,
+-                  completed && styles.providerCalendarRowCompleted,
+-                  // tint based on status
+-                  { borderColor: statusTheme.border, backgroundColor: statusTheme.bgTint },
+-                ]}
+-              >
+-                {/* left accent bar */}
+-                <View style={[styles.providerCalendarLeftAccentBar, { backgroundColor: statusTheme.accent }]} />
+-                <View style={{ flex: 1 }}>
+-                  <Text style={styles.providerCalendarTime}>{startLabel}</Text>
+-                  <Text
+-                    style={[
+-                      styles.providerCalendarService,
+-                      completed && styles.providerCalendarTextCompleted,
+-                    ]}
+-                  >
+-                    {booking?.service_name || "Service"}
+-                  </Text>
+-                  <Text
+-                    style={[
+-                      styles.providerCalendarCustomer,
+-                      completed && styles.providerCalendarTextCompleted,
+-                    ]}
+-                  >
+-                    {booking?.customer_name || "Customer"}
+-                  </Text>
+-                </View>
+-                <View style={styles.providerCalendarRightActions}>
+-                  <View
+-                    style={[
+-                      styles.providerCalendarStatusBadge,
+-                      // tint based on status
+-                      { borderColor: statusTheme.accent, backgroundColor: statusTheme.bgTint },
+-                    ]}
+-                  >
+-                    <Text
+-                      style={[
+-                        styles.providerCalendarStatusText,
+-                        { color: statusTheme.accent },
+-                      ]}
+-                      numberOfLines={1}
+-                    >
+-                      {status.label}
+-                    </Text>
+-                  </View>
+-                  {canCancel ? (
+-                    <TouchableOpacity
+-                      style={[
+-                        styles.providerCalendarCancelButton,
+-                        isCancelling && styles.providerCalendarCancelButtonDisabled,
+-                      ]}
+-                      onPress={() => handleCancelAppointment(booking)}
+-                      disabled={isCancelling}
+-                    >
+-                      {isCancelling ? (
+-                        <View style={styles.providerCalendarCancelButtonLoadingRow}>
+-                          <ActivityIndicator size="small" color={colors.error} />
+-                          <Text style={styles.providerCalendarCancelButtonText}>Cancelling…</Text>
+-                        </View>
+-                      ) : (
+-                        <Text style={styles.providerCalendarCancelButtonText}>Cancel</Text>
+-                      )}
+-                    </TouchableOpacity>
+-                  ) : null}
+-                </View>
+-              </View>
+-            );
+-          }}
++          renderItem={({ item: booking }) => (
++            <ProviderBookingCard
++              booking={booking}
++              token={token}
++              showFlash={showFlash}
++              onCancelled={loadBookingsForRange}
++            />
++          )}
+           ListHeaderComponent={
+             <View style={{ backgroundColor: colors.background }}>
+               <View style={styles.providerCalendarModeSwitch}>
+                 {[
+                   { key: "day", label: "Daily" },
+                   { key: "week", label: "Weekly" },
+                   { key: "month", label: "Monthly" },
+                 ].map((mode) => {
+                   const active = mode.key === viewMode;
+                   return (
+                     <TouchableOpacity
+                       key={mode.key}
+                       style={[
+                         styles.providerCalendarModeButton,
+                         active && styles.providerCalendarModeButtonActive,
+                       ]}
+                       onPress={() => setViewMode(mode.key)}
+                     >
+                       <Text
+                         style={[
+                           styles.providerCalendarModeText,
+                           active && styles.providerCalendarModeTextActive,
+                         ]}
+                       >
+                         {mode.label}
  
 EOF
 )
