@@ -217,6 +217,16 @@ const toNum = (value) => {
   return Number.isFinite(n) ? n : null;
 };
 
+function formatTimeRange(start, end) {
+  if (!(start instanceof Date) || Number.isNaN(start.getTime())) return "--:--";
+  const fmt = (d) =>
+    d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }).replace(" ", "");
+  if (end instanceof Date && !Number.isNaN(end.getTime())) {
+    return `${fmt(start)} – ${fmt(end)}`;
+  }
+  return `${fmt(start)} – --:--`;
+}
+
 const getDistanceKm = (lat1, lon1, lat2, lon2) => {
   if (lat1 == null || lon1 == null || lat2 == null || lon2 == null) {
     return null;
@@ -7753,7 +7763,7 @@ function ProviderCalendarScreen({ token, showFlash }) {
   }, []);
 
   const ProviderBookingCard = useCallback(
-    ({ booking, startDate, endDate: _endDate, compact = false, token: _token, showFlash: _showFlash }) => {
+    ({ booking, startDate: propsStartDate, endDate: propsEndDate, compact = false, token: _token, showFlash: _showFlash }) => {
       const bookingId = getBookingId(booking);
       const status = getBookingStatusLabel(booking);
       const statusThemeKey = getAppointmentStatusThemeKey(status?.type || status?.label);
@@ -7761,15 +7771,34 @@ function ProviderCalendarScreen({ token, showFlash }) {
       const completed = status.type === "completed";
       const isCancelling = !!(bookingId && cancellingByBookingId[bookingId]);
       const canCancel = isBookingCancellable(booking);
-      const parsedStart = startDate instanceof Date
-        ? startDate
-        : (booking?.start_time ? new Date(booking.start_time) : (booking?.start ? new Date(booking.start) : null));
-      const startLabel = parsedStart && !Number.isNaN(parsedStart.getTime())
-        ? parsedStart.toLocaleTimeString([], {
-            hour: "numeric",
-            minute: "2-digit",
-          })
-        : "--:--";
+      const parsedStart = propsStartDate instanceof Date
+        ? propsStartDate
+        : (booking?.start_time
+          ? new Date(booking.start_time)
+          : (booking?.start ? new Date(booking.start) : null));
+      const start = parsedStart instanceof Date && !Number.isNaN(parsedStart.getTime())
+        ? parsedStart
+        : null;
+
+      let parsedEnd = propsEndDate instanceof Date
+        ? propsEndDate
+        : (booking?.end_time
+          ? new Date(booking.end_time)
+          : (booking?.end ? new Date(booking.end) : null));
+
+      if (
+        (!parsedEnd || Number.isNaN(parsedEnd.getTime())) &&
+        start &&
+        booking?.duration_minutes
+      ) {
+        parsedEnd = new Date(start.getTime() + Number(booking.duration_minutes) * 60000);
+      }
+
+      const end = parsedEnd instanceof Date && !Number.isNaN(parsedEnd.getTime())
+        ? parsedEnd
+        : null;
+
+      const timeLabel = start ? formatTimeRange(start, end) : "--:--";
       return (
         <View
           style={[
@@ -7780,7 +7809,7 @@ function ProviderCalendarScreen({ token, showFlash }) {
         >
           <View style={[styles.providerCalendarLeftAccentBar, { backgroundColor: statusTheme.accent }]} />
           <View style={{ flex: 1 }}>
-            <Text style={styles.providerCalendarTime}>{startLabel}</Text>
+            <Text style={styles.providerCalendarTime}>{timeLabel}</Text>
             <Text
               style={[
                 styles.providerCalendarService,
