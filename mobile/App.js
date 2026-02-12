@@ -7282,6 +7282,7 @@ function ProviderCalendarScreen({ token, showFlash }) {
   const [weekPagerWidth, setWeekPagerWidth] = useState(0);
   const [bookingsByDate, setBookingsByDate] = useState({});
   const [cancellingByBookingId, setCancellingByBookingId] = useState({});
+  const [cancelAllLoading, setCancelAllLoading] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [refreshing, setRefreshing] = useState(false);
@@ -7442,8 +7443,48 @@ function ProviderCalendarScreen({ token, showFlash }) {
 
   const handleRefresh = useCallback(() => loadBookingsForRange(true), [loadBookingsForRange]);
 
+  const cancelBookingById = useCallback(
+    async (bookingId, authTokenOverride) => {
+      const authToken = authTokenOverride || (await getAuthToken(token));
+      if (!authToken) {
+        const noAuthError = new Error("No access token found. Please log in again.");
+        noAuthError.code = "NO_AUTH_TOKEN";
+        throw noAuthError;
+      }
+
+      await axios.post(
+        `${API}/providers/me/bookings/${bookingId}/cancel`,
+        {},
+        {
+          headers: {
+            Authorization: `Bearer ${authToken}`,
+          },
+        }
+      );
+
+      setBookingsByDate((prev) => {
+        const next = { ...prev };
+        Object.keys(next).forEach((dayKey) => {
+          next[dayKey] = (next[dayKey] || []).map((item) =>
+            getBookingId(item) === bookingId
+              ? {
+                  ...item,
+                  status: "cancelled",
+                  canceled_at: new Date().toISOString(),
+                  canceled_by_role: "provider",
+                }
+              : item
+          );
+        });
+        return next;
+      });
+    },
+    [getBookingId, token]
+  );
+
   const handleCancelAppointment = useCallback(
     (booking) => {
+      if (cancelAllLoading) return;
       const bookingId = getBookingId(booking);
       if (!bookingId || cancellingByBookingId[bookingId]) return;
 
@@ -7460,33 +7501,7 @@ function ProviderCalendarScreen({ token, showFlash }) {
 
               setCancellingByBookingId((prev) => ({ ...prev, [bookingId]: true }));
               try {
-                const authToken = await getAuthToken(token);
-                if (!authToken) {
-                  if (showFlash) showFlash("error", "No access token found. Please log in again.");
-                  return;
-                }
-
-                await axios.post(
-                  `${API}/providers/me/bookings/${bookingId}/cancel`,
-                  {},
-                  {
-                    headers: {
-                      Authorization: `Bearer ${authToken}`,
-                    },
-                  }
-                );
-
-                setBookingsByDate((prev) => {
-                  const next = { ...prev };
-                  Object.keys(next).forEach((dayKey) => {
-                    next[dayKey] = (next[dayKey] || []).map((item) =>
-                      getBookingId(item) === bookingId
-                        ? { ...item, status: "cancelled", canceled_at: new Date().toISOString(), canceled_by_role: "provider" }
-                        : item
-                    );
-                  });
-                  return next;
-                });
+                await cancelBookingById(bookingId);
 
                 if (showFlash) showFlash("success", "Appointment cancelled");
                 await loadBookingsForRange();
@@ -7504,7 +7519,7 @@ function ProviderCalendarScreen({ token, showFlash }) {
         ]
       );
     },
-    [cancellingByBookingId, getBookingId, loadBookingsForRange, showFlash, token]
+    [cancelAllLoading, cancelBookingById, cancellingByBookingId, getBookingId, loadBookingsForRange, showFlash]
   );
 
   useEffect(() => {
@@ -7519,6 +7534,82 @@ function ProviderCalendarScreen({ token, showFlash }) {
         .sort((a, b) => new Date(a?.start_time || a?.start) - new Date(b?.start_time || b?.start)),
     [selectedBookings]
   );
+  const cancellableDayBookings = useMemo(
+    () => sortedSelectedBookings.filter((booking) => isBookingCancellable(booking)),
+    [isBookingCancellable, sortedSelectedBookings]
+  );
+
+  const handleCancelAllForSelectedDay = useCallback(() => {
+    if (cancelAllLoading || viewMode !== "day") return;
+    const cancellableBookings = sortedSelectedBookings.filter((booking) => isBookingCancellable(booking));
+    const totalToCancel = cancellableBookings.length;
+    if (!totalToCancel) return;
+
+    Alert.alert(
+      "Cancel all appointments?",
+      `This will cancel ${totalToCancel} appointments on ${selectedDate}. This can’t be undone.`,
+      [
+        { text: "Keep", style: "cancel" },
+        {
+          text: "Cancel All",
+          style: "destructive",
+          onPress: async () => {
+            if (cancelAllLoading) return;
+
+            setCancelAllLoading(true);
+            let cancelledCount = 0;
+            try {
+              const authToken = await getAuthToken(token);
+              if (!authToken) {
+                if (showFlash) showFlash("error", "No access token found. Please log in again.");
+                return;
+              }
+
+              for (const booking of cancellableBookings) {
+                const bookingId = getBookingId(booking);
+                if (!bookingId || !isBookingCancellable(booking)) continue;
+
+                setCancellingByBookingId((prev) => ({ ...prev, [bookingId]: true }));
+                try {
+                  await cancelBookingById(bookingId, authToken);
+                  cancelledCount += 1;
+                } catch (err) {
+                  console.log("Error cancelling appointment in cancel-all", err?.response?.data || err?.message || err);
+                } finally {
+                  setCancellingByBookingId((prev) => ({ ...prev, [bookingId]: false }));
+                }
+              }
+
+              if (showFlash) {
+                if (cancelledCount === totalToCancel) {
+                  showFlash("success", `Cancelled ${cancelledCount} appointments.`);
+                } else {
+                  showFlash(
+                    "error",
+                    `Cancelled ${cancelledCount} of ${totalToCancel}. Some could not be cancelled.`
+                  );
+                }
+              }
+            } finally {
+              setCancelAllLoading(false);
+              await loadBookingsForRange();
+            }
+          },
+        },
+      ]
+    );
+  }, [
+    cancelAllLoading,
+    cancelBookingById,
+    getBookingId,
+    isBookingCancellable,
+    loadBookingsForRange,
+    selectedDate,
+    showFlash,
+    sortedSelectedBookings,
+    token,
+    viewMode,
+  ]);
 
   const formatTimelineTime = useCallback((isoDateLike) => {
     const parsed = new Date(isoDateLike);
@@ -7906,6 +7997,25 @@ function ProviderCalendarScreen({ token, showFlash }) {
               <View style={{ height: 12 }} />
               <View style={styles.providerCalendarHeaderBlock}>
                 <Text style={styles.sectionTitle}>Appointments for {selectedDate}</Text>
+                {viewMode === "day" && cancellableDayBookings.length > 0 ? (
+                  <TouchableOpacity
+                    style={[
+                      styles.providerCalendarCancelAllButton,
+                      cancelAllLoading && styles.providerCalendarCancelAllButtonDisabled,
+                    ]}
+                    onPress={handleCancelAllForSelectedDay}
+                    disabled={cancelAllLoading}
+                  >
+                    {cancelAllLoading ? (
+                      <View style={styles.providerCalendarCancelButtonLoadingRow}>
+                        <ActivityIndicator size="small" color={colors.error} />
+                        <Text style={styles.providerCalendarCancelAllButtonText}>Cancelling…</Text>
+                      </View>
+                    ) : (
+                      <Text style={styles.providerCalendarCancelAllButtonText}>Cancel All</Text>
+                    )}
+                  </TouchableOpacity>
+                ) : null}
               </View>
             </View>
           }
@@ -10733,6 +10843,10 @@ signupTextButtonText: {
   },
   providerCalendarHeaderBlock: {
     marginTop: 0,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 10,
   },
   providerCalendarListContent: {
     paddingBottom: 24,
@@ -10829,6 +10943,23 @@ signupTextButtonText: {
     color: colors.error,
     fontSize: 11,
     fontWeight: "700",
+  },
+  providerCalendarCancelAllButton: {
+    marginLeft: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: colors.error,
+    backgroundColor: "rgba(255,107,107,0.14)",
+  },
+  providerCalendarCancelAllButtonDisabled: {
+    opacity: 0.7,
+  },
+  providerCalendarCancelAllButtonText: {
+    color: colors.error,
+    fontSize: 12,
+    fontWeight: "800",
   },
 
 })
