@@ -1,211 +1,298 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
 diff --git a/mobile/App.js b/mobile/App.js
-index 8fe39c355046bab65c7152c1d3e599621d39340d..12ba1f70423da7a505702fd43dc71237bcc699da 100644
+index 12ba1f70423da7a505702fd43dc71237bcc699da..9102946209c3dca3ea063d1038ded75de6fa081b 100644
 --- a/mobile/App.js
 +++ b/mobile/App.js
-@@ -7855,50 +7855,73 @@ function ProviderCalendarScreen({ token, showFlash }) {
-                   { key: "month", label: "Monthly" },
-                 ].map((mode) => {
-                   const active = mode.key === viewMode;
-                   return (
-                     <TouchableOpacity
-                       key={mode.key}
-                       style={[
-                         styles.providerCalendarModeButton,
-                         active && styles.providerCalendarModeButtonActive,
-                       ]}
-                       onPress={() => setViewMode(mode.key)}
-                     >
-                       <Text
-                         style={[
-                           styles.providerCalendarModeText,
-                           active && styles.providerCalendarModeTextActive,
-                         ]}
-                       >
-                         {mode.label}
-                       </Text>
-                     </TouchableOpacity>
-                   );
-                 })}
-               </View>
+@@ -6971,78 +6971,87 @@ function DayScheduleGrid({ events, startHour, endHour }) {
+       endHour,
+       gridStartClamped,
+       gridEndClamped,
+       totalHours,
+       contentHeight,
+     });
+   }, [contentHeight, endHour, gridEndClamped, gridStartClamped, startHour, totalHours]);
  
-+              {viewMode === "day" && cancellableDayBookings.length > 0 ? (
-+                <View style={styles.providerCalendarTopActionsRow}>
-+                  <View style={{ flex: 1 }} />
-+                  <TouchableOpacity
-+                    style={[
-+                      styles.providerCalendarCancelAllButton,
-+                      cancelAllLoading && styles.providerCalendarCancelAllButtonDisabled,
-+                    ]}
-+                    onPress={handleCancelAllForSelectedDay}
-+                    disabled={cancelAllLoading}
-+                  >
-+                    {cancelAllLoading ? (
-+                      <View style={styles.providerCalendarCancelButtonLoadingRow}>
-+                        <ActivityIndicator size="small" color={colors.error} />
-+                        <Text style={styles.providerCalendarCancelAllButtonText}>Cancelling…</Text>
-+                      </View>
-+                    ) : (
-+                      <Text style={styles.providerCalendarCancelAllButtonText}>Cancel All</Text>
-+                    )}
-+                  </TouchableOpacity>
-+                </View>
-+              ) : null}
+   const hourTicks = useMemo(
+     () => Array.from({ length: totalHours }, (_, idx) => gridStartClamped + idx),
+     [gridStartClamped, totalHours]
+   );
+ 
+   const lineTicks = useMemo(
+     () => Array.from({ length: totalHours + 1 }, (_, idx) => gridStartClamped + idx),
+     [gridStartClamped, totalHours]
+   );
+ 
+   const formatHourLabel = useCallback((hour) => {
+     const normalizedHour = ((hour % 24) + 24) % 24;
+     const meridiem = normalizedHour >= 12 ? "PM" : "AM";
+     const displayHour = normalizedHour % 12 === 0 ? 12 : normalizedHour % 12;
+     return `${displayHour}${meridiem}`;
+   }, []);
+ 
++  const visibleEvents = useMemo(
++    () =>
++      (events || []).filter((event) => {
++        const rawStatus = String(event?.status?.type || event?.status || event?.state || "").trim().toLowerCase();
++        return rawStatus !== "cancelled" && rawStatus !== "canceled";
++      }),
++    [events]
++  );
 +
-               <CalendarProvider date={selectedDate} onDateChanged={onSelectDate}>
-                 <View style={styles.providerCalendarCard}>
-                 {viewMode === "month" ? (
-                   <View
-                     style={[
-                       styles.providerCalendarViewport,
-                       styles.providerCalendarViewportMonth,
-                     ]}
-                   >
-                     <Calendar
-                       current={selectedDate}
-                       markedDates={markedDates}
-                       onDayPress={onSelectDate}
-                       theme={calendarTheme}
-                     />
-                   </View>
-                 ) : viewMode === "week" ? (
-                   <View
-                     style={[
-                       styles.providerCalendarViewport,
-                       styles.providerCalendarViewportWeek,
-                     ]}
-                     onLayout={(event) => {
-                       const width = Math.round(event?.nativeEvent?.layout?.width || 0);
-                       if (width > 0 && weekPagerWidth === 0) {
-@@ -7975,69 +7998,50 @@ function ProviderCalendarScreen({ token, showFlash }) {
-                                 bookingsByDate={bookingsByDate}
-                                 isBookingCompleted={isBookingCompleted}
-                                 colors={colors}
-                                 getWeekDays={getWeekDays}
-                               />
-                             </View>
-                           ))}
-                         </ScrollView>
-                       ) : (
-                         <View style={{ flex: 1 }} />
-                       )}
-                     </View>
-                     <View style={styles.providerCalendarViewportDay}>
-                       <DayScheduleGrid events={dayGridEvents} startHour={0} endHour={24} />
-                     </View>
-                   </View>
-                 )}
-                 </View>
-               </CalendarProvider>
+   const positionedEvents = useMemo(() => {
+     const minuteToPx = hourHeight / 60;
+-    return (events || [])
++    return visibleEvents
+       .map((event) => {
+         const startDate = event?.startDate || new Date(event?.start);
+         const endDate = event?.endDate || new Date(event?.end);
+         if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) return null;
  
-               {loading ? <ActivityIndicator color={colors.primary} style={{ marginTop: 12 }} /> : null}
-               {error ? <Text style={styles.errorText}>{error}</Text> : null}
-               <View style={{ height: 12 }} />
-               <View style={styles.providerCalendarHeaderBlock}>
-                 <Text style={styles.sectionTitle}>Appointments for {selectedDate}</Text>
--                {viewMode === "day" && cancellableDayBookings.length > 0 ? (
--                  <TouchableOpacity
--                    style={[
--                      styles.providerCalendarCancelAllButton,
--                      cancelAllLoading && styles.providerCalendarCancelAllButtonDisabled,
--                    ]}
--                    onPress={handleCancelAllForSelectedDay}
--                    disabled={cancelAllLoading}
--                  >
--                    {cancelAllLoading ? (
--                      <View style={styles.providerCalendarCancelButtonLoadingRow}>
--                        <ActivityIndicator size="small" color={colors.error} />
--                        <Text style={styles.providerCalendarCancelAllButtonText}>Cancelling…</Text>
--                      </View>
--                    ) : (
--                      <Text style={styles.providerCalendarCancelAllButtonText}>Cancel All</Text>
--                    )}
--                  </TouchableOpacity>
--                ) : null}
-               </View>
-             </View>
-           }
-           ListEmptyComponent={
-             showAppointmentsEmptyState ? (
-               <Text style={styles.providerCalendarEmpty}>No appointments for this date.</Text>
-             ) : null
-           }
-           contentContainerStyle={styles.providerCalendarListContent}
-           showsVerticalScrollIndicator={false}
-           keyboardShouldPersistTaps="handled"
-           refreshControl={
-             <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
-           }
-         />
+         const startMinutes = startDate.getHours() * 60 + startDate.getMinutes();
+         const endMinutes = endDate.getHours() * 60 + endDate.getMinutes();
+         const gridStartMinutes = gridStartClamped * 60;
+         const gridEndMinutes = gridEndClamped * 60;
+         const clampedStart = Math.max(startMinutes, gridStartMinutes);
+         const clampedEnd = Math.min(Math.max(endMinutes, clampedStart + 1), gridEndMinutes);
+         const durationMinutes = Math.max(clampedEnd - clampedStart, 1);
+ 
+         const top = (clampedStart - gridStartMinutes) * minuteToPx + gridVerticalPadding;
+         const height = Math.max(durationMinutes * minuteToPx - 6, 50);
+ 
+         return {
+           ...event,
+           top,
+           height,
+         };
+       })
+       .filter(Boolean)
+       .sort((a, b) => a.top - b.top);
+-  }, [events, gridEndClamped, gridStartClamped, gridVerticalPadding, hourHeight]);
++  }, [gridEndClamped, gridStartClamped, gridVerticalPadding, hourHeight, visibleEvents]);
+ 
+   return (
+     <ScrollView
+       style={styles.providerDayScheduleScroll}
+       pointerEvents="auto"
+       contentContainerStyle={[
+         styles.providerDayScheduleScrollContent,
+         Platform.OS === "android" ? { minHeight: contentHeight + gridVerticalPadding * 2 + 24 } : null,
+         { paddingTop: gridVerticalPadding, paddingBottom: gridVerticalPadding + 24 },
+       ]}
+       showsVerticalScrollIndicator={false}
+       bounces={false}
+       alwaysBounceHorizontal={false}
+       horizontal={false}
+       nestedScrollEnabled={true}
+       scrollEnabled={true}
+       keyboardShouldPersistTaps="handled"
+       contentInsetAdjustmentBehavior="never"
+     >
+       <View style={styles.providerDayScheduleRow}>
+         <View style={[styles.providerDayScheduleGutter, { width: timeGutterWidth, height: trackHeight }]}>
+           {hourTicks.map((hour) => {
+             const y = (hour - gridStartClamped) * hourHeight + gridVerticalPadding;
+             return (
+               <Text key={`label-${hour}`} style={[styles.providerDayScheduleTimeLabel, { top: y + hourHeight / 2 }]}>
+@@ -7120,57 +7129,63 @@ function DayScheduleGrid({ events, startHour, endHour }) {
+                     numberOfLines={1}
+                   >
+                     {statusLabel}
+                   </Text>
+                 </View>
+               </TouchableOpacity>
+             );
+           })}
+         </View>
        </View>
-     </SafeAreaView>
+     </ScrollView>
    );
  }
  
- // Tabs after login
- function MainApp({
-   apiClient,
-   authLoading,
-   token,
-@@ -10610,50 +10614,58 @@ signupTextButtonText: {
-   providerCalendarModeSwitch: {
-     flexDirection: "row",
-     backgroundColor: colors.surface,
-     borderWidth: 1,
-     borderColor: colors.border,
-     borderRadius: 12,
-     overflow: "hidden",
-     marginBottom: 12,
-   },
-   providerCalendarModeButton: {
-     flex: 1,
-     paddingVertical: 10,
-     alignItems: "center",
-   },
-   providerCalendarModeButtonActive: {
-     backgroundColor: colors.primarySoft,
-   },
-   providerCalendarModeText: {
-     color: colors.textSecondary,
-     fontWeight: "600",
-     fontSize: 13,
-   },
-   providerCalendarModeTextActive: {
-     color: colors.textPrimary,
-   },
-+  providerCalendarTopActionsRow: {
-+    flexDirection: "row",
-+    alignItems: "center",
-+    justifyContent: "flex-end",
-+    paddingHorizontal: 0,
-+    marginTop: 10,
-+    marginBottom: 6,
-+  },
-   providerCalendarCard: {
-     backgroundColor: colors.surface,
-     borderWidth: 1,
-     borderColor: colors.border,
-     borderRadius: 14,
-     padding: 8,
-   },
-   providerCalendarViewport: {
-     overflow: "hidden",
-     borderRadius: 10,
-   },
-   providerCalendarViewportMonth: {
-     height: 360,
-   },
-   providerCalendarViewportWeek: {
-     height: 168,
-     overflow: "hidden",
-   },
-   providerWeeklyStrip: {
-     width: "100%",
-     paddingVertical: 10,
-   },
-   providerWeeklyRow: {
-     flexDirection: "row",
-     width: "100%",
+ function WeeklyStrip({
+   weekStartKey,
+   selectedDate,
+   onSelectDate,
+   bookingsByDate,
+   isBookingCompleted,
+   colors,
+   getWeekDays,
+ }) {
+   const weekDays = useMemo(() => getWeekDays(weekStartKey), [getWeekDays, weekStartKey]);
+ 
++  const isBookingVisible = useCallback((booking) => {
++    const normalizedStatus = String(booking?.status || booking?.state || "").trim().toLowerCase();
++    return normalizedStatus !== "cancelled" && normalizedStatus !== "canceled";
++  }, []);
++
+   return (
+     <View style={styles.providerWeeklyStrip}>
+       <View style={styles.providerWeeklyRow}>
+         {weekDays.map((day) => {
+           const bookings = bookingsByDate?.[day.key] || [];
+-          const hasBookings = bookings.length > 0;
+-          const allCompleted = hasBookings && bookings.every((booking) => isBookingCompleted(booking));
++          const activeBookings = bookings.filter(isBookingVisible);
++          const hasBookings = activeBookings.length > 0;
++          const allCompleted = hasBookings && activeBookings.every((booking) => isBookingCompleted(booking));
+           const isSelected = day.key === selectedDate;
+ 
+           return (
+             <Pressable
+               key={day.key}
+               style={styles.providerWeeklyCell}
+               onPress={() => onSelectDate(day.key)}
+             >
+               <Text allowFontScaling={false} style={styles.providerWeeklyDow}>
+                 {day.label}
+               </Text>
+               <View
+                 style={[
+                   styles.providerWeeklyDayWrap,
+                   isSelected && styles.providerWeeklyDayWrapSelected,
+                 ]}
+               >
+                 <Text
+                   allowFontScaling={false}
+                   style={[
+                     styles.providerWeeklyDayText,
+                     !isSelected && styles.providerWeeklyDayTextMuted,
+                   ]}
+                 >
+                   {day.dayNumber}
+@@ -7504,51 +7519,59 @@ function ProviderCalendarScreen({ token, showFlash }) {
+                 await cancelBookingById(bookingId);
+ 
+                 if (showFlash) showFlash("success", "Appointment cancelled");
+                 await loadBookingsForRange();
+               } catch (err) {
+                 const message =
+                   err?.response?.data?.detail ||
+                   err?.response?.data?.message ||
+                   "Could not cancel appointment. Please try again.";
+                 if (showFlash) showFlash("error", message);
+               } finally {
+                 setCancellingByBookingId((prev) => ({ ...prev, [bookingId]: false }));
+               }
+             },
+           },
+         ]
+       );
+     },
+     [cancelAllLoading, cancelBookingById, cancellingByBookingId, getBookingId, loadBookingsForRange, showFlash]
+   );
+ 
+   useEffect(() => {
+     loadBookingsForRange();
+   }, [loadBookingsForRange]);
+ 
+-  const selectedBookings = useMemo(() => bookingsByDate[selectedDate] || [], [bookingsByDate, selectedDate]);
++  const isActiveBooking = useCallback((booking) => {
++    const normalizedStatus = String(booking?.status || booking?.state || "").trim().toLowerCase();
++    return normalizedStatus !== "cancelled" && normalizedStatus !== "canceled";
++  }, []);
++
++  const selectedBookings = useMemo(
++    () => (bookingsByDate[selectedDate] || []).filter(isActiveBooking),
++    [bookingsByDate, isActiveBooking, selectedDate]
++  );
+   const sortedSelectedBookings = useMemo(
+     () =>
+       selectedBookings
+         .slice()
+         .sort((a, b) => new Date(a?.start_time || a?.start) - new Date(b?.start_time || b?.start)),
+     [selectedBookings]
+   );
+   const cancellableDayBookings = useMemo(
+     () => sortedSelectedBookings.filter((booking) => isBookingCancellable(booking)),
+     [isBookingCancellable, sortedSelectedBookings]
+   );
+ 
+   const handleCancelAllForSelectedDay = useCallback(() => {
+     if (cancelAllLoading || viewMode !== "day") return;
+     const cancellableBookings = sortedSelectedBookings.filter((booking) => isBookingCancellable(booking));
+     const totalToCancel = cancellableBookings.length;
+     if (!totalToCancel) return;
+ 
+     Alert.alert(
+       "Cancel all appointments?",
+       `This will cancel ${totalToCancel} appointments on ${selectedDate}. This can’t be undone.`,
+       [
+         { text: "Keep", style: "cancel" },
+         {
+           text: "Cancel All",
+@@ -7609,67 +7632,69 @@ function ProviderCalendarScreen({ token, showFlash }) {
+     sortedSelectedBookings,
+     token,
+     viewMode,
+   ]);
+ 
+   const formatTimelineTime = useCallback((isoDateLike) => {
+     const parsed = new Date(isoDateLike);
+     if (Number.isNaN(parsed.getTime())) return "--:--";
+     const hh = String(parsed.getHours()).padStart(2, "0");
+     const mm = String(parsed.getMinutes()).padStart(2, "0");
+     return `${hh}:${mm}`;
+   }, []);
+ 
+   const getEventAccentColor = useCallback((booking) => {
+     const palette = [colors.primary, "#1CA7A8", "#4C8BF5", "#8A63D2"];
+     const hashSource = String(booking?.service_id || booking?.service_name || "service");
+     const hash = Array.from(hashSource).reduce((acc, ch) => acc + ch.charCodeAt(0), 0);
+     return palette[hash % palette.length];
+   }, []);
+ 
+   const markedDates = useMemo(() => {
+     const marked = {};
+ 
+     Object.keys(bookingsByDate).forEach((day) => {
+       const dayBookings = bookingsByDate[day] || [];
+-      if (!dayBookings.length) return;
+-      const allCompleted = dayBookings.every((b) => isBookingCompleted(b));
++      const activeBookings = dayBookings.filter(isActiveBooking);
++      const hasBookings = activeBookings.some((booking) => isActiveBooking(booking));
++      if (!hasBookings) return;
++      const allCompleted = activeBookings.every((b) => isBookingCompleted(b));
+       marked[day] = {
+         marked: true,
+         dotColor: allCompleted ? colors.textMuted : colors.primary,
+       };
+     });
+ 
+     marked[selectedDate] = {
+       ...(marked[selectedDate] || {}),
+       selected: true,
+       selectedColor: colors.primarySoft,
+       selectedTextColor: colors.textPrimary,
+     };
+ 
+     return marked;
+-  }, [bookingsByDate, isBookingCompleted, selectedDate]);
++  }, [bookingsByDate, isActiveBooking, isBookingCompleted, selectedDate]);
+ 
+   const timelineEvents = useMemo(
+     () =>
+       selectedBookings
+       .map((booking) => {
+           const startIso = booking?.start_time || booking?.start;
+           if (!startIso) return null;
+           const startDate = new Date(startIso);
+           if (Number.isNaN(startDate.getTime())) return null;
+ 
+           let endDate = booking?.end_time || booking?.end ? new Date(booking?.end_time || booking?.end) : null;
+           if (!endDate || Number.isNaN(endDate.getTime())) {
+             const durationMin = Number(booking?.duration_minutes || booking?.duration || 30);
+             endDate = new Date(startDate.getTime() + Math.max(durationMin, 1) * 60_000);
+           }
+ 
+           const status = getBookingStatusLabel(booking);
+           const completed = status.type === "completed";
+           const accentColor = getEventAccentColor(booking);
+ 
+           return {
+             id: String(booking?.id || booking?.booking_id || `${startIso}-${booking?.service_name || "service"}`),
+             start: startDate.toISOString(),
+             end: endDate.toISOString(),
+             title: booking?.service_name || "Service",
  
 EOF
 )

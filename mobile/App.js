@@ -6993,9 +6993,18 @@ function DayScheduleGrid({ events, startHour, endHour }) {
     return `${displayHour}${meridiem}`;
   }, []);
 
+  const visibleEvents = useMemo(
+    () =>
+      (events || []).filter((event) => {
+        const rawStatus = String(event?.status?.type || event?.status || event?.state || "").trim().toLowerCase();
+        return rawStatus !== "cancelled" && rawStatus !== "canceled";
+      }),
+    [events]
+  );
+
   const positionedEvents = useMemo(() => {
     const minuteToPx = hourHeight / 60;
-    return (events || [])
+    return visibleEvents
       .map((event) => {
         const startDate = event?.startDate || new Date(event?.start);
         const endDate = event?.endDate || new Date(event?.end);
@@ -7020,7 +7029,7 @@ function DayScheduleGrid({ events, startHour, endHour }) {
       })
       .filter(Boolean)
       .sort((a, b) => a.top - b.top);
-  }, [events, gridEndClamped, gridStartClamped, gridVerticalPadding, hourHeight]);
+  }, [gridEndClamped, gridStartClamped, gridVerticalPadding, hourHeight, visibleEvents]);
 
   return (
     <ScrollView
@@ -7142,13 +7151,19 @@ function WeeklyStrip({
 }) {
   const weekDays = useMemo(() => getWeekDays(weekStartKey), [getWeekDays, weekStartKey]);
 
+  const isBookingVisible = useCallback((booking) => {
+    const normalizedStatus = String(booking?.status || booking?.state || "").trim().toLowerCase();
+    return normalizedStatus !== "cancelled" && normalizedStatus !== "canceled";
+  }, []);
+
   return (
     <View style={styles.providerWeeklyStrip}>
       <View style={styles.providerWeeklyRow}>
         {weekDays.map((day) => {
           const bookings = bookingsByDate?.[day.key] || [];
-          const hasBookings = bookings.length > 0;
-          const allCompleted = hasBookings && bookings.every((booking) => isBookingCompleted(booking));
+          const activeBookings = bookings.filter(isBookingVisible);
+          const hasBookings = activeBookings.length > 0;
+          const allCompleted = hasBookings && activeBookings.every((booking) => isBookingCompleted(booking));
           const isSelected = day.key === selectedDate;
 
           return (
@@ -7526,7 +7541,15 @@ function ProviderCalendarScreen({ token, showFlash }) {
     loadBookingsForRange();
   }, [loadBookingsForRange]);
 
-  const selectedBookings = useMemo(() => bookingsByDate[selectedDate] || [], [bookingsByDate, selectedDate]);
+  const isActiveBooking = useCallback((booking) => {
+    const normalizedStatus = String(booking?.status || booking?.state || "").trim().toLowerCase();
+    return normalizedStatus !== "cancelled" && normalizedStatus !== "canceled";
+  }, []);
+
+  const selectedBookings = useMemo(
+    () => (bookingsByDate[selectedDate] || []).filter(isActiveBooking),
+    [bookingsByDate, isActiveBooking, selectedDate]
+  );
   const sortedSelectedBookings = useMemo(
     () =>
       selectedBookings
@@ -7631,8 +7654,10 @@ function ProviderCalendarScreen({ token, showFlash }) {
 
     Object.keys(bookingsByDate).forEach((day) => {
       const dayBookings = bookingsByDate[day] || [];
-      if (!dayBookings.length) return;
-      const allCompleted = dayBookings.every((b) => isBookingCompleted(b));
+      const activeBookings = dayBookings.filter(isActiveBooking);
+      const hasBookings = activeBookings.some((booking) => isActiveBooking(booking));
+      if (!hasBookings) return;
+      const allCompleted = activeBookings.every((b) => isBookingCompleted(b));
       marked[day] = {
         marked: true,
         dotColor: allCompleted ? colors.textMuted : colors.primary,
@@ -7647,7 +7672,7 @@ function ProviderCalendarScreen({ token, showFlash }) {
     };
 
     return marked;
-  }, [bookingsByDate, isBookingCompleted, selectedDate]);
+  }, [bookingsByDate, isActiveBooking, isBookingCompleted, selectedDate]);
 
   const timelineEvents = useMemo(
     () =>
