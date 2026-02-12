@@ -18,16 +18,17 @@ export default {
   assetBundlePatterns: ["**/*"],
   newArchEnabled: false,
   plugins: [
-    [
-      "react-native-fbsdk-next",
-      {
-        appID: (process.env.FACEBOOK_APP_ID || "").trim(),
-        clientToken: (process.env.FACEBOOK_CLIENT_TOKEN || "").trim(),
-        displayName: "BookitGY",
-        scheme: `fb${(process.env.FACEBOOK_APP_ID || "").trim()}`,
-        isAutoInitEnabled: true,
-      },
-    ],
+    "./plugins/remove-ad-id-permission",
+    // [
+    //   "react-native-fbsdk-next",
+    //   {
+    //     appID: (process.env.FACEBOOK_APP_ID || "").trim(),
+    //     clientToken: (process.env.FACEBOOK_CLIENT_TOKEN || "").trim(),
+    //     displayName: "BookitGY",
+    //     scheme: `fb${(process.env.FACEBOOK_APP_ID || "").trim()}`,
+    //     isAutoInitEnabled: true,
+    //   },
+    // ],
   ],
 
   ios: {
@@ -58,8 +59,16 @@ export default {
 
   android: {
     package: "com.bookitgy.app",
-    versionCode: 1,
+    versionCode: 2, // bump this
     permissions: ["ACCESS_FINE_LOCATION", "ACCESS_COARSE_LOCATION"],
+    blockedPermissions: [
+    "com.google.android.gms.permission.AD_ID",
+    "android.permission.ACCESS_ADSERVICES_AD_ID",
+    "android.permission.ACCESS_ADSERVICES_ATTRIBUTION",
+    "android.permission.ACCESS_ADSERVICES_CUSTOM_AUDIENCE",
+    "android.permission.ACCESS_ADSERVICES_TOPICS",
+  ],
+    
     intentFilters: [
       {
         action: "VIEW",
