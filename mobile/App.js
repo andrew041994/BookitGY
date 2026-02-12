@@ -6959,6 +6959,7 @@ function ProviderBillingScreen({ token, showFlash }) {
 
 function DayScheduleGrid({ events, startHour, endHour, renderEvent }) {
   const hourHeight = 145;
+  const pxPerMinute = hourHeight / 60;
   const timeGutterWidth = 56;
   const gridVerticalPadding = 12;
   const startRaw = Number(startHour);
@@ -7013,33 +7014,33 @@ function DayScheduleGrid({ events, startHour, endHour, renderEvent }) {
   );
 
   const positionedEvents = useMemo(() => {
-    const minuteToPx = hourHeight / 60;
     return visibleEvents
       .map((event) => {
         const startDate = event?.startDate || new Date(event?.start);
         const endDate = event?.endDate || new Date(event?.end);
         if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) return null;
 
-        const startMinutes = startDate.getHours() * 60 + startDate.getMinutes();
-        const endMinutes = endDate.getHours() * 60 + endDate.getMinutes();
         const gridStartMinutes = gridStartClamped * 60;
-        const gridEndMinutes = gridEndClamped * 60;
-        const clampedStart = Math.max(startMinutes, gridStartMinutes);
-        const clampedEnd = Math.min(Math.max(endMinutes, clampedStart + 1), gridEndMinutes);
-        const durationMinutes = Math.max(clampedEnd - clampedStart, 1);
+        const startMinutes = startDate.getHours() * 60 + startDate.getMinutes();
+        const minutesFromStart = startMinutes - gridStartMinutes;
+        const durationMinutes = Math.max(
+          5,
+          Math.round((endDate.getTime() - startDate.getTime()) / 60000)
+        );
 
-        const top = (clampedStart - gridStartMinutes) * minuteToPx + gridVerticalPadding;
-        const height = Math.max(durationMinutes * minuteToPx - 6, 104);
+        const top = minutesFromStart * pxPerMinute + gridVerticalPadding;
+        const height = durationMinutes * pxPerMinute;
 
         return {
           ...event,
           top,
           height,
+          durationMinutes,
         };
       })
-      .filter(Boolean)
+      .filter((event) => event && event.top + event.height >= gridVerticalPadding && event.top <= trackHeight - gridVerticalPadding)
       .sort((a, b) => a.top - b.top);
-  }, [gridEndClamped, gridStartClamped, gridVerticalPadding, hourHeight, visibleEvents]);
+  }, [gridStartClamped, gridVerticalPadding, pxPerMinute, trackHeight, visibleEvents]);
 
   return (
     <ScrollView
@@ -7733,7 +7734,7 @@ function ProviderCalendarScreen({ token, showFlash }) {
   }, []);
 
   const ProviderBookingCard = useCallback(
-    ({ booking, startDate, endDate: _endDate, token: _token, showFlash: _showFlash }) => {
+    ({ booking, startDate, endDate: _endDate, durationMinutes = 60, token: _token, showFlash: _showFlash }) => {
       const bookingId = getBookingId(booking);
       const status = getBookingStatusLabel(booking);
       const statusThemeKey = getAppointmentStatusThemeKey(status?.type || status?.label);
@@ -7750,11 +7751,14 @@ function ProviderCalendarScreen({ token, showFlash }) {
             minute: "2-digit",
           })
         : "--:--";
+      const isShort = durationMinutes < 45;
 
       return (
         <View
           style={[
             styles.providerCalendarRow,
+            styles.providerCalendarRowTimeline,
+            isShort && styles.providerCalendarRowTimelineCompact,
             completed && styles.providerCalendarRowCompleted,
             { borderColor: statusTheme.border, backgroundColor: statusTheme.bgTint },
           ]}
@@ -8012,6 +8016,7 @@ function ProviderCalendarScreen({ token, showFlash }) {
                             booking={event.booking}
                             startDate={event.startDate}
                             endDate={event.endDate}
+                            durationMinutes={event.durationMinutes}
                             token={token}
                             showFlash={showFlash}
                           />
@@ -10891,6 +10896,14 @@ signupTextButtonText: {
     flexDirection: "row",
     alignItems: "flex-start",
     overflow: "hidden",
+  },
+  providerCalendarRowTimeline: {
+    height: "100%",
+    marginBottom: 0,
+    paddingVertical: 12,
+  },
+  providerCalendarRowTimelineCompact: {
+    paddingVertical: 8,
   },
   providerCalendarLeftAccentBar: {
     width: 4,
