@@ -6957,7 +6957,7 @@ function ProviderBillingScreen({ token, showFlash }) {
 }
 
 
-function DayScheduleGrid({ events, startHour, endHour }) {
+function DayScheduleGrid({ events, startHour, endHour, renderEvent }) {
   const hourHeight = 145;
   const timeGutterWidth = 56;
   const gridVerticalPadding = 12;
@@ -7083,67 +7083,20 @@ function DayScheduleGrid({ events, startHour, endHour }) {
             );
           })}
 
-          {positionedEvents.map((event) => {
-            const completed = Boolean(event?.completed);
-            const statusType = event?.status?.type || "scheduled";
-            const statusLabel = event?.status?.label || "Scheduled";
-            return (
-              <TouchableOpacity
-                key={event.id}
-                activeOpacity={0.9}
-                style={[
-                  styles.providerDayScheduleEvent,
-                  completed && styles.providerDayScheduleEventCompleted,
-                  {
-                    top: event.top,
-                    height: event.height,
-                  },
-                ]}
-                onPress={() => {
-                  Alert.alert(
-                    event?.title || "Appointment",
-                    `${event?.summary || "Customer"}\n${event?.startLabel || "--:--"}`
-                  );
-                }}
-              >
-                <View
-                  style={[
-                    styles.providerDayScheduleEventAccent,
-                    { backgroundColor: event?.accentColor || colors.primary },
-                  ]}
-                />
-                <View style={styles.providerDayScheduleEventBody}>
-                  <Text style={styles.providerDayScheduleEventTime} numberOfLines={1} ellipsizeMode="tail">
-                    {event?.startLabel || "--:--"}
-                  </Text>
-                  <Text style={styles.providerDayScheduleEventTitle} numberOfLines={1} ellipsizeMode="tail">
-                    {event?.title || "Service"}
-                  </Text>
-                  <Text style={styles.providerDayScheduleEventSummary} numberOfLines={1} ellipsizeMode="tail">
-                    {event?.summary || "Customer"}
-                  </Text>
-                </View>
-                <View
-                  style={[
-                    styles.providerDayScheduleStatusBadge,
-                    statusType === "cancelled" && styles.providerDayScheduleStatusBadgeCancelled,
-                    statusType === "completed" && styles.providerDayScheduleStatusBadgeCompleted,
-                  ]}
-                >
-                  <Text
-                    style={[
-                      styles.providerDayScheduleStatusText,
-                      statusType === "cancelled" && styles.providerDayScheduleStatusTextCancelled,
-                      statusType === "completed" && styles.providerDayScheduleStatusTextCompleted,
-                    ]}
-                    numberOfLines={1}
-                  >
-                    {statusLabel}
-                  </Text>
-                </View>
-              </TouchableOpacity>
-            );
-          })}
+          {positionedEvents.map((event) => (
+            <View
+              key={event.id}
+              style={[
+                styles.providerDayScheduleEvent,
+                {
+                  top: event.top,
+                  height: event.height,
+                },
+              ]}
+            >
+              {renderEvent ? renderEvent(event) : null}
+            </View>
+          ))}
         </View>
       </View>
     </ScrollView>
@@ -7696,6 +7649,7 @@ function ProviderCalendarScreen({ token, showFlash }) {
             id: String(booking?.id || booking?.booking_id || `${startIso}-${booking?.service_name || "service"}`),
             start: startDate.toISOString(),
             end: endDate.toISOString(),
+            booking,
             title: booking?.service_name || "Service",
             summary: booking?.customer_name || "Customer",
             color: accentColor,
@@ -7771,8 +7725,8 @@ function ProviderCalendarScreen({ token, showFlash }) {
     [timelineEvents]
   );
 
-  const appointmentListData = sortedSelectedBookings;
-  const showAppointmentsEmptyState = true;
+  const appointmentListData = viewMode === "day" ? [] : sortedSelectedBookings;
+  const showAppointmentsEmptyState = viewMode !== "day";
   const getBookingCardKey = useCallback((booking) => {
     if (booking?.id != null) return String(booking.id);
     return `${booking?.booking_id || booking?.id || ""}-${booking?.start_time || booking?.start || ""}`;
@@ -8047,7 +8001,14 @@ function ProviderCalendarScreen({ token, showFlash }) {
                       )}
                     </View>
                     <View style={styles.providerCalendarViewportDay}>
-                      <DayScheduleGrid events={dayGridEvents} startHour={0} endHour={24} />
+                      <DayScheduleGrid
+                        events={dayGridEvents}
+                        startHour={0}
+                        endHour={24}
+                        renderEvent={(event) => (
+                          <ProviderBookingCard booking={event.booking} token={token} showFlash={showFlash} />
+                        )}
+                      />
                     </View>
                   </View>
                 )}
@@ -8056,10 +8017,14 @@ function ProviderCalendarScreen({ token, showFlash }) {
 
               {loading ? <ActivityIndicator color={colors.primary} style={{ marginTop: 12 }} /> : null}
               {error ? <Text style={styles.errorText}>{error}</Text> : null}
-              <View style={{ height: 12 }} />
-              <View style={styles.providerCalendarHeaderBlock}>
-                <Text style={styles.sectionTitle}>Appointments for {selectedDate}</Text>
-              </View>
+              {viewMode !== "day" ? (
+                <>
+                  <View style={{ height: 12 }} />
+                  <View style={styles.providerCalendarHeaderBlock}>
+                    <Text style={styles.sectionTitle}>Appointments for {selectedDate}</Text>
+                  </View>
+                </>
+              ) : null}
             </View>
           }
           ListEmptyComponent={

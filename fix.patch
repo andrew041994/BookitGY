@@ -1,310 +1,211 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
 diff --git a/mobile/App.js b/mobile/App.js
-index 900cbd447fc1496bb9eec16669ee204052cb7540..ef17f54db7f4d7a75aa5af41e859d95ba434504a 100644
+index ef17f54db7f4d7a75aa5af41e859d95ba434504a..37668511f0dfc70bd7cec3e16fc93b5f99726f5f 100644
 --- a/mobile/App.js
 +++ b/mobile/App.js
-@@ -214,50 +214,60 @@ const resolveImageUrl = (url) => {
+@@ -7007,51 +7007,51 @@ function DayScheduleGrid({ events, startHour, endHour }) {
+     () =>
+       (events || []).filter((event) => {
+         const rawStatus = String(event?.status?.type || event?.status || event?.state || "").trim().toLowerCase();
+         return rawStatus !== "cancelled" && rawStatus !== "canceled";
+       }),
+     [events]
+   );
  
- const toNum = (value) => {
-   const n = typeof value === "string" ? parseFloat(value) : value;
-   return Number.isFinite(n) ? n : null;
- };
+   const positionedEvents = useMemo(() => {
+     const minuteToPx = hourHeight / 60;
+     return visibleEvents
+       .map((event) => {
+         const startDate = event?.startDate || new Date(event?.start);
+         const endDate = event?.endDate || new Date(event?.end);
+         if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) return null;
  
- const getDistanceKm = (lat1, lon1, lat2, lon2) => {
-   if (lat1 == null || lon1 == null || lat2 == null || lon2 == null) {
-     return null;
-   }
-   const toRad = (value) => (value * Math.PI) / 180;
-   const R = 6371;
-   const dLat = toRad(lat2 - lat1);
-   const dLon = toRad(lon2 - lon1);
-   const a =
-     Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-     Math.cos(toRad(lat1)) *
-       Math.cos(toRad(lat2)) *
-       Math.sin(dLon / 2) *
-       Math.sin(dLon / 2);
-   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-   const distance = R * c;
-   return Number.isFinite(distance) ? distance : null;
- };
+         const startMinutes = startDate.getHours() * 60 + startDate.getMinutes();
+         const endMinutes = endDate.getHours() * 60 + endDate.getMinutes();
+         const gridStartMinutes = gridStartClamped * 60;
+         const gridEndMinutes = gridEndClamped * 60;
+         const clampedStart = Math.max(startMinutes, gridStartMinutes);
+         const clampedEnd = Math.min(Math.max(endMinutes, clampedStart + 1), gridEndMinutes);
+         const durationMinutes = Math.max(clampedEnd - clampedStart, 1);
  
-+function dedupeById(list) {
-+  const map = new Map();
-+  for (const item of list || []) {
-+    const k = item?.id != null ? String(item.id) : null;
-+    if (!k) continue;
-+    map.set(k, item);
-+  }
-+  return Array.from(map.values());
-+}
-+
- const getProviderCoords = (provider) => {
-   const location = provider?.location;
-   const pinnedLocation = provider?.pinned_location ?? provider?.pinnedLocation;
-   const coords = provider?.coords;
-   const getCoordsFrom = (source) => {
-     const lat = toNum(source?.lat ?? source?.latitude);
-     const lng = toNum(source?.long ?? source?.lng ?? source?.longitude);
-     if (lat == null || lng == null) return null;
-     return { lat, lng };
-   };
+         const top = (clampedStart - gridStartMinutes) * minuteToPx + gridVerticalPadding;
+-        const height = Math.max(durationMinutes * minuteToPx - 6, 50);
++        const height = Math.max(durationMinutes * minuteToPx - 6, 104);
  
-   const fromPinned = getCoordsFrom(pinnedLocation);
-   if (fromPinned) return fromPinned;
+         return {
+           ...event,
+           top,
+           height,
+         };
+       })
+       .filter(Boolean)
+       .sort((a, b) => a.top - b.top);
+   }, [gridEndClamped, gridStartClamped, gridVerticalPadding, hourHeight, visibleEvents]);
  
-   const fromLocation = getCoordsFrom(location);
-   if (fromLocation) return fromLocation;
- 
-   const fromProvider = getCoordsFrom(provider);
-   if (fromProvider) return fromProvider;
- 
-   const fromUser = getCoordsFrom(provider?.user);
-   if (fromUser) return fromUser;
-   const fromCoords = getCoordsFrom(coords);
-   if (fromCoords) return fromCoords;
- 
-@@ -7273,51 +7283,51 @@ function ProviderCalendarScreen({ token, showFlash }) {
-   }, [normalizeDateKey, parseLocalMidday]);
-   const getWeekDays = useCallback((weekStartKey) => {
-     const weekdayLabels = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-     const start = parseLocalMidday(weekStartKey);
-     if (!start) return [];
- 
-     return Array.from({ length: 7 }, (_, index) => {
-       const current = new Date(start.getFullYear(), start.getMonth(), start.getDate() + index, 12, 0, 0);
-       const yyyy = current.getFullYear();
-       const mm = String(current.getMonth() + 1).padStart(2, "0");
-       const dd = String(current.getDate()).padStart(2, "0");
-       return {
-         key: `${yyyy}-${mm}-${dd}`,
-         label: weekdayLabels[index],
-         dayNumber: String(current.getDate()),
+   return (
+     <ScrollView
+       style={styles.providerDayScheduleScroll}
+       pointerEvents="auto"
+       contentContainerStyle={[
+         styles.providerDayScheduleScrollContent,
+         Platform.OS === "android" ? { minHeight: contentHeight + gridVerticalPadding * 2 + 24 } : null,
+         { paddingTop: gridVerticalPadding, paddingBottom: gridVerticalPadding + 24 },
+       ]}
+       showsVerticalScrollIndicator={false}
+       bounces={false}
+       alwaysBounceHorizontal={false}
+       horizontal={false}
+       nestedScrollEnabled={true}
+@@ -7094,54 +7094,54 @@ function DayScheduleGrid({ events, startHour, endHour }) {
+                 style={[
+                   styles.providerDayScheduleEvent,
+                   completed && styles.providerDayScheduleEventCompleted,
+                   {
+                     top: event.top,
+                     height: event.height,
+                   },
+                 ]}
+                 onPress={() => {
+                   Alert.alert(
+                     event?.title || "Appointment",
+                     `${event?.summary || "Customer"}\n${event?.startLabel || "--:--"}`
+                   );
+                 }}
+               >
+                 <View
+                   style={[
+                     styles.providerDayScheduleEventAccent,
+                     { backgroundColor: event?.accentColor || colors.primary },
+                   ]}
+                 />
+                 <View style={styles.providerDayScheduleEventBody}>
+                   <Text style={styles.providerDayScheduleEventTime} numberOfLines={1} ellipsizeMode="tail">
+                     {event?.startLabel || "--:--"}
+                   </Text>
+-                  <Text style={styles.providerDayScheduleEventTitle} numberOfLines={1} ellipsizeMode="tail">
++                  <Text style={styles.providerDayScheduleEventTitle} numberOfLines={2} ellipsizeMode="tail">
+                     {event?.title || "Service"}
+                   </Text>
+-                  <Text style={styles.providerDayScheduleEventSummary} numberOfLines={1} ellipsizeMode="tail">
++                  <Text style={styles.providerDayScheduleEventSummary} numberOfLines={2} ellipsizeMode="tail">
+                     {event?.summary || "Customer"}
+                   </Text>
+                 </View>
+                 <View
+                   style={[
+                     styles.providerDayScheduleStatusBadge,
+                     statusType === "cancelled" && styles.providerDayScheduleStatusBadgeCancelled,
+                     statusType === "completed" && styles.providerDayScheduleStatusBadgeCompleted,
+                   ]}
+                 >
+                   <Text
+                     style={[
+                       styles.providerDayScheduleStatusText,
+                       statusType === "cancelled" && styles.providerDayScheduleStatusTextCancelled,
+                       statusType === "completed" && styles.providerDayScheduleStatusTextCompleted,
+                     ]}
+                     numberOfLines={1}
+                   >
+                     {statusLabel}
+                   </Text>
+                 </View>
+               </TouchableOpacity>
+             );
+           })}
+         </View>
+@@ -7654,70 +7654,73 @@ function ProviderCalendarScreen({ token, showFlash }) {
+     Object.keys(bookingsByDate).forEach((day) => {
+       const dayBookings = bookingsByDate[day] || [];
+       const activeBookings = dayBookings.filter(isActiveBooking);
+       const hasBookings = activeBookings.some((booking) => isActiveBooking(booking));
+       if (!hasBookings) return;
+       const allCompleted = activeBookings.every((b) => isBookingCompleted(b));
+       marked[day] = {
+         marked: true,
+         dotColor: allCompleted ? colors.textMuted : colors.primary,
        };
      });
-   }, [parseLocalMidday]);
-   const [viewMode, setViewMode] = useState("month");
-   const [selectedDate, setSelectedDate] = useState(() => normalizeDateKey(new Date()) || "");
-   const [weekStartKey, setWeekStartKey] = useState(() => {
-     const todayKey = normalizeDateKey(new Date()) || "";
-     return startOfWeekKey(todayKey) || todayKey;
-   });
-   const [weekPagerWidth, setWeekPagerWidth] = useState(0);
--  const [bookingsByDate, setBookingsByDate] = useState({});
-+  const [bookings, setBookings] = useState([]);
-   const [cancellingByBookingId, setCancellingByBookingId] = useState({});
-   const [cancelAllLoading, setCancelAllLoading] = useState(false);
-   const [loading, setLoading] = useState(false);
-   const [error, setError] = useState("");
-   const [refreshing, setRefreshing] = useState(false);
-   const weekPagerRef = useRef(null);
  
-   const dateRange = useMemo(() => {
-     const base = new Date(`${selectedDate}T12:00:00`);
-     const monthStart = new Date(base.getFullYear(), base.getMonth(), 1);
-     const monthEnd = new Date(base.getFullYear(), base.getMonth() + 1, 0);
-     return {
-       start: normalizeDateKey(monthStart),
-       end: normalizeDateKey(monthEnd),
+     marked[selectedDate] = {
+       ...(marked[selectedDate] || {}),
+       selected: true,
+       selectedColor: colors.primarySoft,
+       selectedTextColor: colors.textPrimary,
      };
-   }, [normalizeDateKey, selectedDate]);
  
-   const formatDayKey = useCallback((bookingStartTime) => normalizeDateKey(bookingStartTime), [normalizeDateKey]);
+     return marked;
+   }, [bookingsByDate, isActiveBooking, isBookingCompleted, selectedDate]);
  
-   useEffect(() => {
-     const nextWeekStart = startOfWeekKey(selectedDate);
-     if (nextWeekStart) {
-       setWeekStartKey(nextWeekStart);
-     }
-   }, [selectedDate, startOfWeekKey]);
-@@ -7413,166 +7423,154 @@ function ProviderCalendarScreen({ token, showFlash }) {
-     try {
-       if (useRefresh) setRefreshing(true);
-       setLoading(true);
-       setError("");
- 
-       const authToken = await getAuthToken(token);
-       if (!authToken) {
-         setError("No access token found. Please log in again.");
-         return;
-       }
- 
-       const res = await axios.get(`${API}/providers/me/bookings`, {
-         headers: {
-           Authorization: `Bearer ${authToken}`,
-         },
-         params: {
-           start: dateRange.start,
-           end: dateRange.end,
-         },
-       });
- 
-       const rows = Array.isArray(res.data)
-         ? res.data
-         : res.data?.bookings || res.data?.results || [];
- 
--      const grouped = rows.reduce((acc, booking) => {
--        const key = formatDayKey(booking?.start_time);
--        if (!key) return acc;
--        if (!acc[key]) acc[key] = [];
--        acc[key].push(booking);
--        return acc;
--      }, {});
--
--      setBookingsByDate(grouped);
-+      setBookings(dedupeById(rows));
-     } catch (err) {
-       console.log("Error loading provider calendar bookings", err?.response?.data || err?.message || err);
-       setError("Could not load calendar bookings.");
-       if (showFlash) {
-         showFlash("error", "Could not load calendar bookings.");
-       }
-     } finally {
-       setLoading(false);
-       if (useRefresh) setRefreshing(false);
-     }
-   }, [dateRange.end, dateRange.start, formatDayKey, showFlash, token]);
- 
-   const handleRefresh = useCallback(() => loadBookingsForRange(true), [loadBookingsForRange]);
- 
-   const cancelBookingById = useCallback(
-     async (bookingId, authTokenOverride) => {
-       const authToken = authTokenOverride || (await getAuthToken(token));
-       if (!authToken) {
-         const noAuthError = new Error("No access token found. Please log in again.");
-         noAuthError.code = "NO_AUTH_TOKEN";
-         throw noAuthError;
-       }
- 
-       await axios.post(
-         `${API}/providers/me/bookings/${bookingId}/cancel`,
-         {},
-         {
-           headers: {
-             Authorization: `Bearer ${authToken}`,
-           },
-         }
-       );
- 
--      setBookingsByDate((prev) => {
--        const next = { ...prev };
--        Object.keys(next).forEach((dayKey) => {
--          next[dayKey] = (next[dayKey] || []).map((item) =>
--            getBookingId(item) === bookingId
--              ? {
--                  ...item,
--                  status: "cancelled",
--                  canceled_at: new Date().toISOString(),
--                  canceled_by_role: "provider",
--                }
--              : item
--          );
--        });
--        return next;
--      });
-     },
--    [getBookingId, token]
-+    [token]
-   );
- 
-   const handleCancelAppointment = useCallback(
--    (booking, onCancelled) => {
-+    (booking) => {
-       if (cancelAllLoading) return;
-       const bookingId = getBookingId(booking);
-       if (!bookingId || cancellingByBookingId[bookingId]) return;
- 
-       Alert.alert(
-         "Cancel appointment?",
-         "This will notify the customer.",
-         [
-           { text: "Keep", style: "cancel" },
-           {
-             text: "Cancel appointment",
-             style: "destructive",
-             onPress: async () => {
-               if (cancellingByBookingId[bookingId]) return;
- 
-               setCancellingByBookingId((prev) => ({ ...prev, [bookingId]: true }));
-               try {
-                 await cancelBookingById(bookingId);
- 
-                 if (showFlash) showFlash("success", "Appointment cancelled");
-                 await loadBookingsForRange();
--                if (typeof onCancelled === "function") onCancelled();
-               } catch (err) {
-                 const message =
-                   err?.response?.data?.detail ||
-                   err?.response?.data?.message ||
-                   "Could not cancel appointment. Please try again.";
-                 if (showFlash) showFlash("error", message);
-               } finally {
-                 setCancellingByBookingId((prev) => ({ ...prev, [bookingId]: false }));
-               }
-             },
-           },
-         ]
-       );
-     },
-     [cancelAllLoading, cancelBookingById, cancellingByBookingId, getBookingId, loadBookingsForRange, showFlash]
-   );
- 
-   useEffect(() => {
-     loadBookingsForRange();
-   }, [loadBookingsForRange]);
- 
-   const isActiveBooking = useCallback((booking) => {
-     const normalizedStatus = String(booking?.status || booking?.state || "").trim().toLowerCase();
-     return normalizedStatus !== "cancelled" && normalizedStatus !== "canceled";
-   }, []);
- 
--  const selectedBookings = useMemo(
--    () => (bookingsByDate[selectedDate] || []).filter(isActiveBooking),
--    [bookingsByDate, isActiveBooking, selectedDate]
--  );
-+  const bookingsByDate = useMemo(() => {
-+    return bookings.reduce((acc, booking) => {
-+      const key = formatDayKey(booking?.start_time || booking?.start);
-+      if (!key) return acc;
-+      if (!acc[key]) acc[key] = [];
-+      acc[key].push(booking);
-+      return acc;
-+    }, {});
-+  }, [bookings, formatDayKey]);
-+
-+  const selectedBookings = useMemo(() => {
-+    const day = selectedDate;
-+    return bookings.filter((booking) => {
-+      if (!isActiveBooking(booking)) return false;
-+      return formatDayKey(booking?.start_time || booking?.start) === day;
-+    });
-+  }, [bookings, formatDayKey, isActiveBooking, selectedDate]);
-   const sortedSelectedBookings = useMemo(
+   const timelineEvents = useMemo(
      () =>
        selectedBookings
-         .slice()
-         .sort((a, b) => new Date(a?.start_time || a?.start) - new Date(b?.start_time || b?.start)),
-     [selectedBookings]
-   );
-   const cancellableDayBookings = useMemo(
-     () => sortedSelectedBookings.filter((booking) => isBookingCancellable(booking)),
-     [isBookingCancellable, sortedSelectedBookings]
+-      .map((booking) => {
++        .map((booking) => {
+           const startIso = booking?.start_time || booking?.start;
+           if (!startIso) return null;
+           const startDate = new Date(startIso);
+           if (Number.isNaN(startDate.getTime())) return null;
+ 
+           let endDate = booking?.end_time || booking?.end ? new Date(booking?.end_time || booking?.end) : null;
+           if (!endDate || Number.isNaN(endDate.getTime())) {
+             const durationMin = Number(booking?.duration_minutes || booking?.duration || 30);
+             endDate = new Date(startDate.getTime() + Math.max(durationMin, 1) * 60_000);
+           }
+ 
+           const status = getBookingStatusLabel(booking);
+           const completed = status.type === "completed";
+           const accentColor = getEventAccentColor(booking);
+ 
+           return {
+             id: String(booking?.id || booking?.booking_id || `${startIso}-${booking?.service_name || "service"}`),
+-            start: startDate.toISOString(),
+-            end: endDate.toISOString(),
++            start: startDate,
++            end: endDate,
++            startDate,
++            endDate,
++            booking,
+             title: booking?.service_name || "Service",
+             summary: booking?.customer_name || "Customer",
+             color: accentColor,
+             accentColor,
+             completed,
+             status,
+             startLabel: `${formatTimelineTime(startDate)} - ${formatTimelineTime(endDate)}`,
+           };
+         })
+         .filter(Boolean),
+     [formatTimelineTime, getBookingStatusLabel, getEventAccentColor, selectedBookings]
    );
  
-   const handleCancelAllForSelectedDay = useCallback(() => {
-     if (cancelAllLoading || viewMode !== "day") return;
-     const cancellableBookings = sortedSelectedBookings.filter((booking) => isBookingCancellable(booking));
-     const totalToCancel = cancellableBookings.length;
-     if (!totalToCancel) return;
+   const calendarTheme = useMemo(
+     () => ({
+       backgroundColor: colors.surface,
+       calendarBackground: colors.surface,
+       dayTextColor: colors.textPrimary,
+       monthTextColor: colors.textPrimary,
+       textSectionTitleColor: colors.textSecondary,
+       selectedDayBackgroundColor: colors.primarySoft,
+       selectedDayTextColor: colors.textPrimary,
+       todayTextColor: colors.primary,
+       arrowColor: colors.primary,
+       textDisabledColor: colors.textMuted,
+@@ -7736,82 +7739,83 @@ function ProviderCalendarScreen({ token, showFlash }) {
+     if (!value) return;
+     const raw = typeof value === "string" ? value : value.dateString;
+     const nextDate = normalizeDateKey(raw);
+     if (!nextDate) return;
+     setSelectedDate(nextDate);
+   }, [normalizeDateKey]);
  
-     Alert.alert(
-       "Cancel all appointments?",
-       `This will cancel ${totalToCancel} appointments on ${selectedDate}. This can’t be undone.`,
-       [
-         { text: "Keep", style: "cancel" },
-         {
-           text: "Cancel All",
-@@ -7753,53 +7751,57 @@ function ProviderCalendarScreen({ token, showFlash }) {
+   useEffect(() => {
+     if (!PROVIDER_CALENDAR_DEBUG) return;
+     const selected = parseLocalMidday(selectedDate);
+     if (!selected) {
+       console.log("[ProviderCalendarScreen][WeeklyDebug] invalid selectedDate", { selectedDate });
+       return;
+     }
+     console.log("[ProviderCalendarScreen][WeeklyDebug]", {
        selectedDate,
        selectedWeekday: selected.getDay(),
        firstDay: WEEKLY_FIRST_DAY,
@@ -315,29 +216,33 @@ index 900cbd447fc1496bb9eec16669ee204052cb7540..ef17f54db7f4d7a75aa5af41e859d95b
      () =>
        timelineEvents
          .map((event) => {
-           const startDate = new Date(event.start);
-           const endDate = new Date(event.end);
+-          const startDate = new Date(event.start);
+-          const endDate = new Date(event.end);
++          const startDate = event?.startDate instanceof Date ? event.startDate : new Date(event?.start);
++          const endDate = event?.endDate instanceof Date ? event.endDate : new Date(event?.end);
            if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) return null;
            return {
              ...event,
              startDate,
              endDate,
++            startLabel: `${formatTimelineTime(startDate)} - ${formatTimelineTime(endDate)}`,
            };
          })
          .filter(Boolean),
-     [timelineEvents]
+-    [timelineEvents]
++    [formatTimelineTime, timelineEvents]
    );
  
    const appointmentListData = sortedSelectedBookings;
    const showAppointmentsEmptyState = true;
-+  const getBookingCardKey = useCallback((booking) => {
-+    if (booking?.id != null) return String(booking.id);
-+    return `${booking?.booking_id || booking?.id || ""}-${booking?.start_time || booking?.start || ""}`;
-+  }, []);
+   const getBookingCardKey = useCallback((booking) => {
+     if (booking?.id != null) return String(booking.id);
+     return `${booking?.booking_id || booking?.id || ""}-${booking?.start_time || booking?.start || ""}`;
+   }, []);
  
    const ProviderBookingCard = useCallback(
--    ({ booking, token: _token, showFlash: _showFlash, onCancelled }) => {
-+    ({ booking, token: _token, showFlash: _showFlash }) => {
+-    ({ booking, token: _token, showFlash: _showFlash }) => {
++    ({ booking, startDate, token: _token, showFlash: _showFlash }) => {
        const bookingId = getBookingId(booking);
        const status = getBookingStatusLabel(booking);
        const statusThemeKey = getAppointmentStatusThemeKey(status?.type || status?.label);
@@ -345,9 +250,12 @@ index 900cbd447fc1496bb9eec16669ee204052cb7540..ef17f54db7f4d7a75aa5af41e859d95b
        const completed = status.type === "completed";
        const isCancelling = !!(bookingId && cancellingByBookingId[bookingId]);
        const canCancel = isBookingCancellable(booking);
-       const startIso = booking?.start_time || booking?.start;
-       const startLabel = startIso
-         ? new Date(startIso).toLocaleTimeString([], {
+-      const startIso = booking?.start_time || booking?.start;
+-      const startLabel = startIso
+-        ? new Date(startIso).toLocaleTimeString([], {
++      const start = startDate instanceof Date ? startDate : (booking?.start_time ? new Date(booking.start_time) : booking?.start ? new Date(booking.start) : null);
++      const startLabel = start
++        ? start.toLocaleTimeString([], {
              hour: "numeric",
              minute: "2-digit",
            })
@@ -363,40 +271,17 @@ index 900cbd447fc1496bb9eec16669ee204052cb7540..ef17f54db7f4d7a75aa5af41e859d95b
          >
            <View style={[styles.providerCalendarLeftAccentBar, { backgroundColor: statusTheme.accent }]} />
            <View style={{ flex: 1 }}>
-@@ -7822,90 +7824,87 @@ function ProviderCalendarScreen({ token, showFlash }) {
-             </Text>
-           </View>
-           <View style={styles.providerCalendarRightActions}>
-             <View
+             <Text style={styles.providerCalendarTime}>{startLabel}</Text>
+             <Text
                style={[
-                 styles.providerCalendarStatusBadge,
-                 { borderColor: statusTheme.accent, backgroundColor: statusTheme.bgTint },
+                 styles.providerCalendarService,
+                 completed && styles.providerCalendarTextCompleted,
                ]}
              >
-               <Text
-                 style={[
-                   styles.providerCalendarStatusText,
-                   { color: statusTheme.accent },
-                 ]}
-                 numberOfLines={1}
-               >
-                 {status.label}
-               </Text>
-             </View>
-             {canCancel ? (
-               <TouchableOpacity
-                 style={[
-                   styles.providerCalendarCancelButton,
-                   isCancelling && styles.providerCalendarCancelButtonDisabled,
-                 ]}
--                onPress={() => handleCancelAppointment(booking, onCancelled)}
-+                onPress={() => handleCancelAppointment(booking)}
-                 disabled={isCancelling}
-               >
-                 {isCancelling ? (
-                   <View style={styles.providerCalendarCancelButtonLoadingRow}>
-                     <ActivityIndicator size="small" color={colors.error} />
-                     <Text style={styles.providerCalendarCancelButtonText}>Cancelling…</Text>
+               {booking?.service_name || "Service"}
+             </Text>
+             <Text
+@@ -7856,57 +7860,61 @@ function ProviderCalendarScreen({ token, showFlash }) {
                    </View>
                  ) : (
                    <Text style={styles.providerCalendarCancelButtonText}>Cancel</Text>
@@ -421,18 +306,25 @@ index 900cbd447fc1496bb9eec16669ee204052cb7540..ef17f54db7f4d7a75aa5af41e859d95b
        <View style={styles.providerCalendarContentContainer}>
          <FlatList
            data={appointmentListData}
--          keyExtractor={(booking) =>
--            getBookingId(booking) || `${booking?.start_time || booking?.start}-${booking?.service_name || "service"}`
--          }
-+          keyExtractor={getBookingCardKey}
-           renderItem={({ item: booking }) => (
-             <ProviderBookingCard
-               booking={booking}
-               token={token}
-               showFlash={showFlash}
--              onCancelled={loadBookingsForRange}
-             />
-           )}
+           keyExtractor={getBookingCardKey}
+-          renderItem={({ item: booking }) => (
+-            <ProviderBookingCard
+-              booking={booking}
+-              token={token}
+-              showFlash={showFlash}
+-            />
+-          )}
++          renderItem={({ item: booking }) => {
++            const startDate = booking?.start_time ? new Date(booking.start_time) : booking?.start ? new Date(booking.start) : null;
++            return (
++              <ProviderBookingCard
++                booking={booking}
++                startDate={startDate}
++                token={token}
++                showFlash={showFlash}
++              />
++            );
++          }}
            ListHeaderComponent={
              <View style={{ backgroundColor: colors.background }}>
                <View style={styles.providerCalendarModeSwitch}>
@@ -456,6 +348,86 @@ index 900cbd447fc1496bb9eec16669ee204052cb7540..ef17f54db7f4d7a75aa5af41e859d95b
                            styles.providerCalendarModeText,
                            active && styles.providerCalendarModeTextActive,
                          ]}
+                       >
+                         {mode.label}
+@@ -10823,73 +10831,73 @@ signupTextButtonText: {
+     borderTopColor: "rgba(255,255,255,0.05)",
+   },
+   providerDayScheduleEvent: {
+     position: "absolute",
+     left: 8,
+     right: 8,
+     borderRadius: 12,
+     backgroundColor: colors.surfaceElevated,
+     borderWidth: 1,
+     borderColor: "rgba(255,255,255,0.08)",
+     overflow: "hidden",
+     flexDirection: "row",
+     alignItems: "flex-start",
+   },
+   providerDayScheduleEventCompleted: {
+     opacity: 0.6,
+   },
+   providerDayScheduleEventAccent: {
+     width: 4,
+     borderTopLeftRadius: 12,
+     borderBottomLeftRadius: 12,
+   },
+   providerDayScheduleEventBody: {
+     flex: 1,
+     minWidth: 0,
+-    paddingHorizontal: 9,
+-    paddingVertical: 8,
++    paddingHorizontal: 10,
++    paddingVertical: 10,
+   },
+   providerDayScheduleEventTime: {
+     color: colors.textSecondary,
+     fontSize: 11,
+     fontWeight: "600",
+   },
+   providerDayScheduleEventTitle: {
+     color: colors.textPrimary,
+     fontSize: 13,
+     fontWeight: "700",
+     marginTop: 2,
+   },
+   providerDayScheduleEventSummary: {
+     color: colors.textMuted,
+     fontSize: 12,
+     marginTop: 2,
+   },
+   providerDayScheduleStatusBadge: {
+     alignSelf: "flex-start",
+-    marginTop: 7,
+-    marginRight: 7,
++    marginTop: 10,
++    marginRight: 10,
+     paddingHorizontal: 6,
+     paddingVertical: 2,
+     borderRadius: 999,
+     borderWidth: 1,
+     borderColor: colors.textSecondary,
+     backgroundColor: "rgba(0,0,0,0.2)",
+   },
+   providerDayScheduleStatusBadgeCancelled: {
+     borderColor: colors.error,
+   },
+   providerDayScheduleStatusBadgeCompleted: {
+     borderColor: colors.success,
+   },
+   providerDayScheduleStatusText: {
+     color: colors.textSecondary,
+     fontSize: 9,
+     fontWeight: "700",
+   },
+   providerDayScheduleStatusTextCancelled: {
+     color: colors.error,
+   },
+   providerDayScheduleStatusTextCompleted: {
+     color: colors.success,
+   },
+   providerCalendarHeaderBlock: {
  
 EOF
 )
