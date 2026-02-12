@@ -88,6 +88,32 @@ const HEADER_LOGO_WIDTH = 120;
 const HEADER_LOGO_HEIGHT = 120;
 const HEADER_VERTICAL_PADDING = 0;
 
+// status color mapping
+const getAppointmentStatusThemeKey = (statusValue) => {
+  const normalized = `${statusValue || ""}`.trim().toLowerCase();
+  if (normalized.includes("cancel")) return "cancelled";
+  if (normalized.includes("complete")) return "completed";
+  return "scheduled";
+};
+
+const APPOINTMENT_STATUS_THEME = {
+  scheduled: {
+    accent: "#4DA3FF",
+    bgTint: "rgba(77,163,255,0.10)",
+    border: "rgba(77,163,255,0.35)",
+  },
+  completed: {
+    accent: "#2ECC71",
+    bgTint: "rgba(46,204,113,0.10)",
+    border: "rgba(46,204,113,0.35)",
+  },
+  cancelled: {
+    accent: "#FF4D4F",
+    bgTint: "rgba(255,77,79,0.10)",
+    border: "rgba(255,77,79,0.35)",
+  },
+};
+
 const withTimeout = (promise, ms, label) => {
   let timeoutId;
   const timeout = new Promise((_, reject) => {
@@ -3469,12 +3495,21 @@ function AppointmentsScreen({ token, showFlash }) {
     const dateLabel = formatBookingDate(startIso);
     const timeLabel = formatBookingTime(startIso);
     const statusLabel = deriveStatus(booking);
+    // status color mapping
+    const statusThemeKey = getAppointmentStatusThemeKey(statusLabel);
+    const statusTheme = APPOINTMENT_STATUS_THEME[statusThemeKey];
 
     return (
       <View
         key={booking.id || booking.booking_id || `${startIso}-${booking.service_name}`}
-        style={styles.appointmentItem}
+        style={[
+          styles.appointmentItem,
+          // tint based on status
+          { backgroundColor: statusTheme.bgTint, borderColor: statusTheme.border },
+        ]}
       >
+        {/* left accent bar */}
+        <View style={[styles.appointmentLeftAccentBar, { backgroundColor: statusTheme.accent }]} />
         <View style={{ flex: 1 }}>
           <Text style={styles.appointmentTitle}>{booking.service_name}</Text>
           <Text style={styles.appointmentMeta}>
@@ -3491,9 +3526,15 @@ function AppointmentsScreen({ token, showFlash }) {
             </Text>
           ) : null}
           <View style={styles.appointmentStatusRow}>
-            <Text style={styles.appointmentStatus}>
-              Status: {statusLabel}
-            </Text>
+            <View
+              style={[
+                styles.appointmentStatusBadge,
+                // tint based on status
+                { backgroundColor: statusTheme.bgTint, borderColor: statusTheme.accent },
+              ]}
+            >
+              <Text style={[styles.appointmentStatus, { color: statusTheme.accent }]}>Status: {statusLabel}</Text>
+            </View>
 
             {isUpcoming && (
               <TouchableOpacity
@@ -7629,6 +7670,9 @@ function ProviderCalendarScreen({ token, showFlash }) {
           renderItem={({ item: booking }) => {
             const bookingId = getBookingId(booking);
             const status = getBookingStatusLabel(booking);
+            // status color mapping
+            const statusThemeKey = getAppointmentStatusThemeKey(status?.type || status?.label);
+            const statusTheme = APPOINTMENT_STATUS_THEME[statusThemeKey];
             const completed = status.type === "completed";
             const isCancelling = !!(bookingId && cancellingByBookingId[bookingId]);
             const canCancel = isBookingCancellable(booking);
@@ -7645,8 +7689,12 @@ function ProviderCalendarScreen({ token, showFlash }) {
                 style={[
                   styles.providerCalendarRow,
                   completed && styles.providerCalendarRowCompleted,
+                  // tint based on status
+                  { borderColor: statusTheme.border, backgroundColor: statusTheme.bgTint },
                 ]}
               >
+                {/* left accent bar */}
+                <View style={[styles.providerCalendarLeftAccentBar, { backgroundColor: statusTheme.accent }]} />
                 <View style={{ flex: 1 }}>
                   <Text style={styles.providerCalendarTime}>{startLabel}</Text>
                   <Text
@@ -7670,15 +7718,14 @@ function ProviderCalendarScreen({ token, showFlash }) {
                   <View
                     style={[
                       styles.providerCalendarStatusBadge,
-                      status.type === "cancelled" && styles.providerCalendarStatusBadgeCancelled,
-                      status.type === "completed" && styles.providerCalendarStatusBadgeCompleted,
+                      // tint based on status
+                      { borderColor: statusTheme.accent, backgroundColor: statusTheme.bgTint },
                     ]}
                   >
                     <Text
                       style={[
                         styles.providerCalendarStatusText,
-                        status.type === "cancelled" && styles.providerCalendarStatusTextCancelled,
-                        status.type === "completed" && styles.providerCalendarStatusTextCompleted,
+                        { color: statusTheme.accent },
                       ]}
                       numberOfLines={1}
                     >
@@ -9502,6 +9549,17 @@ appointmentScroll: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "flex-start",
+    backgroundColor: colors.surface,
+    borderRadius: 10,
+    borderWidth: 1,
+    padding: 12,
+    overflow: "hidden",
+  },
+  appointmentLeftAccentBar: {
+    width: 4,
+    borderRadius: 999,
+    marginRight: 10,
+    alignSelf: "stretch",
   },
   appointmentTitle: {
     fontSize: 16,
@@ -9528,8 +9586,20 @@ appointmentCancelButtonText: {
   fontWeight: "600",
 },
 
+  appointmentStatusRow: {
+    marginTop: 8,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 8,
+  },
+  appointmentStatusBadge: {
+    borderWidth: 1,
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
   appointmentStatus: {
-    marginTop: 6,
     fontSize: 12,
     color: colors.textPrimary,
     fontWeight: "600",
@@ -10681,6 +10751,13 @@ signupTextButtonText: {
     marginBottom: 8,
     flexDirection: "row",
     alignItems: "center",
+    overflow: "hidden",
+  },
+  providerCalendarLeftAccentBar: {
+    width: 4,
+    borderRadius: 999,
+    marginRight: 10,
+    alignSelf: "stretch",
   },
   providerCalendarRowCompleted: {
     opacity: 0.75,
