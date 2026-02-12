@@ -6958,7 +6958,8 @@ function ProviderBillingScreen({ token, showFlash }) {
 
 
 function DayScheduleGrid({ events, startHour, endHour, renderEvent }) {
-  const hourHeight = 145;
+  const TIME_ZOOM = 1.5;
+  const hourHeight = 145 * TIME_ZOOM;
   const pxPerMinute = hourHeight / 60;
   const timeGutterWidth = 56;
   const gridHorizontalPadding = 8;
