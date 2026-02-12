@@ -7029,7 +7029,7 @@ function DayScheduleGrid({ events, startHour, endHour, renderEvent }) {
         const durationMinutes = Math.max(clampedEnd - clampedStart, 1);
 
         const top = (clampedStart - gridStartMinutes) * minuteToPx + gridVerticalPadding;
-        const height = Math.max(durationMinutes * minuteToPx - 6, 50);
+        const height = Math.max(durationMinutes * minuteToPx - 6, 104);
 
         return {
           ...event,
@@ -7733,7 +7733,7 @@ function ProviderCalendarScreen({ token, showFlash }) {
   }, []);
 
   const ProviderBookingCard = useCallback(
-    ({ booking, token: _token, showFlash: _showFlash }) => {
+    ({ booking, startDate, endDate: _endDate, token: _token, showFlash: _showFlash }) => {
       const bookingId = getBookingId(booking);
       const status = getBookingStatusLabel(booking);
       const statusThemeKey = getAppointmentStatusThemeKey(status?.type || status?.label);
@@ -7741,9 +7741,11 @@ function ProviderCalendarScreen({ token, showFlash }) {
       const completed = status.type === "completed";
       const isCancelling = !!(bookingId && cancellingByBookingId[bookingId]);
       const canCancel = isBookingCancellable(booking);
-      const startIso = booking?.start_time || booking?.start;
-      const startLabel = startIso
-        ? new Date(startIso).toLocaleTimeString([], {
+      const parsedStart = startDate instanceof Date
+        ? startDate
+        : (booking?.start_time ? new Date(booking.start_time) : (booking?.start ? new Date(booking.start) : null));
+      const startLabel = parsedStart && !Number.isNaN(parsedStart.getTime())
+        ? parsedStart.toLocaleTimeString([], {
             hour: "numeric",
             minute: "2-digit",
           })
@@ -8006,7 +8008,13 @@ function ProviderCalendarScreen({ token, showFlash }) {
                         startHour={0}
                         endHour={24}
                         renderEvent={(event) => (
-                          <ProviderBookingCard booking={event.booking} token={token} showFlash={showFlash} />
+                          <ProviderBookingCard
+                            booking={event.booking}
+                            startDate={event.startDate}
+                            endDate={event.endDate}
+                            token={token}
+                            showFlash={showFlash}
+                          />
                         )}
                       />
                     </View>
@@ -10877,10 +10885,11 @@ signupTextButtonText: {
     borderColor: colors.border,
     borderWidth: 1,
     borderRadius: 10,
-    padding: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 14,
     marginBottom: 8,
     flexDirection: "row",
-    alignItems: "center",
+    alignItems: "flex-start",
     overflow: "hidden",
   },
   providerCalendarLeftAccentBar: {
@@ -10937,6 +10946,8 @@ signupTextButtonText: {
   },
   providerCalendarRightActions: {
     alignItems: "flex-end",
+    justifyContent: "space-between",
+    minHeight: 72,
   },
   providerCalendarCancelButton: {
     marginTop: 6,
