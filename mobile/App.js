@@ -236,6 +236,16 @@ const getDistanceKm = (lat1, lon1, lat2, lon2) => {
   return Number.isFinite(distance) ? distance : null;
 };
 
+function dedupeById(list) {
+  const map = new Map();
+  for (const item of list || []) {
+    const k = item?.id != null ? String(item.id) : null;
+    if (!k) continue;
+    map.set(k, item);
+  }
+  return Array.from(map.values());
+}
+
 const getProviderCoords = (provider) => {
   const location = provider?.location;
   const pinnedLocation = provider?.pinned_location ?? provider?.pinnedLocation;
@@ -7295,7 +7305,7 @@ function ProviderCalendarScreen({ token, showFlash }) {
     return startOfWeekKey(todayKey) || todayKey;
   });
   const [weekPagerWidth, setWeekPagerWidth] = useState(0);
-  const [bookingsByDate, setBookingsByDate] = useState({});
+  const [bookings, setBookings] = useState([]);
   const [cancellingByBookingId, setCancellingByBookingId] = useState({});
   const [cancelAllLoading, setCancelAllLoading] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -7435,15 +7445,7 @@ function ProviderCalendarScreen({ token, showFlash }) {
         ? res.data
         : res.data?.bookings || res.data?.results || [];
 
-      const grouped = rows.reduce((acc, booking) => {
-        const key = formatDayKey(booking?.start_time);
-        if (!key) return acc;
-        if (!acc[key]) acc[key] = [];
-        acc[key].push(booking);
-        return acc;
-      }, {});
-
-      setBookingsByDate(grouped);
+      setBookings(dedupeById(rows));
     } catch (err) {
       console.log("Error loading provider calendar bookings", err?.response?.data || err?.message || err);
       setError("Could not load calendar bookings.");
@@ -7477,28 +7479,12 @@ function ProviderCalendarScreen({ token, showFlash }) {
         }
       );
 
-      setBookingsByDate((prev) => {
-        const next = { ...prev };
-        Object.keys(next).forEach((dayKey) => {
-          next[dayKey] = (next[dayKey] || []).map((item) =>
-            getBookingId(item) === bookingId
-              ? {
-                  ...item,
-                  status: "cancelled",
-                  canceled_at: new Date().toISOString(),
-                  canceled_by_role: "provider",
-                }
-              : item
-          );
-        });
-        return next;
-      });
     },
-    [getBookingId, token]
+    [token]
   );
 
   const handleCancelAppointment = useCallback(
-    (booking, onCancelled) => {
+    (booking) => {
       if (cancelAllLoading) return;
       const bookingId = getBookingId(booking);
       if (!bookingId || cancellingByBookingId[bookingId]) return;
@@ -7520,7 +7506,6 @@ function ProviderCalendarScreen({ token, showFlash }) {
 
                 if (showFlash) showFlash("success", "Appointment cancelled");
                 await loadBookingsForRange();
-                if (typeof onCancelled === "function") onCancelled();
               } catch (err) {
                 const message =
                   err?.response?.data?.detail ||
@@ -7547,10 +7532,23 @@ function ProviderCalendarScreen({ token, showFlash }) {
     return normalizedStatus !== "cancelled" && normalizedStatus !== "canceled";
   }, []);
 
-  const selectedBookings = useMemo(
-    () => (bookingsByDate[selectedDate] || []).filter(isActiveBooking),
-    [bookingsByDate, isActiveBooking, selectedDate]
-  );
+  const bookingsByDate = useMemo(() => {
+    return bookings.reduce((acc, booking) => {
+      const key = formatDayKey(booking?.start_time || booking?.start);
+      if (!key) return acc;
+      if (!acc[key]) acc[key] = [];
+      acc[key].push(booking);
+      return acc;
+    }, {});
+  }, [bookings, formatDayKey]);
+
+  const selectedBookings = useMemo(() => {
+    const day = selectedDate;
+    return bookings.filter((booking) => {
+      if (!isActiveBooking(booking)) return false;
+      return formatDayKey(booking?.start_time || booking?.start) === day;
+    });
+  }, [bookings, formatDayKey, isActiveBooking, selectedDate]);
   const sortedSelectedBookings = useMemo(
     () =>
       selectedBookings
@@ -7775,9 +7773,13 @@ function ProviderCalendarScreen({ token, showFlash }) {
 
   const appointmentListData = sortedSelectedBookings;
   const showAppointmentsEmptyState = true;
+  const getBookingCardKey = useCallback((booking) => {
+    if (booking?.id != null) return String(booking.id);
+    return `${booking?.booking_id || booking?.id || ""}-${booking?.start_time || booking?.start || ""}`;
+  }, []);
 
   const ProviderBookingCard = useCallback(
-    ({ booking, token: _token, showFlash: _showFlash, onCancelled }) => {
+    ({ booking, token: _token, showFlash: _showFlash }) => {
       const bookingId = getBookingId(booking);
       const status = getBookingStatusLabel(booking);
       const statusThemeKey = getAppointmentStatusThemeKey(status?.type || status?.label);
@@ -7844,7 +7846,7 @@ function ProviderCalendarScreen({ token, showFlash }) {
                   styles.providerCalendarCancelButton,
                   isCancelling && styles.providerCalendarCancelButtonDisabled,
                 ]}
-                onPress={() => handleCancelAppointment(booking, onCancelled)}
+                onPress={() => handleCancelAppointment(booking)}
                 disabled={isCancelling}
               >
                 {isCancelling ? (
@@ -7875,15 +7877,12 @@ function ProviderCalendarScreen({ token, showFlash }) {
       <View style={styles.providerCalendarContentContainer}>
         <FlatList
           data={appointmentListData}
-          keyExtractor={(booking) =>
-            getBookingId(booking) || `${booking?.start_time || booking?.start}-${booking?.service_name || "service"}`
-          }
+          keyExtractor={getBookingCardKey}
           renderItem={({ item: booking }) => (
             <ProviderBookingCard
               booking={booking}
               token={token}
               showFlash={showFlash}
-              onCancelled={loadBookingsForRange}
             />
           )}
           ListHeaderComponent={
