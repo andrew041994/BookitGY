@@ -1,12 +1,12 @@
 {
   "cli": {
     "version": ">= 16.28.0",
-    "appVersionSource": "remote"
+    "appVersionSource": "local"
   },
   "build": {
     "production": {
       "distribution": "store",
-      "autoIncrement": true,
+      "autoIncrement": false,
       "env": {
         "EAS_BUILD_DISABLE_MAVEN_CACHE": "1"
       }
