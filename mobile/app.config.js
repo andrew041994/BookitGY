@@ -35,7 +35,7 @@ export default {
     deploymentTarget: "16.0",
     supportsTablet: true,
     bundleIdentifier: "com.bookitgy.app",
-    buildNumber: "1",
+    buildNumber: "2",
     associatedDomains: ["applinks:bookitgy.com", "applinks:www.bookitgy.com"],
     privacyManifest: {
       NSPrivacyAccessedAPITypes: [],
