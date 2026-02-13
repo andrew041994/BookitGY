@@ -1,4 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { createApiClient } from "./src/api/client";
+import { apiClient } from "./src/api";
+
 import {
   Text,
   View,
@@ -41,7 +44,6 @@ import {
   saveToken,
 } from "./src/components/tokenStorage";
 import ProviderCard from "./src/components/ProviderCard";
-import { createApiClient } from "./src/api/client";
 import * as Location from "expo-location";
 import Constants from "expo-constants";
 import * as ImagePicker from "expo-image-picker";
@@ -82,6 +84,7 @@ const API =
   "https://bookitgy.onrender.com";
 
   console.log("### API base URL =", API);
+
 
 const colors = theme.colors;
 const HEADER_LOGO_WIDTH = 120;
@@ -2039,34 +2042,27 @@ function ProfileScreen({ apiClient, authLoading, setToken, showFlash, token }) {
   };
 
   const loadMyBookings = useCallback(async () => {
-    try {
-      setBookingsLoading(true);
-      setBookingsError("");
+  try {
+    setBookingsLoading(true);
+    setBookingsError("");
 
-      const authToken = await getAuthToken(token);
-      if (!authToken) {
-        setBookingsError("No access token found. Please log in again.");
-        return;
-      }
+    const res = await api.get("/bookings/me");
 
-      const res = await axios.get(`${API}/bookings/me`, {
-        headers: { Authorization: `Bearer ${authToken}` },
-      });
+    const rawBookings = res.data;
+    const bookingsList = Array.isArray(rawBookings)
+      ? rawBookings
+      : rawBookings?.bookings || rawBookings?.results || [];
 
-      const rawBookings = res.data;
-      const bookingsList = Array.isArray(rawBookings)
-        ? rawBookings
-        : rawBookings?.bookings || rawBookings?.results || [];
+    setBookings(bookingsList);
+  } catch (err) {
+    console.log("Error loading my bookings", err.response?.data || err.message);
+    setBookingsError("Could not load your bookings.");
+    if (showFlash) showFlash("error", "Could not load your bookings.");
+  } finally {
+    setBookingsLoading(false);
+  }
+}, [showFlash]);
 
-      setBookings(bookingsList);
-    } catch (err) {
-      console.log("Error loading my bookings", err.response?.data || err.message);
-      setBookingsError("Could not load your bookings.");
-      if (showFlash) showFlash("error", "Could not load your bookings.");
-    } finally {
-      setBookingsLoading(false);
-    }
-  }, [showFlash]);
 
   const onRefresh = useCallback(async () => {
     await loadProfile(true);
@@ -2114,53 +2110,31 @@ function ProfileScreen({ apiClient, authLoading, setToken, showFlash, token }) {
   };
 
   const handleClientCancelBooking = (bookingId) => {
-    Alert.alert(
-      "Cancel booking",
-      "Are you sure you want to cancel this booking?",
-      [
-        { text: "No", style: "cancel" },
-        {
-          text: "Yes, cancel",
-          style: "destructive",
-          onPress: async () => {
-            try {
-              const authToken = await getAuthToken(token);
-              if (!authToken) {
-                if (showFlash)
-                  showFlash("error", "No access token found. Please log in.");
-                return;
-              }
+  Alert.alert("Cancel booking", "Are you sure you want to cancel this booking?", [
+    { text: "No", style: "cancel" },
+    {
+      text: "Yes, cancel",
+      style: "destructive",
+      onPress: async () => {
+        try {
+          await apiClient.post(`/bookings/${bookingId}/cancel`, {});
 
-                  await axios.post(
-                    `${API}/bookings/${bookingId}/cancel`,
-                    {},
-                    {
-                      headers: { Authorization: `Bearer ${authToken}` },
-                    }
-                  );
+          setBookings((prev) =>
+            (prev || []).map((b) =>
+              b.id === bookingId ? { ...b, status: "cancelled" } : b
+            )
+          );
 
+          if (showFlash) showFlash("success", "Booking cancelled");
+        } catch (err) {
+          console.log("Error cancelling booking (client)", err.response?.data || err.message);
+          if (showFlash) showFlash("error", "Could not cancel booking.");
+        }
+      },
+    },
+  ]);
+};
 
-
-              // update local state so UI reflects cancellation
-              setBookings((prev) =>
-                (prev || []).map((b) =>
-                  b.id === bookingId ? { ...b, status: "cancelled" } : b
-                )
-              );
-
-              if (showFlash) showFlash("success", "Booking cancelled");
-            } catch (err) {
-              console.log(
-                "Error cancelling booking (client)",
-                err.response?.data || err.message
-              );
-              if (showFlash) showFlash("error", "Could not cancel booking.");
-            }
-          },
-        },
-      ]
-    );
-  };
 
   const handleNavigateToBooking = (booking) => {
     try {
@@ -4252,26 +4226,21 @@ function SearchScreen({ token, showFlash, navigation, route, toggleFavorite, isF
     try {
       setBookingLoading(true);
 
-      const authToken = await getAuthToken(token);
-      if (!authToken) {
-        if (showFlash) {
-          showFlash("error", "No access token found. Please log in again.");
-        } else {
-          Alert.alert("Error", "No access token found. Please log in again.");
-        }
-        return;
-      }
+      // const authToken = await getAuthToken(token);
+      // if (!authToken) {
+      //   if (showFlash) {
+      //     showFlash("error", "No access token found. Please log in again.");
+      //   } else {
+      //     Alert.alert("Error", "No access token found. Please log in again.");
+      //   }
+      //   return;
+      // }
 
-      await axios.post(
-        `${API}/bookings`,
-        {
-          service_id: selectedService.id,
-          start_time: selectedSlot,
-        },
-        {
-          headers: { Authorization: `Bearer ${authToken}` },
-        }
-      );
+      await apiClient.post("/bookings", {
+        service_id: selectedService.id,
+        start_time: selectedSlot,
+      });
+
 
       // Refresh availability so this slot disappears
       await loadAvailability(providerId, selectedService.id);
