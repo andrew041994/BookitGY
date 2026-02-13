@@ -59,7 +59,7 @@ export default {
 
   android: {
     package: "com.bookitgy.app",
-    versionCode: 2, // bump this
+    versionCode: 3, // bump this
     permissions: ["ACCESS_FINE_LOCATION", "ACCESS_COARSE_LOCATION"],
     blockedPermissions: [
     "com.google.android.gms.permission.AD_ID",
