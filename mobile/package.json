@@ -5,7 +5,13 @@
   "scripts": {
     "start": "expo start",
     "android": "expo run:android",
-    "ios": "expo run:ios"
+    "ios": "expo run:ios",
+    "version:bump": "node ./scripts/bump-version.mjs --patch",
+    "version:bump:minor": "node ./scripts/bump-version.mjs --minor",
+    "version:bump:major": "node ./scripts/bump-version.mjs --major",
+    "version:set": "node ./scripts/bump-version.mjs --set",
+    "ios:release": "npm run version:bump && eas build -p ios --profile production",
+    "android:release": "npm run version:bump && eas build -p android --profile production"
   },
   "dependencies": {
     "@react-native-async-storage/async-storage": "2.2.0",

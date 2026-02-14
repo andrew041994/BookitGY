@@ -1,234 +1,216 @@
-(cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF'
-diff --git a/mobile/package.json b/mobile/package.json
-index 1111111..2222222 100644
---- a/mobile/package.json
-+++ b/mobile/package.json
-@@ -1,12 +1,29 @@
- {
-   "name": "mobile",
-   "version": "1.0.0",
-   "private": true,
-+  "type": "module",
-   "scripts": {
-+    "version:bump": "node ./scripts/bump-version.mjs --patch",
-+    "version:bump:minor": "node ./scripts/bump-version.mjs --minor",
-+    "version:bump:major": "node ./scripts/bump-version.mjs --major",
-+    "version:set": "node ./scripts/bump-version.mjs --set",
-+
-+    "ios:release": "npm run version:bump && eas build -p ios --profile production",
-+    "android:release": "npm run version:bump && eas build -p android --profile production",
-+    "release:build": "npm run version:bump && eas build -p ios --profile production && eas build -p android --profile production",
-+
-     "start": "expo start"
-   }
- }
+ (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
 diff --git a/mobile/scripts/bump-version.mjs b/mobile/scripts/bump-version.mjs
 new file mode 100644
-index 0000000..3333333
+index 0000000000000000000000000000000000000000..0d2acb03b76e359890ec5f4c889f6b6e435253db
 --- /dev/null
 +++ b/mobile/scripts/bump-version.mjs
-@@ -0,0 +1,279 @@
-+import fs from "fs";
-+import path from "path";
+@@ -0,0 +1,206 @@
++#!/usr/bin/env node
 +
-+function die(msg) {
-+  console.error(`\n[bump-version] ${msg}\n`);
++import fs from 'node:fs';
++import path from 'node:path';
++import { fileURLToPath } from 'node:url';
++
++const __filename = fileURLToPath(import.meta.url);
++const __dirname = path.dirname(__filename);
++
++const iosProjectPath = path.resolve(__dirname, '../ios/BookitGY.xcodeproj/project.pbxproj');
++const androidGradlePath = path.resolve(__dirname, '../android/app/build.gradle');
++
++const SEMVER_REGEX = /^(\d+)\.(\d+)\.(\d+)$/;
++
++function fail(message) {
++  console.error(`Error: ${message}`);
 +  process.exit(1);
 +}
 +
-+function readText(filePath) {
-+  return fs.readFileSync(filePath, "utf8");
-+}
-+
-+function writeText(filePath, content) {
-+  fs.writeFileSync(filePath, content, "utf8");
-+}
-+
-+function parseSemver(v) {
-+  // Accepts: 1.2.3
-+  const m = String(v).trim().match(/^(\d+)\.(\d+)\.(\d+)$/);
-+  if (!m) return null;
-+  return { major: Number(m[1]), minor: Number(m[2]), patch: Number(m[3]) };
-+}
-+
-+function semverToString(s) {
-+  return `${s.major}.${s.minor}.${s.patch}`;
-+}
-+
-+function bump(s, kind) {
-+  if (kind === "major") return { major: s.major + 1, minor: 0, patch: 0 };
-+  if (kind === "minor") return { major: s.major, minor: s.minor + 1, patch: 0 };
-+  return { major: s.major, minor: s.minor, patch: s.patch + 1 };
-+}
-+
-+function findProjectRoot() {
-+  // This script lives at mobile/scripts/bump-version.mjs
-+  return path.resolve(path.dirname(new URL(import.meta.url).pathname), "..");
-+}
-+
-+function getIosPbxprojPath(root) {
-+  // Hardcoded for your repo layout:
-+  // mobile/ios/BookitGY.xcodeproj/project.pbxproj
-+  const p = path.join(root, "ios", "BookitGY.xcodeproj", "project.pbxproj");
-+  if (!fs.existsSync(p)) {
-+    die(`iOS pbxproj not found at: ${p}`);
++function parseSemver(version) {
++  const match = SEMVER_REGEX.exec(version);
++  if (!match) {
++    return null;
 +  }
-+  return p;
++
++  return {
++    major: Number(match[1]),
++    minor: Number(match[2]),
++    patch: Number(match[3]),
++  };
 +}
 +
-+function getAndroidGradlePath(root) {
-+  // mobile/android/app/build.gradle
-+  const p = path.join(root, "android", "app", "build.gradle");
-+  if (!fs.existsSync(p)) {
-+    die(`Android build.gradle not found at: ${p}`);
++function formatSemver({ major, minor, patch }) {
++  return `${major}.${minor}.${patch}`;
++}
++
++function computeNextVersion(currentVersion, mode, explicitVersion) {
++  if (mode === 'set') {
++    if (!explicitVersion) {
++      fail('Missing value for --set <X.Y.Z>.');
++    }
++
++    if (!parseSemver(explicitVersion)) {
++      fail(`Invalid explicit version "${explicitVersion}". Expected X.Y.Z.`);
++    }
++
++    return explicitVersion;
 +  }
-+  return p;
-+}
 +
-+function readIosMarketingVersion(pbxText) {
-+  // Match MARKETING_VERSION = 1.0.1;
-+  const m = pbxText.match(/\bMARKETING_VERSION\s*=\s*([0-9]+\.[0-9]+\.[0-9]+)\s*;/);
-+  return m ? m[1] : null;
-+}
-+
-+function writeIosMarketingVersion(pbxText, nextVersion) {
-+  // Replace all MARKETING_VERSION occurrences (Debug + Release).
-+  const re = /\bMARKETING_VERSION\s*=\s*([0-9]+\.[0-9]+\.[0-9]+)\s*;/g;
-+  if (!re.test(pbxText)) {
-+    die(`Could not find MARKETING_VERSION in iOS pbxproj`);
++  const parsed = parseSemver(currentVersion);
++  if (!parsed) {
++    fail(`Current version "${currentVersion}" is not valid X.Y.Z semver.`);
 +  }
-+  return pbxText.replace(re, `MARKETING_VERSION = ${nextVersion};`);
-+}
 +
-+function readAndroidVersionName(gradleText) {
-+  // Match: versionName "1.0.1" OR versionName '1.0.1'
-+  const m = gradleText.match(/\bversionName\s+["']([0-9]+\.[0-9]+\.[0-9]+)["']/);
-+  return m ? m[1] : null;
-+}
-+
-+function writeAndroidVersionName(gradleText, nextVersion) {
-+  const re = /\bversionName\s+["']([0-9]+\.[0-9]+\.[0-9]+)["']/g;
-+  if (!re.test(gradleText)) {
-+    die(`Could not find versionName in Android build.gradle`);
++  if (mode === 'major') {
++    return formatSemver({ major: parsed.major + 1, minor: 0, patch: 0 });
 +  }
-+  return gradleText.replace(re, `versionName "${nextVersion}"`);
-+}
 +
-+function maybeReadExpoVersion(appConfigPath) {
-+  if (!fs.existsSync(appConfigPath)) return null;
-+  const txt = readText(appConfigPath);
-+  // Try to match: version: "1.0.1"
-+  const m = txt.match(/\bversion\s*:\s*["']([0-9]+\.[0-9]+\.[0-9]+)["']/);
-+  return m ? m[1] : null;
-+}
++  if (mode === 'minor') {
++    return formatSemver({ major: parsed.major, minor: parsed.minor + 1, patch: 0 });
++  }
 +
-+function maybeWriteExpoVersion(appConfigText, nextVersion) {
-+  // Replace: version: "x.y.z"
-+  const re = /\bversion\s*:\s*["']([0-9]+\.[0-9]+\.[0-9]+)["']/g;
-+  if (!re.test(appConfigText)) return null;
-+  return appConfigText.replace(re, `version: "${nextVersion}"`);
++  return formatSemver({ major: parsed.major, minor: parsed.minor, patch: parsed.patch + 1 });
 +}
 +
 +function parseArgs(argv) {
-+  const args = argv.slice(2);
++  let mode = 'patch';
++  let explicitVersion = null;
++  let dryRun = false;
 +
-+  // Defaults
-+  let mode = "patch"; // patch | minor | major | set
-+  let setValue = null;
++  for (let i = 0; i < argv.length; i += 1) {
++    const arg = argv[i];
 +
-+  if (args.includes("--major")) mode = "major";
-+  if (args.includes("--minor")) mode = "minor";
-+  if (args.includes("--patch")) mode = "patch";
++    if (arg === '--patch') {
++      mode = 'patch';
++      continue;
++    }
 +
-+  const setIdx = args.findIndex((a) => a === "--set");
-+  if (setIdx !== -1) {
-+    mode = "set";
-+    setValue = args[setIdx + 1] ?? null;
++    if (arg === '--minor') {
++      mode = 'minor';
++      continue;
++    }
++
++    if (arg === '--major') {
++      mode = 'major';
++      continue;
++    }
++
++    if (arg === '--set') {
++      mode = 'set';
++      explicitVersion = argv[i + 1];
++      i += 1;
++      continue;
++    }
++
++    if (arg === '--dry-run') {
++      dryRun = true;
++      continue;
++    }
++
++    fail(`Unknown argument "${arg}".`);
 +  }
 +
-+  const dryRun = args.includes("--dry-run");
++  if (mode === 'set' && !explicitVersion) {
++    fail('Missing value for --set <X.Y.Z>.');
++  }
 +
-+  return { mode, setValue, dryRun };
++  return { mode, explicitVersion, dryRun };
 +}
 +
-+function main() {
-+  const { mode, setValue, dryRun } = parseArgs(process.argv);
-+  const root = findProjectRoot();
-+
-+  const iosPbxprojPath = getIosPbxprojPath(root);
-+  const androidGradlePath = getAndroidGradlePath(root);
-+  const appConfigPath = path.join(root, "app.config.js");
-+
-+  const pbxText = readText(iosPbxprojPath);
-+  const gradleText = readText(androidGradlePath);
-+
-+  const iosVersion = readIosMarketingVersion(pbxText);
-+  if (!iosVersion) die("Unable to read iOS MARKETING_VERSION");
-+
-+  const androidVersion = readAndroidVersionName(gradleText);
-+  if (!androidVersion) die("Unable to read Android versionName");
-+
-+  const iosSem = parseSemver(iosVersion);
-+  const andSem = parseSemver(androidVersion);
-+  if (!iosSem) die(`Invalid iOS MARKETING_VERSION: ${iosVersion}`);
-+  if (!andSem) die(`Invalid Android versionName: ${androidVersion}`);
-+
-+  if (iosVersion !== androidVersion) {
-+    die(
-+      `Version mismatch:\n` +
-+        `  iOS MARKETING_VERSION = ${iosVersion}\n` +
-+        `  Android versionName   = ${androidVersion}\n` +
-+        `Fix by setting them equal first, or run:\n` +
-+        `  npm run version:set -- ${iosVersion}\n`
-+    );
++function readFileStrict(filePath) {
++  try {
++    return fs.readFileSync(filePath, 'utf8');
++  } catch (error) {
++    fail(`Unable to read file: ${filePath}\n${error.message}`);
 +  }
-+
-+  let nextSem;
-+  if (mode === "set") {
-+    if (!setValue) die(`Missing value after --set (expected e.g. 1.0.2)`);
-+    const s = parseSemver(setValue);
-+    if (!s) die(`Invalid --set value: ${setValue} (expected x.y.z)`);
-+    nextSem = s;
-+  } else {
-+    nextSem = bump(iosSem, mode);
-+  }
-+
-+  const nextVersion = semverToString(nextSem);
-+
-+  const nextPbx = writeIosMarketingVersion(pbxText, nextVersion);
-+  const nextGradle = writeAndroidVersionName(gradleText, nextVersion);
-+
-+  let nextAppConfig = null;
-+  if (fs.existsSync(appConfigPath)) {
-+    const appConfigText = readText(appConfigPath);
-+    const updated = maybeWriteExpoVersion(appConfigText, nextVersion);
-+    if (updated) nextAppConfig = updated;
-+  }
-+
-+  console.log(`[bump-version] Current version: ${iosVersion}`);
-+  console.log(`[bump-version] Next version   : ${nextVersion}`);
-+  console.log(`[bump-version] iOS pbxproj     : ${path.relative(root, iosPbxprojPath)}`);
-+  console.log(`[bump-version] Android gradle  : ${path.relative(root, androidGradlePath)}`);
-+  if (nextAppConfig != null) {
-+    console.log(`[bump-version] Expo config     : ${path.relative(root, appConfigPath)} (version field updated)`);
-+  } else if (fs.existsSync(appConfigPath) && maybeReadExpoVersion(appConfigPath)) {
-+    console.log(`[bump-version] Expo config     : ${path.relative(root, appConfigPath)} (no version field update applied)`);
-+  }
-+
-+  if (dryRun) {
-+    console.log(`[bump-version] Dry run enabled; no files written.`);
-+    process.exit(0);
-+  }
-+
-+  writeText(iosPbxprojPath, nextPbx);
-+  writeText(androidGradlePath, nextGradle);
-+  if (nextAppConfig != null) {
-+    writeText(appConfigPath, nextAppConfig);
-+  }
-+
-+  console.log(`[bump-version] Done.`);
 +}
 +
-+main();
++function writeFileStrict(filePath, content) {
++  try {
++    fs.writeFileSync(filePath, content, 'utf8');
++  } catch (error) {
++    fail(`Unable to write file: ${filePath}\n${error.message}`);
++  }
++}
++
++function unique(values) {
++  return [...new Set(values)];
++}
++
++const { mode, explicitVersion, dryRun } = parseArgs(process.argv.slice(2));
++
++const iosContent = readFileStrict(iosProjectPath);
++const androidContent = readFileStrict(androidGradlePath);
++
++const iosMatches = [...iosContent.matchAll(/MARKETING_VERSION = (\d+\.\d+\.\d+);/g)];
++if (iosMatches.length === 0) {
++  fail(`No MARKETING_VERSION entries matching X.Y.Z were found in ${iosProjectPath}.`);
++}
++
++const iosVersions = unique(iosMatches.map((match) => match[1]));
++if (iosVersions.length !== 1) {
++  fail(`iOS MARKETING_VERSION values are inconsistent: ${iosVersions.join(', ')}.`);
++}
++
++const androidMatches = [...androidContent.matchAll(/versionName\s+(["'])(\d+\.\d+\.\d+)\1/g)];
++if (androidMatches.length === 0) {
++  fail(`No versionName entries matching X.Y.Z were found in ${androidGradlePath}.`);
++}
++
++const androidVersions = unique(androidMatches.map((match) => match[2]));
++if (androidVersions.length !== 1) {
++  fail(`Android versionName values are inconsistent: ${androidVersions.join(', ')}.`);
++}
++
++const iosVersion = iosVersions[0];
++const androidVersion = androidVersions[0];
++
++if (!parseSemver(iosVersion) || !parseSemver(androidVersion)) {
++  fail(`Found invalid semver values. iOS: "${iosVersion}", Android: "${androidVersion}".`);
++}
++
++if (iosVersion !== androidVersion) {
++  fail(`Version mismatch. iOS MARKETING_VERSION is "${iosVersion}" while Android versionName is "${androidVersion}".`);
++}
++
++const currentVersion = iosVersion;
++const nextVersion = computeNextVersion(currentVersion, mode, explicitVersion);
++
++const updatedIosContent = iosContent.replace(
++  /(MARKETING_VERSION = )\d+\.\d+\.\d+(;)/g,
++  `$1${nextVersion}$2`,
++);
++
++const updatedAndroidContent = androidContent.replace(
++  /(versionName\s+)(["'])\d+\.\d+\.\d+\2/g,
++  `$1$2${nextVersion}$2`,
++);
++
++const modifiedFiles = [];
++
++if (updatedIosContent !== iosContent) {
++  modifiedFiles.push(path.relative(path.resolve(__dirname, '..'), iosProjectPath));
++}
++
++if (updatedAndroidContent !== androidContent) {
++  modifiedFiles.push(path.relative(path.resolve(__dirname, '..'), androidGradlePath));
++}
++
++if (!dryRun) {
++  if (updatedIosContent !== iosContent) {
++    writeFileStrict(iosProjectPath, updatedIosContent);
++  }
++
++  if (updatedAndroidContent !== androidContent) {
++    writeFileStrict(androidGradlePath, updatedAndroidContent);
++  }
++}
++
++console.log(`Current version: ${currentVersion}`);
++console.log(`Next version: ${nextVersion}`);
++if (modifiedFiles.length === 0) {
++  console.log(`Modified files: none${dryRun ? ' (dry-run)' : ''}`);
++} else {
++  console.log(`Modified files${dryRun ? ' (would modify)' : ''}: ${modifiedFiles.join(', ')}`);
++}
+ 
 EOF
 )
