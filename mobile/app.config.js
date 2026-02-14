@@ -59,7 +59,7 @@ export default {
 
   android: {
     package: "com.bookitgy.app",
-    versionCode: 3, // bump this
+    versionCode: 100, // Placeholder reset; increase if Play Console already has a higher value
     permissions: ["ACCESS_FINE_LOCATION", "ACCESS_COARSE_LOCATION"],
     blockedPermissions: [
     "com.google.android.gms.permission.AD_ID",

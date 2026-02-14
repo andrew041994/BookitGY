@@ -1,48 +1,234 @@
- (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
-diff --git a/mobile/android/app/src/main/AndroidManifest.xml b/mobile/android/app/src/main/AndroidManifest.xml
-index 682b2d2eac5a654bcf8e9aa06845195265c65b9f..1f0016229fa81087ec0af57b2c1441edd002093e 100644
---- a/mobile/android/app/src/main/AndroidManifest.xml
-+++ b/mobile/android/app/src/main/AndroidManifest.xml
-@@ -1,34 +1,39 @@
- <manifest xmlns:android="http://schemas.android.com/apk/res/android" xmlns:tools="http://schemas.android.com/tools">
-   <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
-   <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
-   <uses-permission android:name="android.permission.INTERNET"/>
-   <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"/>
-   <uses-permission android:name="android.permission.RECORD_AUDIO"/>
-   <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW"/>
-   <uses-permission android:name="android.permission.VIBRATE"/>
-   <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"/>
-+  <uses-permission android:name="com.google.android.gms.permission.AD_ID" tools:node="remove"/>
-+  <uses-permission android:name="android.permission.ACCESS_ADSERVICES_AD_ID" tools:node="remove"/>
-+  <uses-permission android:name="android.permission.ACCESS_ADSERVICES_ATTRIBUTION" tools:node="remove"/>
-+  <uses-permission android:name="android.permission.ACCESS_ADSERVICES_CUSTOM_AUDIENCE" tools:node="remove"/>
-+  <uses-permission android:name="android.permission.ACCESS_ADSERVICES_TOPICS" tools:node="remove"/>
-   <queries>
-     <intent>
-       <action android:name="android.intent.action.VIEW"/>
-       <category android:name="android.intent.category.BROWSABLE"/>
-       <data android:scheme="https"/>
-     </intent>
-   </queries>
-   <application android:name=".MainApplication" android:label="@string/app_name" android:icon="@mipmap/ic_launcher" android:roundIcon="@mipmap/ic_launcher_round" android:allowBackup="true" android:theme="@style/AppTheme" android:supportsRtl="true" android:enableOnBackInvokedCallback="false">
-     <meta-data android:name="com.google.android.geo.API_KEY" android:value="${GOOGLE_MAPS_API_KEY}"/>
-     <meta-data android:name="expo.modules.updates.ENABLED" android:value="false"/>
-     <meta-data android:name="expo.modules.updates.EXPO_UPDATES_CHECK_ON_LAUNCH" android:value="ALWAYS"/>
-     <meta-data android:name="expo.modules.updates.EXPO_UPDATES_LAUNCH_WAIT_MS" android:value="0"/>
-     <activity android:name=".MainActivity" android:configChanges="keyboard|keyboardHidden|orientation|screenSize|screenLayout|uiMode" android:launchMode="singleTask" android:windowSoftInputMode="adjustResize" android:theme="@style/Theme.App.SplashScreen" android:exported="true" android:screenOrientation="portrait">
-       <intent-filter>
-         <action android:name="android.intent.action.MAIN"/>
-         <category android:name="android.intent.category.LAUNCHER"/>
-       </intent-filter>
-       <intent-filter>
-         <action android:name="android.intent.action.VIEW"/>
-         <category android:name="android.intent.category.DEFAULT"/>
-         <category android:name="android.intent.category.BROWSABLE"/>
-         <data android:scheme="exp+bookitgy"/>
-       </intent-filter>
-     </activity>
-   </application>
- 
+(cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF'
+diff --git a/mobile/package.json b/mobile/package.json
+index 1111111..2222222 100644
+--- a/mobile/package.json
++++ b/mobile/package.json
+@@ -1,12 +1,29 @@
+ {
+   "name": "mobile",
+   "version": "1.0.0",
+   "private": true,
++  "type": "module",
+   "scripts": {
++    "version:bump": "node ./scripts/bump-version.mjs --patch",
++    "version:bump:minor": "node ./scripts/bump-version.mjs --minor",
++    "version:bump:major": "node ./scripts/bump-version.mjs --major",
++    "version:set": "node ./scripts/bump-version.mjs --set",
++
++    "ios:release": "npm run version:bump && eas build -p ios --profile production",
++    "android:release": "npm run version:bump && eas build -p android --profile production",
++    "release:build": "npm run version:bump && eas build -p ios --profile production && eas build -p android --profile production",
++
+     "start": "expo start"
+   }
+ }
+diff --git a/mobile/scripts/bump-version.mjs b/mobile/scripts/bump-version.mjs
+new file mode 100644
+index 0000000..3333333
+--- /dev/null
++++ b/mobile/scripts/bump-version.mjs
+@@ -0,0 +1,279 @@
++import fs from "fs";
++import path from "path";
++
++function die(msg) {
++  console.error(`\n[bump-version] ${msg}\n`);
++  process.exit(1);
++}
++
++function readText(filePath) {
++  return fs.readFileSync(filePath, "utf8");
++}
++
++function writeText(filePath, content) {
++  fs.writeFileSync(filePath, content, "utf8");
++}
++
++function parseSemver(v) {
++  // Accepts: 1.2.3
++  const m = String(v).trim().match(/^(\d+)\.(\d+)\.(\d+)$/);
++  if (!m) return null;
++  return { major: Number(m[1]), minor: Number(m[2]), patch: Number(m[3]) };
++}
++
++function semverToString(s) {
++  return `${s.major}.${s.minor}.${s.patch}`;
++}
++
++function bump(s, kind) {
++  if (kind === "major") return { major: s.major + 1, minor: 0, patch: 0 };
++  if (kind === "minor") return { major: s.major, minor: s.minor + 1, patch: 0 };
++  return { major: s.major, minor: s.minor, patch: s.patch + 1 };
++}
++
++function findProjectRoot() {
++  // This script lives at mobile/scripts/bump-version.mjs
++  return path.resolve(path.dirname(new URL(import.meta.url).pathname), "..");
++}
++
++function getIosPbxprojPath(root) {
++  // Hardcoded for your repo layout:
++  // mobile/ios/BookitGY.xcodeproj/project.pbxproj
++  const p = path.join(root, "ios", "BookitGY.xcodeproj", "project.pbxproj");
++  if (!fs.existsSync(p)) {
++    die(`iOS pbxproj not found at: ${p}`);
++  }
++  return p;
++}
++
++function getAndroidGradlePath(root) {
++  // mobile/android/app/build.gradle
++  const p = path.join(root, "android", "app", "build.gradle");
++  if (!fs.existsSync(p)) {
++    die(`Android build.gradle not found at: ${p}`);
++  }
++  return p;
++}
++
++function readIosMarketingVersion(pbxText) {
++  // Match MARKETING_VERSION = 1.0.1;
++  const m = pbxText.match(/\bMARKETING_VERSION\s*=\s*([0-9]+\.[0-9]+\.[0-9]+)\s*;/);
++  return m ? m[1] : null;
++}
++
++function writeIosMarketingVersion(pbxText, nextVersion) {
++  // Replace all MARKETING_VERSION occurrences (Debug + Release).
++  const re = /\bMARKETING_VERSION\s*=\s*([0-9]+\.[0-9]+\.[0-9]+)\s*;/g;
++  if (!re.test(pbxText)) {
++    die(`Could not find MARKETING_VERSION in iOS pbxproj`);
++  }
++  return pbxText.replace(re, `MARKETING_VERSION = ${nextVersion};`);
++}
++
++function readAndroidVersionName(gradleText) {
++  // Match: versionName "1.0.1" OR versionName '1.0.1'
++  const m = gradleText.match(/\bversionName\s+["']([0-9]+\.[0-9]+\.[0-9]+)["']/);
++  return m ? m[1] : null;
++}
++
++function writeAndroidVersionName(gradleText, nextVersion) {
++  const re = /\bversionName\s+["']([0-9]+\.[0-9]+\.[0-9]+)["']/g;
++  if (!re.test(gradleText)) {
++    die(`Could not find versionName in Android build.gradle`);
++  }
++  return gradleText.replace(re, `versionName "${nextVersion}"`);
++}
++
++function maybeReadExpoVersion(appConfigPath) {
++  if (!fs.existsSync(appConfigPath)) return null;
++  const txt = readText(appConfigPath);
++  // Try to match: version: "1.0.1"
++  const m = txt.match(/\bversion\s*:\s*["']([0-9]+\.[0-9]+\.[0-9]+)["']/);
++  return m ? m[1] : null;
++}
++
++function maybeWriteExpoVersion(appConfigText, nextVersion) {
++  // Replace: version: "x.y.z"
++  const re = /\bversion\s*:\s*["']([0-9]+\.[0-9]+\.[0-9]+)["']/g;
++  if (!re.test(appConfigText)) return null;
++  return appConfigText.replace(re, `version: "${nextVersion}"`);
++}
++
++function parseArgs(argv) {
++  const args = argv.slice(2);
++
++  // Defaults
++  let mode = "patch"; // patch | minor | major | set
++  let setValue = null;
++
++  if (args.includes("--major")) mode = "major";
++  if (args.includes("--minor")) mode = "minor";
++  if (args.includes("--patch")) mode = "patch";
++
++  const setIdx = args.findIndex((a) => a === "--set");
++  if (setIdx !== -1) {
++    mode = "set";
++    setValue = args[setIdx + 1] ?? null;
++  }
++
++  const dryRun = args.includes("--dry-run");
++
++  return { mode, setValue, dryRun };
++}
++
++function main() {
++  const { mode, setValue, dryRun } = parseArgs(process.argv);
++  const root = findProjectRoot();
++
++  const iosPbxprojPath = getIosPbxprojPath(root);
++  const androidGradlePath = getAndroidGradlePath(root);
++  const appConfigPath = path.join(root, "app.config.js");
++
++  const pbxText = readText(iosPbxprojPath);
++  const gradleText = readText(androidGradlePath);
++
++  const iosVersion = readIosMarketingVersion(pbxText);
++  if (!iosVersion) die("Unable to read iOS MARKETING_VERSION");
++
++  const androidVersion = readAndroidVersionName(gradleText);
++  if (!androidVersion) die("Unable to read Android versionName");
++
++  const iosSem = parseSemver(iosVersion);
++  const andSem = parseSemver(androidVersion);
++  if (!iosSem) die(`Invalid iOS MARKETING_VERSION: ${iosVersion}`);
++  if (!andSem) die(`Invalid Android versionName: ${androidVersion}`);
++
++  if (iosVersion !== androidVersion) {
++    die(
++      `Version mismatch:\n` +
++        `  iOS MARKETING_VERSION = ${iosVersion}\n` +
++        `  Android versionName   = ${androidVersion}\n` +
++        `Fix by setting them equal first, or run:\n` +
++        `  npm run version:set -- ${iosVersion}\n`
++    );
++  }
++
++  let nextSem;
++  if (mode === "set") {
++    if (!setValue) die(`Missing value after --set (expected e.g. 1.0.2)`);
++    const s = parseSemver(setValue);
++    if (!s) die(`Invalid --set value: ${setValue} (expected x.y.z)`);
++    nextSem = s;
++  } else {
++    nextSem = bump(iosSem, mode);
++  }
++
++  const nextVersion = semverToString(nextSem);
++
++  const nextPbx = writeIosMarketingVersion(pbxText, nextVersion);
++  const nextGradle = writeAndroidVersionName(gradleText, nextVersion);
++
++  let nextAppConfig = null;
++  if (fs.existsSync(appConfigPath)) {
++    const appConfigText = readText(appConfigPath);
++    const updated = maybeWriteExpoVersion(appConfigText, nextVersion);
++    if (updated) nextAppConfig = updated;
++  }
++
++  console.log(`[bump-version] Current version: ${iosVersion}`);
++  console.log(`[bump-version] Next version   : ${nextVersion}`);
++  console.log(`[bump-version] iOS pbxproj     : ${path.relative(root, iosPbxprojPath)}`);
++  console.log(`[bump-version] Android gradle  : ${path.relative(root, androidGradlePath)}`);
++  if (nextAppConfig != null) {
++    console.log(`[bump-version] Expo config     : ${path.relative(root, appConfigPath)} (version field updated)`);
++  } else if (fs.existsSync(appConfigPath) && maybeReadExpoVersion(appConfigPath)) {
++    console.log(`[bump-version] Expo config     : ${path.relative(root, appConfigPath)} (no version field update applied)`);
++  }
++
++  if (dryRun) {
++    console.log(`[bump-version] Dry run enabled; no files written.`);
++    process.exit(0);
++  }
++
++  writeText(iosPbxprojPath, nextPbx);
++  writeText(androidGradlePath, nextGradle);
++  if (nextAppConfig != null) {
++    writeText(appConfigPath, nextAppConfig);
++  }
++
++  console.log(`[bump-version] Done.`);
++}
++
++main();
 EOF
 )
