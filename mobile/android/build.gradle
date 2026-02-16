@@ -2,15 +2,13 @@
 
 buildscript {
     ext {
-    // Modern NDK for Play 16 KB page size support
-    ndkVersion = "26.1.10909125"
+      ndkVersion = "26.1.10909125"
+      compileSdkVersion = 35
+      targetSdkVersion = 34
+      minSdkVersion = 24
+      buildToolsVersion = "35.0.0"
+    }
 
-    // SDK versions
-    compileSdkVersion = 34
-    targetSdkVersion = 34
-    minSdkVersion = 24
-    buildToolsVersion = "34.0.0"
-  }
 
   repositories {
     google()
