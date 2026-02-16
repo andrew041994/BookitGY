@@ -3,7 +3,8 @@ import { BrowserRouter, Routes, Route, Link, Navigate, useLocation, useNavigate 
 import { apiClient, logApiError } from './lib/api';
 
 const DEFAULT_SERVICE_CHARGE = 10;
-const SERVICE_CHARGE_STORAGE_KEY = 'bookitgy.service_charge_rate';
+const SERVICE_CHARGE_STORAGE_KEY = 'bookitgy.service_charge_rate_by_month';
+const LEGACY_SERVICE_CHARGE_STORAGE_KEY = 'bookitgy.service_charge_rate';
 
 const sampleProviders = [
   {
@@ -113,11 +114,77 @@ const signupHistory = [
 
 const normalizeServiceCharge = (value) => Math.max(0, Math.min(100, Number(value) || 0));
 
-const loadStoredServiceCharge = () => {
-  const stored = localStorage.getItem(SERVICE_CHARGE_STORAGE_KEY);
-  if (stored === null) return null;
+const getBillingMonthKey = (cycleDateValue) => {
+  if (!cycleDateValue) return '';
+  return String(cycleDateValue).slice(0, 7);
+};
 
-  return normalizeServiceCharge(stored);
+const readStoredServiceChargeMap = () => {
+  const stored = localStorage.getItem(SERVICE_CHARGE_STORAGE_KEY);
+  if (!stored) return {};
+
+  try {
+    const parsed = JSON.parse(stored);
+    if (!parsed || typeof parsed !== 'object') return {};
+
+    return Object.entries(parsed).reduce((acc, [monthKey, value]) => {
+      if (!monthKey) return acc;
+      acc[monthKey] = normalizeServiceCharge(value);
+      return acc;
+    }, {});
+  } catch {
+    return {};
+  }
+};
+
+const loadStoredServiceChargeForMonth = (cycleDateValue) => {
+  const monthKey = getBillingMonthKey(cycleDateValue);
+  if (!monthKey) return null;
+
+  const storedMap = readStoredServiceChargeMap();
+  if (Object.prototype.hasOwnProperty.call(storedMap, monthKey)) {
+    return normalizeServiceCharge(storedMap[monthKey]);
+  }
+
+  const legacyStored = localStorage.getItem(LEGACY_SERVICE_CHARGE_STORAGE_KEY);
+  if (legacyStored === null) return null;
+
+  const normalizedLegacy = normalizeServiceCharge(legacyStored);
+  localStorage.removeItem(LEGACY_SERVICE_CHARGE_STORAGE_KEY);
+  localStorage.setItem(
+    SERVICE_CHARGE_STORAGE_KEY,
+    JSON.stringify({
+      ...storedMap,
+      [monthKey]: normalizedLegacy,
+    }),
+  );
+
+  return normalizedLegacy;
+};
+
+const persistServiceChargeForMonth = (cycleDateValue, rate) => {
+  const monthKey = getBillingMonthKey(cycleDateValue);
+  if (!monthKey) return;
+
+  const storedMap = readStoredServiceChargeMap();
+  localStorage.setItem(
+    SERVICE_CHARGE_STORAGE_KEY,
+    JSON.stringify({
+      ...storedMap,
+      [monthKey]: normalizeServiceCharge(rate),
+    }),
+  );
+};
+
+const removeStoredServiceChargeForMonth = (cycleDateValue) => {
+  const monthKey = getBillingMonthKey(cycleDateValue);
+  if (!monthKey) return;
+
+  const storedMap = readStoredServiceChargeMap();
+  if (!Object.prototype.hasOwnProperty.call(storedMap, monthKey)) return;
+
+  delete storedMap[monthKey];
+  localStorage.setItem(SERVICE_CHARGE_STORAGE_KEY, JSON.stringify(storedMap));
 };
 
 const formatDateInput = (date) => {
@@ -134,10 +201,6 @@ const parseDateInput = (value) => {
   const parsed = new Date(year, month - 1, day);
   if (Number.isNaN(parsed.getTime())) return null;
   return parsed;
-};
-
-const persistServiceCharge = (rate) => {
-  localStorage.setItem(SERVICE_CHARGE_STORAGE_KEY, String(rate));
 };
 
 const getSuspensionCutoffDate = () => {
@@ -228,6 +291,10 @@ function useBillingCore() {
         setCharges(
           res.data.map((row) => {
             const amount = Number(row.amount_due_gyd ?? 0);
+            const rowMonth = (row.cycle_month || row.month || billingCycleStart).toString().slice(0, 10);
+            const rowRate = normalizeServiceCharge(
+              row.service_charge_percentage ?? row.service_charge_percent ?? row.serviceChargePercentage ?? DEFAULT_SERVICE_CHARGE,
+            );
             return {
               id: row.provider_id ?? row.id,
               providerId: row.provider_id ?? row.id,
@@ -235,10 +302,13 @@ function useBillingCore() {
               providerName: row.name || 'Provider',
               accountNumber: row.account_number || row.accountNumber || '—',
               phoneNumber: row.phone || row.phone_number || '—',
-              month: billingCycleStart,
+              month: rowMonth,
               amount: Math.round(amount),
-              baseServiceCost: 0,
+              baseServiceCost:
+                Number(row.base_service_cost_gyd) || (rowRate > 0 ? Math.round(amount / (rowRate / 100)) : Math.round(amount)),
+              serviceChargeRate: rowRate,
               isPaid: !!row.is_paid,
+              isLocked: !!row.is_locked,
               isSuspended: row.is_suspended ?? row.isSuspended ?? false,
             };
           }),
@@ -260,7 +330,7 @@ function useBillingCore() {
       let updated = [...prev];
 
       providers.forEach((provider) => {
-        const existing = updated.find((c) => c.providerId === provider.id);
+        const existing = updated.find((c) => c.providerId === provider.id && c.month === billingCycleStart);
         if (!existing) {
           const amount = provider.outstanding || Math.floor(Math.random() * 20000) + 5000;
           updated.push({
@@ -269,6 +339,7 @@ function useBillingCore() {
             month: billingCycleStart,
             amount,
             baseServiceCost: Math.round((amount / DEFAULT_SERVICE_CHARGE) * 100),
+            serviceChargeRate: DEFAULT_SERVICE_CHARGE,
             isPaid: false,
           });
         }
@@ -968,27 +1039,39 @@ function AdminDashboard() {
 
   const recalculateChargesForRate = (rate) => {
     const safeRate = normalizeServiceCharge(rate);
-    setCharges((prev) => prev.map((c) => ({ ...c, amount: Math.round(c.baseServiceCost * (safeRate / 100)) })));
+    setCharges((prev) =>
+      prev.map((c) => {
+        const isCurrentBillingMonth = c.month === billingCycleStart;
+        const isLockedCharge = c.isPaid || c.isLocked || c.locked;
+        if (!isCurrentBillingMonth || isLockedCharge) return c;
+
+        return {
+          ...c,
+          amount: Math.round((Number(c.baseServiceCost) || 0) * (safeRate / 100)),
+          serviceChargeRate: safeRate,
+        };
+      }),
+    );
     setServiceCharge(safeRate);
     setServiceChargeDraft(safeRate);
   };
 
   useEffect(() => {
-    const storedRate = loadStoredServiceCharge();
+    const storedRate = loadStoredServiceChargeForMonth(billingCycleStart);
     if (storedRate !== null) {
       recalculateChargesForRate(storedRate);
     }
-  }, []);
+  }, [billingCycleStart]);
 
   const saveServiceCharge = () => {
     const safeRate = normalizeServiceCharge(serviceChargeDraft);
-    persistServiceCharge(safeRate);
+    persistServiceChargeForMonth(billingCycleStart, safeRate);
     recalculateChargesForRate(safeRate);
   };
 
   const resetServiceCharge = () => {
     recalculateChargesForRate(DEFAULT_SERVICE_CHARGE);
-    localStorage.removeItem(SERVICE_CHARGE_STORAGE_KEY);
+    removeStoredServiceChargeForMonth(billingCycleStart);
   };
 
   const runSignupReport = useCallback(async () => {

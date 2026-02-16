@@ -1,216 +1,377 @@
- (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
-diff --git a/mobile/scripts/bump-version.mjs b/mobile/scripts/bump-version.mjs
-new file mode 100644
-index 0000000000000000000000000000000000000000..0d2acb03b76e359890ec5f4c889f6b6e435253db
---- /dev/null
-+++ b/mobile/scripts/bump-version.mjs
-@@ -0,0 +1,206 @@
-+#!/usr/bin/env node
-+
-+import fs from 'node:fs';
-+import path from 'node:path';
-+import { fileURLToPath } from 'node:url';
-+
-+const __filename = fileURLToPath(import.meta.url);
-+const __dirname = path.dirname(__filename);
-+
-+const iosProjectPath = path.resolve(__dirname, '../ios/BookitGY.xcodeproj/project.pbxproj');
-+const androidGradlePath = path.resolve(__dirname, '../android/app/build.gradle');
-+
-+const SEMVER_REGEX = /^(\d+)\.(\d+)\.(\d+)$/;
-+
-+function fail(message) {
-+  console.error(`Error: ${message}`);
-+  process.exit(1);
-+}
-+
-+function parseSemver(version) {
-+  const match = SEMVER_REGEX.exec(version);
-+  if (!match) {
-+    return null;
-+  }
-+
-+  return {
-+    major: Number(match[1]),
-+    minor: Number(match[2]),
-+    patch: Number(match[3]),
-+  };
-+}
-+
-+function formatSemver({ major, minor, patch }) {
-+  return `${major}.${minor}.${patch}`;
-+}
-+
-+function computeNextVersion(currentVersion, mode, explicitVersion) {
-+  if (mode === 'set') {
-+    if (!explicitVersion) {
-+      fail('Missing value for --set <X.Y.Z>.');
-+    }
-+
-+    if (!parseSemver(explicitVersion)) {
-+      fail(`Invalid explicit version "${explicitVersion}". Expected X.Y.Z.`);
-+    }
-+
-+    return explicitVersion;
-+  }
-+
-+  const parsed = parseSemver(currentVersion);
-+  if (!parsed) {
-+    fail(`Current version "${currentVersion}" is not valid X.Y.Z semver.`);
-+  }
-+
-+  if (mode === 'major') {
-+    return formatSemver({ major: parsed.major + 1, minor: 0, patch: 0 });
-+  }
-+
-+  if (mode === 'minor') {
-+    return formatSemver({ major: parsed.major, minor: parsed.minor + 1, patch: 0 });
-+  }
-+
-+  return formatSemver({ major: parsed.major, minor: parsed.minor, patch: parsed.patch + 1 });
-+}
-+
-+function parseArgs(argv) {
-+  let mode = 'patch';
-+  let explicitVersion = null;
-+  let dryRun = false;
-+
-+  for (let i = 0; i < argv.length; i += 1) {
-+    const arg = argv[i];
-+
-+    if (arg === '--patch') {
-+      mode = 'patch';
-+      continue;
-+    }
-+
-+    if (arg === '--minor') {
-+      mode = 'minor';
-+      continue;
-+    }
-+
-+    if (arg === '--major') {
-+      mode = 'major';
-+      continue;
-+    }
-+
-+    if (arg === '--set') {
-+      mode = 'set';
-+      explicitVersion = argv[i + 1];
-+      i += 1;
-+      continue;
-+    }
-+
-+    if (arg === '--dry-run') {
-+      dryRun = true;
-+      continue;
-+    }
-+
-+    fail(`Unknown argument "${arg}".`);
-+  }
-+
-+  if (mode === 'set' && !explicitVersion) {
-+    fail('Missing value for --set <X.Y.Z>.');
-+  }
-+
-+  return { mode, explicitVersion, dryRun };
-+}
-+
-+function readFileStrict(filePath) {
-+  try {
-+    return fs.readFileSync(filePath, 'utf8');
-+  } catch (error) {
-+    fail(`Unable to read file: ${filePath}\n${error.message}`);
-+  }
-+}
-+
-+function writeFileStrict(filePath, content) {
-+  try {
-+    fs.writeFileSync(filePath, content, 'utf8');
-+  } catch (error) {
-+    fail(`Unable to write file: ${filePath}\n${error.message}`);
-+  }
-+}
-+
-+function unique(values) {
-+  return [...new Set(values)];
-+}
-+
-+const { mode, explicitVersion, dryRun } = parseArgs(process.argv.slice(2));
-+
-+const iosContent = readFileStrict(iosProjectPath);
-+const androidContent = readFileStrict(androidGradlePath);
-+
-+const iosMatches = [...iosContent.matchAll(/MARKETING_VERSION = (\d+\.\d+\.\d+);/g)];
-+if (iosMatches.length === 0) {
-+  fail(`No MARKETING_VERSION entries matching X.Y.Z were found in ${iosProjectPath}.`);
-+}
-+
-+const iosVersions = unique(iosMatches.map((match) => match[1]));
-+if (iosVersions.length !== 1) {
-+  fail(`iOS MARKETING_VERSION values are inconsistent: ${iosVersions.join(', ')}.`);
-+}
-+
-+const androidMatches = [...androidContent.matchAll(/versionName\s+(["'])(\d+\.\d+\.\d+)\1/g)];
-+if (androidMatches.length === 0) {
-+  fail(`No versionName entries matching X.Y.Z were found in ${androidGradlePath}.`);
-+}
-+
-+const androidVersions = unique(androidMatches.map((match) => match[2]));
-+if (androidVersions.length !== 1) {
-+  fail(`Android versionName values are inconsistent: ${androidVersions.join(', ')}.`);
-+}
-+
-+const iosVersion = iosVersions[0];
-+const androidVersion = androidVersions[0];
-+
-+if (!parseSemver(iosVersion) || !parseSemver(androidVersion)) {
-+  fail(`Found invalid semver values. iOS: "${iosVersion}", Android: "${androidVersion}".`);
-+}
-+
-+if (iosVersion !== androidVersion) {
-+  fail(`Version mismatch. iOS MARKETING_VERSION is "${iosVersion}" while Android versionName is "${androidVersion}".`);
-+}
-+
-+const currentVersion = iosVersion;
-+const nextVersion = computeNextVersion(currentVersion, mode, explicitVersion);
-+
-+const updatedIosContent = iosContent.replace(
-+  /(MARKETING_VERSION = )\d+\.\d+\.\d+(;)/g,
-+  `$1${nextVersion}$2`,
-+);
-+
-+const updatedAndroidContent = androidContent.replace(
-+  /(versionName\s+)(["'])\d+\.\d+\.\d+\2/g,
-+  `$1$2${nextVersion}$2`,
-+);
-+
-+const modifiedFiles = [];
-+
-+if (updatedIosContent !== iosContent) {
-+  modifiedFiles.push(path.relative(path.resolve(__dirname, '..'), iosProjectPath));
-+}
-+
-+if (updatedAndroidContent !== androidContent) {
-+  modifiedFiles.push(path.relative(path.resolve(__dirname, '..'), androidGradlePath));
-+}
-+
-+if (!dryRun) {
-+  if (updatedIosContent !== iosContent) {
-+    writeFileStrict(iosProjectPath, updatedIosContent);
-+  }
-+
-+  if (updatedAndroidContent !== androidContent) {
-+    writeFileStrict(androidGradlePath, updatedAndroidContent);
-+  }
-+}
-+
-+console.log(`Current version: ${currentVersion}`);
-+console.log(`Next version: ${nextVersion}`);
-+if (modifiedFiles.length === 0) {
-+  console.log(`Modified files: none${dryRun ? ' (dry-run)' : ''}`);
-+} else {
-+  console.log(`Modified files${dryRun ? ' (would modify)' : ''}: ${modifiedFiles.join(', ')}`);
-+}
+diff --git a/frontend/src/App.jsx b/frontend/src/App.jsx
+index bcefdb08c1856a6a0086b643c45f2c25ccd75d95..4709ad10d11b729793dba1d4379fae13248246e9 100644
+--- a/frontend/src/App.jsx
++++ b/frontend/src/App.jsx
+@@ -1,31 +1,32 @@
+ import React, { useCallback, useEffect, useMemo, useState } from 'react';
+ import { BrowserRouter, Routes, Route, Link, Navigate, useLocation, useNavigate } from 'react-router-dom';
+ import { apiClient, logApiError } from './lib/api';
  
-EOF
-)
+ const DEFAULT_SERVICE_CHARGE = 10;
+-const SERVICE_CHARGE_STORAGE_KEY = 'bookitgy.service_charge_rate';
++const SERVICE_CHARGE_STORAGE_KEY = 'bookitgy.service_charge_rate_by_month';
++const LEGACY_SERVICE_CHARGE_STORAGE_KEY = 'bookitgy.service_charge_rate';
+ 
+ const sampleProviders = [
+   {
+     id: 1,
+     userId: 1,
+     name: 'Ariana De Freitas',
+     accountNumber: 'ACC-0001',
+     phoneNumber: '592-600-1001',
+     location: 'Georgetown',
+     lat: 6.8013,
+     long: -58.155,
+     outstanding: 32000,
+     credit: 5000,
+     isSuspended: false,
+     autoSuspended: false,
+     lastActive: '2024-10-10',
+     totalBookings: 42,
+     cancellations: 3,
+     noShows: 1,
+     services: ['Makeup', 'Hair Styling'],
+   },
+   {
+     id: 2,
+     userId: 2,
+     name: 'Jamall Adams',
+@@ -91,77 +92,139 @@ const sampleCharges = [
+   { id: 104, providerId: 3, month: '2024-10-01', amount: 22000, isPaid: false },
+   { id: 105, providerId: 4, month: '2024-10-01', amount: 12000, isPaid: true },
+ ];
+ 
+ const sampleBookings = [
+   { id: 1, providerId: 1, clientId: 10, status: 'completed', startTime: '2024-10-12T12:00:00Z' },
+   { id: 2, providerId: 1, clientId: 11, status: 'cancelled', startTime: '2024-10-12T15:00:00Z' },
+   { id: 3, providerId: 2, clientId: 12, status: 'completed', startTime: '2024-10-11T16:00:00Z' },
+   { id: 4, providerId: 2, clientId: 13, status: 'pending', startTime: '2024-10-10T10:00:00Z' },
+   { id: 5, providerId: 3, clientId: 14, status: 'no-show', startTime: '2024-10-01T10:00:00Z' },
+   { id: 6, providerId: 4, clientId: 10, status: 'completed', startTime: '2024-10-12T09:00:00Z' },
+   { id: 7, providerId: 4, clientId: 16, status: 'cancelled', startTime: '2024-09-15T09:00:00Z' },
+   { id: 8, providerId: 1, clientId: 15, status: 'completed', startTime: '2024-10-10T09:00:00Z' },
+ ];
+ 
+ const signupHistory = [
+   { month: 'Jun', providers: 10, clients: 54 },
+   { month: 'Jul', providers: 14, clients: 62 },
+   { month: 'Aug', providers: 21, clients: 70 },
+   { month: 'Sep', providers: 33, clients: 82 },
+   { month: 'Oct', providers: 40, clients: 95 },
+ ];
+ 
+ const normalizeServiceCharge = (value) => Math.max(0, Math.min(100, Number(value) || 0));
+ 
+-const loadStoredServiceCharge = () => {
++const getBillingMonthKey = (cycleDateValue) => {
++  if (!cycleDateValue) return '';
++  return String(cycleDateValue).slice(0, 7);
++};
++
++const readStoredServiceChargeMap = () => {
+   const stored = localStorage.getItem(SERVICE_CHARGE_STORAGE_KEY);
+-  if (stored === null) return null;
++  if (!stored) return {};
++
++  try {
++    const parsed = JSON.parse(stored);
++    if (!parsed || typeof parsed !== 'object') return {};
++
++    return Object.entries(parsed).reduce((acc, [monthKey, value]) => {
++      if (!monthKey) return acc;
++      acc[monthKey] = normalizeServiceCharge(value);
++      return acc;
++    }, {});
++  } catch {
++    return {};
++  }
++};
++
++const loadStoredServiceChargeForMonth = (cycleDateValue) => {
++  const monthKey = getBillingMonthKey(cycleDateValue);
++  if (!monthKey) return null;
++
++  const storedMap = readStoredServiceChargeMap();
++  if (Object.prototype.hasOwnProperty.call(storedMap, monthKey)) {
++    return normalizeServiceCharge(storedMap[monthKey]);
++  }
++
++  const legacyStored = localStorage.getItem(LEGACY_SERVICE_CHARGE_STORAGE_KEY);
++  if (legacyStored === null) return null;
++
++  const normalizedLegacy = normalizeServiceCharge(legacyStored);
++  localStorage.removeItem(LEGACY_SERVICE_CHARGE_STORAGE_KEY);
++  localStorage.setItem(
++    SERVICE_CHARGE_STORAGE_KEY,
++    JSON.stringify({
++      ...storedMap,
++      [monthKey]: normalizedLegacy,
++    }),
++  );
++
++  return normalizedLegacy;
++};
++
++const persistServiceChargeForMonth = (cycleDateValue, rate) => {
++  const monthKey = getBillingMonthKey(cycleDateValue);
++  if (!monthKey) return;
++
++  const storedMap = readStoredServiceChargeMap();
++  localStorage.setItem(
++    SERVICE_CHARGE_STORAGE_KEY,
++    JSON.stringify({
++      ...storedMap,
++      [monthKey]: normalizeServiceCharge(rate),
++    }),
++  );
++};
++
++const removeStoredServiceChargeForMonth = (cycleDateValue) => {
++  const monthKey = getBillingMonthKey(cycleDateValue);
++  if (!monthKey) return;
+ 
+-  return normalizeServiceCharge(stored);
++  const storedMap = readStoredServiceChargeMap();
++  if (!Object.prototype.hasOwnProperty.call(storedMap, monthKey)) return;
++
++  delete storedMap[monthKey];
++  localStorage.setItem(SERVICE_CHARGE_STORAGE_KEY, JSON.stringify(storedMap));
+ };
+ 
+ const formatDateInput = (date) => {
+   const year = date.getFullYear();
+   const month = String(date.getMonth() + 1).padStart(2, '0');
+   const day = String(date.getDate()).padStart(2, '0');
+   return `${year}-${month}-${day}`;
+ };
+ 
+ const parseDateInput = (value) => {
+   if (!value) return null;
+   const [year, month, day] = value.split('-').map(Number);
+   if (!year || !month || !day) return null;
+   const parsed = new Date(year, month - 1, day);
+   if (Number.isNaN(parsed.getTime())) return null;
+   return parsed;
+ };
+ 
+-const persistServiceCharge = (rate) => {
+-  localStorage.setItem(SERVICE_CHARGE_STORAGE_KEY, String(rate));
+-};
+-
+ const getSuspensionCutoffDate = () => {
+   const today = new Date();
+   return new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), 15));
+ };
+ 
+ const isPastSuspensionCutoff = () => {
+   const now = new Date();
+   const cutoff = getSuspensionCutoffDate();
+ 
+   return now.getTime() >= cutoff.getTime();
+ };
+ 
+ function useBillingCore() {
+   const billingCycleStart = useMemo(() => {
+     const today = new Date();
+     return new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), 1)).toISOString().slice(0, 10);
+   }, []);
+ 
+   const [providers, setProviders] = useState(sampleProviders);
+   const [charges, setCharges] = useState(() =>
+     sampleCharges.map((charge) => {
+       const baseServiceCost = Math.round((charge.amount / DEFAULT_SERVICE_CHARGE) * 100);
+ 
+       return {
+         ...charge,
+@@ -206,91 +269,99 @@ function useBillingCore() {
+           services: p.services || [],
+         }));
+         setProviders(normalized);
+       }
+     } catch (e) {
+       logApiError(e);
+       console.log('Using sample providers', e.message);
+     } finally {
+       setLoadingProviders(false);
+     }
+   }, []);
+ 
+   useEffect(() => {
+     fetchProviders();
+   }, [fetchProviders]);
+ 
+   useEffect(() => {
+     const fetchBilling = async () => {
+       try {
+         const res = await apiClient.get('/admin/billing');
+         if (!Array.isArray(res.data) || res.data.length === 0) return;
+ 
+         setCharges(
+           res.data.map((row) => {
+             const amount = Number(row.amount_due_gyd ?? 0);
++            const rowMonth = (row.cycle_month || row.month || billingCycleStart).toString().slice(0, 10);
++            const rowRate = normalizeServiceCharge(
++              row.service_charge_percentage ?? row.service_charge_percent ?? row.serviceChargePercentage ?? DEFAULT_SERVICE_CHARGE,
++            );
+             return {
+               id: row.provider_id ?? row.id,
+               providerId: row.provider_id ?? row.id,
+               userId: row.user_id ?? row.userId,
+               providerName: row.name || 'Provider',
+               accountNumber: row.account_number || row.accountNumber || '—',
+               phoneNumber: row.phone || row.phone_number || '—',
+-              month: billingCycleStart,
++              month: rowMonth,
+               amount: Math.round(amount),
+-              baseServiceCost: 0,
++              baseServiceCost:
++                Number(row.base_service_cost_gyd) || (rowRate > 0 ? Math.round(amount / (rowRate / 100)) : Math.round(amount)),
++              serviceChargeRate: rowRate,
+               isPaid: !!row.is_paid,
++              isLocked: !!row.is_locked,
+               isSuspended: row.is_suspended ?? row.isSuspended ?? false,
+             };
+           }),
+         );
+       } catch (e) {
+         logApiError(e);
+         console.log('Using sample billing data', e.message);
+       }
+     };
+ 
+     fetchBilling();
+   }, [billingCycleStart]);
+ 
+   useEffect(() => {
+     setCharges((prev) => {
+       if (!providers.length) return prev;
+ 
+       let nextId = prev.reduce((max, c) => Math.max(max, c.id), 0) + 1;
+       let updated = [...prev];
+ 
+       providers.forEach((provider) => {
+-        const existing = updated.find((c) => c.providerId === provider.id);
++        const existing = updated.find((c) => c.providerId === provider.id && c.month === billingCycleStart);
+         if (!existing) {
+           const amount = provider.outstanding || Math.floor(Math.random() * 20000) + 5000;
+           updated.push({
+             id: nextId++,
+             providerId: provider.id,
+             month: billingCycleStart,
+             amount,
+             baseServiceCost: Math.round((amount / DEFAULT_SERVICE_CHARGE) * 100),
++            serviceChargeRate: DEFAULT_SERVICE_CHARGE,
+             isPaid: false,
+           });
+         }
+       });
+ 
+       return updated;
+     });
+   }, [providers, billingCycleStart]);
+ 
+   useEffect(() => {
+     const inSuspensionWindow = isPastSuspensionCutoff();
+ 
+     setProviders((prev) =>
+       prev.map((provider) => {
+         const hasUnpaidCurrentCharge = charges.some(
+           (charge) => charge.providerId === provider.id && charge.month === billingCycleStart && !charge.isPaid,
+         );
+         const autoSuspended = inSuspensionWindow && hasUnpaidCurrentCharge;
+ 
+         if (provider.autoSuspended === autoSuspended) return provider;
+ 
+         return { ...provider, autoSuspended };
+       }),
+     );
+   }, [billingCycleStart, charges, suspensionClock]);
+@@ -946,71 +1017,83 @@ function AdminDashboard() {
+     setChargesPaidState,
+     setProviderSuspensionState,
+     suspensionCutoffLabel,
+     toggleAllChargesSelection,
+     toggleChargeSelection,
+     updateSingleChargeStatus,
+   } = useBillingCore();
+ 
+   const [serviceCharge, setServiceCharge] = useState(DEFAULT_SERVICE_CHARGE);
+   const [serviceChargeDraft, setServiceChargeDraft] = useState(DEFAULT_SERVICE_CHARGE);
+   const [signupStart, setSignupStart] = useState(() => {
+     const today = new Date();
+     const start = new Date();
+     start.setDate(today.getDate() - 6);
+     return formatDateInput(start);
+   });
+   const [signupEnd, setSignupEnd] = useState(() => formatDateInput(new Date()));
+   const [signupReport, setSignupReport] = useState(null);
+   const [signupLoading, setSignupLoading] = useState(false);
+   const [signupError, setSignupError] = useState('');
+ 
+   useLeafletMap(providers);
+ 
+   const recalculateChargesForRate = (rate) => {
+     const safeRate = normalizeServiceCharge(rate);
+-    setCharges((prev) => prev.map((c) => ({ ...c, amount: Math.round(c.baseServiceCost * (safeRate / 100)) })));
++    setCharges((prev) =>
++      prev.map((c) => {
++        const isCurrentBillingMonth = c.month === billingCycleStart;
++        const isLockedCharge = c.isPaid || c.isLocked || c.locked;
++        if (!isCurrentBillingMonth || isLockedCharge) return c;
++
++        return {
++          ...c,
++          amount: Math.round((Number(c.baseServiceCost) || 0) * (safeRate / 100)),
++          serviceChargeRate: safeRate,
++        };
++      }),
++    );
+     setServiceCharge(safeRate);
+     setServiceChargeDraft(safeRate);
+   };
+ 
+   useEffect(() => {
+-    const storedRate = loadStoredServiceCharge();
++    const storedRate = loadStoredServiceChargeForMonth(billingCycleStart);
+     if (storedRate !== null) {
+       recalculateChargesForRate(storedRate);
+     }
+-  }, []);
++  }, [billingCycleStart]);
+ 
+   const saveServiceCharge = () => {
+     const safeRate = normalizeServiceCharge(serviceChargeDraft);
+-    persistServiceCharge(safeRate);
++    persistServiceChargeForMonth(billingCycleStart, safeRate);
+     recalculateChargesForRate(safeRate);
+   };
+ 
+   const resetServiceCharge = () => {
+     recalculateChargesForRate(DEFAULT_SERVICE_CHARGE);
+-    localStorage.removeItem(SERVICE_CHARGE_STORAGE_KEY);
++    removeStoredServiceChargeForMonth(billingCycleStart);
+   };
+ 
+   const runSignupReport = useCallback(async () => {
+     const parsedStart = parseDateInput(signupStart);
+     const parsedEnd = parseDateInput(signupEnd);
+ 
+     if (!parsedStart || !parsedEnd) {
+       setSignupError('Start and end dates are required.');
+       return;
+     }
+ 
+     if (parsedStart > parsedEnd) {
+       setSignupError('Start date must be on or before end date.');
+       return;
+     }
+ 
+     setSignupLoading(true);
+     setSignupError('');
+     try {
+       const res = await apiClient.get('/admin/reports/signups', {
+         params: { start: signupStart, end: signupEnd },
+       });
+       setSignupReport(res.data);
+     } catch (error) {
+       logApiError(error);
