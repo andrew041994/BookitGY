@@ -19,6 +19,16 @@ export default {
   newArchEnabled: false,
   plugins: [
     "./plugins/remove-ad-id-permission",
+    [
+        "expo-build-properties",
+        {
+          "android": {
+            "compileSdkVersion": 35,
+            "targetSdkVersion": 35,
+            "ndkVersion": "28.0.13004108"
+          }
+        }
+      ],
     // [
     //   "react-native-fbsdk-next",
     //   {
