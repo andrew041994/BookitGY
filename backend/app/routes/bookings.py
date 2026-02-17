@@ -33,6 +33,7 @@ def _require_current_provider(
             ),
         )
 
+    provider = crud.enforce_auto_lock_if_unpaid(db, provider)
     return provider
 
 

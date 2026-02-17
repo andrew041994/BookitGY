@@ -1,136 +1,134 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
-diff --git a/backend/tests/test_billing.py b/backend/tests/test_billing.py
-index 68cce6879b3651c7eceeb73e94d2a4196fe25628..d2239e4cd4f5634f2ee41f4ac7e45c1802c43a5e 100644
---- a/backend/tests/test_billing.py
-+++ b/backend/tests/test_billing.py
-@@ -608,50 +608,127 @@ def test_paid_bill_persists_after_regeneration(db_session):
-     original_fee = float(bill.fee_gyd)
-     original_due = bill.due_date
+diff --git a/backend/tests/test_provider_suspension.py b/backend/tests/test_provider_suspension.py
+index 7b4090ccc04c31412e0f6c3778766fc1de985d24..55f7779e5b2320b76381f26744996cb27b407e9e 100644
+--- a/backend/tests/test_provider_suspension.py
++++ b/backend/tests/test_provider_suspension.py
+@@ -1,26 +1,26 @@
+-from datetime import timedelta
++from datetime import datetime, timedelta
  
-     crud.set_provider_bills_paid_state(session, provider.id, start_of_prior_month, True)
+ import pytest
+ from fastapi import HTTPException
+ from app import schemas
+ from app.utils.time import now_guyana
  
  
-     crud.generate_monthly_bills(session, month=prior_month_date)
+ def _create_user(session, crud, *, email, username, password, is_provider=False, is_suspended=False):
+     user = crud.create_user(
+         session,
+         schemas.UserCreate(
+             username=username,
+             email=email,
+             password=password,
+             phone="000000",
+             location="Georgetown",
+         ),
+     )
+     user.is_email_verified = True
+     user.is_provider = is_provider
+     user.is_suspended = is_suspended
+     session.commit()
+     session.refresh(user)
+     return user
  
-     bills = (
-         session.query(models.Bill)
-         .filter(
-             models.Bill.provider_id == provider.id,
-             models.Bill.month == start_of_prior_month,
-         )
-         .all()
+@@ -166,25 +166,97 @@ def test_booking_creation_allows_unsuspended_provider(db_session):
+ 
+     provider = crud.get_or_create_provider_for_user(session, provider_user.id)
+     service = _create_service(session, models, provider.id)
+ 
+     customer_user = _create_user(
+         session,
+         crud,
+         email="customer3@example.com",
+         username="customer3",
+         password="Password",
+     )
+     from app.routes.bookings import create_booking_for_me
+ 
+     booking_payload = schemas.BookingCreate(
+         service_id=service.id,
+         start_time=now_guyana() + timedelta(hours=3),
      )
  
-     assert len(bills) == 1
-     persisted = bills[0]
-     assert persisted.is_paid is True
-     assert float(persisted.total_gyd) == original_total
-     assert float(persisted.fee_gyd) == original_fee
-     assert persisted.due_date == original_due
+     booking = create_booking_for_me(
+         booking_in=booking_payload,
+         db=session,
+         current_user=customer_user,
+     )
  
- 
-+def test_provider_billing_cycles_freeze_past_bill_snapshots(db_session, monkeypatch):
+     assert booking is not None
++
++
++def test_provider_confirm_auto_locked_when_current_cycle_unpaid_after_cutoff(db_session, monkeypatch):
 +    session, models, crud = db_session
-+    provider, _customer, _service = _create_provider_graph(session, models)
 +
-+    past_month = datetime(2024, 1, 1).date()
-+    current_month = datetime(2024, 2, 1).date()
++    provider_user = _create_user(
++        session,
++        crud,
++        email="provider5@example.com",
++        username="provider_autolock",
++        password="Password",
++        is_provider=True,
++        is_suspended=False,
++    )
++    provider = crud.get_or_create_provider_for_user(session, provider_user.id)
++    service = _create_service(session, models, provider.id)
 +
-+    session.add_all(
-+        [
-+            models.BillingCycle(
-+                account_number=provider.account_number,
-+                cycle_month=past_month,
-+                is_paid=False,
-+                paid_at=None,
-+                credits_applied_gyd=50,
-+            ),
-+            models.BillingCycle(
-+                account_number=provider.account_number,
-+                cycle_month=current_month,
-+                is_paid=False,
-+                paid_at=None,
-+                credits_applied_gyd=0,
-+            ),
-+        ]
++    customer_user = _create_user(
++        session,
++        crud,
++        email="customer5@example.com",
++        username="customer5",
++        password="Password",
 +    )
 +
++    fixed_now = datetime(2026, 2, 17, 8, 0, 0)
++    monkeypatch.setattr("app.crud.now_guyana", lambda: fixed_now)
++
++    booking = models.Booking(
++        customer_id=customer_user.id,
++        service_id=service.id,
++        start_time=fixed_now - timedelta(hours=3),
++        end_time=fixed_now - timedelta(hours=2),
++        status="completed",
++    )
++    session.add(booking)
++
++    current_cycle = crud.current_billing_cycle_month(fixed_now.date())
 +    session.add(
-+        models.Bill(
-+            provider_id=provider.id,
-+            month=past_month,
-+            total_gyd=1000,
-+            fee_gyd=350,
-+            due_date=datetime(2024, 2, 15, 23, 59),
++        models.BillingCycle(
++            account_number=provider.account_number,
++            cycle_month=current_cycle,
 +            is_paid=False,
 +        )
 +    )
++
++    pending_booking = models.Booking(
++        customer_id=customer_user.id,
++        service_id=service.id,
++        start_time=fixed_now + timedelta(hours=2),
++        end_time=fixed_now + timedelta(hours=3),
++        status="pending",
++    )
++    session.add(pending_booking)
 +    session.commit()
++    session.refresh(provider)
 +
-+    crud.update_platform_service_charge(session, 0)
-+    monkeypatch.setattr(
-+        crud, "current_billing_cycle_month", lambda reference=None: current_month
++    from app.routes.bookings import confirm_booking_as_provider
++
++    with pytest.raises(HTTPException) as exc_info:
++        confirm_booking_as_provider(
++            booking_id=pending_booking.id,
++            db=session,
++            provider=provider,
++        )
++
++    session.refresh(provider)
++    assert exc_info.value.status_code == 403
++    assert exc_info.value.detail == (
++        "Provider account is locked and cannot accept or confirm new appointments."
 +    )
-+
-+    from app import database
-+    from app.database import get_db
-+    from app.main import app
-+    from app.routes import providers as providers_routes
-+
-+    database.Base.metadata.create_all(bind=database.engine)
-+
-+    def override_get_db():
-+        try:
-+            yield session
-+        finally:
-+            pass
-+
-+    app.dependency_overrides[get_db] = override_get_db
-+    app.dependency_overrides[providers_routes._require_current_provider] = (
-+        lambda: provider
-+    )
-+
-+    client = TestClient(app)
-+
-+    try:
-+        response = client.get("/providers/me/billing/cycles?limit=6")
-+        assert response.status_code == 200
-+        payload = response.json()
-+    finally:
-+        app.dependency_overrides = {}
-+
-+    past_cycle = next(c for c in payload["cycles"] if c["cycle_month"] == "2024-01-01")
-+    current_cycle = next(c for c in payload["cycles"] if c["cycle_month"] == "2024-02-01")
-+
-+    assert past_cycle["platform_fee_gyd"] == 350.0
-+    assert past_cycle["total_due_gyd"] == 300.0
-+    assert current_cycle["platform_fee_gyd"] == 0.0
-+
- def test_cron_job_completes_past_confirmed_only(db_session):
-     session, models, crud = db_session
-     provider, customer, service = _create_provider_graph(session, models)
- 
-     now = now_guyana()
- 
-     past_start = now - timedelta(hours=1)
-     past_end = now - timedelta(minutes=30)
-     confirmed_booking = _add_booking(
-         session,
-         models,
-         customer=customer,
-         service=service,
-         start_time=past_start,
-         end_time=past_end,
-         status="confirmed",
-     )
- 
-     cancelled_booking = _add_booking(
-         session,
-         models,
-         customer=customer,
-         service=service,
-         start_time=past_start - timedelta(hours=1),
-         end_time=past_end - timedelta(hours=1),
++    assert provider.is_locked is True
  
 EOF
 )

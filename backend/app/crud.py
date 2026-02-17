@@ -34,6 +34,9 @@ DEFAULT_SERVICE_CHARGE_PERCENTAGE = Decimal("10.0")
 SUSPENDED_PROVIDER_MESSAGE = (
     "Provider account is suspended and cannot accept bookings."
 )
+LOCKED_PROVIDER_MESSAGE = (
+    "Provider account is locked and cannot accept or confirm new appointments."
+)
 
 
 def normalized_booking_status_value(status: str | None) -> str:
@@ -756,6 +759,11 @@ def assert_provider_not_suspended(
     return user
 
 
+def assert_provider_not_locked(provider: models.Provider) -> None:
+    if provider and bool(getattr(provider, "is_locked", False)):
+        raise PermissionError(LOCKED_PROVIDER_MESSAGE)
+
+
 def get_user_by_username(
     db: Session,
     username: str,
@@ -1183,6 +1191,8 @@ def create_booking(
     if not provider_user:
         raise ValueError("Provider user not found")
 
+    provider = enforce_auto_lock_if_unpaid(db, provider)
+    assert_provider_not_locked(provider)
     assert_provider_not_suspended(db, provider_user.id)
 
     # Current local time (Guyana, naive to match DB usage)
@@ -2073,6 +2083,41 @@ def set_provider_bills_paid_state(
     return 1
 
 
+def enforce_auto_lock_if_unpaid(db: Session, provider: models.Provider) -> models.Provider:
+    if not provider:
+        return provider
+
+    now = now_guyana()
+    cutoff = datetime(now.year, now.month, 15, 0, 0)
+    if now < cutoff:
+        return provider
+
+    current_month = _normalize_cycle_month(current_billing_cycle_month(now.date()))
+    billing_cycle = get_billing_cycle_for_account(db, provider.account_number, current_month)
+    if not billing_cycle or bool(billing_cycle.is_paid):
+        return provider
+
+    amount_due = Decimal(str(get_provider_fees_due_for_cycle(db, provider.id, current_month) or 0))
+    if amount_due <= 0:
+        return provider
+
+    if not bool(getattr(provider, "is_locked", False)):
+        provider.is_locked = True
+        db.commit()
+        db.refresh(provider)
+        logger.info(
+            "Auto-locked provider for unpaid current cycle balance",
+            extra={
+                "provider_id": provider.id,
+                "account_number": provider.account_number,
+                "cycle_month": str(current_month),
+                "amount_due": float(amount_due),
+            },
+        )
+
+    return provider
+
+
 def current_billing_cycle_month(reference: datetime | date | None = None) -> date:
     if reference is None:
         reference = now_guyana()
@@ -2471,6 +2516,8 @@ def confirm_booking_for_provider(
     if not provider:
         return False
 
+    provider = enforce_auto_lock_if_unpaid(db, provider)
+    assert_provider_not_locked(provider)
     assert_provider_not_suspended(db, provider.user_id)
 
     normalized_status = normalized_booking_status_value(booking.status)

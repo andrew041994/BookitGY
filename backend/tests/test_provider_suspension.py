@@ -1,4 +1,4 @@
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 import pytest
 from fastapi import HTTPException
@@ -188,3 +188,75 @@ def test_booking_creation_allows_unsuspended_provider(db_session):
     )
 
     assert booking is not None
+
+
+def test_provider_confirm_auto_locked_when_current_cycle_unpaid_after_cutoff(db_session, monkeypatch):
+    session, models, crud = db_session
+
+    provider_user = _create_user(
+        session,
+        crud,
+        email="provider5@example.com",
+        username="provider_autolock",
+        password="Password",
+        is_provider=True,
+        is_suspended=False,
+    )
+    provider = crud.get_or_create_provider_for_user(session, provider_user.id)
+    service = _create_service(session, models, provider.id)
+
+    customer_user = _create_user(
+        session,
+        crud,
+        email="customer5@example.com",
+        username="customer5",
+        password="Password",
+    )
+
+    fixed_now = datetime(2026, 2, 17, 8, 0, 0)
+    monkeypatch.setattr("app.crud.now_guyana", lambda: fixed_now)
+
+    booking = models.Booking(
+        customer_id=customer_user.id,
+        service_id=service.id,
+        start_time=fixed_now - timedelta(hours=3),
+        end_time=fixed_now - timedelta(hours=2),
+        status="completed",
+    )
+    session.add(booking)
+
+    current_cycle = crud.current_billing_cycle_month(fixed_now.date())
+    session.add(
+        models.BillingCycle(
+            account_number=provider.account_number,
+            cycle_month=current_cycle,
+            is_paid=False,
+        )
+    )
+
+    pending_booking = models.Booking(
+        customer_id=customer_user.id,
+        service_id=service.id,
+        start_time=fixed_now + timedelta(hours=2),
+        end_time=fixed_now + timedelta(hours=3),
+        status="pending",
+    )
+    session.add(pending_booking)
+    session.commit()
+    session.refresh(provider)
+
+    from app.routes.bookings import confirm_booking_as_provider
+
+    with pytest.raises(HTTPException) as exc_info:
+        confirm_booking_as_provider(
+            booking_id=pending_booking.id,
+            db=session,
+            provider=provider,
+        )
+
+    session.refresh(provider)
+    assert exc_info.value.status_code == 403
+    assert exc_info.value.detail == (
+        "Provider account is locked and cannot accept or confirm new appointments."
+    )
+    assert provider.is_locked is True
