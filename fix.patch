@@ -1,120 +1,136 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
-diff --git a/backend/app/crud.py b/backend/app/crud.py
-index bff9fffff4a14b3eaf541dfcff056ef5f4485b1c..a688e6b05cdb7ad7e0679ccf5ab429f699f6913c 100644
---- a/backend/app/crud.py
-+++ b/backend/app/crud.py
-@@ -1726,91 +1726,109 @@ def get_provider_platform_fee_for_cycle(
+diff --git a/backend/tests/test_billing.py b/backend/tests/test_billing.py
+index 68cce6879b3651c7eceeb73e94d2a4196fe25628..d2239e4cd4f5634f2ee41f4ac7e45c1802c43a5e 100644
+--- a/backend/tests/test_billing.py
++++ b/backend/tests/test_billing.py
+@@ -608,50 +608,127 @@ def test_paid_bill_persists_after_regeneration(db_session):
+     original_fee = float(bill.fee_gyd)
+     original_due = bill.due_date
  
-     services_total = Decimal("0")
-     for r in rows:
-         if _is_cancelled_status(r.status):
-             continue
-         if normalized_booking_status_value(r.status) != "completed":
-             continue
- 
-         price = r.service_price_gyd or 0
-         services_total += Decimal(str(price))
- 
-     if services_total <= 0:
-         return 0.0
- 
-     service_charge_pct = get_platform_service_charge_percentage(db)
-     fee_rate = Decimal(str(max(service_charge_pct, 0))) / Decimal("100")
-     platform_fee = services_total * fee_rate
- 
-     platform_fee = platform_fee.quantize(Decimal("1"))
-     if platform_fee <= 0:
-         return 0.0
- 
-     return float(platform_fee)
+     crud.set_provider_bills_paid_state(session, provider.id, start_of_prior_month, True)
  
  
-+def _normalize_cycle_month(value: date | datetime) -> date:
-+    """Return billing month anchored to the first day (YYYY-MM-01)."""
-+
-+    if isinstance(value, datetime):
-+        value = value.date()
-+    return date(value.year, value.month, 1)
+     crud.generate_monthly_bills(session, month=prior_month_date)
  
- 
- def _provider_billing_row(
-     db: Session, provider: models.Provider, user: models.User, cycle_month: date
- ):
-+    cycle_month = _normalize_cycle_month(cycle_month)
-+    current_cycle_month = _normalize_cycle_month(current_billing_cycle_month())
-+
-     billing_cycle = get_billing_cycle_for_account(db, provider.account_number, cycle_month)
-     bill = (
-         db.query(models.Bill)
+     bills = (
+         session.query(models.Bill)
          .filter(
              models.Bill.provider_id == provider.id,
-             models.Bill.month == cycle_month,
+             models.Bill.month == start_of_prior_month,
          )
-         .first()
-     )
- 
--    amount_due = get_provider_fees_due_for_cycle(db, provider.id, cycle_month)
-     is_paid = bool(billing_cycle.is_paid) if billing_cycle else False
-     paid_at = billing_cycle.paid_at if billing_cycle else None
-     credits_applied = (
-         Decimal(str(billing_cycle.credits_applied_gyd or 0))
-         if billing_cycle
-         else Decimal("0")
-     )
-+
-+    if bill and cycle_month < current_cycle_month:
-+        amount_due = Decimal(str(bill.fee_gyd or 0)) - credits_applied
-+        if amount_due < 0:
-+            amount_due = Decimal("0")
-+    else:
-+        amount_due = Decimal(
-+            str(get_provider_fees_due_for_cycle(db, provider.id, cycle_month) or 0)
-+        )
-+
-     if bill and bill.due_date:
-         last_due_date = bill.due_date
-     else:
-         if cycle_month.month == 12:
-             due_year = cycle_month.year + 1
-             due_month = 1
-         else:
-             due_year = cycle_month.year
-             due_month = cycle_month.month + 1
-         last_due_date = datetime(due_year, due_month, 15, 23, 59)
- 
-     return {
-         "provider_id": provider.id,
-         "user_id": user.id,
-         "name": get_display_name(user),
-         "account_number": provider.account_number or "",
-         "phone": user.phone or "",
--        "amount_due_gyd": float(amount_due or 0.0),
-+        "amount_due_gyd": float(amount_due),
-         "bill_credits_gyd": float(credits_applied),
-         "cycle_month": cycle_month,
-         "is_paid": is_paid,
-         "is_locked": bool(getattr(provider, "is_locked", False)),
-         "is_suspended": bool(getattr(user, "is_suspended", False)),
-         "last_due_date": last_due_date,
-         "paid_at": paid_at,
-     }
- 
- 
- def list_provider_billing_rows(db: Session, cycle_month: date):
-     rows = (
-         db.query(models.Provider, models.User)
-         .join(models.User, models.Provider.user_id == models.User.id)
          .all()
      )
  
-     account_numbers = [
-         provider.account_number
-         for provider, _user in rows
-         if provider.account_number
-     ]
-     ensure_billing_cycles_for_accounts(db, account_numbers, cycle_month)
+     assert len(bills) == 1
+     persisted = bills[0]
+     assert persisted.is_paid is True
+     assert float(persisted.total_gyd) == original_total
+     assert float(persisted.fee_gyd) == original_fee
+     assert persisted.due_date == original_due
  
-     return [
+ 
++def test_provider_billing_cycles_freeze_past_bill_snapshots(db_session, monkeypatch):
++    session, models, crud = db_session
++    provider, _customer, _service = _create_provider_graph(session, models)
++
++    past_month = datetime(2024, 1, 1).date()
++    current_month = datetime(2024, 2, 1).date()
++
++    session.add_all(
++        [
++            models.BillingCycle(
++                account_number=provider.account_number,
++                cycle_month=past_month,
++                is_paid=False,
++                paid_at=None,
++                credits_applied_gyd=50,
++            ),
++            models.BillingCycle(
++                account_number=provider.account_number,
++                cycle_month=current_month,
++                is_paid=False,
++                paid_at=None,
++                credits_applied_gyd=0,
++            ),
++        ]
++    )
++
++    session.add(
++        models.Bill(
++            provider_id=provider.id,
++            month=past_month,
++            total_gyd=1000,
++            fee_gyd=350,
++            due_date=datetime(2024, 2, 15, 23, 59),
++            is_paid=False,
++        )
++    )
++    session.commit()
++
++    crud.update_platform_service_charge(session, 0)
++    monkeypatch.setattr(
++        crud, "current_billing_cycle_month", lambda reference=None: current_month
++    )
++
++    from app import database
++    from app.database import get_db
++    from app.main import app
++    from app.routes import providers as providers_routes
++
++    database.Base.metadata.create_all(bind=database.engine)
++
++    def override_get_db():
++        try:
++            yield session
++        finally:
++            pass
++
++    app.dependency_overrides[get_db] = override_get_db
++    app.dependency_overrides[providers_routes._require_current_provider] = (
++        lambda: provider
++    )
++
++    client = TestClient(app)
++
++    try:
++        response = client.get("/providers/me/billing/cycles?limit=6")
++        assert response.status_code == 200
++        payload = response.json()
++    finally:
++        app.dependency_overrides = {}
++
++    past_cycle = next(c for c in payload["cycles"] if c["cycle_month"] == "2024-01-01")
++    current_cycle = next(c for c in payload["cycles"] if c["cycle_month"] == "2024-02-01")
++
++    assert past_cycle["platform_fee_gyd"] == 350.0
++    assert past_cycle["total_due_gyd"] == 300.0
++    assert current_cycle["platform_fee_gyd"] == 0.0
++
+ def test_cron_job_completes_past_confirmed_only(db_session):
+     session, models, crud = db_session
+     provider, customer, service = _create_provider_graph(session, models)
+ 
+     now = now_guyana()
+ 
+     past_start = now - timedelta(hours=1)
+     past_end = now - timedelta(minutes=30)
+     confirmed_booking = _add_booking(
+         session,
+         models,
+         customer=customer,
+         service=service,
+         start_time=past_start,
+         end_time=past_end,
+         status="confirmed",
+     )
+ 
+     cancelled_booking = _add_booking(
+         session,
+         models,
+         customer=customer,
+         service=service,
+         start_time=past_start - timedelta(hours=1),
+         end_time=past_end - timedelta(hours=1),
  
 EOF
 )

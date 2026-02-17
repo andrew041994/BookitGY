@@ -630,6 +630,83 @@ def test_paid_bill_persists_after_regeneration(db_session):
     assert persisted.due_date == original_due
 
 
+def test_provider_billing_cycles_freeze_past_bill_snapshots(db_session, monkeypatch):
+    session, models, crud = db_session
+    provider, _customer, _service = _create_provider_graph(session, models)
+
+    past_month = datetime(2024, 1, 1).date()
+    current_month = datetime(2024, 2, 1).date()
+
+    session.add_all(
+        [
+            models.BillingCycle(
+                account_number=provider.account_number,
+                cycle_month=past_month,
+                is_paid=False,
+                paid_at=None,
+                credits_applied_gyd=50,
+            ),
+            models.BillingCycle(
+                account_number=provider.account_number,
+                cycle_month=current_month,
+                is_paid=False,
+                paid_at=None,
+                credits_applied_gyd=0,
+            ),
+        ]
+    )
+
+    session.add(
+        models.Bill(
+            provider_id=provider.id,
+            month=past_month,
+            total_gyd=1000,
+            fee_gyd=350,
+            due_date=datetime(2024, 2, 15, 23, 59),
+            is_paid=False,
+        )
+    )
+    session.commit()
+
+    crud.update_platform_service_charge(session, 0)
+    monkeypatch.setattr(
+        crud, "current_billing_cycle_month", lambda reference=None: current_month
+    )
+
+    from app import database
+    from app.database import get_db
+    from app.main import app
+    from app.routes import providers as providers_routes
+
+    database.Base.metadata.create_all(bind=database.engine)
+
+    def override_get_db():
+        try:
+            yield session
+        finally:
+            pass
+
+    app.dependency_overrides[get_db] = override_get_db
+    app.dependency_overrides[providers_routes._require_current_provider] = (
+        lambda: provider
+    )
+
+    client = TestClient(app)
+
+    try:
+        response = client.get("/providers/me/billing/cycles?limit=6")
+        assert response.status_code == 200
+        payload = response.json()
+    finally:
+        app.dependency_overrides = {}
+
+    past_cycle = next(c for c in payload["cycles"] if c["cycle_month"] == "2024-01-01")
+    current_cycle = next(c for c in payload["cycles"] if c["cycle_month"] == "2024-02-01")
+
+    assert past_cycle["platform_fee_gyd"] == 350.0
+    assert past_cycle["total_due_gyd"] == 300.0
+    assert current_cycle["platform_fee_gyd"] == 0.0
+
 def test_cron_job_completes_past_confirmed_only(db_session):
     session, models, crud = db_session
     provider, customer, service = _create_provider_graph(session, models)

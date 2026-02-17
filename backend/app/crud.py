@@ -1900,15 +1900,11 @@ def list_provider_billing_cycles(
     fee_rate = Decimal(str(max(service_charge_pct, 0))) / Decimal("100")
     now = now_guyana()
     now_date = now.date()
-    current_cycle_month = current_billing_cycle_month(now_date)
+    current_cycle_month = _normalize_cycle_month(current_billing_cycle_month(now_date))
     cycles = []
 
     for billing_cycle in billing_cycles:
-        cycle_month = date(
-            billing_cycle.cycle_month.year,
-            billing_cycle.cycle_month.month,
-            1,
-        )
+        cycle_month = _normalize_cycle_month(billing_cycle.cycle_month)
         if cycle_month.month == 12:
             next_month = date(cycle_month.year + 1, 1, 1)
         else:
@@ -1962,13 +1958,33 @@ def list_provider_billing_cycles(
                 Decimal(str(item["services_total_gyd"])) + price
             )
 
-        platform_fee = Decimal(
-            str(get_provider_platform_fee_for_cycle(db, provider.id, cycle_month) or 0)
-        )
         bill_credits = Decimal(str(billing_cycle.credits_applied_gyd or 0))
-        total_due = Decimal(
-            str(get_provider_fees_due_for_cycle(db, provider.id, cycle_month) or 0)
+        bill = (
+            db.query(models.Bill)
+            .filter(
+                models.Bill.provider_id == provider.id,
+                models.Bill.month == cycle_month,
+            )
+            .first()
         )
+
+        if bill and cycle_month < current_cycle_month:
+            platform_fee = Decimal(str(bill.fee_gyd or 0))
+            total_due = platform_fee - bill_credits
+            if total_due < 0:
+                total_due = Decimal("0")
+        else:
+            platform_fee = Decimal(
+                str(
+                    get_provider_platform_fee_for_cycle(
+                        db, provider.id, cycle_month
+                    )
+                    or 0
+                )
+            )
+            total_due = Decimal(
+                str(get_provider_fees_due_for_cycle(db, provider.id, cycle_month) or 0)
+            )
 
         items = []
         for item in items_map.values():
