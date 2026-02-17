@@ -1753,6 +1753,8 @@ def get_provider_platform_fee_for_cycle(
 def _provider_billing_row(
     db: Session, provider: models.Provider, user: models.User, cycle_month: date
 ):
+    
+
     billing_cycle = get_billing_cycle_for_account(db, provider.account_number, cycle_month)
     bill = (
         db.query(models.Bill)
@@ -1796,6 +1798,7 @@ def _provider_billing_row(
         "is_suspended": bool(getattr(user, "is_suspended", False)),
         "last_due_date": last_due_date,
         "paid_at": paid_at,
+        
     }
 
 

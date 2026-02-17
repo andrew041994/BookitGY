@@ -1,377 +1,120 @@
-diff --git a/frontend/src/App.jsx b/frontend/src/App.jsx
-index bcefdb08c1856a6a0086b643c45f2c25ccd75d95..4709ad10d11b729793dba1d4379fae13248246e9 100644
---- a/frontend/src/App.jsx
-+++ b/frontend/src/App.jsx
-@@ -1,31 +1,32 @@
- import React, { useCallback, useEffect, useMemo, useState } from 'react';
- import { BrowserRouter, Routes, Route, Link, Navigate, useLocation, useNavigate } from 'react-router-dom';
- import { apiClient, logApiError } from './lib/api';
+ (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
+diff --git a/backend/app/crud.py b/backend/app/crud.py
+index bff9fffff4a14b3eaf541dfcff056ef5f4485b1c..a688e6b05cdb7ad7e0679ccf5ab429f699f6913c 100644
+--- a/backend/app/crud.py
++++ b/backend/app/crud.py
+@@ -1726,91 +1726,109 @@ def get_provider_platform_fee_for_cycle(
  
- const DEFAULT_SERVICE_CHARGE = 10;
--const SERVICE_CHARGE_STORAGE_KEY = 'bookitgy.service_charge_rate';
-+const SERVICE_CHARGE_STORAGE_KEY = 'bookitgy.service_charge_rate_by_month';
-+const LEGACY_SERVICE_CHARGE_STORAGE_KEY = 'bookitgy.service_charge_rate';
+     services_total = Decimal("0")
+     for r in rows:
+         if _is_cancelled_status(r.status):
+             continue
+         if normalized_booking_status_value(r.status) != "completed":
+             continue
  
- const sampleProviders = [
-   {
-     id: 1,
-     userId: 1,
-     name: 'Ariana De Freitas',
-     accountNumber: 'ACC-0001',
-     phoneNumber: '592-600-1001',
-     location: 'Georgetown',
-     lat: 6.8013,
-     long: -58.155,
-     outstanding: 32000,
-     credit: 5000,
-     isSuspended: false,
-     autoSuspended: false,
-     lastActive: '2024-10-10',
-     totalBookings: 42,
-     cancellations: 3,
-     noShows: 1,
-     services: ['Makeup', 'Hair Styling'],
-   },
-   {
-     id: 2,
-     userId: 2,
-     name: 'Jamall Adams',
-@@ -91,77 +92,139 @@ const sampleCharges = [
-   { id: 104, providerId: 3, month: '2024-10-01', amount: 22000, isPaid: false },
-   { id: 105, providerId: 4, month: '2024-10-01', amount: 12000, isPaid: true },
- ];
+         price = r.service_price_gyd or 0
+         services_total += Decimal(str(price))
  
- const sampleBookings = [
-   { id: 1, providerId: 1, clientId: 10, status: 'completed', startTime: '2024-10-12T12:00:00Z' },
-   { id: 2, providerId: 1, clientId: 11, status: 'cancelled', startTime: '2024-10-12T15:00:00Z' },
-   { id: 3, providerId: 2, clientId: 12, status: 'completed', startTime: '2024-10-11T16:00:00Z' },
-   { id: 4, providerId: 2, clientId: 13, status: 'pending', startTime: '2024-10-10T10:00:00Z' },
-   { id: 5, providerId: 3, clientId: 14, status: 'no-show', startTime: '2024-10-01T10:00:00Z' },
-   { id: 6, providerId: 4, clientId: 10, status: 'completed', startTime: '2024-10-12T09:00:00Z' },
-   { id: 7, providerId: 4, clientId: 16, status: 'cancelled', startTime: '2024-09-15T09:00:00Z' },
-   { id: 8, providerId: 1, clientId: 15, status: 'completed', startTime: '2024-10-10T09:00:00Z' },
- ];
+     if services_total <= 0:
+         return 0.0
  
- const signupHistory = [
-   { month: 'Jun', providers: 10, clients: 54 },
-   { month: 'Jul', providers: 14, clients: 62 },
-   { month: 'Aug', providers: 21, clients: 70 },
-   { month: 'Sep', providers: 33, clients: 82 },
-   { month: 'Oct', providers: 40, clients: 95 },
- ];
+     service_charge_pct = get_platform_service_charge_percentage(db)
+     fee_rate = Decimal(str(max(service_charge_pct, 0))) / Decimal("100")
+     platform_fee = services_total * fee_rate
  
- const normalizeServiceCharge = (value) => Math.max(0, Math.min(100, Number(value) || 0));
+     platform_fee = platform_fee.quantize(Decimal("1"))
+     if platform_fee <= 0:
+         return 0.0
  
--const loadStoredServiceCharge = () => {
-+const getBillingMonthKey = (cycleDateValue) => {
-+  if (!cycleDateValue) return '';
-+  return String(cycleDateValue).slice(0, 7);
-+};
+     return float(platform_fee)
+ 
+ 
++def _normalize_cycle_month(value: date | datetime) -> date:
++    """Return billing month anchored to the first day (YYYY-MM-01)."""
 +
-+const readStoredServiceChargeMap = () => {
-   const stored = localStorage.getItem(SERVICE_CHARGE_STORAGE_KEY);
--  if (stored === null) return null;
-+  if (!stored) return {};
++    if isinstance(value, datetime):
++        value = value.date()
++    return date(value.year, value.month, 1)
+ 
+ 
+ def _provider_billing_row(
+     db: Session, provider: models.Provider, user: models.User, cycle_month: date
+ ):
++    cycle_month = _normalize_cycle_month(cycle_month)
++    current_cycle_month = _normalize_cycle_month(current_billing_cycle_month())
 +
-+  try {
-+    const parsed = JSON.parse(stored);
-+    if (!parsed || typeof parsed !== 'object') return {};
+     billing_cycle = get_billing_cycle_for_account(db, provider.account_number, cycle_month)
+     bill = (
+         db.query(models.Bill)
+         .filter(
+             models.Bill.provider_id == provider.id,
+             models.Bill.month == cycle_month,
+         )
+         .first()
+     )
+ 
+-    amount_due = get_provider_fees_due_for_cycle(db, provider.id, cycle_month)
+     is_paid = bool(billing_cycle.is_paid) if billing_cycle else False
+     paid_at = billing_cycle.paid_at if billing_cycle else None
+     credits_applied = (
+         Decimal(str(billing_cycle.credits_applied_gyd or 0))
+         if billing_cycle
+         else Decimal("0")
+     )
 +
-+    return Object.entries(parsed).reduce((acc, [monthKey, value]) => {
-+      if (!monthKey) return acc;
-+      acc[monthKey] = normalizeServiceCharge(value);
-+      return acc;
-+    }, {});
-+  } catch {
-+    return {};
-+  }
-+};
++    if bill and cycle_month < current_cycle_month:
++        amount_due = Decimal(str(bill.fee_gyd or 0)) - credits_applied
++        if amount_due < 0:
++            amount_due = Decimal("0")
++    else:
++        amount_due = Decimal(
++            str(get_provider_fees_due_for_cycle(db, provider.id, cycle_month) or 0)
++        )
 +
-+const loadStoredServiceChargeForMonth = (cycleDateValue) => {
-+  const monthKey = getBillingMonthKey(cycleDateValue);
-+  if (!monthKey) return null;
-+
-+  const storedMap = readStoredServiceChargeMap();
-+  if (Object.prototype.hasOwnProperty.call(storedMap, monthKey)) {
-+    return normalizeServiceCharge(storedMap[monthKey]);
-+  }
-+
-+  const legacyStored = localStorage.getItem(LEGACY_SERVICE_CHARGE_STORAGE_KEY);
-+  if (legacyStored === null) return null;
-+
-+  const normalizedLegacy = normalizeServiceCharge(legacyStored);
-+  localStorage.removeItem(LEGACY_SERVICE_CHARGE_STORAGE_KEY);
-+  localStorage.setItem(
-+    SERVICE_CHARGE_STORAGE_KEY,
-+    JSON.stringify({
-+      ...storedMap,
-+      [monthKey]: normalizedLegacy,
-+    }),
-+  );
-+
-+  return normalizedLegacy;
-+};
-+
-+const persistServiceChargeForMonth = (cycleDateValue, rate) => {
-+  const monthKey = getBillingMonthKey(cycleDateValue);
-+  if (!monthKey) return;
-+
-+  const storedMap = readStoredServiceChargeMap();
-+  localStorage.setItem(
-+    SERVICE_CHARGE_STORAGE_KEY,
-+    JSON.stringify({
-+      ...storedMap,
-+      [monthKey]: normalizeServiceCharge(rate),
-+    }),
-+  );
-+};
-+
-+const removeStoredServiceChargeForMonth = (cycleDateValue) => {
-+  const monthKey = getBillingMonthKey(cycleDateValue);
-+  if (!monthKey) return;
+     if bill and bill.due_date:
+         last_due_date = bill.due_date
+     else:
+         if cycle_month.month == 12:
+             due_year = cycle_month.year + 1
+             due_month = 1
+         else:
+             due_year = cycle_month.year
+             due_month = cycle_month.month + 1
+         last_due_date = datetime(due_year, due_month, 15, 23, 59)
  
--  return normalizeServiceCharge(stored);
-+  const storedMap = readStoredServiceChargeMap();
-+  if (!Object.prototype.hasOwnProperty.call(storedMap, monthKey)) return;
-+
-+  delete storedMap[monthKey];
-+  localStorage.setItem(SERVICE_CHARGE_STORAGE_KEY, JSON.stringify(storedMap));
- };
- 
- const formatDateInput = (date) => {
-   const year = date.getFullYear();
-   const month = String(date.getMonth() + 1).padStart(2, '0');
-   const day = String(date.getDate()).padStart(2, '0');
-   return `${year}-${month}-${day}`;
- };
- 
- const parseDateInput = (value) => {
-   if (!value) return null;
-   const [year, month, day] = value.split('-').map(Number);
-   if (!year || !month || !day) return null;
-   const parsed = new Date(year, month - 1, day);
-   if (Number.isNaN(parsed.getTime())) return null;
-   return parsed;
- };
- 
--const persistServiceCharge = (rate) => {
--  localStorage.setItem(SERVICE_CHARGE_STORAGE_KEY, String(rate));
--};
--
- const getSuspensionCutoffDate = () => {
-   const today = new Date();
-   return new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), 15));
- };
- 
- const isPastSuspensionCutoff = () => {
-   const now = new Date();
-   const cutoff = getSuspensionCutoffDate();
- 
-   return now.getTime() >= cutoff.getTime();
- };
- 
- function useBillingCore() {
-   const billingCycleStart = useMemo(() => {
-     const today = new Date();
-     return new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), 1)).toISOString().slice(0, 10);
-   }, []);
- 
-   const [providers, setProviders] = useState(sampleProviders);
-   const [charges, setCharges] = useState(() =>
-     sampleCharges.map((charge) => {
-       const baseServiceCost = Math.round((charge.amount / DEFAULT_SERVICE_CHARGE) * 100);
- 
-       return {
-         ...charge,
-@@ -206,91 +269,99 @@ function useBillingCore() {
-           services: p.services || [],
-         }));
-         setProviders(normalized);
-       }
-     } catch (e) {
-       logApiError(e);
-       console.log('Using sample providers', e.message);
-     } finally {
-       setLoadingProviders(false);
-     }
-   }, []);
- 
-   useEffect(() => {
-     fetchProviders();
-   }, [fetchProviders]);
- 
-   useEffect(() => {
-     const fetchBilling = async () => {
-       try {
-         const res = await apiClient.get('/admin/billing');
-         if (!Array.isArray(res.data) || res.data.length === 0) return;
- 
-         setCharges(
-           res.data.map((row) => {
-             const amount = Number(row.amount_due_gyd ?? 0);
-+            const rowMonth = (row.cycle_month || row.month || billingCycleStart).toString().slice(0, 10);
-+            const rowRate = normalizeServiceCharge(
-+              row.service_charge_percentage ?? row.service_charge_percent ?? row.serviceChargePercentage ?? DEFAULT_SERVICE_CHARGE,
-+            );
-             return {
-               id: row.provider_id ?? row.id,
-               providerId: row.provider_id ?? row.id,
-               userId: row.user_id ?? row.userId,
-               providerName: row.name || 'Provider',
-               accountNumber: row.account_number || row.accountNumber || '—',
-               phoneNumber: row.phone || row.phone_number || '—',
--              month: billingCycleStart,
-+              month: rowMonth,
-               amount: Math.round(amount),
--              baseServiceCost: 0,
-+              baseServiceCost:
-+                Number(row.base_service_cost_gyd) || (rowRate > 0 ? Math.round(amount / (rowRate / 100)) : Math.round(amount)),
-+              serviceChargeRate: rowRate,
-               isPaid: !!row.is_paid,
-+              isLocked: !!row.is_locked,
-               isSuspended: row.is_suspended ?? row.isSuspended ?? false,
-             };
-           }),
-         );
-       } catch (e) {
-         logApiError(e);
-         console.log('Using sample billing data', e.message);
-       }
-     };
- 
-     fetchBilling();
-   }, [billingCycleStart]);
- 
-   useEffect(() => {
-     setCharges((prev) => {
-       if (!providers.length) return prev;
- 
-       let nextId = prev.reduce((max, c) => Math.max(max, c.id), 0) + 1;
-       let updated = [...prev];
- 
-       providers.forEach((provider) => {
--        const existing = updated.find((c) => c.providerId === provider.id);
-+        const existing = updated.find((c) => c.providerId === provider.id && c.month === billingCycleStart);
-         if (!existing) {
-           const amount = provider.outstanding || Math.floor(Math.random() * 20000) + 5000;
-           updated.push({
-             id: nextId++,
-             providerId: provider.id,
-             month: billingCycleStart,
-             amount,
-             baseServiceCost: Math.round((amount / DEFAULT_SERVICE_CHARGE) * 100),
-+            serviceChargeRate: DEFAULT_SERVICE_CHARGE,
-             isPaid: false,
-           });
-         }
-       });
- 
-       return updated;
-     });
-   }, [providers, billingCycleStart]);
- 
-   useEffect(() => {
-     const inSuspensionWindow = isPastSuspensionCutoff();
- 
-     setProviders((prev) =>
-       prev.map((provider) => {
-         const hasUnpaidCurrentCharge = charges.some(
-           (charge) => charge.providerId === provider.id && charge.month === billingCycleStart && !charge.isPaid,
-         );
-         const autoSuspended = inSuspensionWindow && hasUnpaidCurrentCharge;
- 
-         if (provider.autoSuspended === autoSuspended) return provider;
- 
-         return { ...provider, autoSuspended };
-       }),
-     );
-   }, [billingCycleStart, charges, suspensionClock]);
-@@ -946,71 +1017,83 @@ function AdminDashboard() {
-     setChargesPaidState,
-     setProviderSuspensionState,
-     suspensionCutoffLabel,
-     toggleAllChargesSelection,
-     toggleChargeSelection,
-     updateSingleChargeStatus,
-   } = useBillingCore();
- 
-   const [serviceCharge, setServiceCharge] = useState(DEFAULT_SERVICE_CHARGE);
-   const [serviceChargeDraft, setServiceChargeDraft] = useState(DEFAULT_SERVICE_CHARGE);
-   const [signupStart, setSignupStart] = useState(() => {
-     const today = new Date();
-     const start = new Date();
-     start.setDate(today.getDate() - 6);
-     return formatDateInput(start);
-   });
-   const [signupEnd, setSignupEnd] = useState(() => formatDateInput(new Date()));
-   const [signupReport, setSignupReport] = useState(null);
-   const [signupLoading, setSignupLoading] = useState(false);
-   const [signupError, setSignupError] = useState('');
- 
-   useLeafletMap(providers);
- 
-   const recalculateChargesForRate = (rate) => {
-     const safeRate = normalizeServiceCharge(rate);
--    setCharges((prev) => prev.map((c) => ({ ...c, amount: Math.round(c.baseServiceCost * (safeRate / 100)) })));
-+    setCharges((prev) =>
-+      prev.map((c) => {
-+        const isCurrentBillingMonth = c.month === billingCycleStart;
-+        const isLockedCharge = c.isPaid || c.isLocked || c.locked;
-+        if (!isCurrentBillingMonth || isLockedCharge) return c;
-+
-+        return {
-+          ...c,
-+          amount: Math.round((Number(c.baseServiceCost) || 0) * (safeRate / 100)),
-+          serviceChargeRate: safeRate,
-+        };
-+      }),
-+    );
-     setServiceCharge(safeRate);
-     setServiceChargeDraft(safeRate);
-   };
- 
-   useEffect(() => {
--    const storedRate = loadStoredServiceCharge();
-+    const storedRate = loadStoredServiceChargeForMonth(billingCycleStart);
-     if (storedRate !== null) {
-       recalculateChargesForRate(storedRate);
-     }
--  }, []);
-+  }, [billingCycleStart]);
- 
-   const saveServiceCharge = () => {
-     const safeRate = normalizeServiceCharge(serviceChargeDraft);
--    persistServiceCharge(safeRate);
-+    persistServiceChargeForMonth(billingCycleStart, safeRate);
-     recalculateChargesForRate(safeRate);
-   };
- 
-   const resetServiceCharge = () => {
-     recalculateChargesForRate(DEFAULT_SERVICE_CHARGE);
--    localStorage.removeItem(SERVICE_CHARGE_STORAGE_KEY);
-+    removeStoredServiceChargeForMonth(billingCycleStart);
-   };
- 
-   const runSignupReport = useCallback(async () => {
-     const parsedStart = parseDateInput(signupStart);
-     const parsedEnd = parseDateInput(signupEnd);
- 
-     if (!parsedStart || !parsedEnd) {
-       setSignupError('Start and end dates are required.');
-       return;
+     return {
+         "provider_id": provider.id,
+         "user_id": user.id,
+         "name": get_display_name(user),
+         "account_number": provider.account_number or "",
+         "phone": user.phone or "",
+-        "amount_due_gyd": float(amount_due or 0.0),
++        "amount_due_gyd": float(amount_due),
+         "bill_credits_gyd": float(credits_applied),
+         "cycle_month": cycle_month,
+         "is_paid": is_paid,
+         "is_locked": bool(getattr(provider, "is_locked", False)),
+         "is_suspended": bool(getattr(user, "is_suspended", False)),
+         "last_due_date": last_due_date,
+         "paid_at": paid_at,
      }
  
-     if (parsedStart > parsedEnd) {
-       setSignupError('Start date must be on or before end date.');
-       return;
-     }
  
-     setSignupLoading(true);
-     setSignupError('');
-     try {
-       const res = await apiClient.get('/admin/reports/signups', {
-         params: { start: signupStart, end: signupEnd },
-       });
-       setSignupReport(res.data);
-     } catch (error) {
-       logApiError(error);
+ def list_provider_billing_rows(db: Session, cycle_month: date):
+     rows = (
+         db.query(models.Provider, models.User)
+         .join(models.User, models.Provider.user_id == models.User.id)
+         .all()
+     )
+ 
+     account_numbers = [
+         provider.account_number
+         for provider, _user in rows
+         if provider.account_number
+     ]
+     ensure_billing_cycles_for_accounts(db, account_numbers, cycle_month)
+ 
+     return [
+ 
+EOF
+)
