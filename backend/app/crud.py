@@ -1748,12 +1748,23 @@ def get_provider_platform_fee_for_cycle(
     return float(platform_fee)
 
 
+def _normalize_cycle_month(value: date | datetime) -> date:
+    if value is None:
+        raise ValueError("cycle_month is required")
+    if isinstance(value, datetime):
+        value = value.date()
+    if not isinstance(value, date):
+        raise ValueError("cycle_month must be a date or datetime")
+    return date(value.year, value.month, 1)
 
 
 def _provider_billing_row(
     db: Session, provider: models.Provider, user: models.User, cycle_month: date
 ):
     
+
+    cycle_month = _normalize_cycle_month(cycle_month)
+    current_cycle_month = _normalize_cycle_month(current_billing_cycle_month())
 
     billing_cycle = get_billing_cycle_for_account(db, provider.account_number, cycle_month)
     bill = (
@@ -1765,7 +1776,6 @@ def _provider_billing_row(
         .first()
     )
 
-    amount_due = get_provider_fees_due_for_cycle(db, provider.id, cycle_month)
     is_paid = bool(billing_cycle.is_paid) if billing_cycle else False
     paid_at = billing_cycle.paid_at if billing_cycle else None
     credits_applied = (
@@ -1773,6 +1783,16 @@ def _provider_billing_row(
         if billing_cycle
         else Decimal("0")
     )
+
+    if bill and cycle_month < current_cycle_month:
+        amount_due = Decimal(str(bill.fee_gyd or 0)) - credits_applied
+        if amount_due < 0:
+            amount_due = Decimal("0")
+    else:
+        amount_due = Decimal(
+            str(get_provider_fees_due_for_cycle(db, provider.id, cycle_month) or 0)
+        )
+
     if bill and bill.due_date:
         last_due_date = bill.due_date
     else:
@@ -1790,7 +1810,7 @@ def _provider_billing_row(
         "name": get_display_name(user),
         "account_number": provider.account_number or "",
         "phone": user.phone or "",
-        "amount_due_gyd": float(amount_due or 0.0),
+        "amount_due_gyd": float(amount_due),
         "bill_credits_gyd": float(credits_applied),
         "cycle_month": cycle_month,
         "is_paid": is_paid,
