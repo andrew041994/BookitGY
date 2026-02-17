@@ -1,106 +1,79 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
 diff --git a/frontend/src/main.jsx b/frontend/src/main.jsx
-index 4556209ebe9d07f5dc26b07846ea26f53dcbafe1..0d6707c697405c6a88e028d42130f753ab6ae75e 100644
+index 0d6707c697405c6a88e028d42130f753ab6ae75e..ab938c9ada5ad6d8cf1f70674944bb10b9b9f786 100644
 --- a/frontend/src/main.jsx
 +++ b/frontend/src/main.jsx
-@@ -623,51 +623,57 @@ function App() {
-       const requestedCycleMonth = cycleMonthOverride ?? cycleMonth
-       setLoading(true)
-       setError('')
-       try {
-         const res = await apiClient.get('/admin/billing', {
-           params: { cycle_month: requestedCycleMonth },
-         })
-         const responseData = res.data
-         const hasValidRows =
-           Array.isArray(responseData) ||
-           Array.isArray(responseData?.providers) ||
-           Array.isArray(responseData?.data)
-         const responseRows = Array.isArray(responseData)
-           ? responseData
-           : Array.isArray(responseData?.providers)
-             ? responseData.providers
-             : Array.isArray(responseData?.data)
-               ? responseData.data
-               : []
- 
-         if (!hasValidRows) {
-           setError('Unable to load provider billing details. Please refresh and try again.')
-           setBillingRows([])
-           return
-         }
--        setBillingRows(responseRows)
-+        const normalizedRows = responseRows.map((row) => ({
-+          ...row,
-+          isLocked: !!(row.is_locked ?? row.isLocked),
-+          isSuspended: !!(row.is_suspended ?? row.isSuspended),
-+        }))
-+
-+        setBillingRows(normalizedRows)
-       } catch (err) {
-         logApiError(err)
-         setError('Unable to load provider billing details. Please refresh and try again.')
-         setBillingRows([])
-       } finally {
-         setLoading(false)
-         setHasLoaded(true)
-       }
-     }, [cycleMonth])
- 
-     React.useEffect(() => {
-       fetchBillingRows()
-     }, [fetchBillingRows])
- 
-     const markProviderPaid = async (accountNumber) => {
-       if (!accountNumber) {
+@@ -729,60 +729,68 @@ function App() {
          setError('Missing account number for provider; billing rows must include account_number')
+         console.error('Missing account number for provider suspension request.')
          return
        }
  
-       if (payingByAccountNumber[accountNumber]) return
+       if (suspendingByAccountNumber[accountNumber]) return
  
-       setPayingByAccountNumber((prev) => ({ ...prev, [accountNumber]: true }))
-       setError('')
+       if (import.meta.env?.DEV) {
+         console.log('[billing] toggle suspend click', {
+           accountNumber,
+           currentSuspended: !shouldSuspend,
+           nextSuspended: shouldSuspend,
+         })
+         console.log('[billing] POST', '/admin/providers/suspension')
+       }
  
-@@ -877,85 +883,87 @@ function App() {
-                   onClick={markAllPaid}
-                   disabled={loading || markAllLoading}
-                 >
-                   {markAllLoading ? 'Marking all…' : 'Mark all paid'}
-                 </button>
-               </div>
-             </div>
-             {loading && <span className="muted">Loading providers…</span>}
-           </div>
+       setSuspendingByAccountNumber((prev) => ({ ...prev, [accountNumber]: true }))
  
-           {error && <p className="form-error">{error}</p>}
+       try {
+         const res = await apiClient.post('/admin/providers/suspension', {
+           account_number: accountNumber,
+           is_suspended: shouldSuspend,
+         })
+         const responsePayload = res?.data
+         const hasServerSuspensionValue = typeof responsePayload?.is_suspended === 'boolean'
++        const hasServerLockValue = typeof responsePayload?.is_locked === 'boolean'
+         const nextSuspended = hasServerSuspensionValue ? responsePayload.is_suspended : shouldSuspend
++        const nextLocked = hasServerLockValue ? responsePayload.is_locked : null
  
-           <div className="billing-table">
-             <div className="billing-table__head">
-               <span>Name</span>
-               <span>Account number</span>
-               <span>Phone number</span>
-               <span>Amount due (platform fees)</span>
-               <span>Bill credits</span>
-               <span>Last due date</span>
-               <span>Status</span>
-               <span>Account status</span>
-               <span className="sr-only">Actions</span>
-             </div>
-             {filteredRows.map((row) => {
--              const isSuspended = row.is_suspended ?? row.isSuspended ?? row.is_locked ?? false
-+              const isSuspended = !!(row.isSuspended ?? row.is_suspended)
-+              const isLocked = !!(row.isLocked ?? row.is_locked)
-+              const isBlocked = isSuspended || isLocked
-               const accountNumber = row.account_number
-               const isSuspensionLoading = Boolean(
-                 accountNumber && suspendingByAccountNumber[accountNumber]
-               )
-               const isPaying = Boolean(
-                 accountNumber && payingByAccountNumber[accountNumber]
-               )
-               return (
-               <div key={row.provider_id} className="billing-table__row">
+         if (import.meta.env?.DEV) {
+           console.log('[billing] OK', res.status, res.data)
+         }
+ 
+         setBillingRows((prev) =>
+           prev.map((row) =>
+             row.account_number === accountNumber
+-              ? { ...row, is_suspended: nextSuspended }
++              ? {
++                ...row,
++                is_suspended: nextSuspended,
++                isSuspended: nextSuspended,
++                is_locked: nextLocked === null ? row.is_locked : nextLocked,
++                isLocked: nextLocked === null ? !!(row.is_locked ?? row.isLocked) : nextLocked,
++              }
+               : row
+           )
+         )
+ 
+         if (!hasServerSuspensionValue) {
+           await fetchBillingRows()
+         }
+       } catch (err) {
+         logApiError(err)
+         setError(
+           err?.response?.data?.detail
+             || err?.response?.data?.message
+             || 'Failed to update provider account status.'
+         )
+       } finally {
+         setSuspendingByAccountNumber((prev) => {
+           const next = { ...prev }
+           delete next[accountNumber]
+           return next
+         })
+       }
+     }
+ 
+ 
+     const normalizedSearch = searchTerm.trim().toLowerCase()
+@@ -920,54 +928,54 @@ function App() {
                  <div>
                    <p className="billing-provider">{row.name || 'Unnamed provider'}</p>
                    <p className="muted">ID #{row.provider_id}</p>
@@ -113,10 +86,8 @@ index 4556209ebe9d07f5dc26b07846ea26f53dcbafe1..0d6707c697405c6a88e028d42130f753
                  <span className={row.is_paid ? 'status-pill paid' : 'status-pill unpaid'}>
                    {row.is_paid ? 'Paid' : 'Unpaid'}
                  </span>
--                <span className={isSuspended ? 'status-pill unpaid' : 'status-pill paid'}>
--                  {isSuspended ? 'Suspended' : 'Active'}
-+                <span className={isBlocked ? 'status-pill unpaid' : 'status-pill paid'}>
-+                  {isBlocked ? 'Suspended' : 'Active'}
+                 <span className={isBlocked ? 'status-pill unpaid' : 'status-pill paid'}>
+                   {isBlocked ? 'Suspended' : 'Active'}
                  </span>
                  <div className="billing-actions">
                    <button
@@ -127,12 +98,13 @@ index 4556209ebe9d07f5dc26b07846ea26f53dcbafe1..0d6707c697405c6a88e028d42130f753
                      {row.is_paid ? 'Paid' : 'Mark as paid'}
                    </button>
                    <button
--                    className={isSuspended ? 'primary-btn' : 'ghost-btn'}
-+                    className={isBlocked ? 'primary-btn' : 'ghost-btn'}
-                     onClick={() => toggleProviderSuspension(accountNumber, !isSuspended)}
+                     className={isBlocked ? 'primary-btn' : 'ghost-btn'}
+-                    onClick={() => toggleProviderSuspension(accountNumber, !isSuspended)}
++                    onClick={() => toggleProviderSuspension(accountNumber, !isBlocked)}
                      disabled={isSuspensionLoading}
                    >
-                     {isSuspended ? 'Reactivate account' : 'Suspend account'}
+-                    {isSuspended ? 'Reactivate account' : 'Suspend account'}
++                    {isBlocked ? 'Reactivate account' : 'Suspend account'}
                    </button>
                  </div>
                </div>
@@ -154,6 +126,10 @@ index 4556209ebe9d07f5dc26b07846ea26f53dcbafe1..0d6707c697405c6a88e028d42130f753
    const AdminProviderLocations = () => {
      const mapRef = React.useRef(null)
      const mapContainerRef = React.useRef(null)
+     const markersLayerRef = React.useRef(null)
+     const [providers, setProviders] = React.useState([])
+     const [loading, setLoading] = React.useState(false)
+     const [error, setError] = React.useState('')
  
 EOF
 )

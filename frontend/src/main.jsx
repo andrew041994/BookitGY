@@ -751,7 +751,9 @@ function App() {
         })
         const responsePayload = res?.data
         const hasServerSuspensionValue = typeof responsePayload?.is_suspended === 'boolean'
+        const hasServerLockValue = typeof responsePayload?.is_locked === 'boolean'
         const nextSuspended = hasServerSuspensionValue ? responsePayload.is_suspended : shouldSuspend
+        const nextLocked = hasServerLockValue ? responsePayload.is_locked : null
 
         if (import.meta.env?.DEV) {
           console.log('[billing] OK', res.status, res.data)
@@ -760,7 +762,13 @@ function App() {
         setBillingRows((prev) =>
           prev.map((row) =>
             row.account_number === accountNumber
-              ? { ...row, is_suspended: nextSuspended }
+              ? {
+                ...row,
+                is_suspended: nextSuspended,
+                isSuspended: nextSuspended,
+                is_locked: nextLocked === null ? row.is_locked : nextLocked,
+                isLocked: nextLocked === null ? !!(row.is_locked ?? row.isLocked) : nextLocked,
+              }
               : row
           )
         )
@@ -942,10 +950,10 @@ function App() {
                   </button>
                   <button
                     className={isBlocked ? 'primary-btn' : 'ghost-btn'}
-                    onClick={() => toggleProviderSuspension(accountNumber, !isSuspended)}
+                    onClick={() => toggleProviderSuspension(accountNumber, !isBlocked)}
                     disabled={isSuspensionLoading}
                   >
-                    {isSuspended ? 'Reactivate account' : 'Suspend account'}
+                    {isBlocked ? 'Reactivate account' : 'Suspend account'}
                   </button>
                 </div>
               </div>

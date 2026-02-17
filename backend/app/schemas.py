@@ -133,6 +133,7 @@ class ProviderSuspensionUpdate(BaseModel):
 class ProviderSuspensionOut(BaseModel):
     account_number: str
     is_suspended: bool
+    is_locked: bool
 
     class Config:
         from_attributes = True

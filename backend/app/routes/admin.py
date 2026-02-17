@@ -839,12 +839,23 @@ def update_provider_suspension(
             detail="User not found for provider account number",
         )
 
-    if user.is_suspended == payload.is_suspended:
-        return {"account_number": provider.account_number, "is_suspended": user.is_suspended}
+    changed = False
+    suspension_changed = False
+    if payload.is_suspended is False and provider.is_locked:
+        provider.is_locked = False
+        changed = True
 
-    user = crud.set_user_suspension(db, provider.user_id, payload.is_suspended)
+    if user.is_suspended != payload.is_suspended:
+        user.is_suspended = payload.is_suspended
+        changed = True
+        suspension_changed = True
 
-    if user and user.email:
+    if changed:
+        db.commit()
+        db.refresh(user)
+        db.refresh(provider)
+
+    if suspension_changed and user and user.email:
         provider_name = crud.get_display_name(user).strip() or None
         try:
             send_provider_suspension_email(
@@ -861,7 +872,11 @@ def update_provider_suspension(
                 action,
             )
 
-    return {"account_number": provider.account_number, "is_suspended": user.is_suspended}
+    return {
+        "account_number": provider.account_number,
+        "is_suspended": user.is_suspended,
+        "is_locked": bool(provider.is_locked),
+    }
 
 
 @router.put(
