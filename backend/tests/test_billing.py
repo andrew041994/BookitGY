@@ -985,3 +985,92 @@ def test_bill_generation_does_not_delete_bookings(db_session):
         .filter(models.Booking.id.in_([first_booking.id, second_booking.id]))
         .all()
     } == {first_booking.id, second_booking.id}
+
+def test_generate_monthly_bills_sends_statement_once_and_marks_emailed_at(db_session, monkeypatch):
+    session, models, crud = db_session
+    provider, customer, service = _create_provider_graph(session, models)
+
+    provider_user = session.query(models.User).filter(models.User.id == provider.user_id).first()
+    provider_user.email = "provider@example.com"
+    session.commit()
+
+    now = now_guyana()
+    start_time = _current_month_past_time(now)
+    end_time = start_time + timedelta(hours=1)
+
+    _add_booking(
+        session,
+        models,
+        customer=customer,
+        service=service,
+        start_time=start_time,
+        end_time=end_time,
+        status="completed",
+    )
+
+    sent = []
+
+    def _fake_send_monthly_statement_email(to_email, **kwargs):
+        sent.append((to_email, kwargs))
+
+    monkeypatch.setattr(crud, "send_monthly_statement_email", _fake_send_monthly_statement_email)
+
+    billing_root = "https://bookitgy.com/app"
+    monkeypatch.setattr(crud, "get_settings", lambda: type("S", (), {"FRONTEND_LOGIN_URL": billing_root})())
+
+    crud.generate_monthly_bills(session, month=now.date())
+
+    bill = (
+        session.query(models.Bill)
+        .filter(models.Bill.provider_id == provider.id, models.Bill.month == now.date().replace(day=1))
+        .first()
+    )
+
+    assert bill is not None
+    assert bill.emailed_at is not None
+    assert len(sent) == 1
+    assert sent[0][0] == "provider@example.com"
+    assert sent[0][1]["month_label"] == now.strftime("%b %Y")
+    assert sent[0][1]["billing_page_url"] == "https://bookitgy.com/provider/billing?account=ACC-1"
+
+    crud.generate_monthly_bills(session, month=now.date())
+    assert len(sent) == 1
+
+
+def test_generate_monthly_bills_does_not_mark_emailed_when_email_send_fails(db_session, monkeypatch):
+    session, models, crud = db_session
+    provider, customer, service = _create_provider_graph(session, models)
+
+    provider_user = session.query(models.User).filter(models.User.id == provider.user_id).first()
+    provider_user.email = "provider@example.com"
+    session.commit()
+
+    now = now_guyana()
+    start_time = _current_month_past_time(now)
+    end_time = start_time + timedelta(hours=1)
+
+    _add_booking(
+        session,
+        models,
+        customer=customer,
+        service=service,
+        start_time=start_time,
+        end_time=end_time,
+        status="completed",
+    )
+
+    def _failing_send(*args, **kwargs):
+        raise RuntimeError("sendgrid failed")
+
+    monkeypatch.setattr(crud, "send_monthly_statement_email", _failing_send)
+
+    crud.generate_monthly_bills(session, month=now.date())
+
+    bill = (
+        session.query(models.Bill)
+        .filter(models.Bill.provider_id == provider.id, models.Bill.month == now.date().replace(day=1))
+        .first()
+    )
+
+    assert bill is not None
+    assert bill.emailed_at is None

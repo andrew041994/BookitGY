@@ -153,3 +153,40 @@ def send_provider_suspension_email(
     )
 
     _send_email(message, "Failed to send provider suspension email.")
+
+
+def send_monthly_statement_email(
+    to_email: str,
+    *,
+    month_label: str,
+    fees_due_gyd: str,
+    credits_applied_gyd: str,
+    remaining_balance_gyd: str,
+    due_date_label: str | None = None,
+    billing_page_url: str | None = None,
+) -> None:
+    _ensure_email_configured()
+
+    subject = f"BookitGY — Monthly statement for {month_label}"
+    due_date_line = f"Due date: {due_date_label}\n" if due_date_label else ""
+    billing_page_line = (
+        f"View your billing page: {billing_page_url}\n" if billing_page_url else ""
+    )
+    content = (
+        f"Your BookitGY monthly statement for {month_label} is ready.\n\n"
+        f"Fees due: GYD {fees_due_gyd}\n"
+        f"Credits applied: GYD {credits_applied_gyd}\n"
+        f"Remaining balance due: GYD {remaining_balance_gyd}\n"
+        f"{due_date_line}"
+        f"{billing_page_line}\n"
+        "If you have any questions, contact bookitgy.service@gmail.com."
+    )
+
+    message = Mail(
+        from_email=settings.SENDGRID_FROM_EMAIL,
+        to_emails=to_email,
+        subject=subject,
+        plain_text_content=content,
+    )
+
+    _send_email(message, "Failed to send monthly billing statement email.")

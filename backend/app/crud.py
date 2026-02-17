@@ -16,6 +16,7 @@ from typing import Optional
 from dotenv import load_dotenv, find_dotenv
 from app.utils.passwords import validate_password
 from app.utils.time import now_guyana, today_start_guyana, today_end_guyana
+from app.utils.email import send_monthly_statement_email
 
 load_dotenv(find_dotenv(), override=False)
 
@@ -37,6 +38,21 @@ SUSPENDED_PROVIDER_MESSAGE = (
 LOCKED_PROVIDER_MESSAGE = (
     "Provider account is suspended and cannot accept or confirm new appointments."
 )
+
+
+def format_gyd_amount(value: Decimal | float | int) -> str:
+    amount = Decimal(str(value or 0)).quantize(Decimal("0.01"))
+    return f"{amount:,.2f}"
+
+
+def _build_provider_billing_page_url(account_number: str) -> str | None:
+    settings = get_settings()
+    base_url = (settings.FRONTEND_LOGIN_URL or "").strip()
+    if not base_url:
+        return None
+
+    base_root = base_url.rsplit("/", 1)[0] if "/" in base_url else base_url
+    return f"{base_root}/provider/billing?account={account_number}"
 
 
 def normalized_booking_status_value(status: str | None) -> str:
@@ -1340,6 +1356,41 @@ def _auto_complete_finished_bookings(
         db.commit()
 
 
+def _send_monthly_bill_email_if_needed(
+    db: Session,
+    bill: models.Bill,
+    provider: models.Provider,
+    *,
+    fees_due: Decimal,
+    credits_applied: Decimal,
+    remaining_balance_due: Decimal,
+) -> None:
+    if bill.emailed_at:
+        return
+
+    provider_user = provider.user or db.query(models.User).filter(models.User.id == provider.user_id).first()
+    to_email = (getattr(provider_user, "email", None) or "").strip()
+    if not to_email or "@" not in to_email:
+        return
+
+    month_label = bill.month.strftime("%b %Y")
+    due_date_label = bill.due_date.strftime("%Y-%m-%d") if bill.due_date else None
+    billing_page_url = _build_provider_billing_page_url(provider.account_number or "")
+
+    send_monthly_statement_email(
+        to_email,
+        month_label=month_label,
+        fees_due_gyd=format_gyd_amount(fees_due),
+        credits_applied_gyd=format_gyd_amount(credits_applied),
+        remaining_balance_gyd=format_gyd_amount(remaining_balance_due),
+        due_date_label=due_date_label,
+        billing_page_url=billing_page_url,
+    )
+
+    bill.emailed_at = now_guyana()
+    db.commit()
+
+
 def generate_monthly_bills(db: Session, month: date):
     """
     Generate or update bills for all providers for the given month.
@@ -1350,7 +1401,7 @@ def generate_monthly_bills(db: Session, month: date):
         * have end_time inside [first_of_month, first_of_next_month)
     - Safe to run multiple times (creates missing bills only).
     """
-    providers = db.query(models.Provider).all()
+    providers = db.query(models.Provider).options(joinedload(models.Provider.user)).all()
 
     # First day of this month
     start = date(month.year, month.month, 1)
@@ -1413,6 +1464,32 @@ def generate_monthly_bills(db: Session, month: date):
             is_paid=False,
         )
         db.add(bill)
+        db.commit()
+        db.refresh(bill)
+
+        credits_applied = Decimal(str(get_provider_credit_balance(db, prov.id) or 0))
+        if credits_applied < 0:
+            credits_applied = Decimal("0")
+        credits_applied = min(credits_applied, fee)
+        remaining_balance_due = fee - credits_applied
+        if remaining_balance_due < 0:
+            remaining_balance_due = Decimal("0")
+
+        try:
+            _send_monthly_bill_email_if_needed(
+                db,
+                bill,
+                prov,
+                fees_due=fee,
+                credits_applied=credits_applied,
+                remaining_balance_due=remaining_balance_due,
+            )
+        except Exception:
+            logger.exception(
+                "Failed to send monthly billing statement email for provider_id=%s bill_id=%s",
+                prov.id,
+                bill.id,
+            )
 
     db.commit()
 

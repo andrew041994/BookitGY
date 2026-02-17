@@ -157,6 +157,7 @@ class Bill(Base):
     fee_gyd = Column(Numeric(10,2), default=0)
     is_paid = Column(Boolean, default=False)
     due_date = Column(DateTime)
+    emailed_at = Column(DateTime, nullable=True)
 
 
 class BillCredit(Base):

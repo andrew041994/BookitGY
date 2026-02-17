@@ -1,135 +1,123 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
-diff --git a/frontend/src/main.jsx b/frontend/src/main.jsx
-index 0d6707c697405c6a88e028d42130f753ab6ae75e..ab938c9ada5ad6d8cf1f70674944bb10b9b9f786 100644
---- a/frontend/src/main.jsx
-+++ b/frontend/src/main.jsx
-@@ -729,60 +729,68 @@ function App() {
-         setError('Missing account number for provider; billing rows must include account_number')
-         console.error('Missing account number for provider suspension request.')
-         return
-       }
- 
-       if (suspendingByAccountNumber[accountNumber]) return
- 
-       if (import.meta.env?.DEV) {
-         console.log('[billing] toggle suspend click', {
-           accountNumber,
-           currentSuspended: !shouldSuspend,
-           nextSuspended: shouldSuspend,
-         })
-         console.log('[billing] POST', '/admin/providers/suspension')
-       }
- 
-       setSuspendingByAccountNumber((prev) => ({ ...prev, [accountNumber]: true }))
- 
-       try {
-         const res = await apiClient.post('/admin/providers/suspension', {
-           account_number: accountNumber,
-           is_suspended: shouldSuspend,
-         })
-         const responsePayload = res?.data
-         const hasServerSuspensionValue = typeof responsePayload?.is_suspended === 'boolean'
-+        const hasServerLockValue = typeof responsePayload?.is_locked === 'boolean'
-         const nextSuspended = hasServerSuspensionValue ? responsePayload.is_suspended : shouldSuspend
-+        const nextLocked = hasServerLockValue ? responsePayload.is_locked : null
- 
-         if (import.meta.env?.DEV) {
-           console.log('[billing] OK', res.status, res.data)
-         }
- 
-         setBillingRows((prev) =>
-           prev.map((row) =>
-             row.account_number === accountNumber
--              ? { ...row, is_suspended: nextSuspended }
-+              ? {
-+                ...row,
-+                is_suspended: nextSuspended,
-+                isSuspended: nextSuspended,
-+                is_locked: nextLocked === null ? row.is_locked : nextLocked,
-+                isLocked: nextLocked === null ? !!(row.is_locked ?? row.isLocked) : nextLocked,
-+              }
-               : row
-           )
-         )
- 
-         if (!hasServerSuspensionValue) {
-           await fetchBillingRows()
-         }
-       } catch (err) {
-         logApiError(err)
-         setError(
-           err?.response?.data?.detail
-             || err?.response?.data?.message
-             || 'Failed to update provider account status.'
-         )
-       } finally {
-         setSuspendingByAccountNumber((prev) => {
-           const next = { ...prev }
-           delete next[accountNumber]
-           return next
-         })
-       }
-     }
- 
- 
-     const normalizedSearch = searchTerm.trim().toLowerCase()
-@@ -920,54 +928,54 @@ function App() {
-                 <div>
-                   <p className="billing-provider">{row.name || 'Unnamed provider'}</p>
-                   <p className="muted">ID #{row.provider_id}</p>
-                 </div>
-                 <strong>{row.account_number || 'N/A'}</strong>
-                 <span>{row.phone || 'No phone added'}</span>
-                 <strong>{formatAmount(row.amount_due_gyd)} GYD</strong>
-                 <strong>{formatAmount(row.bill_credits_gyd)} GYD</strong>
-                 <span>{formatDueDate(row.last_due_date)}</span>
-                 <span className={row.is_paid ? 'status-pill paid' : 'status-pill unpaid'}>
-                   {row.is_paid ? 'Paid' : 'Unpaid'}
-                 </span>
-                 <span className={isBlocked ? 'status-pill unpaid' : 'status-pill paid'}>
-                   {isBlocked ? 'Suspended' : 'Active'}
-                 </span>
-                 <div className="billing-actions">
-                   <button
-                     className={row.is_paid ? 'ghost-btn' : 'primary-btn'}
-                     onClick={() => markProviderPaid(accountNumber)}
-                     disabled={loading || isPaying || row.is_paid}
-                   >
-                     {row.is_paid ? 'Paid' : 'Mark as paid'}
-                   </button>
-                   <button
-                     className={isBlocked ? 'primary-btn' : 'ghost-btn'}
--                    onClick={() => toggleProviderSuspension(accountNumber, !isSuspended)}
-+                    onClick={() => toggleProviderSuspension(accountNumber, !isBlocked)}
-                     disabled={isSuspensionLoading}
-                   >
--                    {isSuspended ? 'Reactivate account' : 'Suspend account'}
-+                    {isBlocked ? 'Reactivate account' : 'Suspend account'}
-                   </button>
-                 </div>
-               </div>
-             )})}
- 
-             {showNoMatches && (
-               <p className="muted">No providers match your current filters.</p>
-             )}
- 
-             {showEmptyState && (
-               <p className="muted">No providers match that account or phone.</p>
-             )}
-           </div>
-         </div>
-       </div>
+diff --git a/backend/tests/test_billing.py b/backend/tests/test_billing.py
+index d2239e4cd4f5634f2ee41f4ac7e45c1802c43a5e..fad11ff987d4512379619a65f2df193d6ca654ab 100644
+--- a/backend/tests/test_billing.py
++++ b/backend/tests/test_billing.py
+@@ -963,25 +963,114 @@ def test_bill_generation_does_not_delete_bookings(db_session):
+         day=2,
+         price_gyd=800,
      )
-   }
+     second_booking = _create_completed_booking_for_month(
+         session,
+         models,
+         customer=customer,
+         service=service,
+         month_start=billing_month,
+         day=12,
+         price_gyd=1200,
+     )
  
-   const AdminProviderLocations = () => {
-     const mapRef = React.useRef(null)
-     const mapContainerRef = React.useRef(null)
-     const markersLayerRef = React.useRef(null)
-     const [providers, setProviders] = React.useState([])
-     const [loading, setLoading] = React.useState(false)
-     const [error, setError] = React.useState('')
+     before_count = session.query(models.Booking).count()
+ 
+     crud.generate_monthly_bills(session, month=billing_month.date())
+ 
+     after_count = session.query(models.Booking).count()
+     assert after_count == before_count
+     assert {
+         booking.id
+         for booking in session.query(models.Booking)
+         .filter(models.Booking.id.in_([first_booking.id, second_booking.id]))
+         .all()
+     } == {first_booking.id, second_booking.id}
++
++def test_generate_monthly_bills_sends_statement_once_and_marks_emailed_at(db_session, monkeypatch):
++    session, models, crud = db_session
++    provider, customer, service = _create_provider_graph(session, models)
++
++    provider_user = session.query(models.User).filter(models.User.id == provider.user_id).first()
++    provider_user.email = "provider@example.com"
++    session.commit()
++
++    now = now_guyana()
++    start_time = _current_month_past_time(now)
++    end_time = start_time + timedelta(hours=1)
++
++    _add_booking(
++        session,
++        models,
++        customer=customer,
++        service=service,
++        start_time=start_time,
++        end_time=end_time,
++        status="completed",
++    )
++
++    sent = []
++
++    def _fake_send_monthly_statement_email(to_email, **kwargs):
++        sent.append((to_email, kwargs))
++
++    monkeypatch.setattr(crud, "send_monthly_statement_email", _fake_send_monthly_statement_email)
++
++    billing_root = "https://bookitgy.com/app"
++    monkeypatch.setattr(crud, "get_settings", lambda: type("S", (), {"FRONTEND_LOGIN_URL": billing_root})())
++
++    crud.generate_monthly_bills(session, month=now.date())
++
++    bill = (
++        session.query(models.Bill)
++        .filter(models.Bill.provider_id == provider.id, models.Bill.month == now.date().replace(day=1))
++        .first()
++    )
++
++    assert bill is not None
++    assert bill.emailed_at is not None
++    assert len(sent) == 1
++    assert sent[0][0] == "provider@example.com"
++    assert sent[0][1]["month_label"] == now.strftime("%b %Y")
++    assert sent[0][1]["billing_page_url"] == "https://bookitgy.com/provider/billing?account=ACC-1"
++
++    crud.generate_monthly_bills(session, month=now.date())
++    assert len(sent) == 1
++
++
++def test_generate_monthly_bills_does_not_mark_emailed_when_email_send_fails(db_session, monkeypatch):
++    session, models, crud = db_session
++    provider, customer, service = _create_provider_graph(session, models)
++
++    provider_user = session.query(models.User).filter(models.User.id == provider.user_id).first()
++    provider_user.email = "provider@example.com"
++    session.commit()
++
++    now = now_guyana()
++    start_time = _current_month_past_time(now)
++    end_time = start_time + timedelta(hours=1)
++
++    _add_booking(
++        session,
++        models,
++        customer=customer,
++        service=service,
++        start_time=start_time,
++        end_time=end_time,
++        status="completed",
++    )
++
++    def _failing_send(*args, **kwargs):
++        raise RuntimeError("sendgrid failed")
++
++    monkeypatch.setattr(crud, "send_monthly_statement_email", _failing_send)
++
++    crud.generate_monthly_bills(session, month=now.date())
++
++    bill = (
++        session.query(models.Bill)
++        .filter(models.Bill.provider_id == provider.id, models.Bill.month == now.date().replace(day=1))
++        .first()
++    )
++
++    assert bill is not None
++    assert bill.emailed_at is None
  
 EOF
 )
