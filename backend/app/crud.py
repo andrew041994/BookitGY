@@ -35,7 +35,7 @@ SUSPENDED_PROVIDER_MESSAGE = (
     "Provider account is suspended and cannot accept bookings."
 )
 LOCKED_PROVIDER_MESSAGE = (
-    "Provider account is locked and cannot accept or confirm new appointments."
+    "Provider account is suspended and cannot accept or confirm new appointments."
 )
 
 
