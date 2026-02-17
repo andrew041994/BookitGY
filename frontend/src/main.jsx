@@ -645,7 +645,13 @@ function App() {
           setBillingRows([])
           return
         }
-        setBillingRows(responseRows)
+        const normalizedRows = responseRows.map((row) => ({
+          ...row,
+          isLocked: !!(row.is_locked ?? row.isLocked),
+          isSuspended: !!(row.is_suspended ?? row.isSuspended),
+        }))
+
+        setBillingRows(normalizedRows)
       } catch (err) {
         logApiError(err)
         setError('Unable to load provider billing details. Please refresh and try again.')
@@ -899,7 +905,9 @@ function App() {
               <span className="sr-only">Actions</span>
             </div>
             {filteredRows.map((row) => {
-              const isSuspended = row.is_suspended ?? row.isSuspended ?? row.is_locked ?? false
+              const isSuspended = !!(row.isSuspended ?? row.is_suspended)
+              const isLocked = !!(row.isLocked ?? row.is_locked)
+              const isBlocked = isSuspended || isLocked
               const accountNumber = row.account_number
               const isSuspensionLoading = Boolean(
                 accountNumber && suspendingByAccountNumber[accountNumber]
@@ -921,8 +929,8 @@ function App() {
                 <span className={row.is_paid ? 'status-pill paid' : 'status-pill unpaid'}>
                   {row.is_paid ? 'Paid' : 'Unpaid'}
                 </span>
-                <span className={isSuspended ? 'status-pill unpaid' : 'status-pill paid'}>
-                  {isSuspended ? 'Suspended' : 'Active'}
+                <span className={isBlocked ? 'status-pill unpaid' : 'status-pill paid'}>
+                  {isBlocked ? 'Suspended' : 'Active'}
                 </span>
                 <div className="billing-actions">
                   <button
@@ -933,7 +941,7 @@ function App() {
                     {row.is_paid ? 'Paid' : 'Mark as paid'}
                   </button>
                   <button
-                    className={isSuspended ? 'primary-btn' : 'ghost-btn'}
+                    className={isBlocked ? 'primary-btn' : 'ghost-btn'}
                     onClick={() => toggleProviderSuspension(accountNumber, !isSuspended)}
                     disabled={isSuspensionLoading}
                   >
