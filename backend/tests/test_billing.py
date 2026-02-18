@@ -1152,26 +1152,76 @@ def test_generate_monthly_bills_snapshots_credits_once(db_session):
         .filter(models.Bill.provider_id == provider.id, models.Bill.month == billing_month.date())
         .one()
     )
-
     assert cycle is not None
+    consumed_credits = (
+        session.query(models.BillCredit)
+        .filter(
+            models.BillCredit.provider_id == provider.id,
+            models.BillCredit.kind == crud.BILL_CREDIT_KIND_CONSUMED,
+            models.BillCredit.billing_cycle_account_number == cycle.account_number,
+            models.BillCredit.billing_cycle_month == cycle.cycle_month,
+        )
+        .all()
+    )
+
     assert float(cycle.credits_applied_gyd) == pytest.approx(60.0)
     assert crud._calculate_bill_total_due(session, bill, provider.id) == pytest.approx(0.0)
-
-    session.add(models.BillCredit(provider_id=provider.id, amount_gyd=Decimal("100.00")))
-    session.commit()
+    assert len(consumed_credits) == 1
+    assert float(consumed_credits[0].amount_gyd) == pytest.approx(-60.0)
+    assert float(crud.get_provider_credit_balance(session, provider.id)) == pytest.approx(40.0)
 
     crud.generate_monthly_bills(session, month=billing_month.date())
 
     cycle = crud.get_billing_cycle_for_account(session, provider.account_number, billing_month.date())
-    bill = (
-        session.query(models.Bill)
-        .filter(models.Bill.provider_id == provider.id, models.Bill.month == billing_month.date())
-        .one()
+    assert cycle is not None
+    consumed_credits = (
+        session.query(models.BillCredit)
+        .filter(
+            models.BillCredit.provider_id == provider.id,
+            models.BillCredit.kind == crud.BILL_CREDIT_KIND_CONSUMED,
+            models.BillCredit.billing_cycle_account_number == cycle.account_number,
+            models.BillCredit.billing_cycle_month == cycle.cycle_month,
+        )
+        .all()
     )
 
-    assert cycle is not None
     assert float(cycle.credits_applied_gyd) == pytest.approx(60.0)
-    assert crud._calculate_bill_total_due(session, bill, provider.id) == pytest.approx(0.0)
+    assert len(consumed_credits) == 1
+    assert float(crud.get_provider_credit_balance(session, provider.id)) == pytest.approx(40.0)
+
+
+def test_generate_monthly_bills_does_not_consume_credits_when_snapshot_is_zero(db_session):
+    session, models, crud = db_session
+    provider, customer, service = _create_provider_graph(session, models)
+
+    billing_month = datetime(2023, 1, 1)
+    _create_completed_booking_for_month(
+        session,
+        models,
+        customer=customer,
+        service=service,
+        month_start=billing_month,
+        day=2,
+        price_gyd=600,
+    )
+
+    crud.generate_monthly_bills(session, month=billing_month.date())
+
+    cycle = crud.get_billing_cycle_for_account(session, provider.account_number, billing_month.date())
+    assert cycle is not None
+    consumed_credits = (
+        session.query(models.BillCredit)
+        .filter(
+            models.BillCredit.provider_id == provider.id,
+            models.BillCredit.kind == crud.BILL_CREDIT_KIND_CONSUMED,
+            models.BillCredit.billing_cycle_account_number == cycle.account_number,
+            models.BillCredit.billing_cycle_month == cycle.cycle_month,
+        )
+        .all()
+    )
+
+    assert float(cycle.credits_applied_gyd) == pytest.approx(0.0)
+    assert consumed_credits == []
 
 
 def test_generate_monthly_bills_snapshots_partial_credit_coverage(db_session):

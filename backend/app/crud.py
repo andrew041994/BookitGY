@@ -32,6 +32,7 @@ pwd_context = CryptContext(schemes=["pbkdf2_sha256"], deprecated="auto")
 
 EXPO_PUSH_URL = "https://exp.host/--/api/v2/push/send"
 DEFAULT_SERVICE_CHARGE_PERCENTAGE = Decimal("10.0")
+BILL_CREDIT_KIND_CONSUMED = "billing_credit_consumed"
 SUSPENDED_PROVIDER_MESSAGE = (
     "Provider account is suspended and cannot accept bookings."
 )
@@ -1482,19 +1483,34 @@ def generate_monthly_bills(db: Session, month: date):
             raise
 
         if prov.account_number:
-            existing_cycle = get_billing_cycle_for_account(db, prov.account_number, start)
-            if not existing_cycle:
+            cycle = get_billing_cycle_for_account(db, prov.account_number, start)
+            if not cycle:
                 credit_balance = Decimal(str(get_provider_credit_balance(db, prov.id) or 0))
                 credit_balance = max(credit_balance, Decimal("0"))
                 credits_to_apply = min(credit_balance, fee)
 
-                billing_cycle = models.BillingCycle(
+                cycle = models.BillingCycle(
                     account_number=prov.account_number,
                     cycle_month=start,
                     is_paid=False,
                     credits_applied_gyd=credits_to_apply,
                 )
-                db.add(billing_cycle)
+                db.add(cycle)
+                try:
+                    db.commit()
+                except IntegrityError:
+                    db.rollback()
+                    cycle = get_billing_cycle_for_account(db, prov.account_number, start)
+
+            if cycle and Decimal(str(cycle.credits_applied_gyd or 0)) > 0:
+                consumed_credit = models.BillCredit(
+                    provider_id=prov.id,
+                    amount_gyd=-Decimal(str(cycle.credits_applied_gyd)),
+                    kind=BILL_CREDIT_KIND_CONSUMED,
+                    billing_cycle_account_number=cycle.account_number,
+                    billing_cycle_month=cycle.cycle_month,
+                )
+                db.add(consumed_credit)
                 try:
                     db.commit()
                 except IntegrityError:

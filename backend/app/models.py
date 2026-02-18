@@ -11,6 +11,7 @@ from sqlalchemy import (
     Numeric,
     Enum,
     UniqueConstraint,
+    ForeignKeyConstraint,
 )
 
 from .database import Base
@@ -162,10 +163,20 @@ class Bill(Base):
 
 class BillCredit(Base):
     __tablename__ = "bill_credits"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["billing_cycle_account_number", "billing_cycle_month"],
+            ["billing_cycles.account_number", "billing_cycles.cycle_month"],
+            ondelete="SET NULL",
+        ),
+    )
 
     id = Column(Integer, primary_key=True, index=True)
     provider_id = Column(Integer, ForeignKey("providers.id"), nullable=False)
     amount_gyd = Column(Numeric(10, 2), default=0)
+    kind = Column(String, nullable=True)
+    billing_cycle_account_number = Column(String, nullable=True)
+    billing_cycle_month = Column(Date, nullable=True)
     created_at = Column(DateTime, default=now_guyana)
 
 
