@@ -11,7 +11,8 @@ import secrets
 import requests
 
 from app.config import get_settings
-from app.auth.jwt_config import get_jwt_algorithm, get_jwt_secret_key
+from app.auth.jwt import create_access_token
+from app.auth.jwt_config import get_jwt_algorithm
 from app.database import get_db
 from app import crud, schemas, models
 from app.security import get_current_user_from_header
@@ -201,29 +202,12 @@ def signup(user: schemas.UserCreate, db: Session = Depends(get_db)):
 
 
 def _create_access_token(subject: str, token_version: int, user_id: int) -> str:
-    """
-    Create a signed JWT access token for a given subject (user email).
-
-    Adds:
-    - exp: expiration time
-    - iat: issued-at timestamp (seconds since epoch)
-    """
-    issued_at = datetime.now(timezone.utc)
-    expire = issued_at + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
-
     payload = {
         "sub": subject,
-        "exp": int(expire.timestamp()),
-        "iat": int(issued_at.timestamp()),
         "tv": token_version,
         "uid": user_id,
     }
-
-    return jwt.encode(
-        payload,
-        get_jwt_secret_key(),
-        algorithm=get_jwt_algorithm(),
-    )
+    return create_access_token(payload)
 
 def _create_email_verification_token(email: str) -> str:
     now = datetime.now(timezone.utc)

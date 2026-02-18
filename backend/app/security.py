@@ -3,14 +3,13 @@ import logging
 from typing import Optional
 
 from fastapi import Depends, Header, HTTPException, Request, status
-from jose import jwt
-from jose.exceptions import ExpiredSignatureError, JWSSignatureError, JWTError
+from jose.exceptions import JWTError
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.database import get_db
 from app import crud, models
-from app.auth.jwt_config import get_jwt_algorithm, get_jwt_secret_key
+from app.auth.jwt import decode_token
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -21,15 +20,6 @@ def _token_fingerprint(token: str) -> str:
         return token
     return f"{token[:10]}{token[-10:]}"
 
-
-def _decode_error_type(exc: Exception) -> str:
-    if isinstance(exc, ExpiredSignatureError):
-        return "ExpiredSignatureError"
-    if isinstance(exc, JWSSignatureError):
-        return "InvalidSignatureError"
-    if isinstance(exc, JWTError):
-        return "DecodeError"
-    return type(exc).__name__
 
 
 def get_current_user_from_header(
@@ -61,16 +51,11 @@ def get_current_user_from_header(
     token = parts[1]
 
     try:
-        payload = jwt.decode(
-            token,
-            get_jwt_secret_key(),
-            algorithms=[get_jwt_algorithm()],
-        )
-    except JWTError as exc:
+        payload = decode_token(token)
+    except JWTError:
         logger.warning(
-            "Bearer token decode failed path=%s error_type=%s token_fingerprint=%s",
+            "Bearer token decode failed path=%s token_fingerprint=%s",
             request.url.path,
-            _decode_error_type(exc),
             _token_fingerprint(token),
         )
         raise HTTPException(

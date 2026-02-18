@@ -4,6 +4,8 @@ from typing import List
 from dotenv import load_dotenv, find_dotenv
 from pathlib import Path
 
+from app.auth.jwt_config import get_jwt_config
+
 # Load backend/.env explicitly (if present) so local credentials are picked up
 # when running from any working directory. Fall back to the nearest .env for
 # compatibility with existing setups.
@@ -43,22 +45,12 @@ class Settings:
         self.DATABASE_URL: str = db_url
 
         # -----------------------------
-        # 🔐 AUTH / JWT — STRONG SECRET REQUIRED
+        # 🔐 AUTH / JWT — SINGLE SOURCE OF TRUTH
         # -----------------------------
-        env_secret = (os.getenv("JWT_SECRET_KEY") or "").strip()
-
-        # Require a strong JWT secret in ALL environments
-        if not env_secret or len(env_secret) < 32:
-            raise RuntimeError(
-                "JWT secret is not set or is too weak. "
-                "Set JWT_SECRET_KEY to a strong value at least 32 characters long."
-            )
-
-        self.JWT_SECRET_KEY: str = env_secret
-        self.JWT_ALGORITHM: str = "HS256"
-        self.ACCESS_TOKEN_EXPIRE_MINUTES: int = int(
-            os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "5")
-        )
+        jwt_config = get_jwt_config()
+        self.JWT_SECRET_KEY: str = jwt_config.secret_key
+        self.JWT_ALGORITHM: str = jwt_config.algorithm
+        self.ACCESS_TOKEN_EXPIRE_MINUTES: int = jwt_config.access_token_expire_minutes
 
         # -----------------------------
         # 🌐 CORS — EXPLICIT ORIGINS ONLY

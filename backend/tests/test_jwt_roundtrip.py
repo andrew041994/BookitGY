@@ -1,0 +1,20 @@
+import importlib
+
+
+def test_access_token_roundtrip_with_shared_jwt_config(monkeypatch):
+    monkeypatch.setenv("JWT_SECRET_KEY", "a" * 32)
+    monkeypatch.delenv("JWT_SECRET", raising=False)
+    monkeypatch.setenv("ACCESS_TOKEN_EXPIRE_MINUTES", "5")
+
+    jwt_config = importlib.import_module("app.auth.jwt_config")
+    jwt_config.get_jwt_config.cache_clear()
+
+    jwt_module = importlib.import_module("app.auth.jwt")
+    token = jwt_module.create_access_token({"sub": "user@example.com", "uid": 123, "tv": 1})
+    payload = jwt_module.decode_token(token)
+
+    assert payload["sub"] == "user@example.com"
+    assert payload["uid"] == 123
+    assert payload["tv"] == 1
+    assert "exp" in payload
+    assert "iat" in payload
