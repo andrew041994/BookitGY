@@ -1,62 +1,68 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
-diff --git a/backend/app/models.py b/backend/app/models.py
-index b9736a9ffcf7dfefafff26280c2dfe777e108ab3..c93853b06d312845a1c2a75d8896e36592d5f8b2 100644
---- a/backend/app/models.py
-+++ b/backend/app/models.py
-@@ -153,51 +153,52 @@ class Bill(Base):
-     id = Column(Integer, primary_key=True, index=True)
-     provider_id = Column(Integer, ForeignKey("providers.id"))
-     month = Column(Date)  # first day of the month
-     total_gyd = Column(Numeric(10,2), default=0)
-     fee_gyd = Column(Numeric(10,2), default=0)
-     is_paid = Column(Boolean, default=False)
-     due_date = Column(DateTime)
-     emailed_at = Column(DateTime, nullable=True)
+diff --git a/backend/alembic/versions/8d1f2e3a4b5c_add_billing_cycle_snapshot_fields.py b/backend/alembic/versions/8d1f2e3a4b5c_add_billing_cycle_snapshot_fields.py
+index 5b79d377fd55274f518fac18799567dd74325bf8..304b2ddfa9fd1c3a44ec92148cc2b7ae649083be 100644
+--- a/backend/alembic/versions/8d1f2e3a4b5c_add_billing_cycle_snapshot_fields.py
++++ b/backend/alembic/versions/8d1f2e3a4b5c_add_billing_cycle_snapshot_fields.py
+@@ -1,37 +1,45 @@
+ """add billing cycle snapshot fields
+ 
+ Revision ID: 8d1f2e3a4b5c
+ Revises: b513cd036ac7
+ Create Date: 2026-02-18 00:00:00.000000
+ """
+ 
+ from alembic import op
+-import sqlalchemy as sa
  
  
- class BillCredit(Base):
-     __tablename__ = "bill_credits"
- 
-     id = Column(Integer, primary_key=True, index=True)
-     provider_id = Column(Integer, ForeignKey("providers.id"), nullable=False)
-     amount_gyd = Column(Numeric(10, 2), default=0)
-     created_at = Column(DateTime, default=now_guyana)
+ # revision identifiers, used by Alembic.
+ revision = "8d1f2e3a4b5c"
+ down_revision = "b513cd036ac7"
+ branch_labels = None
+ depends_on = None
  
  
- class BillingCycle(Base):
-     __tablename__ = "billing_cycles"
-     account_number = Column(String, primary_key=True)
-     cycle_month = Column(Date, primary_key=True)
-     is_paid = Column(Boolean, default=False)
-     paid_at = Column(DateTime(timezone=True), nullable=True)
--    credits_applied_gyd = Column(Numeric(10, 2), default=0)
-+    credits_applied_gyd = Column(Numeric(10, 2), default=0, nullable=False)
-+    finalized_at = Column(DateTime(timezone=True), nullable=True)
+ def upgrade():
+-    op.add_column(
+-        "billing_cycles",
+-        sa.Column(
+-            "credits_applied_gyd",
+-            sa.Numeric(precision=10, scale=2),
+-            nullable=False,
+-            server_default=sa.text("0"),
+-        ),
++    op.execute(
++        """
++        ALTER TABLE billing_cycles
++        ADD COLUMN IF NOT EXISTS credits_applied_gyd NUMERIC(10, 2) NOT NULL DEFAULT 0;
++        """
+     )
+-    op.add_column(
+-        "billing_cycles",
+-        sa.Column("finalized_at", sa.DateTime(timezone=True), nullable=True),
++    op.execute(
++        """
++        ALTER TABLE billing_cycles
++        ADD COLUMN IF NOT EXISTS finalized_at TIMESTAMPTZ NULL;
++        """
+     )
  
- class Promotion(Base):
-     __tablename__ = "promotions"
-     id = Column(Integer, primary_key=True, index=True)
-     provider_id = Column(Integer, ForeignKey("providers.id"), unique=True)
-     free_bookings_total = Column(Integer, default=0)
-     free_bookings_used = Column(Integer, default=0)
  
- class ProviderWorkingHours(Base):
-     __tablename__ = "provider_working_hours"
-     id = Column(Integer, primary_key=True, index=True)
-     provider_id = Column(Integer, ForeignKey("providers.id"))
-     weekday = Column(Integer)  # 0 = Monday, 6 = Sunday
-     is_closed = Column(Boolean, default=True)
-     start_time = Column(String, nullable=True)  # "09:00"
-     end_time = Column(String, nullable=True)    # "17:00"
- 
- class ProviderProfession(Base):
-     __tablename__ = "provider_professions"
-     id = Column(Integer, primary_key=True, index=True)
-     provider_id = Column(Integer, ForeignKey("providers.id"))
-     name = Column(String, index=True)
- 
- class ProviderCatalogImage(Base):
-     __tablename__ = "provider_catalog_images"
+ def downgrade():
+-    op.drop_column("billing_cycles", "finalized_at")
+-    op.drop_column("billing_cycles", "credits_applied_gyd")
++    op.execute(
++        """
++        ALTER TABLE billing_cycles
++        DROP COLUMN IF EXISTS finalized_at;
++        """
++    )
++    op.execute(
++        """
++        ALTER TABLE billing_cycles
++        DROP COLUMN IF EXISTS credits_applied_gyd;
++        """
++    )
  
 EOF
 )
