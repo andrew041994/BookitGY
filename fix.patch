@@ -1,68 +1,216 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
-diff --git a/backend/alembic/versions/8d1f2e3a4b5c_add_billing_cycle_snapshot_fields.py b/backend/alembic/versions/8d1f2e3a4b5c_add_billing_cycle_snapshot_fields.py
-index 5b79d377fd55274f518fac18799567dd74325bf8..304b2ddfa9fd1c3a44ec92148cc2b7ae649083be 100644
---- a/backend/alembic/versions/8d1f2e3a4b5c_add_billing_cycle_snapshot_fields.py
-+++ b/backend/alembic/versions/8d1f2e3a4b5c_add_billing_cycle_snapshot_fields.py
-@@ -1,37 +1,45 @@
- """add billing cycle snapshot fields
+diff --git a/backend/tests/test_billing.py b/backend/tests/test_billing.py
+index fad11ff987d4512379619a65f2df193d6ca654ab..3e42018163c34a87e5f00f71bf0c7945a409c2fa 100644
+--- a/backend/tests/test_billing.py
++++ b/backend/tests/test_billing.py
+@@ -1,31 +1,30 @@
+ from datetime import datetime, timedelta
+-from datetime import datetime, timedelta
++from decimal import Decimal
  
- Revision ID: 8d1f2e3a4b5c
- Revises: b513cd036ac7
- Create Date: 2026-02-18 00:00:00.000000
- """
+ import pytest
+ from fastapi.testclient import TestClient
+-from sqlalchemy.orm import sessionmaker
  
- from alembic import op
--import sqlalchemy as sa
- 
- 
- # revision identifiers, used by Alembic.
- revision = "8d1f2e3a4b5c"
- down_revision = "b513cd036ac7"
- branch_labels = None
- depends_on = None
+ from app.utils.time import now_guyana
  
  
- def upgrade():
--    op.add_column(
--        "billing_cycles",
--        sa.Column(
--            "credits_applied_gyd",
--            sa.Numeric(precision=10, scale=2),
--            nullable=False,
--            server_default=sa.text("0"),
--        ),
-+    op.execute(
-+        """
-+        ALTER TABLE billing_cycles
-+        ADD COLUMN IF NOT EXISTS credits_applied_gyd NUMERIC(10, 2) NOT NULL DEFAULT 0;
-+        """
-     )
--    op.add_column(
--        "billing_cycles",
--        sa.Column("finalized_at", sa.DateTime(timezone=True), nullable=True),
-+    op.execute(
-+        """
-+        ALTER TABLE billing_cycles
-+        ADD COLUMN IF NOT EXISTS finalized_at TIMESTAMPTZ NULL;
-+        """
+ def _current_month_past_time(now: datetime) -> datetime:
+     """Return a timestamp in the current month that is guaranteed to be in the past."""
+ 
+     start_time = now - timedelta(hours=1)
+     if start_time.month != now.month:
+         start_time = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+         start_time = start_time + timedelta(minutes=1)
+         if start_time > now:
+             start_time = now - timedelta(minutes=5)
+     return start_time
+ 
+ 
+ def _create_provider_graph(session, models):
+     provider_user = models.User(username="provider@example.com", is_provider=True)
+     customer_user = models.User(username="customer@example.com")
+     session.add_all([provider_user, customer_user])
+     session.commit()
+ 
+     provider = models.Provider(user_id=provider_user.id, account_number="ACC-1")
+     session.add(provider)
+     session.commit()
+@@ -837,90 +836,147 @@ def _generate_bill_for_month(session, models, crud, provider, customer, service,
      )
  
  
- def downgrade():
--    op.drop_column("billing_cycles", "finalized_at")
--    op.drop_column("billing_cycles", "credits_applied_gyd")
-+    op.execute(
-+        """
-+        ALTER TABLE billing_cycles
-+        DROP COLUMN IF EXISTS finalized_at;
-+        """
+ def test_generate_monthly_bill_creates_persistent_row(db_session):
+     session, models, crud = db_session
+     provider, customer, service = _create_provider_graph(session, models)
+ 
+     billing_month = datetime(2023, 1, 1)
+     bill = _generate_bill_for_month(
+         session,
+         models,
+         crud,
+         provider,
+         customer,
+         service,
+         billing_month,
+         [1500, 500],
+     )
+ 
+     assert bill.month == billing_month.date()
+     assert float(bill.total_gyd) == 2000
+     assert float(bill.fee_gyd) == pytest.approx(200.0)
+     assert bill.due_date == datetime(2023, 2, 15, 23, 59)
+ 
+ 
+-def test_bill_persists_across_sessions(db_session):
++def test_generate_is_idempotent(db_session):
+     session, models, crud = db_session
+     provider, customer, service = _create_provider_graph(session, models)
+ 
+     billing_month = datetime(2023, 1, 1)
+-    bill = _generate_bill_for_month(
++    _create_completed_booking_for_month(
+         session,
+         models,
+-        crud,
+-        provider,
+-        customer,
+-        service,
+-        billing_month,
+-        [1200],
++        customer=customer,
++        service=service,
++        month_start=billing_month,
++        day=2,
++        price_gyd=1200,
+     )
+ 
+-    original_total = float(bill.total_gyd)
+-    bill_id = bill.id
++    crud.generate_monthly_bills(session, month=billing_month.date())
+ 
+-    SessionMaker = sessionmaker(bind=session.bind, autocommit=False, autoflush=False)
+-    session.close()
++    first = (
++        session.query(models.Bill)
++        .filter(
++            models.Bill.provider_id == provider.id,
++            models.Bill.month == billing_month.date(),
++        )
++        .one()
 +    )
-+    op.execute(
-+        """
-+        ALTER TABLE billing_cycles
-+        DROP COLUMN IF EXISTS credits_applied_gyd;
-+        """
++    first_id = first.id
++    first_total = float(first.total_gyd)
++    first_fee = float(first.fee_gyd)
++    first_due = first.due_date
+ 
+-    with SessionMaker() as new_session:
+-        persisted = (
+-            new_session.query(models.Bill)
+-            .filter(
+-                models.Bill.provider_id == provider.id,
+-                models.Bill.month == billing_month.date(),
+-            )
+-            .one()
++    crud.generate_monthly_bills(session, month=billing_month.date())
++
++    bills = (
++        session.query(models.Bill)
++        .filter(
++            models.Bill.provider_id == provider.id,
++            models.Bill.month == billing_month.date(),
+         )
++        .all()
 +    )
++
++    assert len(bills) == 1
++    assert bills[0].id == first_id
++    assert float(bills[0].total_gyd) == first_total
++    assert float(bills[0].fee_gyd) == first_fee
++    assert bills[0].due_date == first_due
++
++
++def test_existing_bill_not_modified(db_session):
++    session, models, crud = db_session
++    provider, customer, service = _create_provider_graph(session, models)
+ 
+-        assert persisted.id == bill_id
+-        assert float(persisted.total_gyd) == original_total
+-        assert (
+-            new_session.query(models.Bill)
+-            .filter(models.Bill.provider_id == provider.id)
+-            .count()
+-            == 1
++    billing_month = datetime(2023, 1, 1)
++
++    _create_completed_booking_for_month(
++        session,
++        models,
++        customer=customer,
++        service=service,
++        month_start=billing_month,
++        day=2,
++        price_gyd=1800,
++    )
++
++    original_due = datetime(2023, 2, 20, 12, 0)
++    existing = models.Bill(
++        provider_id=provider.id,
++        month=billing_month.date(),
++        total_gyd=Decimal("321.00"),
++        fee_gyd=Decimal("45.00"),
++        due_date=original_due,
++        is_paid=False,
++    )
++    session.add(existing)
++    session.commit()
++
++    crud.generate_monthly_bills(session, month=billing_month.date())
++
++    persisted = (
++        session.query(models.Bill)
++        .filter(
++            models.Bill.provider_id == provider.id,
++            models.Bill.month == billing_month.date(),
+         )
++        .one()
++    )
++
++    assert float(persisted.total_gyd) == 321.0
++    assert float(persisted.fee_gyd) == 45.0
++    assert persisted.due_date == original_due
++    assert persisted.is_paid is False
++    assert (
++        session.query(models.Bill)
++        .filter(models.Bill.provider_id == provider.id, models.Bill.month == billing_month.date())
++        .count()
++        == 1
++    )
+ 
+ 
+ def test_paid_bills_are_not_overwritten(db_session):
+     session, models, crud = db_session
+     provider, customer, service = _create_provider_graph(session, models)
+ 
+     billing_month = datetime(2023, 1, 1)
+     bill = _generate_bill_for_month(
+         session,
+         models,
+         crud,
+         provider,
+         customer,
+         service,
+         billing_month,
+         [1000],
+     )
+ 
+     original_total = float(bill.total_gyd)
+     original_fee = float(bill.fee_gyd)
+     original_due = bill.due_date
+ 
+     crud.set_provider_bills_paid_state(session, provider.id, billing_month.date(), True)
+     _create_completed_booking_for_month(
+         session,
  
 EOF
 )

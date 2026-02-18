@@ -1421,6 +1421,17 @@ def generate_monthly_bills(db: Session, month: date):
     period_end = min(end_dt, now)
 
     for prov in providers:
+        existing_bill = (
+            db.query(models.Bill)
+            .filter(
+                models.Bill.provider_id == prov.id,
+                models.Bill.month == start,
+            )
+            .first()
+        )
+        if existing_bill:
+            continue
+
         total = (
             _billable_bookings_base_query(db, prov.id, as_of=period_end)
             .with_entities(func.sum(models.Service.price_gyd))
@@ -1436,17 +1447,6 @@ def generate_monthly_bills(db: Session, month: date):
         service_charge_pct = get_platform_service_charge_percentage(db)
         fee_rate = service_charge_pct / Decimal("100")
         fee = fee_rate * Decimal(str(total))
-
-        existing_bill = (
-            db.query(models.Bill)
-            .filter(
-                models.Bill.provider_id == prov.id,
-                models.Bill.month == start,
-            )
-            .first()
-        )
-        if existing_bill:
-            continue
 
         # If there's nothing to bill and no existing bill, skip
         if total == 0:
@@ -1464,8 +1464,25 @@ def generate_monthly_bills(db: Session, month: date):
             is_paid=False,
         )
         db.add(bill)
-        db.commit()
-        db.refresh(bill)
+        try:
+            db.commit()
+            db.refresh(bill)
+        except IntegrityError:
+            db.rollback()
+            bill = (
+                db.query(models.Bill)
+                .filter(
+                    models.Bill.provider_id == prov.id,
+                    models.Bill.month == start,
+                )
+                .first()
+            )
+            if bill:
+                continue
+            raise
+
+        if prov.account_number:
+            get_or_create_billing_cycle(db, prov.account_number, start)
 
         credits_applied = Decimal(str(get_provider_credit_balance(db, prov.id) or 0))
         if credits_applied < 0:

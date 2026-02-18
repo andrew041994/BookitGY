@@ -1,9 +1,8 @@
 from datetime import datetime, timedelta
-from datetime import datetime, timedelta
+from decimal import Decimal
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy.orm import sessionmaker
 
 from app.utils.time import now_guyana
 
@@ -859,46 +858,103 @@ def test_generate_monthly_bill_creates_persistent_row(db_session):
     assert bill.due_date == datetime(2023, 2, 15, 23, 59)
 
 
-def test_bill_persists_across_sessions(db_session):
+def test_generate_is_idempotent(db_session):
     session, models, crud = db_session
     provider, customer, service = _create_provider_graph(session, models)
 
     billing_month = datetime(2023, 1, 1)
-    bill = _generate_bill_for_month(
+    _create_completed_booking_for_month(
         session,
         models,
-        crud,
-        provider,
-        customer,
-        service,
-        billing_month,
-        [1200],
+        customer=customer,
+        service=service,
+        month_start=billing_month,
+        day=2,
+        price_gyd=1200,
     )
 
-    original_total = float(bill.total_gyd)
-    bill_id = bill.id
+    crud.generate_monthly_bills(session, month=billing_month.date())
 
-    SessionMaker = sessionmaker(bind=session.bind, autocommit=False, autoflush=False)
-    session.close()
-
-    with SessionMaker() as new_session:
-        persisted = (
-            new_session.query(models.Bill)
-            .filter(
-                models.Bill.provider_id == provider.id,
-                models.Bill.month == billing_month.date(),
-            )
-            .one()
+    first = (
+        session.query(models.Bill)
+        .filter(
+            models.Bill.provider_id == provider.id,
+            models.Bill.month == billing_month.date(),
         )
+        .one()
+    )
+    first_id = first.id
+    first_total = float(first.total_gyd)
+    first_fee = float(first.fee_gyd)
+    first_due = first.due_date
 
-        assert persisted.id == bill_id
-        assert float(persisted.total_gyd) == original_total
-        assert (
-            new_session.query(models.Bill)
-            .filter(models.Bill.provider_id == provider.id)
-            .count()
-            == 1
+    crud.generate_monthly_bills(session, month=billing_month.date())
+
+    bills = (
+        session.query(models.Bill)
+        .filter(
+            models.Bill.provider_id == provider.id,
+            models.Bill.month == billing_month.date(),
         )
+        .all()
+    )
+
+    assert len(bills) == 1
+    assert bills[0].id == first_id
+    assert float(bills[0].total_gyd) == first_total
+    assert float(bills[0].fee_gyd) == first_fee
+    assert bills[0].due_date == first_due
+
+
+def test_existing_bill_not_modified(db_session):
+    session, models, crud = db_session
+    provider, customer, service = _create_provider_graph(session, models)
+
+    billing_month = datetime(2023, 1, 1)
+
+    _create_completed_booking_for_month(
+        session,
+        models,
+        customer=customer,
+        service=service,
+        month_start=billing_month,
+        day=2,
+        price_gyd=1800,
+    )
+
+    original_due = datetime(2023, 2, 20, 12, 0)
+    existing = models.Bill(
+        provider_id=provider.id,
+        month=billing_month.date(),
+        total_gyd=Decimal("321.00"),
+        fee_gyd=Decimal("45.00"),
+        due_date=original_due,
+        is_paid=False,
+    )
+    session.add(existing)
+    session.commit()
+
+    crud.generate_monthly_bills(session, month=billing_month.date())
+
+    persisted = (
+        session.query(models.Bill)
+        .filter(
+            models.Bill.provider_id == provider.id,
+            models.Bill.month == billing_month.date(),
+        )
+        .one()
+    )
+
+    assert float(persisted.total_gyd) == 321.0
+    assert float(persisted.fee_gyd) == 45.0
+    assert persisted.due_date == original_due
+    assert persisted.is_paid is False
+    assert (
+        session.query(models.Bill)
+        .filter(models.Bill.provider_id == provider.id, models.Bill.month == billing_month.date())
+        .count()
+        == 1
+    )
 
 
 def test_paid_bills_are_not_overwritten(db_session):
