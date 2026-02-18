@@ -1,4 +1,4 @@
-from datetime import timedelta
+from datetime import date, datetime, timedelta
 from sqlalchemy.orm import Session
 
 from app.database import SessionLocal, _ensure_tables_initialized
@@ -42,7 +42,12 @@ def send_upcoming_reminders():
     db.close()
 
 
-def run_billing_job():
+def run_billing_job(
+    target_month: date | datetime | None = None,
+    *,
+    force_regen: bool = False,
+    resend_email: bool = False,
+):
     """
     Recalculate monthly bills for all providers based on completed bookings.
 
@@ -54,7 +59,13 @@ def run_billing_job():
     db: Session = SessionLocal()
     try:
         today = now_guyana().date()
-        generate_monthly_bills(db, today)
+        generate_monthly_bills(
+            db,
+            month=today,
+            target_month=target_month,
+            force_regen=force_regen,
+            resend_email=resend_email,
+        )
     finally:
         db.close()
 

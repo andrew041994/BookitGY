@@ -1365,8 +1365,9 @@ def _send_monthly_bill_email_if_needed(
     fees_due: Decimal,
     credits_applied: Decimal,
     remaining_balance_due: Decimal,
+    resend_email: bool = False,
 ) -> bool:
-    if bill.emailed_at:
+    if bill.emailed_at and not resend_email:
         return False
 
     provider_user = provider.user or db.query(models.User).filter(models.User.id == provider.user_id).first()
@@ -1396,7 +1397,8 @@ def _send_monthly_bill_email_if_needed(
         )
         return False
 
-    bill.emailed_at = now_guyana()
+    if not bill.emailed_at:
+        bill.emailed_at = now_guyana()
     try:
         db.commit()
     except Exception:
@@ -1411,7 +1413,61 @@ def _send_monthly_bill_email_if_needed(
     return True
 
 
-def generate_monthly_bills(db: Session, month: date):
+def _month_bounds(month: date) -> tuple[date, date]:
+    start = date(month.year, month.month, 1)
+    if month.month == 12:
+        return start, date(month.year + 1, 1, 1)
+    return start, date(month.year, month.month + 1, 1)
+
+
+def _ensure_consumed_credit_for_cycle(
+    db: Session,
+    *,
+    provider_id: int,
+    cycle: models.BillingCycle | None,
+) -> None:
+    if not cycle:
+        return
+
+    credits_applied = Decimal(str(cycle.credits_applied_gyd or 0))
+    if credits_applied <= 0:
+        return
+
+    existing_consumption = (
+        db.query(models.BillCredit)
+        .filter(
+            models.BillCredit.provider_id == provider_id,
+            models.BillCredit.kind == BILL_CREDIT_KIND_CONSUMED,
+            models.BillCredit.billing_cycle_account_number == cycle.account_number,
+            models.BillCredit.billing_cycle_month == cycle.cycle_month,
+        )
+        .first()
+    )
+    if existing_consumption:
+        return
+
+    consumed_credit = models.BillCredit(
+        provider_id=provider_id,
+        amount_gyd=-credits_applied,
+        kind=BILL_CREDIT_KIND_CONSUMED,
+        billing_cycle_account_number=cycle.account_number,
+        billing_cycle_month=cycle.cycle_month,
+    )
+    db.add(consumed_credit)
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+
+
+def generate_monthly_bills(
+    db: Session,
+    month: date | None = None,
+    *,
+    target_month: date | datetime | None = None,
+    force_regen: bool = False,
+    resend_email: bool = False,
+):
     """
     Generate or update bills for all providers for the given month.
 
@@ -1423,14 +1479,9 @@ def generate_monthly_bills(db: Session, month: date):
     """
     providers = db.query(models.Provider).options(joinedload(models.Provider.user)).all()
 
-    # First day of this month
-    start = date(month.year, month.month, 1)
-
-    # First day of the next month
-    if month.month == 12:
-        next_month = date(month.year + 1, 1, 1)
-    else:
-        next_month = date(month.year, month.month + 1, 1)
+    selected_month = target_month or month or now_guyana().date()
+    start = _normalize_cycle_month(selected_month)
+    _, next_month = _month_bounds(start)
 
     start_dt = datetime(start.year, start.month, start.day)
     end_dt = datetime(next_month.year, next_month.month, next_month.day)
@@ -1454,6 +1505,28 @@ def generate_monthly_bills(db: Session, month: date):
             if prov.account_number:
                 cycle = get_billing_cycle_for_account(db, prov.account_number, start)
 
+            if force_regen and not bool(existing_bill.is_paid):
+                total = (
+                    _billable_bookings_base_query(db, prov.id, as_of=period_end)
+                    .with_entities(func.sum(models.Service.price_gyd))
+                    .filter(
+                        models.Booking.end_time >= start_dt,
+                        models.Booking.end_time < period_end,
+                    )
+                    .scalar()
+                    or 0
+                )
+                service_charge_pct = get_platform_service_charge_percentage(db)
+                fee_rate = service_charge_pct / Decimal("100")
+                fee = fee_rate * Decimal(str(total))
+
+                due = datetime(next_month.year, next_month.month, 15, 23, 59)
+                existing_bill.total_gyd = total
+                existing_bill.fee_gyd = fee
+                existing_bill.due_date = due
+                db.commit()
+                db.refresh(existing_bill)
+
             fees_due = Decimal(str(existing_bill.fee_gyd or 0))
             credits_applied = Decimal(str(cycle.credits_applied_gyd or 0)) if cycle else Decimal("0")
             remaining_balance_due = fees_due - credits_applied
@@ -1467,7 +1540,9 @@ def generate_monthly_bills(db: Session, month: date):
                 fees_due=fees_due,
                 credits_applied=credits_applied,
                 remaining_balance_due=remaining_balance_due,
+                resend_email=resend_email,
             )
+            _ensure_consumed_credit_for_cycle(db, provider_id=prov.id, cycle=cycle)
             continue
 
         total = (
@@ -1552,20 +1627,9 @@ def generate_monthly_bills(db: Session, month: date):
                 fees_due=fees_due,
                 credits_applied=credits_applied,
                 remaining_balance_due=remaining_balance_due,
+                resend_email=resend_email,
             )
-            if cycle and Decimal(str(cycle.credits_applied_gyd or 0)) > 0:
-                consumed_credit = models.BillCredit(
-                    provider_id=prov.id,
-                    amount_gyd=-Decimal(str(cycle.credits_applied_gyd)),
-                    kind=BILL_CREDIT_KIND_CONSUMED,
-                    billing_cycle_account_number=cycle.account_number,
-                    billing_cycle_month=cycle.cycle_month,
-                )
-                db.add(consumed_credit)
-                try:
-                    db.commit()
-                except IntegrityError:
-                    db.rollback()
+            _ensure_consumed_credit_for_cycle(db, provider_id=prov.id, cycle=cycle)
 
     db.commit()
 

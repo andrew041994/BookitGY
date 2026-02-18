@@ -1271,3 +1271,193 @@ def test_generate_monthly_bills_snapshots_partial_credit_coverage(db_session):
     assert cycle is not None
     assert float(cycle.credits_applied_gyd) == pytest.approx(30.0)
     assert crud._calculate_bill_total_due(session, bill, provider.id) == pytest.approx(30.0)
+
+
+def test_generate_monthly_bills_rerun_job_invariants(db_session, monkeypatch):
+    session, models, crud = db_session
+    provider, customer, service = _create_provider_graph(session, models)
+
+    provider_user = session.query(models.User).filter(models.User.id == provider.user_id).first()
+    provider_user.email = "provider@example.com"
+    session.commit()
+
+    billing_month = datetime(2023, 1, 1)
+    _create_completed_booking_for_month(
+        session,
+        models,
+        customer=customer,
+        service=service,
+        month_start=billing_month,
+        day=2,
+        price_gyd=800,
+    )
+    session.add(models.BillCredit(provider_id=provider.id, amount_gyd=Decimal("100.00")))
+    session.commit()
+
+    sent = []
+
+    def _fake_send_monthly_statement_email(to_email, **kwargs):
+        sent.append((to_email, kwargs))
+
+    monkeypatch.setattr(crud, "send_monthly_statement_email", _fake_send_monthly_statement_email)
+
+    for _ in range(3):
+        crud.generate_monthly_bills(session, target_month=billing_month.date())
+
+    cycle = crud.get_billing_cycle_for_account(session, provider.account_number, billing_month.date())
+    assert cycle is not None
+
+    cycle_rows = (
+        session.query(models.BillingCycle)
+        .filter(
+            models.BillingCycle.account_number == provider.account_number,
+            models.BillingCycle.cycle_month == billing_month.date(),
+        )
+        .all()
+    )
+    assert len(cycle_rows) == 1
+    assert float(cycle.credits_applied_gyd) == pytest.approx(80.0)
+
+    consumed_credits = (
+        session.query(models.BillCredit)
+        .filter(
+            models.BillCredit.provider_id == provider.id,
+            models.BillCredit.kind == crud.BILL_CREDIT_KIND_CONSUMED,
+            models.BillCredit.billing_cycle_account_number == cycle.account_number,
+            models.BillCredit.billing_cycle_month == cycle.cycle_month,
+        )
+        .all()
+    )
+    assert len(consumed_credits) == 1
+    assert float(consumed_credits[0].amount_gyd) == pytest.approx(-80.0)
+    assert len(sent) == 1
+
+
+def test_generate_monthly_bills_force_regen_updates_unpaid_bill_without_resnapshotting_credits(db_session):
+    session, models, crud = db_session
+    provider, customer, service = _create_provider_graph(session, models)
+
+    billing_month = datetime(2023, 1, 1)
+    _create_completed_booking_for_month(
+        session,
+        models,
+        customer=customer,
+        service=service,
+        month_start=billing_month,
+        day=2,
+        price_gyd=700,
+    )
+    session.add(models.BillCredit(provider_id=provider.id, amount_gyd=Decimal("200.00")))
+    session.commit()
+
+    crud.generate_monthly_bills(session, target_month=billing_month.date())
+
+    bill = (
+        session.query(models.Bill)
+        .filter(models.Bill.provider_id == provider.id, models.Bill.month == billing_month.date())
+        .one()
+    )
+    cycle = crud.get_billing_cycle_for_account(session, provider.account_number, billing_month.date())
+    assert cycle is not None
+
+    original_total = float(bill.total_gyd)
+    original_fee = float(bill.fee_gyd)
+    original_due_date = bill.due_date
+    original_credit_snapshot = float(cycle.credits_applied_gyd)
+
+    _create_completed_booking_for_month(
+        session,
+        models,
+        customer=customer,
+        service=service,
+        month_start=billing_month,
+        day=10,
+        price_gyd=900,
+    )
+
+    crud.generate_monthly_bills(session, target_month=billing_month.date(), force_regen=False)
+    session.refresh(bill)
+    session.refresh(cycle)
+    assert float(bill.total_gyd) == pytest.approx(original_total)
+    assert float(bill.fee_gyd) == pytest.approx(original_fee)
+    assert float(cycle.credits_applied_gyd) == pytest.approx(original_credit_snapshot)
+
+    consumed_count_before = (
+        session.query(models.BillCredit)
+        .filter(
+            models.BillCredit.provider_id == provider.id,
+            models.BillCredit.kind == crud.BILL_CREDIT_KIND_CONSUMED,
+            models.BillCredit.billing_cycle_account_number == cycle.account_number,
+            models.BillCredit.billing_cycle_month == cycle.cycle_month,
+        )
+        .count()
+    )
+
+    crud.generate_monthly_bills(session, target_month=billing_month.date(), force_regen=True)
+    session.refresh(bill)
+    session.refresh(cycle)
+
+    assert float(bill.total_gyd) > original_total
+    assert float(bill.fee_gyd) > original_fee
+    assert bill.due_date == original_due_date
+    assert float(cycle.credits_applied_gyd) == pytest.approx(original_credit_snapshot)
+
+    consumed_count_after = (
+        session.query(models.BillCredit)
+        .filter(
+            models.BillCredit.provider_id == provider.id,
+            models.BillCredit.kind == crud.BILL_CREDIT_KIND_CONSUMED,
+            models.BillCredit.billing_cycle_account_number == cycle.account_number,
+            models.BillCredit.billing_cycle_month == cycle.cycle_month,
+        )
+        .count()
+    )
+    assert consumed_count_after == consumed_count_before
+
+
+def test_generate_monthly_bills_force_regen_skips_paid_bill(db_session):
+    session, models, crud = db_session
+    provider, customer, service = _create_provider_graph(session, models)
+
+    billing_month = datetime(2023, 1, 1)
+    _create_completed_booking_for_month(
+        session,
+        models,
+        customer=customer,
+        service=service,
+        month_start=billing_month,
+        day=2,
+        price_gyd=700,
+    )
+
+    crud.generate_monthly_bills(session, target_month=billing_month.date())
+
+    bill = (
+        session.query(models.Bill)
+        .filter(models.Bill.provider_id == provider.id, models.Bill.month == billing_month.date())
+        .one()
+    )
+    bill.is_paid = True
+    session.commit()
+
+    original_total = float(bill.total_gyd)
+    original_fee = float(bill.fee_gyd)
+    original_due_date = bill.due_date
+
+    _create_completed_booking_for_month(
+        session,
+        models,
+        customer=customer,
+        service=service,
+        month_start=billing_month,
+        day=10,
+        price_gyd=900,
+    )
+
+    crud.generate_monthly_bills(session, target_month=billing_month.date(), force_regen=True)
+    session.refresh(bill)
+
+    assert bill.is_paid is True
+    assert float(bill.total_gyd) == pytest.approx(original_total)
+    assert float(bill.fee_gyd) == pytest.approx(original_fee)
+    assert bill.due_date == original_due_date
