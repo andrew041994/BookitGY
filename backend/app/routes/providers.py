@@ -396,7 +396,9 @@ def get_provider_billing_cycles(
     db: Session = Depends(get_db),
     provider: models.Provider = Depends(_require_current_provider),
 ):
-    return crud.list_provider_billing_cycles(
+    from app import crud as live_crud
+
+    return live_crud.list_provider_billing_cycles(
         db, provider, limit=limit, include_future=include_future
     )
 

@@ -44,7 +44,7 @@ if is_postgres:
             cursor.close()
 
     event.listen(engine, "connect", _set_guyana_timezone)
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, expire_on_commit=False, bind=engine)
 Base = declarative_base()
 
 
@@ -69,7 +69,7 @@ def get_db():
 #     engine_kwargs["connect_args"] = {"check_same_thread": False}
 
 # engine = create_engine(DATABASE_URL, **engine_kwargs)
-# SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+# SessionLocal = sessionmaker(autocommit=False, autoflush=False, expire_on_commit=False, bind=engine)
 # Base = declarative_base()
 
 

@@ -8,19 +8,16 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from app.config import get_settings
 from app.database import get_db, SessionLocal
 from app import crud, schemas, models
-from app.routes import auth as auth_routes
-from app.routes import users as users_routes
-from app.routes import providers as providers_routes
-from app.routes import bookings as bookings_routes
-from app.routes import profile as profile_routes
-from app.routes import admin as admin_routes
+import importlib
+
+auth_routes = importlib.import_module("app.routes.auth")
+users_routes = importlib.import_module("app.routes.users")
+providers_routes = importlib.import_module("app.routes.providers")
+bookings_routes = importlib.import_module("app.routes.bookings")
+profile_routes = importlib.import_module("app.routes.profile")
+admin_routes = importlib.import_module("app.routes.admin")
 from app.security import get_current_user_from_header
 from app.workers.cron import registerCronJobs
-from sqlalchemy.orm import Session
-from app.database import SessionLocal
-from app import crud, schemas
-from app.config import get_settings
-
 settings = get_settings()
 
 app = FastAPI(title="BookitGY")

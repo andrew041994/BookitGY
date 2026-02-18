@@ -1982,10 +1982,6 @@ def list_provider_billing_cycles(
             "cycles": [],
         }
 
-    ensure_billing_cycles_for_accounts(
-        db, [account_number], current_billing_cycle_month()
-    )
-
     billing_cycles_query = db.query(models.BillingCycle).filter(
         models.BillingCycle.account_number == account_number
     )
@@ -2693,15 +2689,11 @@ def cancel_booking_for_customer(
     )
 
     if provider_user and service and customer and provider_user.whatsapp:
-     send_whatsapp_template(
-        to=provider_user.whatsapp,
-        template_sid=os.environ["TWILIO_WA_TPL_PROVIDER_CUSTOMER_CANCELLED"],
-        variables={
-            "1": get_display_name(customer),
-            "2": service.name,
-            "3": booking.start_time.strftime("%d %b %Y at %I:%M %p"),
-        },
-    )
+        send_whatsapp(
+            provider_user.whatsapp,
+            f"{get_display_name(customer)} cancelled {service.name} on "
+            f"{booking.start_time.strftime('%d %b %Y at %I:%M %p')}",
+        )
 
 
     if provider_user and service and customer:
@@ -2777,14 +2769,12 @@ def cancel_booking_for_provider(
     _refresh_bill_for_booking(db, booking)
 
     if customer and service and customer.whatsapp:
-     send_whatsapp_template(
-        to=customer.whatsapp,
-        template_sid=os.environ["TWILIO_WA_TPL_CUSTOMER_PROVIDER_CANCELLED"],
-        variables={
-            "1": service.name,
-            "2": booking.start_time.strftime("%d %b %Y at %I:%M %p"),
-        },
-    )
+        send_whatsapp(
+            customer.whatsapp,
+            "Your provider cancelled "
+            f"{service.name} scheduled for "
+            f"{booking.start_time.strftime('%d %b %Y at %I:%M %p')}",
+        )
 
 
     if customer and service:
