@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from apscheduler.schedulers.background import BackgroundScheduler
 
 from app.config import get_settings
+from app.auth.jwt_config import get_jwt_secret_key
 from app.database import get_db, SessionLocal
 from app import crud, schemas, models
 import importlib
@@ -19,6 +20,7 @@ admin_routes = importlib.import_module("app.routes.admin")
 from app.security import get_current_user_from_header
 from app.workers.cron import registerCronJobs
 settings = get_settings()
+get_jwt_secret_key()
 
 app = FastAPI(title="BookitGY")
 scheduler = BackgroundScheduler()

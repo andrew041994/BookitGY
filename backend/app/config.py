@@ -45,15 +45,13 @@ class Settings:
         # -----------------------------
         # 🔐 AUTH / JWT — STRONG SECRET REQUIRED
         # -----------------------------
-        legacy_secret = os.getenv("JWT_SECRET")
-        env_secret = os.getenv("JWT_SECRET_KEY") or legacy_secret
+        env_secret = (os.getenv("JWT_SECRET_KEY") or "").strip()
 
         # Require a strong JWT secret in ALL environments
         if not env_secret or len(env_secret) < 32:
             raise RuntimeError(
                 "JWT secret is not set or is too weak. "
-                "Set JWT_SECRET_KEY (or legacy JWT_SECRET) to a strong value "
-                "at least 32 characters long."
+                "Set JWT_SECRET_KEY to a strong value at least 32 characters long."
             )
 
         self.JWT_SECRET_KEY: str = env_secret

@@ -11,6 +11,7 @@ import secrets
 import requests
 
 from app.config import get_settings
+from app.auth.jwt_config import get_jwt_algorithm, get_jwt_secret_key
 from app.database import get_db
 from app import crud, schemas, models
 from app.security import get_current_user_from_header
@@ -25,6 +26,7 @@ from app.utils.tokens import (
     is_reset_token_expired,
     normalize_utc,
 )
+
 from app.utils.time import GUYANA_TIMEZONE
 
 router = APIRouter(tags=["auth"])
@@ -206,22 +208,21 @@ def _create_access_token(subject: str, token_version: int, user_id: int) -> str:
     - exp: expiration time
     - iat: issued-at timestamp (seconds since epoch)
     """
-    aware_now = datetime.now(GUYANA_TIMEZONE)
-    now = aware_now.replace(tzinfo=None)
-    expire = now + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+    issued_at = datetime.now(timezone.utc)
+    expire = issued_at + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
 
     payload = {
         "sub": subject,
-        "exp": expire,               # jose can handle datetime
-        "iat": int(aware_now.timestamp()), # numeric timestamp for freshness checks
+        "exp": int(expire.timestamp()),
+        "iat": int(issued_at.timestamp()),
         "tv": token_version,
         "uid": user_id,
     }
 
     return jwt.encode(
         payload,
-        settings.JWT_SECRET_KEY,
-        algorithm=settings.JWT_ALGORITHM,
+        get_jwt_secret_key(),
+        algorithm=get_jwt_algorithm(),
     )
 
 def _create_email_verification_token(email: str) -> str:
@@ -239,7 +240,7 @@ def _create_email_verification_token(email: str) -> str:
     return jwt.encode(
         payload,
         settings.EMAIL_TOKEN_SECRET,
-        algorithm=settings.JWT_ALGORITHM,
+        algorithm=get_jwt_algorithm(),
     
     )
 
@@ -249,7 +250,7 @@ def _decode_email_verification_token(token: str) -> str:
         payload = jwt.decode(
             token,
             settings.EMAIL_TOKEN_SECRET,
-            algorithms=[settings.JWT_ALGORITHM],
+            algorithms=[get_jwt_algorithm()],
         )
     except JWTError:
         raise HTTPException(
