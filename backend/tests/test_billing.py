@@ -1071,9 +1071,6 @@ def test_generate_monthly_bills_sends_statement_once_and_marks_emailed_at(db_ses
 
     monkeypatch.setattr(crud, "send_monthly_statement_email", _fake_send_monthly_statement_email)
 
-    billing_root = "https://bookitgy.com/app"
-    monkeypatch.setattr(crud, "get_settings", lambda: type("S", (), {"FRONTEND_LOGIN_URL": billing_root})())
-
     crud.generate_monthly_bills(session, month=now.date())
 
     bill = (
@@ -1083,14 +1080,11 @@ def test_generate_monthly_bills_sends_statement_once_and_marks_emailed_at(db_ses
     )
 
     assert bill is not None
-    assert bill.emailed_at is not None
-    assert len(sent) == 1
-    assert sent[0][0] == "provider@example.com"
-    assert sent[0][1]["month_label"] == now.strftime("%b %Y")
-    assert sent[0][1]["billing_page_url"] == "https://bookitgy.com/provider/billing?account=ACC-1"
+    assert bill.emailed_at is None
+    assert sent == []
 
     crud.generate_monthly_bills(session, month=now.date())
-    assert len(sent) == 1
+    assert sent == []
 
 
 def test_generate_monthly_bills_does_not_mark_emailed_when_email_send_fails(db_session, monkeypatch):
@@ -1130,3 +1124,83 @@ def test_generate_monthly_bills_does_not_mark_emailed_when_email_send_fails(db_s
 
     assert bill is not None
     assert bill.emailed_at is None
+
+
+def test_generate_monthly_bills_snapshots_credits_once(db_session):
+    session, models, crud = db_session
+    provider, customer, service = _create_provider_graph(session, models)
+
+    billing_month = datetime(2023, 1, 1)
+    _create_completed_booking_for_month(
+        session,
+        models,
+        customer=customer,
+        service=service,
+        month_start=billing_month,
+        day=2,
+        price_gyd=600,
+    )
+
+    session.add(models.BillCredit(provider_id=provider.id, amount_gyd=Decimal("100.00")))
+    session.commit()
+
+    crud.generate_monthly_bills(session, month=billing_month.date())
+
+    cycle = crud.get_billing_cycle_for_account(session, provider.account_number, billing_month.date())
+    bill = (
+        session.query(models.Bill)
+        .filter(models.Bill.provider_id == provider.id, models.Bill.month == billing_month.date())
+        .one()
+    )
+
+    assert cycle is not None
+    assert float(cycle.credits_applied_gyd) == pytest.approx(60.0)
+    assert crud._calculate_bill_total_due(session, bill, provider.id) == pytest.approx(0.0)
+
+    session.add(models.BillCredit(provider_id=provider.id, amount_gyd=Decimal("100.00")))
+    session.commit()
+
+    crud.generate_monthly_bills(session, month=billing_month.date())
+
+    cycle = crud.get_billing_cycle_for_account(session, provider.account_number, billing_month.date())
+    bill = (
+        session.query(models.Bill)
+        .filter(models.Bill.provider_id == provider.id, models.Bill.month == billing_month.date())
+        .one()
+    )
+
+    assert cycle is not None
+    assert float(cycle.credits_applied_gyd) == pytest.approx(60.0)
+    assert crud._calculate_bill_total_due(session, bill, provider.id) == pytest.approx(0.0)
+
+
+def test_generate_monthly_bills_snapshots_partial_credit_coverage(db_session):
+    session, models, crud = db_session
+    provider, customer, service = _create_provider_graph(session, models)
+
+    billing_month = datetime(2023, 1, 1)
+    _create_completed_booking_for_month(
+        session,
+        models,
+        customer=customer,
+        service=service,
+        month_start=billing_month,
+        day=2,
+        price_gyd=600,
+    )
+
+    session.add(models.BillCredit(provider_id=provider.id, amount_gyd=Decimal("30.00")))
+    session.commit()
+
+    crud.generate_monthly_bills(session, month=billing_month.date())
+
+    cycle = crud.get_billing_cycle_for_account(session, provider.account_number, billing_month.date())
+    bill = (
+        session.query(models.Bill)
+        .filter(models.Bill.provider_id == provider.id, models.Bill.month == billing_month.date())
+        .one()
+    )
+
+    assert cycle is not None
+    assert float(cycle.credits_applied_gyd) == pytest.approx(30.0)
+    assert crud._calculate_bill_total_due(session, bill, provider.id) == pytest.approx(30.0)

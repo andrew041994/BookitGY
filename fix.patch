@@ -1,63 +1,176 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
-diff --git a/backend/app/routes/providers.py b/backend/app/routes/providers.py
-index 7d818f35007bcfaea7475fff067b1e870cba0057..035daee171124ab6f4bf362813d1f8b3b40fcbc0 100644
---- a/backend/app/routes/providers.py
-+++ b/backend/app/routes/providers.py
-@@ -374,51 +374,53 @@ def get_my_provider_summary(
- ):
-     total_fees_due = crud.get_provider_fees_due(db, provider.id)
-     credit_balance = crud.get_provider_credit_balance(db, provider.id)
-     service_charge_pct = crud.get_platform_service_charge_percentage(db)
+diff --git a/backend/tests/test_billing.py b/backend/tests/test_billing.py
+index 3e42018163c34a87e5f00f71bf0c7945a409c2fa..93d32e5efdf3716fa80cfb72b1696640daf5b956 100644
+--- a/backend/tests/test_billing.py
++++ b/backend/tests/test_billing.py
+@@ -1049,84 +1049,158 @@ def test_generate_monthly_bills_sends_statement_once_and_marks_emailed_at(db_ses
+     provider_user = session.query(models.User).filter(models.User.id == provider.user_id).first()
+     provider_user.email = "provider@example.com"
+     session.commit()
  
-     return {
-         "account_number": provider.account_number,
-         "total_fees_due_gyd": float(total_fees_due or 0.0),
-         "total_credit_balance_gyd": float(credit_balance or 0.0),
-         "service_charge_percentage": float(service_charge_pct),
-         "service_charge_percent": float(service_charge_pct),
-         "service_charge_rate": float(service_charge_pct) / 100,
-     }
+     now = now_guyana()
+     start_time = _current_month_past_time(now)
+     end_time = start_time + timedelta(hours=1)
  
- 
- @router.get(
-     "/providers/me/billing/cycles",
-     response_model=schemas.ProviderBillingCyclesResponse,
- )
- def get_provider_billing_cycles(
-     limit: int = Query(6, ge=1, le=24),
-     include_future: bool = Query(False),
-     db: Session = Depends(get_db),
-     provider: models.Provider = Depends(_require_current_provider),
- ):
--    return crud.list_provider_billing_cycles(
-+    from app import crud as live_crud
-+
-+    return live_crud.list_provider_billing_cycles(
-         db, provider, limit=limit, include_future=include_future
+     _add_booking(
+         session,
+         models,
+         customer=customer,
+         service=service,
+         start_time=start_time,
+         end_time=end_time,
+         status="completed",
      )
  
+     sent = []
  
- # -------------------------------------------------------------------
- # Provider "me" location pin
- # -------------------------------------------------------------------
+     def _fake_send_monthly_statement_email(to_email, **kwargs):
+         sent.append((to_email, kwargs))
  
- @router.put("/providers/me/location", response_model=schemas.ProviderLocationUpdate)
- def update_my_location(
-     payload: schemas.ProviderLocationUpdate,
-     db: Session = Depends(get_db),
-     current_user: models.User = Depends(get_current_user_from_header),
- ):
-     """
-     Update the current provider's pinned map location (lat/long and optional text).
+     monkeypatch.setattr(crud, "send_monthly_statement_email", _fake_send_monthly_statement_email)
  
-     This:
-     - Only works for users marked as providers.
-     - Stores coordinates on the User record (lat, long, location).
-     """
-     if not current_user.is_provider:
-         raise HTTPException(
-             status_code=403,
-             detail="Only providers can pin their location.",
+-    billing_root = "https://bookitgy.com/app"
+-    monkeypatch.setattr(crud, "get_settings", lambda: type("S", (), {"FRONTEND_LOGIN_URL": billing_root})())
+-
+     crud.generate_monthly_bills(session, month=now.date())
+ 
+     bill = (
+         session.query(models.Bill)
+         .filter(models.Bill.provider_id == provider.id, models.Bill.month == now.date().replace(day=1))
+         .first()
+     )
+ 
+     assert bill is not None
+-    assert bill.emailed_at is not None
+-    assert len(sent) == 1
+-    assert sent[0][0] == "provider@example.com"
+-    assert sent[0][1]["month_label"] == now.strftime("%b %Y")
+-    assert sent[0][1]["billing_page_url"] == "https://bookitgy.com/provider/billing?account=ACC-1"
++    assert bill.emailed_at is None
++    assert sent == []
+ 
+     crud.generate_monthly_bills(session, month=now.date())
+-    assert len(sent) == 1
++    assert sent == []
+ 
+ 
+ def test_generate_monthly_bills_does_not_mark_emailed_when_email_send_fails(db_session, monkeypatch):
+     session, models, crud = db_session
+     provider, customer, service = _create_provider_graph(session, models)
+ 
+     provider_user = session.query(models.User).filter(models.User.id == provider.user_id).first()
+     provider_user.email = "provider@example.com"
+     session.commit()
+ 
+     now = now_guyana()
+     start_time = _current_month_past_time(now)
+     end_time = start_time + timedelta(hours=1)
+ 
+     _add_booking(
+         session,
+         models,
+         customer=customer,
+         service=service,
+         start_time=start_time,
+         end_time=end_time,
+         status="completed",
+     )
+ 
+     def _failing_send(*args, **kwargs):
+         raise RuntimeError("sendgrid failed")
+ 
+     monkeypatch.setattr(crud, "send_monthly_statement_email", _failing_send)
+ 
+     crud.generate_monthly_bills(session, month=now.date())
+ 
+     bill = (
+         session.query(models.Bill)
+         .filter(models.Bill.provider_id == provider.id, models.Bill.month == now.date().replace(day=1))
+         .first()
+     )
+ 
+     assert bill is not None
+     assert bill.emailed_at is None
++
++
++def test_generate_monthly_bills_snapshots_credits_once(db_session):
++    session, models, crud = db_session
++    provider, customer, service = _create_provider_graph(session, models)
++
++    billing_month = datetime(2023, 1, 1)
++    _create_completed_booking_for_month(
++        session,
++        models,
++        customer=customer,
++        service=service,
++        month_start=billing_month,
++        day=2,
++        price_gyd=600,
++    )
++
++    session.add(models.BillCredit(provider_id=provider.id, amount_gyd=Decimal("100.00")))
++    session.commit()
++
++    crud.generate_monthly_bills(session, month=billing_month.date())
++
++    cycle = crud.get_billing_cycle_for_account(session, provider.account_number, billing_month.date())
++    bill = (
++        session.query(models.Bill)
++        .filter(models.Bill.provider_id == provider.id, models.Bill.month == billing_month.date())
++        .one()
++    )
++
++    assert cycle is not None
++    assert float(cycle.credits_applied_gyd) == pytest.approx(60.0)
++    assert crud._calculate_bill_total_due(session, bill, provider.id) == pytest.approx(0.0)
++
++    session.add(models.BillCredit(provider_id=provider.id, amount_gyd=Decimal("100.00")))
++    session.commit()
++
++    crud.generate_monthly_bills(session, month=billing_month.date())
++
++    cycle = crud.get_billing_cycle_for_account(session, provider.account_number, billing_month.date())
++    bill = (
++        session.query(models.Bill)
++        .filter(models.Bill.provider_id == provider.id, models.Bill.month == billing_month.date())
++        .one()
++    )
++
++    assert cycle is not None
++    assert float(cycle.credits_applied_gyd) == pytest.approx(60.0)
++    assert crud._calculate_bill_total_due(session, bill, provider.id) == pytest.approx(0.0)
++
++
++def test_generate_monthly_bills_snapshots_partial_credit_coverage(db_session):
++    session, models, crud = db_session
++    provider, customer, service = _create_provider_graph(session, models)
++
++    billing_month = datetime(2023, 1, 1)
++    _create_completed_booking_for_month(
++        session,
++        models,
++        customer=customer,
++        service=service,
++        month_start=billing_month,
++        day=2,
++        price_gyd=600,
++    )
++
++    session.add(models.BillCredit(provider_id=provider.id, amount_gyd=Decimal("30.00")))
++    session.commit()
++
++    crud.generate_monthly_bills(session, month=billing_month.date())
++
++    cycle = crud.get_billing_cycle_for_account(session, provider.account_number, billing_month.date())
++    bill = (
++        session.query(models.Bill)
++        .filter(models.Bill.provider_id == provider.id, models.Bill.month == billing_month.date())
++        .one()
++    )
++
++    assert cycle is not None
++    assert float(cycle.credits_applied_gyd) == pytest.approx(30.0)
++    assert crud._calculate_bill_total_due(session, bill, provider.id) == pytest.approx(30.0)
  
 EOF
 )

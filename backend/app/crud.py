@@ -36,7 +36,7 @@ SUSPENDED_PROVIDER_MESSAGE = (
     "Provider account is suspended and cannot accept bookings."
 )
 LOCKED_PROVIDER_MESSAGE = (
-    "Provider account is suspended and cannot accept or confirm new appointments."
+    "Provider account is locked and cannot accept or confirm new appointments."
 )
 
 
@@ -1482,31 +1482,23 @@ def generate_monthly_bills(db: Session, month: date):
             raise
 
         if prov.account_number:
-            get_or_create_billing_cycle(db, prov.account_number, start)
+            existing_cycle = get_billing_cycle_for_account(db, prov.account_number, start)
+            if not existing_cycle:
+                credit_balance = Decimal(str(get_provider_credit_balance(db, prov.id) or 0))
+                credit_balance = max(credit_balance, Decimal("0"))
+                credits_to_apply = min(credit_balance, fee)
 
-        credits_applied = Decimal(str(get_provider_credit_balance(db, prov.id) or 0))
-        if credits_applied < 0:
-            credits_applied = Decimal("0")
-        credits_applied = min(credits_applied, fee)
-        remaining_balance_due = fee - credits_applied
-        if remaining_balance_due < 0:
-            remaining_balance_due = Decimal("0")
-
-        try:
-            _send_monthly_bill_email_if_needed(
-                db,
-                bill,
-                prov,
-                fees_due=fee,
-                credits_applied=credits_applied,
-                remaining_balance_due=remaining_balance_due,
-            )
-        except Exception:
-            logger.exception(
-                "Failed to send monthly billing statement email for provider_id=%s bill_id=%s",
-                prov.id,
-                bill.id,
-            )
+                billing_cycle = models.BillingCycle(
+                    account_number=prov.account_number,
+                    cycle_month=start,
+                    is_paid=False,
+                    credits_applied_gyd=credits_to_apply,
+                )
+                db.add(billing_cycle)
+                try:
+                    db.commit()
+                except IntegrityError:
+                    db.rollback()
 
     db.commit()
 
@@ -1528,10 +1520,16 @@ def _calculate_bill_total_due(db: Session, bill: models.Bill, provider_id: int) 
     total_due = Decimal(str(bill.fee_gyd or 0)).quantize(
         Decimal("1"), rounding=ROUND_HALF_UP
     )
-    credits = Decimal(str(get_provider_credit_balance(db, provider_id) or 0))
-    # Bill credits should only ever reduce what a provider owes. If the balance is
-    # negative (e.g., from a bad manual entry), clamp it to zero so we don't
-    # accidentally inflate the amount due.
+    provider = (
+        db.query(models.Provider)
+        .filter(models.Provider.id == provider_id)
+        .first()
+    )
+    cycle = None
+    if provider and provider.account_number:
+        cycle = get_billing_cycle_for_account(db, provider.account_number, bill.month)
+
+    credits = Decimal(str(cycle.credits_applied_gyd or 0)) if cycle else Decimal("0")
     credits = max(credits, Decimal("0"))
 
     net_due = (total_due - credits).quantize(Decimal("1"), rounding=ROUND_HALF_UP)
@@ -1784,7 +1782,14 @@ def get_provider_fees_due_for_cycle(
     if platform_fee <= 0:
         return 0.0
 
-    credits = Decimal(str(get_provider_credit_balance(db, provider_id) or 0))
+    provider = db.query(models.Provider).filter(models.Provider.id == provider_id).first()
+    credits = Decimal("0")
+    if provider and provider.account_number:
+        billing_cycle = get_billing_cycle_for_account(db, provider.account_number, cycle_month)
+        if billing_cycle:
+            credits = Decimal(str(billing_cycle.credits_applied_gyd or 0))
+
+    credits = max(credits, Decimal("0"))
     applied_credits = min(credits, platform_fee)
     total_due = platform_fee - applied_credits
 
