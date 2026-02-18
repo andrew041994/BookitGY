@@ -22,8 +22,10 @@ import {
   Share,
   Modal,
   FlatList,
+  AppState,
 } from "react-native";
 import * as ExpoLinking from "expo-linking";
+
 import {
   NavigationContainer,
   CommonActions,
@@ -5050,25 +5052,65 @@ const loadWorkingHours = async () => {
 
 
 
-const loadTodayBookings = async () => {
+const loadTodayBookings = useCallback(async () => {
   try {
     const authToken = await getAuthToken(token);
-    const res = await api.get(
-      `/providers/me/bookings/today`
-    );
+    if (!authToken) return;
+
+    const res = await api.get(`/providers/me/bookings/today`);
     setTodayBookings(res.data || []);
-  } catch (error) {
-    setTodayBookingsError(true);
+    setTodayError("");
+  } catch (err) {
+    setTodayError(err.response?.data?.detail || "Could not load today's bookings.");
   }
-};
+}, [token]);
 
-useEffect(() => {
-  const intervalId = setInterval(() => {
-    loadTodayBookings();
-  }, 60 * 1000);
 
-  return () => clearInterval(intervalId);
-}, []);
+
+const pollRef = useRef(null);
+
+useFocusEffect(
+  useCallback(() => {
+    let cancelled = false;
+
+    const startPolling = () => {
+      if (pollRef.current) clearInterval(pollRef.current);
+
+      // immediate fetch when focused
+      loadTodayBookings();
+
+      pollRef.current = setInterval(() => {
+        if (AppState.currentState === "active") {
+          loadTodayBookings();
+        }
+      }, 60 * 1000);
+    };
+
+    const stopPolling = () => {
+      if (pollRef.current) {
+        clearInterval(pollRef.current);
+        pollRef.current = null;
+      }
+    };
+
+    const onAppStateChange = (state) => {
+      if (cancelled) return;
+      if (state === "active") startPolling();
+      else stopPolling();
+    };
+
+    const sub = AppState.addEventListener("change", onAppStateChange);
+
+    startPolling();
+
+    return () => {
+      cancelled = true;
+      stopPolling();
+      sub.remove();
+    };
+  }, [loadTodayBookings])
+);
+
 
 
 const handleCancelBooking = (bookingId) => {
@@ -5811,7 +5853,7 @@ const loadUpcomingBookings = async () => {
     );
     setUpcomingBookings(res.data || []);
   } catch (error) {
-    setUpcomingBookingsError(true);
+    setUpcomingError(true);
   }
 };
 
