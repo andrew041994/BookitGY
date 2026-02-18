@@ -22,7 +22,6 @@ import {
   Share,
   Modal,
   FlatList,
-  AppState,
 } from "react-native";
 import * as ExpoLinking from "expo-linking";
 
@@ -4938,12 +4937,12 @@ const handleShareProfileLink = async () => {
 
   useFocusEffect(
   useCallback(() => {
-    // Re-fetch profile (and anything else you want live-updated)
+    // Re-fetch provider dashboard data when screen regains focus
+    loadTodayBookings();
+    loadUpcomingBookings();
+    loadProviderSummary();
+    loadBookings();
     loadProviderProfile();
-    // optional: also refresh bookings, summary, etc.
-    // loadTodayBookings();
-    // loadUpcomingBookings();
-    // loadProviderSummary();
 
     // No cleanup needed
     return () => {};
@@ -5064,52 +5063,6 @@ const loadTodayBookings = useCallback(async () => {
     setTodayError(err.response?.data?.detail || "Could not load today's bookings.");
   }
 }, [token]);
-
-
-
-const pollRef = useRef(null);
-
-useFocusEffect(
-  useCallback(() => {
-    let cancelled = false;
-
-    const startPolling = () => {
-      if (pollRef.current) clearInterval(pollRef.current);
-
-      // immediate fetch when focused
-      loadTodayBookings();
-
-      pollRef.current = setInterval(() => {
-        if (AppState.currentState === "active") {
-          loadTodayBookings();
-        }
-      }, 60 * 1000);
-    };
-
-    const stopPolling = () => {
-      if (pollRef.current) {
-        clearInterval(pollRef.current);
-        pollRef.current = null;
-      }
-    };
-
-    const onAppStateChange = (state) => {
-      if (cancelled) return;
-      if (state === "active") startPolling();
-      else stopPolling();
-    };
-
-    const sub = AppState.addEventListener("change", onAppStateChange);
-
-    startPolling();
-
-    return () => {
-      cancelled = true;
-      stopPolling();
-      sub.remove();
-    };
-  }, [loadTodayBookings])
-);
 
 
 

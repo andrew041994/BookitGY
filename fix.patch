@@ -1,30 +1,218 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
-diff --git a/backend/tests/test_jwt_roundtrip.py b/backend/tests/test_jwt_roundtrip.py
-new file mode 100644
-index 0000000000000000000000000000000000000000..7f0887bc3f29b0cd43a64836f3478e221b92b50b
---- /dev/null
-+++ b/backend/tests/test_jwt_roundtrip.py
-@@ -0,0 +1,20 @@
-+import importlib
-+
-+
-+def test_access_token_roundtrip_with_shared_jwt_config(monkeypatch):
-+    monkeypatch.setenv("JWT_SECRET_KEY", "a" * 32)
-+    monkeypatch.delenv("JWT_SECRET", raising=False)
-+    monkeypatch.setenv("ACCESS_TOKEN_EXPIRE_MINUTES", "5")
-+
-+    jwt_config = importlib.import_module("app.auth.jwt_config")
-+    jwt_config.get_jwt_config.cache_clear()
-+
-+    jwt_module = importlib.import_module("app.auth.jwt")
-+    token = jwt_module.create_access_token({"sub": "user@example.com", "uid": 123, "tv": 1})
-+    payload = jwt_module.decode_token(token)
-+
-+    assert payload["sub"] == "user@example.com"
-+    assert payload["uid"] == 123
-+    assert payload["tv"] == 1
-+    assert "exp" in payload
-+    assert "iat" in payload
+diff --git a/mobile/App.js b/mobile/App.js
+index b76daad7c8fdb96552f1fb3b2af84f29fb587097..89d74fc278fcf26e25d7d4cf3259310d639baaab 100644
+--- a/mobile/App.js
++++ b/mobile/App.js
+@@ -1,50 +1,49 @@
+ import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
+ 
+ import {
+   Text,
+   View,
+   StyleSheet,
+   TextInput,
+   Button,
+   Alert,
+   ActivityIndicator,
+   ScrollView,
+   TouchableOpacity,
+   Switch,
+   Linking,
+   Platform,
+   Image,
+   KeyboardAvoidingView,
+   TouchableWithoutFeedback,
+   Keyboard,
+   Pressable,
+   RefreshControl,
+   Share,
+   Modal,
+   FlatList,
+-  AppState,
+ } from "react-native";
+ import * as ExpoLinking from "expo-linking";
+ 
+ import {
+   NavigationContainer,
+   CommonActions,
+   useFocusEffect,
+   useIsFocused,
+ } from "@react-navigation/native";
+ import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
+ import { enableScreens } from "react-native-screens";
+ import axios from "axios";
+ import AsyncStorage from "@react-native-async-storage/async-storage";
+ import {
+   clearToken,
+   clearAllAuthTokens,
+   loadRefreshToken,
+   loadToken,
+   saveRefreshToken,
+   saveToken,
+ } from "./src/components/tokenStorage";
+ import ProviderCard from "./src/components/ProviderCard";
+ import * as Location from "expo-location";
+ import Constants from "expo-constants";
+ import * as ImagePicker from "expo-image-picker";
+@@ -4916,56 +4915,56 @@ const handleShareProfileLink = async () => {
+     if (showFlash) {
+       showFlash("error", "Could not share your profile link.");
+     }
+   }
+ };
+ 
+ 
+ 
+   useEffect(() => {
+     loadServices();
+     loadBookings();
+     loadWorkingHours();
+     loadTodayBookings();
+     loadUpcomingBookings(); 
+     loadProviderLocation(); 
+     loadProviderSummary();
+     loadProviderProfile();
+     loadCatalog();
+ 
+ 
+ 
+   }, []);
+ 
+   useFocusEffect(
+   useCallback(() => {
+-    // Re-fetch profile (and anything else you want live-updated)
++    // Re-fetch provider dashboard data when screen regains focus
++    loadTodayBookings();
++    loadUpcomingBookings();
++    loadProviderSummary();
++    loadBookings();
+     loadProviderProfile();
+-    // optional: also refresh bookings, summary, etc.
+-    // loadTodayBookings();
+-    // loadUpcomingBookings();
+-    // loadProviderSummary();
+ 
+     // No cleanup needed
+     return () => {};
+   }, [])
+ );
+ 
+   const handleRefresh = useCallback(async () => {
+     setRefreshing(true);
+ 
+     await Promise.all([
+       loadServices(),
+       loadBookings(),
+       loadWorkingHours(),
+       loadTodayBookings(),
+       loadUpcomingBookings(),
+       loadProviderSummary(),
+       loadProviderProfile(),
+       loadProviderLocation(),
+       loadCatalog(),
+     ]);
+ 
+     setRefreshing(false);
+   }, [
+     loadServices,
+     loadBookings,
+@@ -5045,96 +5044,50 @@ const loadWorkingHours = async () => {
+       "Could not load working hours.";
+     setHoursError(detail);
+     if (showFlash) showFlash("error", detail);
+   } finally {
+     setHoursLoading(false);
+   }
+ };
+ 
+ 
+ 
+ const loadTodayBookings = useCallback(async () => {
+   try {
+     const authToken = await getAuthToken(token);
+     if (!authToken) return;
+ 
+     const res = await api.get(`/providers/me/bookings/today`);
+     setTodayBookings(res.data || []);
+     setTodayError("");
+   } catch (err) {
+     setTodayError(err.response?.data?.detail || "Could not load today's bookings.");
+   }
+ }, [token]);
+ 
+ 
+ 
+-const pollRef = useRef(null);
+-
+-useFocusEffect(
+-  useCallback(() => {
+-    let cancelled = false;
+-
+-    const startPolling = () => {
+-      if (pollRef.current) clearInterval(pollRef.current);
+-
+-      // immediate fetch when focused
+-      loadTodayBookings();
+-
+-      pollRef.current = setInterval(() => {
+-        if (AppState.currentState === "active") {
+-          loadTodayBookings();
+-        }
+-      }, 60 * 1000);
+-    };
+-
+-    const stopPolling = () => {
+-      if (pollRef.current) {
+-        clearInterval(pollRef.current);
+-        pollRef.current = null;
+-      }
+-    };
+-
+-    const onAppStateChange = (state) => {
+-      if (cancelled) return;
+-      if (state === "active") startPolling();
+-      else stopPolling();
+-    };
+-
+-    const sub = AppState.addEventListener("change", onAppStateChange);
+-
+-    startPolling();
+-
+-    return () => {
+-      cancelled = true;
+-      stopPolling();
+-      sub.remove();
+-    };
+-  }, [loadTodayBookings])
+-);
+-
+-
+-
+ const handleCancelBooking = (bookingId) => {
+   Alert.alert(
+     "Cancel booking",
+     "Are you sure you want to cancel this booking?",
+     [
+       { text: "No", style: "cancel" },
+       {
+         text: "Yes, cancel",
+         style: "destructive",
+           onPress: async () => {
+           try {
+             const authToken = await getAuthToken(token);
+             if (!authToken) {
+               if (showFlash) showFlash("error", "No access token found.");
+               return;
+             }
+ 
+             await api.post(
+               `/providers/me/bookings/${bookingId}/cancel`,
+               {}
+             );
+ 
+             if (showFlash) showFlash("success", "Booking cancelled");
+ 
+             // 🔹 Optimistically remove from both lists so UI updates immediately
  
 EOF
 )
