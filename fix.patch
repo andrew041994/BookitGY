@@ -1,123 +1,62 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
-diff --git a/backend/tests/test_billing.py b/backend/tests/test_billing.py
-index d2239e4cd4f5634f2ee41f4ac7e45c1802c43a5e..fad11ff987d4512379619a65f2df193d6ca654ab 100644
---- a/backend/tests/test_billing.py
-+++ b/backend/tests/test_billing.py
-@@ -963,25 +963,114 @@ def test_bill_generation_does_not_delete_bookings(db_session):
-         day=2,
-         price_gyd=800,
-     )
-     second_booking = _create_completed_booking_for_month(
-         session,
-         models,
-         customer=customer,
-         service=service,
-         month_start=billing_month,
-         day=12,
-         price_gyd=1200,
-     )
+diff --git a/backend/app/models.py b/backend/app/models.py
+index b9736a9ffcf7dfefafff26280c2dfe777e108ab3..c93853b06d312845a1c2a75d8896e36592d5f8b2 100644
+--- a/backend/app/models.py
++++ b/backend/app/models.py
+@@ -153,51 +153,52 @@ class Bill(Base):
+     id = Column(Integer, primary_key=True, index=True)
+     provider_id = Column(Integer, ForeignKey("providers.id"))
+     month = Column(Date)  # first day of the month
+     total_gyd = Column(Numeric(10,2), default=0)
+     fee_gyd = Column(Numeric(10,2), default=0)
+     is_paid = Column(Boolean, default=False)
+     due_date = Column(DateTime)
+     emailed_at = Column(DateTime, nullable=True)
  
-     before_count = session.query(models.Booking).count()
  
-     crud.generate_monthly_bills(session, month=billing_month.date())
+ class BillCredit(Base):
+     __tablename__ = "bill_credits"
  
-     after_count = session.query(models.Booking).count()
-     assert after_count == before_count
-     assert {
-         booking.id
-         for booking in session.query(models.Booking)
-         .filter(models.Booking.id.in_([first_booking.id, second_booking.id]))
-         .all()
-     } == {first_booking.id, second_booking.id}
-+
-+def test_generate_monthly_bills_sends_statement_once_and_marks_emailed_at(db_session, monkeypatch):
-+    session, models, crud = db_session
-+    provider, customer, service = _create_provider_graph(session, models)
-+
-+    provider_user = session.query(models.User).filter(models.User.id == provider.user_id).first()
-+    provider_user.email = "provider@example.com"
-+    session.commit()
-+
-+    now = now_guyana()
-+    start_time = _current_month_past_time(now)
-+    end_time = start_time + timedelta(hours=1)
-+
-+    _add_booking(
-+        session,
-+        models,
-+        customer=customer,
-+        service=service,
-+        start_time=start_time,
-+        end_time=end_time,
-+        status="completed",
-+    )
-+
-+    sent = []
-+
-+    def _fake_send_monthly_statement_email(to_email, **kwargs):
-+        sent.append((to_email, kwargs))
-+
-+    monkeypatch.setattr(crud, "send_monthly_statement_email", _fake_send_monthly_statement_email)
-+
-+    billing_root = "https://bookitgy.com/app"
-+    monkeypatch.setattr(crud, "get_settings", lambda: type("S", (), {"FRONTEND_LOGIN_URL": billing_root})())
-+
-+    crud.generate_monthly_bills(session, month=now.date())
-+
-+    bill = (
-+        session.query(models.Bill)
-+        .filter(models.Bill.provider_id == provider.id, models.Bill.month == now.date().replace(day=1))
-+        .first()
-+    )
-+
-+    assert bill is not None
-+    assert bill.emailed_at is not None
-+    assert len(sent) == 1
-+    assert sent[0][0] == "provider@example.com"
-+    assert sent[0][1]["month_label"] == now.strftime("%b %Y")
-+    assert sent[0][1]["billing_page_url"] == "https://bookitgy.com/provider/billing?account=ACC-1"
-+
-+    crud.generate_monthly_bills(session, month=now.date())
-+    assert len(sent) == 1
-+
-+
-+def test_generate_monthly_bills_does_not_mark_emailed_when_email_send_fails(db_session, monkeypatch):
-+    session, models, crud = db_session
-+    provider, customer, service = _create_provider_graph(session, models)
-+
-+    provider_user = session.query(models.User).filter(models.User.id == provider.user_id).first()
-+    provider_user.email = "provider@example.com"
-+    session.commit()
-+
-+    now = now_guyana()
-+    start_time = _current_month_past_time(now)
-+    end_time = start_time + timedelta(hours=1)
-+
-+    _add_booking(
-+        session,
-+        models,
-+        customer=customer,
-+        service=service,
-+        start_time=start_time,
-+        end_time=end_time,
-+        status="completed",
-+    )
-+
-+    def _failing_send(*args, **kwargs):
-+        raise RuntimeError("sendgrid failed")
-+
-+    monkeypatch.setattr(crud, "send_monthly_statement_email", _failing_send)
-+
-+    crud.generate_monthly_bills(session, month=now.date())
-+
-+    bill = (
-+        session.query(models.Bill)
-+        .filter(models.Bill.provider_id == provider.id, models.Bill.month == now.date().replace(day=1))
-+        .first()
-+    )
-+
-+    assert bill is not None
-+    assert bill.emailed_at is None
+     id = Column(Integer, primary_key=True, index=True)
+     provider_id = Column(Integer, ForeignKey("providers.id"), nullable=False)
+     amount_gyd = Column(Numeric(10, 2), default=0)
+     created_at = Column(DateTime, default=now_guyana)
+ 
+ 
+ class BillingCycle(Base):
+     __tablename__ = "billing_cycles"
+     account_number = Column(String, primary_key=True)
+     cycle_month = Column(Date, primary_key=True)
+     is_paid = Column(Boolean, default=False)
+     paid_at = Column(DateTime(timezone=True), nullable=True)
+-    credits_applied_gyd = Column(Numeric(10, 2), default=0)
++    credits_applied_gyd = Column(Numeric(10, 2), default=0, nullable=False)
++    finalized_at = Column(DateTime(timezone=True), nullable=True)
+ 
+ class Promotion(Base):
+     __tablename__ = "promotions"
+     id = Column(Integer, primary_key=True, index=True)
+     provider_id = Column(Integer, ForeignKey("providers.id"), unique=True)
+     free_bookings_total = Column(Integer, default=0)
+     free_bookings_used = Column(Integer, default=0)
+ 
+ class ProviderWorkingHours(Base):
+     __tablename__ = "provider_working_hours"
+     id = Column(Integer, primary_key=True, index=True)
+     provider_id = Column(Integer, ForeignKey("providers.id"))
+     weekday = Column(Integer)  # 0 = Monday, 6 = Sunday
+     is_closed = Column(Boolean, default=True)
+     start_time = Column(String, nullable=True)  # "09:00"
+     end_time = Column(String, nullable=True)    # "17:00"
+ 
+ class ProviderProfession(Base):
+     __tablename__ = "provider_professions"
+     id = Column(Integer, primary_key=True, index=True)
+     provider_id = Column(Integer, ForeignKey("providers.id"))
+     name = Column(String, index=True)
+ 
+ class ProviderCatalogImage(Base):
+     __tablename__ = "provider_catalog_images"
  
 EOF
 )
