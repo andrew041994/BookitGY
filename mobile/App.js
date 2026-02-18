@@ -1,6 +1,4 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
-import { createApiClient } from "./src/api/client";
-import { apiClient } from "./src/api";
 
 import {
   Text,
@@ -39,6 +37,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
   clearToken,
   clearAllAuthTokens,
+  loadRefreshToken,
   loadToken,
   saveRefreshToken,
   saveToken,
@@ -82,6 +81,133 @@ const API =
   Constants.expoConfig?.extra?.API_URL ||
   Constants.manifest?.extra?.API_URL ||
   "https://bookitgy.onrender.com";
+
+const api = axios.create({ baseURL: API });
+const refreshApi = axios.create({ baseURL: API });
+
+let accessTokenInMemory = null;
+let refreshPromise = null;
+let onApiUnauthorized = null;
+
+const setApiUnauthorizedHandler = (handler) => {
+  onApiUnauthorized = handler;
+};
+
+const setApiAccessToken = (accessToken) => {
+  accessTokenInMemory = accessToken || null;
+
+  if (accessToken) {
+    api.defaults.headers.common.Authorization = `Bearer ${accessToken}`;
+    return;
+  }
+
+  delete api.defaults.headers.common.Authorization;
+};
+
+const loadAccessTokenForRequest = async () => {
+  if (accessTokenInMemory) return accessTokenInMemory;
+
+  const storedToken = await loadToken();
+  if (storedToken) {
+    setApiAccessToken(storedToken);
+    return storedToken;
+  }
+
+  const legacyToken = await AsyncStorage.getItem("accessToken");
+  if (legacyToken) {
+    setApiAccessToken(legacyToken);
+    return legacyToken;
+  }
+
+  setApiAccessToken(null);
+  return null;
+};
+
+const refreshAccessToken = async () => {
+  const storedRefreshToken = await loadRefreshToken();
+  if (!storedRefreshToken) {
+    const missingRefreshError = new Error("Missing refresh token");
+    missingRefreshError.code = "SESSION_EXPIRED";
+    throw missingRefreshError;
+  }
+
+  const response = await refreshApi.post("/auth/refresh", {
+    refresh_token: storedRefreshToken,
+  });
+
+  const newAccessToken = response?.data?.access_token;
+  const newRefreshToken = response?.data?.refresh_token || storedRefreshToken;
+
+  if (!newAccessToken) {
+    const invalidRefreshError = new Error("Invalid refresh response");
+    invalidRefreshError.code = "SESSION_EXPIRED";
+    throw invalidRefreshError;
+  }
+
+  await saveToken(newAccessToken);
+  await saveRefreshToken(newRefreshToken);
+  setApiAccessToken(newAccessToken);
+  return newAccessToken;
+};
+
+api.interceptors.request.use(async (config) => {
+  const latestToken = await loadAccessTokenForRequest();
+
+  if (latestToken) {
+    config.headers = {
+      ...(config.headers || {}),
+      Authorization: `Bearer ${latestToken}`,
+    };
+  } else if (config.headers?.Authorization) {
+    delete config.headers.Authorization;
+  }
+
+  return config;
+});
+
+api.interceptors.response.use(
+  (response) => response,
+  async (error) => {
+    const originalRequest = error?.config || {};
+    const status = error?.response?.status;
+    const requestUrl = originalRequest?.url || "";
+
+    if (
+      status !== 401 ||
+      originalRequest.__isRetryRequest ||
+      requestUrl.includes("/auth/refresh")
+    ) {
+      return Promise.reject(error);
+    }
+
+    originalRequest.__isRetryRequest = true;
+
+    try {
+      if (!refreshPromise) {
+        refreshPromise = refreshAccessToken().finally(() => {
+          refreshPromise = null;
+        });
+      }
+
+      const nextAccessToken = await refreshPromise;
+      originalRequest.headers = {
+        ...(originalRequest.headers || {}),
+        Authorization: `Bearer ${nextAccessToken}`,
+      };
+
+      return api(originalRequest);
+    } catch (refreshError) {
+      setApiAccessToken(null);
+      await clearAllAuthTokens();
+      await AsyncStorage.removeItem("accessToken");
+      if (typeof onApiUnauthorized === "function") {
+        await onApiUnauthorized(refreshError);
+      }
+      refreshError.isAuthFailure = true;
+      return Promise.reject(refreshError);
+    }
+  }
+);
 
   console.log("### API base URL =", API);
 
@@ -161,12 +287,11 @@ const persistFacebookSession = async ({
 }) => {
   await saveToken(responseData.access_token);
   await saveRefreshToken(responseData.refresh_token);
+  setApiAccessToken(responseData.access_token);
 
   let meData = null;
   try {
-    const meRes = await axios.get(`${API}/users/me`, {
-      headers: { Authorization: `Bearer ${responseData.access_token}` },
-    });
+    const meRes = await api.get(`/users/me`);
     meData = meRes.data;
   } catch (meError) {
     console.log("[auth] Failed to fetch /users/me after Facebook login", meError?.message || meError);
@@ -493,7 +618,7 @@ function useFavoriteProviders(userKey) {
     }
 
     try {
-      const res = await axios.get(`${API}/providers`);
+      const res = await api.get(`/providers`);
       const list = Array.isArray(res.data)
         ? res.data
         : res.data?.providers || [];
@@ -678,11 +803,13 @@ function LoginScreen({
         password: password,
       }).toString();
 
-    const res = await axios.post(`${API}/auth/login`, body, {
+    const res = await api.post(`/auth/login`, body, {
         headers: {
           "Content-Type": "application/x-www-form-urlencoded",
         },
       });
+
+    setApiAccessToken(res.data.access_token);
 
     try {
       await saveToken(res.data.access_token);
@@ -711,11 +838,7 @@ function LoginScreen({
 
     let meData = null;
     try {
-      const meRes = await axios.get(`${API}/users/me`, {
-        headers: {
-          Authorization: `Bearer ${res.data.access_token}`,
-        },
-      });
+      const meRes = await api.get(`/users/me`);
       meData = meRes.data;
     } catch (meError) {
       console.log("[auth] Failed to fetch /users/me after login", meError?.message || meError);
@@ -778,7 +901,7 @@ function LoginScreen({
       };
 
       try {
-        const res = await axios.post(`${API}/auth/facebook/complete`, payload);
+        const res = await api.post(`/auth/facebook/complete`, payload);
         await persistFacebookSession({
           responseData: res.data,
           setToken,
@@ -945,7 +1068,7 @@ function ForgotPasswordScreen({ goToLogin, goBack, showFlash }) {
     setDevResetLink(null);
 
     try {
-      const res = await axios.post(`${API}/auth/forgot-password`, {
+      const res = await api.post(`/auth/forgot-password`, {
         email: normalizedEmail,
       });
       const message =
@@ -1092,7 +1215,7 @@ function FinishSetupScreen({
         payload.email = trimmedEmail.toLowerCase();
       }
 
-      const res = await axios.post(`${API}/auth/facebook/complete`, payload);
+      const res = await api.post(`/auth/facebook/complete`, payload);
       await persistFacebookSession({
         responseData: res.data,
         setToken,
@@ -1320,7 +1443,7 @@ function SignupScreen({ goToLogin, goBack, showFlash }) {
     whatsappValue = `whatsapp:${whatsappValue}`;
 
     try {
-      await axios.post(`${API}/auth/signup`, {
+      await api.post(`/auth/signup`, {
         email: normalizedEmail,
         password: trimmedPassword,
         username: trimmedUsername,
@@ -1963,11 +2086,7 @@ function ProfileScreen({ apiClient, authLoading, setToken, showFlash, token }) {
 
       console.log("[profile] save payload", payload);
       console.log("[profile] auth token present", Boolean(storedToken));
-      const res = await apiClient.put("/users/me", payload, {
-        headers: {
-          Authorization: `Bearer ${storedToken}`,
-        },
-      });
+      const res = await apiClient.put("/users/me", payload);
       console.log("[profile] save response status", res?.status);
 
       const meRes = await apiClient.get("/users/me");
@@ -2117,7 +2236,7 @@ function ProfileScreen({ apiClient, authLoading, setToken, showFlash, token }) {
       style: "destructive",
       onPress: async () => {
         try {
-          await apiClient.post(`/bookings/${bookingId}/cancel`, {});
+          await apiClient.post(`/bookings/${bookingId}/cancel`);
 
           setBookings((prev) =>
             (prev || []).map((b) =>
@@ -2786,7 +2905,7 @@ function ClientHomeScreen({
     // 2) Fetch providers NOW (don’t wait on long GPS)
     const clientCoords = { lat: coords.lat, lng: coords.long };
 
-    const res = await axios.get(`${API}/providers`, { timeout: 8000 });
+    const res = await api.get(`/providers`, { timeout: 8000 });
     const list = Array.isArray(res.data) ? res.data : res.data?.providers || [];
 
     // 3) Compute + sort (keep it cheap)
@@ -2848,7 +2967,7 @@ function ClientHomeScreen({
   //         ? { lat: coords.lat, lng: coords.long }
   //         : null;
 
-  //     const res = await axios.get(`${API}/providers`);
+  //     const res = await api.get(`/providers`);
   //     const list = Array.isArray(res.data)
   //       ? res.data
   //       : res.data?.providers || [];
@@ -3331,9 +3450,7 @@ function AppointmentsScreen({ token, showFlash }) {
           return;
         }
 
-        const res = await axios.get(`${API}/bookings/me`, {
-          headers: { Authorization: `Bearer ${authToken}` },
-        });
+        const res = await api.get(`/bookings/me`);
 
         const raw = res.data;
         const list = Array.isArray(raw)
@@ -3414,12 +3531,9 @@ function AppointmentsScreen({ token, showFlash }) {
                 return;
               }
 
-              await axios.post(
-                `${API}/bookings/${bookingId}/cancel`,
-                {},
-                {
-                  headers: { Authorization: `Bearer ${authToken}` },
-                }
+              await api.post(
+                `/bookings/${bookingId}/cancel`,
+                {}
               );
 
               setBookings((prev) =>
@@ -3763,7 +3877,7 @@ function SearchScreen({ token, showFlash, navigation, route, toggleFavorite, isF
       setProvidersLoading(true);
       setProvidersError("");
 
-      const res = await axios.get(`${API}/providers`);
+      const res = await api.get(`/providers`);
 
       // Always normalize the result to an array
       const list = Array.isArray(res.data)
@@ -4031,8 +4145,8 @@ function SearchScreen({ token, showFlash, navigation, route, toggleFavorite, isF
         setAvailabilityLoading(true);
         setAvailabilityError("");
 
-        const res = await axios.get(
-          `${API}/providers/${providerId}/availability`,
+        const res = await api.get(
+          `/providers/${providerId}/availability`,
           {
             params: {
               service_id: serviceId,
@@ -4061,7 +4175,7 @@ function SearchScreen({ token, showFlash, navigation, route, toggleFavorite, isF
       setCatalogLoading(true);
       setCatalogError("");
 
-      const res = await axios.get(`${API}/providers/${providerId}/catalog`);
+      const res = await api.get(`/providers/${providerId}/catalog`);
 
       setCatalogImages(Array.isArray(res.data) ? res.data : []);
     } catch (err) {
@@ -4105,8 +4219,8 @@ function SearchScreen({ token, showFlash, navigation, route, toggleFavorite, isF
     try {
       setServicesLoading(true);
 
-      const res = await axios.get(
-        `${API}/providers/${providerId}/services`
+      const res = await api.get(
+        `/providers/${providerId}/services`
       );
       setServices(res.data || []);
     } catch (err) {
@@ -4880,11 +4994,7 @@ const loadBookings = async () => {
         return;
       }
 
-      const res = await axios.get(`${API}/providers/me/bookings`, {
-        headers: {
-          Authorization: `Bearer ${authToken}`,
-        },
-      });
+      const res = await api.get(`/providers/me/bookings`);
 
       setBookings(res.data || []);
     } catch (err) {
@@ -4909,9 +5019,7 @@ const loadWorkingHours = async () => {
       return;
     }
 
-    const res = await axios.get(`${API}/providers/me/working-hours`, {
-      headers: { Authorization: `Bearer ${authToken}` },
-    });
+    const res = await api.get(`/providers/me/working-hours`);
 
     const rows = Array.isArray(res.data) ? res.data : [];
 
@@ -4945,9 +5053,8 @@ const loadWorkingHours = async () => {
 const loadTodayBookings = async () => {
   try {
     const authToken = await getAuthToken(token);
-    const res = await axios.get(
-      `${API}/providers/me/bookings/today`,
-      { headers: { Authorization: `Bearer ${authToken}` } }
+    const res = await api.get(
+      `/providers/me/bookings/today`
     );
     setTodayBookings(res.data || []);
   } catch (error) {
@@ -4981,14 +5088,9 @@ const handleCancelBooking = (bookingId) => {
               return;
             }
 
-            await axios.post(
-              `${API}/providers/me/bookings/${bookingId}/cancel`,
-              {},
-              {
-                headers: {
-                  Authorization: `Bearer ${authToken}`,
-                },
-              }
+            await api.post(
+              `/providers/me/bookings/${bookingId}/cancel`,
+              {}
             );
 
             if (showFlash) showFlash("success", "Booking cancelled");
@@ -5030,11 +5132,7 @@ const loadServices = async () => {
         return;
       }
 
-      const res = await axios.get(`${API}/providers/me/services`, {
-        headers: {
-        Authorization: `Bearer ${authToken}`,
-      },
-    });
+      const res = await api.get(`/providers/me/services`);
 
         // 🔒 Always normalize to an array
     const rawServices = res.data;
@@ -5125,9 +5223,7 @@ const saveWorkingHours = async () => {
     }
 
     
-    await axios.put(`${API}/providers/me/working-hours`, payload, {
-      headers: { Authorization: `Bearer ${authToken}` },
-    });
+    await api.put(`/providers/me/working-hours`, payload);
 
 
     // if (showFlash) showFlash("success", "Working hours saved");
@@ -5280,14 +5376,9 @@ const to24Hour = (time12) => {
     };
 
     // ✅ Create service on backend and get the created record back
-    const res = await axios.post(
-      `${API}/providers/me/services`,
-      payload,
-      {
-        headers: {
-          Authorization: `Bearer ${authToken}`,
-        },
-      }
+    const res = await api.post(
+      `/providers/me/services`,
+      payload
     );
 
     const created = res.data;
@@ -5329,11 +5420,7 @@ const to24Hour = (time12) => {
         return;
       }
 
-      const res = await axios.delete(`${API}/providers/me/services/${serviceId}`, {
-        headers: {
-          Authorization: `Bearer ${authToken}`,
-        },
-      });
+      const res = await api.delete(`/providers/me/services/${serviceId}`);
 
       const responseData = res?.data || {};
       const responseStatus = `${responseData.status || responseData.result || ""}`.toLowerCase();
@@ -5446,9 +5533,7 @@ const loadCatalog = async () => {
       return;
     }
 
-    const res = await axios.get(`${API}/providers/me/catalog`, {
-      headers: { Authorization: `Bearer ${authToken}` },
-    });
+    const res = await api.get(`/providers/me/catalog`);
 
     setCatalog(Array.isArray(res.data) ? res.data : []);
   } catch (err) {
@@ -5492,10 +5577,9 @@ const uploadCatalogImage = async (uri) => {
       type: mimeType,
     });
 
-    const res = await axios.post(`${API}/providers/me/catalog`, formData, {
+    const res = await api.post(`/providers/me/catalog`, formData, {
       headers: {
         "Content-Type": "multipart/form-data",
-        Authorization: `Bearer ${authToken}`,
       },
     });
 
@@ -5561,9 +5645,7 @@ const handleDeleteCatalogImage = (imageId) => {
               return;
             }
 
-            await axios.delete(`${API}/providers/me/catalog/${imageId}`, {
-              headers: { Authorization: `Bearer ${authToken}` },
-            });
+            await api.delete(`/providers/me/catalog/${imageId}`);
 
             setCatalog((prev) =>
               (prev || []).filter((img) => img.id !== imageId)
@@ -5607,14 +5689,9 @@ const saveProviderProfile = async () => {
     };
 
     // ✅ Save provider profile to backend
-    const res = await axios.put(
-      `${API}/providers/me/profile`,
-      payload,
-      {
-        headers: {
-          Authorization: `Bearer ${authToken}`,
-        },
-      }
+    const res = await api.put(
+      `/providers/me/profile`,
+      payload
     );
 
     // ✅ Update local state from server response so UI reflects what’s saved
@@ -5729,9 +5806,8 @@ const uploadAvatar = async (uri) => {
 const loadUpcomingBookings = async () => {
   try {
     const authToken = await getAuthToken(token);
-    const res = await axios.get(
-      `${API}/providers/me/bookings/upcoming`,
-      { headers: { Authorization: `Bearer ${authToken}` } }
+    const res = await api.get(
+      `/providers/me/bookings/upcoming`
     );
     setUpcomingBookings(res.data || []);
   } catch (error) {
@@ -5774,17 +5850,15 @@ const handlePinLocation = async () => {
     }
 
     // 1) update the user record
-    await axios.put(
-      `${API}/users/me`,
-      { lat: coords.lat, long: coords.long },
-      { headers: { Authorization: `Bearer ${authToken}` } }
+    await api.put(
+      `/users/me`,
+      { lat: coords.lat, long: coords.long }
     );
 
     // 2) ALSO update the provider record so searches & client view use it
-    await axios.put(
-      `${API}/providers/me/location`,
-      { lat: coords.lat, long: coords.long },
-      { headers: { Authorization: `Bearer ${authToken}` } }
+    await api.put(
+      `/providers/me/location`,
+      { lat: coords.lat, long: coords.long }
     );
 
     // 3) update local state so preview uses the latest coords
@@ -5830,11 +5904,7 @@ const loadProviderSummary = async () => {
     const authToken = await getAuthToken(token);
     if (!authToken) return;
 
-    const res = await axios.get(`${API}/providers/me/summary`, {
-      headers: {
-        Authorization: `Bearer ${authToken}`,
-      },
-    });
+    const res = await api.get(`/providers/me/summary`);
     setProviderSummary(res.data);
   } catch (err) {
     console.log(
@@ -6730,11 +6800,9 @@ function ProviderBillingScreen({ token, showFlash }) {
         return;
       }
 
-      const billingEndpoint = `${API}/providers/me/billing/cycles?limit=6`;
+      const billingEndpoint = `/providers/me/billing/cycles?limit=6`;
 
-      const response = await axios.get(billingEndpoint, {
-        headers: { Authorization: `Bearer ${authToken}` },
-      });
+      const response = await api.get(billingEndpoint);
 
       const summaryData = response?.data || null;
       setBillingSummary(summaryData);
@@ -7383,10 +7451,7 @@ function ProviderCalendarScreen({ token, showFlash }) {
         return;
       }
 
-      const res = await axios.get(`${API}/providers/me/bookings`, {
-        headers: {
-          Authorization: `Bearer ${authToken}`,
-        },
+      const res = await api.get(`/providers/me/bookings`, {
         params: {
           start: dateRange.start,
           end: dateRange.end,
@@ -7421,14 +7486,9 @@ function ProviderCalendarScreen({ token, showFlash }) {
         throw noAuthError;
       }
 
-      await axios.post(
-        `${API}/providers/me/bookings/${bookingId}/cancel`,
-        {},
-        {
-          headers: {
-            Authorization: `Bearer ${authToken}`,
-          },
-        }
+      await api.post(
+        `/providers/me/bookings/${bookingId}/cancel`,
+        {}
       );
 
     },
@@ -8367,8 +8427,10 @@ function App() {
   const url = ExpoLinking.useURL();
 
   const [flash, setFlash] = useState(null);
+  const apiClient = api;
 
   const handleUnauthorized = useCallback(async () => {
+     setApiAccessToken(null);
      try {
        await clearAllAuthTokens(); // ✅ clears access + refresh (and your new fallbacks)
      } catch (storageError) {
@@ -8403,14 +8465,12 @@ function App() {
   //   setToken(null);
   // }, []);
 
-  const apiClient = useMemo(
-    () =>
-      createApiClient({
-        baseURL: API,
-        onUnauthorized: handleUnauthorized,
-      }),
-    [handleUnauthorized]
-  );
+  useEffect(() => {
+    setApiUnauthorizedHandler(handleUnauthorized);
+    return () => {
+      setApiUnauthorizedHandler(null);
+    };
+  }, [handleUnauthorized]);
 
 
 
@@ -8458,6 +8518,10 @@ function App() {
   useEffect(() => {
     tokenRef.current = token;
   }, [token]);
+
+  useEffect(() => {
+    setApiAccessToken(token?.token || null);
+  }, [token?.token]);
 
   useEffect(() => {
     navReadyRef.current = navReady;
@@ -8603,21 +8667,20 @@ function App() {
         if (!restoredToken) {
           if (isActive) setToken(null);
         } else {
+          setApiAccessToken(restoredToken);
           try {
             const meRes = await withTimeout(
               apiClient.get("/users/me", {
-                headers: {
-                  Authorization: `Bearer ${restoredToken}`,
-                },
                 timeout: AUTH_ME_TIMEOUT_MS,
               }),
               AUTH_ME_TIMEOUT_MS,
               "/users/me"
             );
             console.log("[auth] /users/me success", meRes?.status);
+            const latestToken = await getAuthToken();
             if (isActive) {
               setToken({
-                token: restoredToken,
+                token: latestToken || restoredToken,
                 userId: meRes.data?.id || meRes.data?.user_id,
                 email: meRes.data?.email,
                 username: meRes.data?.username,

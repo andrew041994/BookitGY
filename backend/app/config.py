@@ -59,7 +59,7 @@ class Settings:
         self.JWT_SECRET_KEY: str = env_secret
         self.JWT_ALGORITHM: str = "HS256"
         self.ACCESS_TOKEN_EXPIRE_MINUTES: int = int(
-            os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "1440")
+            os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "5")
         )
 
         # -----------------------------
