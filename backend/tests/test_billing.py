@@ -1080,14 +1080,18 @@ def test_generate_monthly_bills_sends_statement_once_and_marks_emailed_at(db_ses
     )
 
     assert bill is not None
-    assert bill.emailed_at is None
-    assert sent == []
+    first_emailed_at = bill.emailed_at
+    assert first_emailed_at is not None
+    assert len(sent) == 1
 
     crud.generate_monthly_bills(session, month=now.date())
-    assert sent == []
+    session.refresh(bill)
+
+    assert len(sent) == 1
+    assert bill.emailed_at == first_emailed_at
 
 
-def test_generate_monthly_bills_does_not_mark_emailed_when_email_send_fails(db_session, monkeypatch):
+def test_generate_monthly_bills_retries_failed_statement_email(db_session, monkeypatch):
     session, models, crud = db_session
     provider, customer, service = _create_provider_graph(session, models)
 
@@ -1109,10 +1113,16 @@ def test_generate_monthly_bills_does_not_mark_emailed_when_email_send_fails(db_s
         status="completed",
     )
 
-    def _failing_send(*args, **kwargs):
-        raise RuntimeError("sendgrid failed")
+    call_count = 0
 
-    monkeypatch.setattr(crud, "send_monthly_statement_email", _failing_send)
+    def _flaky_send(*args, **kwargs):
+        nonlocal call_count
+        call_count += 1
+        if call_count == 1:
+            raise RuntimeError("sendgrid failed")
+        return None
+
+    monkeypatch.setattr(crud, "send_monthly_statement_email", _flaky_send)
 
     crud.generate_monthly_bills(session, month=now.date())
 
@@ -1124,6 +1134,13 @@ def test_generate_monthly_bills_does_not_mark_emailed_when_email_send_fails(db_s
 
     assert bill is not None
     assert bill.emailed_at is None
+    assert call_count == 1
+
+    crud.generate_monthly_bills(session, month=now.date())
+    session.refresh(bill)
+
+    assert bill.emailed_at is not None
+    assert call_count == 2
 
 
 def test_generate_monthly_bills_snapshots_credits_once(db_session):

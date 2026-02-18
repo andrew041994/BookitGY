@@ -1365,31 +1365,50 @@ def _send_monthly_bill_email_if_needed(
     fees_due: Decimal,
     credits_applied: Decimal,
     remaining_balance_due: Decimal,
-) -> None:
+) -> bool:
     if bill.emailed_at:
-        return
+        return False
 
     provider_user = provider.user or db.query(models.User).filter(models.User.id == provider.user_id).first()
     to_email = (getattr(provider_user, "email", None) or "").strip()
     if not to_email or "@" not in to_email:
-        return
+        return False
 
     month_label = bill.month.strftime("%b %Y")
     due_date_label = bill.due_date.strftime("%Y-%m-%d") if bill.due_date else None
     billing_page_url = _build_provider_billing_page_url(provider.account_number or "")
 
-    send_monthly_statement_email(
-        to_email,
-        month_label=month_label,
-        fees_due_gyd=format_gyd_amount(fees_due),
-        credits_applied_gyd=format_gyd_amount(credits_applied),
-        remaining_balance_gyd=format_gyd_amount(remaining_balance_due),
-        due_date_label=due_date_label,
-        billing_page_url=billing_page_url,
-    )
+    try:
+        send_monthly_statement_email(
+            to_email,
+            month_label=month_label,
+            fees_due_gyd=format_gyd_amount(fees_due),
+            credits_applied_gyd=format_gyd_amount(credits_applied),
+            remaining_balance_gyd=format_gyd_amount(remaining_balance_due),
+            due_date_label=due_date_label,
+            billing_page_url=billing_page_url,
+        )
+    except Exception:
+        logger.exception(
+            "Failed to send monthly statement email for provider_id=%s bill_id=%s",
+            provider.id,
+            bill.id,
+        )
+        return False
 
     bill.emailed_at = now_guyana()
-    db.commit()
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        logger.exception(
+            "Failed to persist monthly statement emailed_at for provider_id=%s bill_id=%s",
+            provider.id,
+            bill.id,
+        )
+        return False
+
+    return True
 
 
 def generate_monthly_bills(db: Session, month: date):
@@ -1431,6 +1450,24 @@ def generate_monthly_bills(db: Session, month: date):
             .first()
         )
         if existing_bill:
+            cycle = None
+            if prov.account_number:
+                cycle = get_billing_cycle_for_account(db, prov.account_number, start)
+
+            fees_due = Decimal(str(existing_bill.fee_gyd or 0))
+            credits_applied = Decimal(str(cycle.credits_applied_gyd or 0)) if cycle else Decimal("0")
+            remaining_balance_due = fees_due - credits_applied
+            if remaining_balance_due < 0:
+                remaining_balance_due = Decimal("0")
+
+            _send_monthly_bill_email_if_needed(
+                db,
+                existing_bill,
+                prov,
+                fees_due=fees_due,
+                credits_applied=credits_applied,
+                remaining_balance_due=remaining_balance_due,
+            )
             continue
 
         total = (
@@ -1502,6 +1539,20 @@ def generate_monthly_bills(db: Session, month: date):
                     db.rollback()
                     cycle = get_billing_cycle_for_account(db, prov.account_number, start)
 
+            fees_due = Decimal(str(bill.fee_gyd or 0))
+            credits_applied = Decimal(str(cycle.credits_applied_gyd or 0)) if cycle else Decimal("0")
+            remaining_balance_due = fees_due - credits_applied
+            if remaining_balance_due < 0:
+                remaining_balance_due = Decimal("0")
+
+            _send_monthly_bill_email_if_needed(
+                db,
+                bill,
+                prov,
+                fees_due=fees_due,
+                credits_applied=credits_applied,
+                remaining_balance_due=remaining_balance_due,
+            )
             if cycle and Decimal(str(cycle.credits_applied_gyd or 0)) > 0:
                 consumed_credit = models.BillCredit(
                     provider_id=prov.id,
