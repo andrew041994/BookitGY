@@ -57,6 +57,7 @@ import {
   SafeAreaView,
   useSafeAreaInsets,
 } from "react-native-safe-area-context";
+import { apiClient } from "./src/api"; 
 // import { AccessToken, LoginManager } from "react-native-fbsdk-next";
 import BookitGYLogoTransparent from "./assets/bookitgy-logo-transparent.png"
 import { theme } from "./src/theme";
@@ -1724,7 +1725,7 @@ const ListRow = ({
 );
 
 // Placeholder screens so MainApp compiles — replace with your real ones
-function ProfileScreen({ apiClient, authLoading, setToken, showFlash, token }) {
+function ProfileScreen({ authLoading, setToken, showFlash, token }) {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -3753,7 +3754,7 @@ function AppointmentsScreen({ token, showFlash }) {
 
 
 
-function SearchScreen({ token, showFlash, navigation, route, toggleFavorite, isFavorite, syncFavoritesFromList }) {
+function SearchScreen({ token, showFlash, navigation, route, toggleFavorite, isFavorite, syncFavoritesFromList}) {
   const incomingUsername = route?.params?.incomingUsername ?? null;
   const deeplinkNonce = route?.params?.deeplinkNonce ?? null;
   const [filteredProviders, setFilteredProviders] = useState([]);
@@ -4341,15 +4342,6 @@ function SearchScreen({ token, showFlash, navigation, route, toggleFavorite, isF
     try {
       setBookingLoading(true);
 
-      // const authToken = await getAuthToken(token);
-      // if (!authToken) {
-      //   if (showFlash) {
-      //     showFlash("error", "No access token found. Please log in again.");
-      //   } else {
-      //     Alert.alert("Error", "No access token found. Please log in again.");
-      //   }
-      //   return;
-      // }
 
       await apiClient.post("/bookings", {
         service_id: selectedService.id,
@@ -4793,7 +4785,7 @@ function SearchScreen({ token, showFlash, navigation, route, toggleFavorite, isF
 
 
 
-function ProviderDashboardScreen({ apiClient, token, showFlash }) {
+function ProviderDashboardScreen({ token, showFlash }) {
   // const providerLabel = profile?.full_name || "Provider";
   const [services, setServices] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -8129,7 +8121,6 @@ function ProviderCalendarScreen({ token, showFlash }) {
 
 // Tabs after login
 function MainApp({
-  apiClient,
   authLoading,
   token,
   setToken,
