@@ -1,465 +1,151 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
-diff --git a/mobile/App.js b/mobile/App.js
-index 4c1fe5176bd10ffaea4bb5c1067bfc0acbec1735..d5f9e4d1f7d716c0d3906d019ff22e4eb98a553d 100644
---- a/mobile/App.js
-+++ b/mobile/App.js
-@@ -620,50 +620,51 @@ function LandingScreen({ goToLogin, goToSignup }) {
-             <TouchableOpacity
-               style={styles.authPrimaryButton}
-               onPress={goToLogin}
-             >
-               <Text style={styles.authPrimaryButtonText}>LOGIN</Text>
-             </TouchableOpacity>
- 
-             <TouchableOpacity
-               style={styles.authSecondaryButton}
-               onPress={goToSignup}
-             >
-               <Text style={styles.authSecondaryButtonText}>SIGN UP</Text>
-             </TouchableOpacity>
-           </View>
-         </View>
-       );
-     }
- 
- // 🔹 Dedicated login screen component
- const ENABLE_FACEBOOK_AUTH = process.env.EXPO_PUBLIC_ENABLE_FACEBOOK_AUTH === "true";
- 
- function LoginScreen({
-   setToken,
-   setIsAdmin,
-   onFacebookSetupRequired,
-+  onEmailNotVerified,
-   goToSignup,
-   goToForgot,
-   goBack,
-   showFlash,
- }) {
-   const [email, setEmail] = useState("");
-   const [password, setPassword] = useState("");
-   const [loading, setLoading] = useState(false);
-   const [facebookLoading, setFacebookLoading] = useState(false);
- 
- 
-   const login = async () => {
-     const trimmedEmail = email.trim();
-     const normalizedEmail = trimmedEmail.toLowerCase();
- 
-     if (!trimmedEmail || !isValidEmail(trimmedEmail)) {
-       if (showFlash) {
-         showFlash("error", "Please enter a valid email address");
-       } else {
-         Alert.alert("Error", "Please enter a valid email address");
-       }
-       return;
-   }
- 
-   setLoading(true);
-@@ -711,50 +712,69 @@ function LoginScreen({
-       const meRes = await apiClient.get(`/users/me`);
-       meData = meRes.data;
-     } catch (meError) {
-       console.log("[auth] Failed to fetch /users/me after login", meError?.message || meError);
-     }
- 
-     // Successful login
-       setToken({
-         token: res.data.access_token,
-         userId: meData?.id || meData?.user_id || res.data.user_id,
-         email: meData?.email || res.data.email,
-         username: meData?.username,
-         isProvider: typeof meData?.is_provider === "boolean" ? meData?.is_provider : res.data.is_provider,
-         isAdmin: typeof meData?.is_admin === "boolean" ? meData?.is_admin : res.data.is_admin,
-       });
- 
-       setIsAdmin(
-         typeof meData?.is_admin === "boolean" ? meData?.is_admin : !!res.data.is_admin
-       );
- 
-     if (showFlash) {
-         showFlash("success", "Logged in successfully");
-       }
-     } catch (e) {
-       console.log("Login error:", e.response?.data || e.message);
-+      const detail = e.response?.data?.detail;
-+      const errorCode = normalizeErrorCode(e.response?.data);
-+      const verifyHint = `${detail || ""}`.toLowerCase();
+diff --git a/backend/tests/test_signup_verification_flow.py b/backend/tests/test_signup_verification_flow.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..5c4cf04e5b6a10bd891fc94fd830f000da5dcf44
+--- /dev/null
++++ b/backend/tests/test_signup_verification_flow.py
+@@ -0,0 +1,141 @@
++from fastapi.testclient import TestClient
 +
-+      if (
-+        errorCode === "EMAIL_NOT_VERIFIED" ||
-+        verifyHint.includes("verify") ||
-+        verifyHint.includes("not verified")
-+      ) {
-+        if (showFlash) {
-+          showFlash(
-+            "error",
-+            "Please verify your email first. Check your inbox for the confirmation link."
-+          );
-+        }
-+        onEmailNotVerified?.(normalizedEmail);
-+        return;
-+      }
 +
-       if (showFlash) {
-         showFlash(
-           "error",
-           "Login failed: wrong email/password or server unreachable"
-         );
-       }
-     } finally {
-       setLoading(false);
-     }
-   };
- 
-   const loginWithFacebook = async () => {
-     setFacebookLoading(true);
-     try {
-       const loginResult = await LoginManager.logInWithPermissions([
-         "public_profile",
-         "email",
-       ]);
- 
-       if (loginResult?.isCancelled) {
-         return;
-       }
- 
-       const accessTokenData = await AccessToken.getCurrentAccessToken();
-       const facebookAccessToken = accessTokenData?.accessToken;
-@@ -897,50 +917,85 @@ return (
-           )}
- 
-             {goToSignup && (
-               <View style={{ width: "100%", marginBottom: 10 }}>
-                 <Button
-                   title="Need an account? Sign Up"
-                   onPress={goToSignup}
-                   color={colors.primary}
-                 />
-               </View>
-             )}
- 
-             {goBack && (
-               <View style={{ width: "100%" }}>
-                 <Button title="Back" onPress={goBack} color={colors.textMuted} />
-               </View>
-             )}
-           </View>
-         </TouchableWithoutFeedback>
-       </ScrollView>
-     </KeyboardAvoidingView>
-   );
- 
- }
- 
-+function VerifyEmailScreen({ email, goToLogin, showFlash }) {
-+  const displayedEmail = (email || "your email").trim() || "your email";
++def _build_client(session):
++    from app.main import app
++    from app.database import get_db
++    from app.routes import auth as auth_routes
 +
-+  const openEmailApp = async () => {
-+    try {
-+      await Linking.openURL("mailto:");
-+    } catch (error) {
-+      if (showFlash) {
-+        showFlash("error", "Unable to open your email app right now.");
-+      } else {
-+        Alert.alert("Error", "Unable to open your email app right now.");
-+      }
++    def override_get_db():
++        try:
++            yield session
++        finally:
++            pass
++
++    app.dependency_overrides[get_db] = override_get_db
++    app.dependency_overrides[auth_routes.get_db] = override_get_db
++    client = TestClient(app)
++    return client, app, auth_routes
++
++
++def _signup_payload(**overrides):
++    payload = {
++        "email": "signupuser@example.com",
++        "username": "signupuser",
++        "phone": "592 222 3333",
++        "password": "Secret123!",
++        "is_provider": False,
 +    }
-+  };
++    payload.update(overrides)
++    return payload
 +
-+  return (
-+    <View style={styles.container}>
-+      <Text style={styles.title}>Verify your email</Text>
-+      <Text style={styles.subtitle}>
-+        We sent a verification link to {displayedEmail}. You must verify your email before you can log in.
-+      </Text>
 +
-+      <TouchableOpacity style={styles.authPrimaryButton} onPress={openEmailApp}>
-+        <Text style={styles.authPrimaryButtonText}>Open Email App</Text>
-+      </TouchableOpacity>
++def test_signup_succeeds_when_verification_email_fails(db_session, monkeypatch):
++    session, models, _ = db_session
++    client, app, auth_routes = _build_client(session)
 +
-+      <TouchableOpacity style={styles.authSecondaryButton} onPress={goToLogin}>
-+        <Text style={styles.authSecondaryButtonText}>Back to Login</Text>
-+      </TouchableOpacity>
++    monkeypatch.setattr(
++        auth_routes,
++        "send_verification_email",
++        lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError("boom")),
++    )
 +
-+      {/* TODO: Add "Resend Email" button when backend resend-verification endpoint is available. */}
-+    </View>
-+  );
-+}
++    try:
++        response = client.post("/auth/signup", json=_signup_payload())
++        assert response.status_code == 201
++        body = response.json()
++        assert body["status"] == "ok"
++        assert body["email_sent"] is False
 +
- 
- function ForgotPasswordScreen({ goToLogin, goBack, showFlash }) {
-   const [email, setEmail] = useState("");
-   const [submitting, setSubmitting] = useState(false);
-   const [devResetLink, setDevResetLink] = useState(null);
- 
-   const requestReset = async () => {
-     const trimmedEmail = email.trim();
-     const normalizedEmail = trimmedEmail.toLowerCase();
- 
-     if (!trimmedEmail || !isValidEmail(trimmedEmail)) {
-       showFlash?.("error", "Please enter a valid email address");
-       return;
-     }
- 
-     setSubmitting(true);
-     setDevResetLink(null);
- 
-     try {
-       const res = await apiClient.post(`/auth/forgot-password`, {
-         email: normalizedEmail,
-       });
-       const message =
-         res.data?.message ||
-         "If an account exists for that email, a reset link has been sent.";
-@@ -1153,51 +1208,51 @@ function FinishSetupScreen({
-             <View style={{ width: "100%", marginBottom: 10 }}>
-               {submitting ? (
-                 <ActivityIndicator size="large" color={colors.primary} />
-               ) : (
-                 <Button
-                   title="Continue"
-                   onPress={submitFinishSetup}
-                   color={colors.primary}
-                 />
-               )}
-             </View>
- 
-             <View style={{ width: "100%" }}>
-               <Button title="Back" onPress={goBackToLogin} color={colors.textMuted} />
-             </View>
-           </View>
-         </TouchableWithoutFeedback>
-       </ScrollView>
-     </KeyboardAvoidingView>
-   );
- }
- 
- 
- 
- 
--function SignupScreen({ goToLogin, goBack, showFlash }) {
-+function SignupScreen({ goToLogin, goBack, showFlash, onSignupSuccess }) {
-   const [email, setEmail] = useState("");
-   const [password, setPassword] = useState("");
-   const [confirmPassword, setConfirmPassword] = useState("");
-   const [username, setUsername] = useState("");
-   const [phone, setPhone] = useState("");
-   const [isProvider, setIsProvider] = useState(false); // 👈 new
-   const passwordRules = {
-     length: password.length >= 5,
-     lower: /[a-z]/.test(password),
-     upper: /[A-Z]/.test(password),
-   };
-   const passwordStrong = Object.values(passwordRules).every(Boolean);
-   const keyboardWrapperProps = {
-     behavior: Platform.OS === "ios" ? "padding" : "height",
-     keyboardVerticalOffset: Platform.OS === "ios" ? 40 : 0,
-   };
-   const signupValidation = useMemo(() => {
-     const errors = {};
-     const trimmedUsername = username.trim();
-     const trimmedEmail = email.trim();
-     const trimmedPhone = phone.trim();
-     const trimmedPassword = password.trim();
-     const trimmedConfirm = confirmPassword.trim();
-     const phoneDigitsOnly = /^\d+$/;
- 
-@@ -1302,56 +1357,56 @@ function SignupScreen({ goToLogin, goBack, showFlash }) {
-     if (!whatsappValue.startsWith("+")) {
-       // If it starts with 592, assume +592...
-       if (whatsappValue.startsWith("592")) {
-         whatsappValue = `+${whatsappValue}`;
-       } else {
-         // Fallback: just prefix +
-         whatsappValue = `+${whatsappValue}`;
-       }
-     }
- 
-     // Final WhatsApp format
-     whatsappValue = `whatsapp:${whatsappValue}`;
- 
-     try {
-       await apiClient.post(`/auth/signup`, {
-         email: normalizedEmail,
-         password: trimmedPassword,
-         username: trimmedUsername,
-         phone: trimmedPhone,          // plain phone as user entered
-         location: "Georgetown",
-         whatsapp: whatsappValue,      // normalized WhatsApp format
-         is_provider: isProvider,      // tell backend this is a provider
-       });
- 
-       if (showFlash) {
--        showFlash("success", "Account created! Please verify email and log in.");
-+        showFlash("success", "Account created! Check your email to verify.");
-       } else {
--        Alert.alert("Success", "Account created! Please verify email and log in.");
-+        Alert.alert("Success", "Account created! Check your email to verify.");
-       }
- 
--      if (goToLogin) goToLogin();
-+      onSignupSuccess?.(normalizedEmail);
-     } catch (e) {
-       console.log("Signup error:", e.response?.data || e.message);
-       const detail = e.response?.data?.detail || "Signup failed. Try again.";
-       if (showFlash) {
-         showFlash("error", detail);
-       } else {
-         Alert.alert("Error", detail);
-       }
-     }
-   };
- 
-   return (
-     <KeyboardAvoidingView style={styles.avoider} {...keyboardWrapperProps}>
-       <ScrollView
-         contentContainerStyle={styles.scrollContent}
-         keyboardShouldPersistTaps="handled"
-       >
-         <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-           <View style={styles.container}>
-             <Text style={styles.title}>Create Account</Text>
- 
-             {/* Username Field */}
-             <TextInput
-               style={[
-                 styles.input,
-@@ -8250,51 +8305,52 @@ function FlashMessage({ flash }) {
-       style={[
-         styles.flashContainer,
-         { backgroundColor, borderColor },
-       ]}
-     >
-       <Text style={[styles.flashText, { color: textColor }]}>
-         {flash.text}
-       </Text>
-     </View>
-   );
- }
- 
- 
- // 🔹 App orchestrates landing/login/signup/forgot-password vs main app
- 
- const DEEPLINK_DEBUG = false;
- 
- function App() {
- 
-   const mountIdRef = useRef(Math.random().toString(16).slice(2));
-   console.log("APP MOUNT ID:", mountIdRef.current);
-   useEffect(() => console.log("APP useEffect ran for mount", mountIdRef.current), []);
- 
-   const [token, setToken] = useState(null);
-   const [authLoading, setAuthLoading] = useState(true);
--  const [authMode, setAuthMode] = useState("landing"); // 'landing' | 'login' | 'signup' | 'forgot' | 'finishSetup'
-+  const [authMode, setAuthMode] = useState("landing"); // 'landing' | 'login' | 'signup' | 'forgot' | 'verifyEmail' | 'finishSetup'
-+  const [pendingVerifyEmail, setPendingVerifyEmail] = useState("");
-   const [isAdmin, setIsAdmin] = useState(false);
-   const [facebookSetup, setFacebookSetup] = useState(null);
-   const [pendingDeepLinkUsername, setPendingDeepLinkUsername] = useState(null);
-   const [navReady, setNavReady] = useState(false);
-   const navReadyRef = useRef(false);
-   const navigationRef = useRef(null);
-   const authBootstrapRef = useRef({ inFlight: false, completed: false });
-   const tokenRef = useRef(token);
-   const lastDeeplinkHandledAtRef = useRef(0);
-   const lastHandledUrlRef = useRef(null);
-   const url = ExpoLinking.useURL();
- 
-   const [flash, setFlash] = useState(null);
- 
-   const formatFlashText = useCallback((text) => {
-     if (typeof text === "string") return text;
-     if (text == null) return "Something went wrong.";
- 
-     const formatErrorItem = (item) => {
-       if (typeof item === "string") return item;
-       if (!item || typeof item !== "object") return String(item);
- 
-       const message = item.msg || item.message;
-       if (Array.isArray(item.loc) && item.loc.length > 0) {
-         const field = item.loc[item.loc.length - 1];
-@@ -8599,62 +8655,81 @@ function App() {
-     );
-   }
- 
-   return (
-     <SafeAreaProvider>
-       <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }} edges={["top", "bottom"]}>
-         <FlashMessage flash={flash} />
- 
-         {!token ? (
-           <>
-             {authMode === "landing" && (
-               <LandingScreen
-                 goToLogin={() => setAuthMode("login")}
-                 goToSignup={() => setAuthMode("signup")}
-               />
-             )}
- 
-             {authMode === "login" && (
-               <LoginScreen
-                 setToken={setToken}
-                 setIsAdmin={setIsAdmin}
-                 onFacebookSetupRequired={(payload) => {
-                   setFacebookSetup(payload);
-                   setAuthMode("finishSetup");
-                 }}
-+                onEmailNotVerified={(attemptedEmail) => {
-+                  setPendingVerifyEmail((attemptedEmail || "").trim().toLowerCase());
-+                  setAuthMode("verifyEmail");
-+                }}
-                 goToSignup={() => setAuthMode("signup")}
-                 goToForgot={() => setAuthMode("forgot")}
-                 goBack={() => setAuthMode("landing")}
-                 showFlash={showFlash}
-               />
-             )}
- 
-             {authMode === "signup" && (
-               <SignupScreen
-                 goToLogin={() => setAuthMode("login")}
-                 goBack={() => setAuthMode("landing")}
-                 showFlash={showFlash}
-+                onSignupSuccess={(createdEmail) => {
-+                  setPendingVerifyEmail((createdEmail || "").trim().toLowerCase());
-+                  setAuthMode("verifyEmail");
-+                }}
-+              />
-+            )}
++        created = (
++            session.query(models.User)
++            .filter(models.User.email == "signupuser@example.com")
++            .first()
++        )
++        assert created is not None
++    finally:
++        app.dependency_overrides = {}
 +
-+            {authMode === "verifyEmail" && (
-+              <VerifyEmailScreen
-+                email={pendingVerifyEmail}
-+                showFlash={showFlash}
-+                goToLogin={() => {
-+                  setPendingVerifyEmail("");
-+                  setAuthMode("login");
-+                }}
-               />
-             )}
-             {authMode === "forgot" && (
-               <ForgotPasswordScreen
-                 goToLogin={() => setAuthMode("login")}
-                 goBack={() => setAuthMode("landing")}
-                 showFlash={showFlash}
-               />
-             )}
- 
-             {authMode === "finishSetup" && (
-               <FinishSetupScreen
-                 facebookSetup={facebookSetup}
-                 setToken={setToken}
-                 setIsAdmin={setIsAdmin}
-                 goBackToLogin={() => {
-                   setFacebookSetup(null);
-                   setAuthMode("login");
-                 }}
-                 showFlash={showFlash}
-               />
-             )}
-           </>
-         ) : (
-           <MainApp
++
++def test_resend_verification_nonexistent_email_does_not_leak(db_session):
++    session, _, _ = db_session
++    client, app, _ = _build_client(session)
++
++    try:
++        response = client.post(
++            "/auth/resend-verification",
++            json={"email": "missing@example.com"},
++        )
++        assert response.status_code == 200
++        body = response.json()
++        assert body["status"] == "ok"
++        assert body["email_sent"] is False
++    finally:
++        app.dependency_overrides = {}
++
++
++def test_resend_verification_already_verified_returns_not_sent(db_session, monkeypatch):
++    session, models, crud = db_session
++    user = models.User(
++        username="verifieduser",
++        email="verified@example.com",
++        phone="5924445555",
++        hashed_password=crud.hash_password("Secret123!"),
++        is_email_verified=True,
++    )
++    session.add(user)
++    session.commit()
++
++    client, app, auth_routes = _build_client(session)
++
++    send_calls = {"count": 0}
++
++    def fake_send(*_args, **_kwargs):
++        send_calls["count"] += 1
++
++    monkeypatch.setattr(auth_routes, "send_verification_email", fake_send)
++
++    try:
++        response = client.post(
++            "/auth/resend-verification",
++            json={"email": "verified@example.com"},
++        )
++        assert response.status_code == 200
++        body = response.json()
++        assert body["email_sent"] is False
++        assert body["detail"] == "Already verified"
++        assert send_calls["count"] == 0
++    finally:
++        app.dependency_overrides = {}
++
++
++def test_resend_verification_unverified_returns_false_when_email_send_fails(db_session, monkeypatch):
++    session, models, crud = db_session
++    user = models.User(
++        username="unverifieduser",
++        email="unverified@example.com",
++        phone="5926667777",
++        hashed_password=crud.hash_password("Secret123!"),
++        is_email_verified=False,
++    )
++    session.add(user)
++    session.commit()
++
++    client, app, auth_routes = _build_client(session)
++    monkeypatch.setattr(
++        auth_routes,
++        "send_verification_email",
++        lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError("mail error")),
++    )
++
++    try:
++        response = client.post(
++            "/auth/resend-verification",
++            json={"email": "unverified@example.com"},
++        )
++        assert response.status_code == 200
++        body = response.json()
++        assert body["status"] == "ok"
++        assert body["email_sent"] is False
++    finally:
++        app.dependency_overrides = {}
  
 EOF
 )

@@ -135,7 +135,8 @@ def _facebook_auth_response(db: Session, user: models.User) -> dict:
     }
 
 
-@router.post("/auth/signup")
+
+@router.post("/auth/signup", status_code=status.HTTP_201_CREATED)
 def signup(user: schemas.UserCreate, db: Session = Depends(get_db)):
     try:
         validate_password(user.password)
@@ -191,10 +192,21 @@ def signup(user: schemas.UserCreate, db: Session = Depends(get_db)):
         f"{settings.EMAIL_VERIFICATION_URL}?token={verification_token}"
     )
 
-    send_verification_email(created.email, verification_link)
+    email_sent = True
+    try:
+        send_verification_email(created.email, verification_link)
+    except Exception:
+        email_sent = False
+        logger.exception(
+            "Failed to send verification email during signup for %s",
+            created.email,
+        )
 
-    safe_user = schemas.UserOut.model_validate(created)
-    response = {"user": safe_user, "message": "Verification email sent."}
+    response = {
+        "status": "ok",
+        "email_sent": email_sent,
+        "detail": "Account created. Check your email to verify.",
+    }
     if settings.ENV == "dev":
         response["verification_link"] = verification_link
 
@@ -596,6 +608,50 @@ def reset_password_debug(
         "used": token_record.used_at is not None,
         "expires_at": expires_at.isoformat(),
     }
+
+
+@router.post("/auth/resend-verification")
+def resend_verification_email(
+    payload: schemas.ResendVerificationPayload,
+    db: Session = Depends(get_db),
+):
+    user = crud.get_user_by_email(db, payload.email)
+    if not user:
+        return {
+            "status": "ok",
+            "email_sent": False,
+            "detail": "If an account exists for that email, a verification email has been sent.",
+        }
+
+    if getattr(user, "is_email_verified", False):
+        return {
+            "status": "ok",
+            "email_sent": False,
+            "detail": "Already verified",
+        }
+
+    verification_token = _create_email_verification_token(user.email)
+    verification_link = f"{settings.EMAIL_VERIFICATION_URL}?token={verification_token}"
+
+    email_sent = True
+    try:
+        send_verification_email(user.email, verification_link)
+    except Exception:
+        email_sent = False
+        logger.exception(
+            "Failed to resend verification email for %s",
+            user.email,
+        )
+
+    response = {
+        "status": "ok",
+        "email_sent": email_sent,
+        "detail": "Account created. Check your email to verify.",
+    }
+    if settings.ENV == "dev":
+        response["verification_link"] = verification_link
+
+    return response
 
 
 @router.post("/auth/verify-email")

@@ -119,6 +119,10 @@ class VerifyEmailPayload(BaseModel):
     token: str
 
 
+class ResendVerificationPayload(BaseModel):
+    email: EmailStr
+
+
 class DeleteAccountRequest(BaseModel):
     password: str
 

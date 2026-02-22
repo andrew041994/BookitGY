@@ -1,0 +1,141 @@
+from fastapi.testclient import TestClient
+
+
+def _build_client(session):
+    from app.main import app
+    from app.database import get_db
+    from app.routes import auth as auth_routes
+
+    def override_get_db():
+        try:
+            yield session
+        finally:
+            pass
+
+    app.dependency_overrides[get_db] = override_get_db
+    app.dependency_overrides[auth_routes.get_db] = override_get_db
+    client = TestClient(app)
+    return client, app, auth_routes
+
+
+def _signup_payload(**overrides):
+    payload = {
+        "email": "signupuser@example.com",
+        "username": "signupuser",
+        "phone": "592 222 3333",
+        "password": "Secret123!",
+        "is_provider": False,
+    }
+    payload.update(overrides)
+    return payload
+
+
+def test_signup_succeeds_when_verification_email_fails(db_session, monkeypatch):
+    session, models, _ = db_session
+    client, app, auth_routes = _build_client(session)
+
+    monkeypatch.setattr(
+        auth_routes,
+        "send_verification_email",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError("boom")),
+    )
+
+    try:
+        response = client.post("/auth/signup", json=_signup_payload())
+        assert response.status_code == 201
+        body = response.json()
+        assert body["status"] == "ok"
+        assert body["email_sent"] is False
+
+        created = (
+            session.query(models.User)
+            .filter(models.User.email == "signupuser@example.com")
+            .first()
+        )
+        assert created is not None
+    finally:
+        app.dependency_overrides = {}
+
+
+def test_resend_verification_nonexistent_email_does_not_leak(db_session):
+    session, _, _ = db_session
+    client, app, _ = _build_client(session)
+
+    try:
+        response = client.post(
+            "/auth/resend-verification",
+            json={"email": "missing@example.com"},
+        )
+        assert response.status_code == 200
+        body = response.json()
+        assert body["status"] == "ok"
+        assert body["email_sent"] is False
+    finally:
+        app.dependency_overrides = {}
+
+
+def test_resend_verification_already_verified_returns_not_sent(db_session, monkeypatch):
+    session, models, crud = db_session
+    user = models.User(
+        username="verifieduser",
+        email="verified@example.com",
+        phone="5924445555",
+        hashed_password=crud.hash_password("Secret123!"),
+        is_email_verified=True,
+    )
+    session.add(user)
+    session.commit()
+
+    client, app, auth_routes = _build_client(session)
+
+    send_calls = {"count": 0}
+
+    def fake_send(*_args, **_kwargs):
+        send_calls["count"] += 1
+
+    monkeypatch.setattr(auth_routes, "send_verification_email", fake_send)
+
+    try:
+        response = client.post(
+            "/auth/resend-verification",
+            json={"email": "verified@example.com"},
+        )
+        assert response.status_code == 200
+        body = response.json()
+        assert body["email_sent"] is False
+        assert body["detail"] == "Already verified"
+        assert send_calls["count"] == 0
+    finally:
+        app.dependency_overrides = {}
+
+
+def test_resend_verification_unverified_returns_false_when_email_send_fails(db_session, monkeypatch):
+    session, models, crud = db_session
+    user = models.User(
+        username="unverifieduser",
+        email="unverified@example.com",
+        phone="5926667777",
+        hashed_password=crud.hash_password("Secret123!"),
+        is_email_verified=False,
+    )
+    session.add(user)
+    session.commit()
+
+    client, app, auth_routes = _build_client(session)
+    monkeypatch.setattr(
+        auth_routes,
+        "send_verification_email",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError("mail error")),
+    )
+
+    try:
+        response = client.post(
+            "/auth/resend-verification",
+            json={"email": "unverified@example.com"},
+        )
+        assert response.status_code == 200
+        body = response.json()
+        assert body["status"] == "ok"
+        assert body["email_sent"] is False
+    finally:
+        app.dependency_overrides = {}
