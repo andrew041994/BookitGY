@@ -939,20 +939,8 @@ return (
 
 }
 
-function VerifyEmailScreen({ email, goToLogin, showFlash }) {
+function VerifyEmailScreen({ email, goToLogin }) {
   const displayedEmail = (email || "your email").trim() || "your email";
-
-  const openEmailApp = async () => {
-    try {
-      await Linking.openURL("mailto:");
-    } catch (error) {
-      if (showFlash) {
-        showFlash("error", "Unable to open your email app right now.");
-      } else {
-        Alert.alert("Error", "Unable to open your email app right now.");
-      }
-    }
-  };
 
   return (
     <View style={styles.container}>
@@ -961,11 +949,7 @@ function VerifyEmailScreen({ email, goToLogin, showFlash }) {
         We sent a verification link to {displayedEmail}. You must verify your email before you can log in.
       </Text>
 
-      <TouchableOpacity style={styles.authPrimaryButton} onPress={openEmailApp}>
-        <Text style={styles.authPrimaryButtonText}>Open Email App</Text>
-      </TouchableOpacity>
-
-      <TouchableOpacity style={styles.authSecondaryButton} onPress={goToLogin}>
+      <TouchableOpacity style={[styles.authSecondaryButton, { marginTop: 24 }]} onPress={goToLogin}>
         <Text style={styles.authSecondaryButtonText}>Back to Login</Text>
       </TouchableOpacity>
 

@@ -1,391 +1,88 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
-diff --git a/backend/app/routes/auth.py b/backend/app/routes/auth.py
-index 8d4dd02d2f884bbc87385f9a3e6356458f82e717..c848210563df4d28f0bc7ee5be3b36ab4a1f0e4c 100644
---- a/backend/app/routes/auth.py
-+++ b/backend/app/routes/auth.py
-@@ -96,146 +96,177 @@ def _verify_facebook_access_token(user_token: str) -> dict:
-     try:
-         profile_resp = requests.get(
-             f"https://graph.facebook.com/{version}/me",
-             params={
-                 "fields": "id,name,email",
-                 "access_token": user_token,
-             },
-             timeout=10,
-         )
-         profile = profile_resp.json() if profile_resp.ok else {}
-     except Exception:
-         raise _facebook_error(status.HTTP_401_UNAUTHORIZED, "FB_TOKEN_INVALID")
+diff --git a/mobile/App.js b/mobile/App.js
+index d5f9e4d1f7d716c0d3906d019ff22e4eb98a553d..2710bea7aabaf83b1f737459d53c6f6cea05b4c7 100644
+--- a/mobile/App.js
++++ b/mobile/App.js
+@@ -917,77 +917,61 @@ return (
+           )}
  
-     fb_user_id = profile.get("id") or debug_data.get("user_id")
-     if not fb_user_id:
-         raise _facebook_error(status.HTTP_401_UNAUTHORIZED, "FB_TOKEN_INVALID")
+             {goToSignup && (
+               <View style={{ width: "100%", marginBottom: 10 }}>
+                 <Button
+                   title="Need an account? Sign Up"
+                   onPress={goToSignup}
+                   color={colors.primary}
+                 />
+               </View>
+             )}
  
-     return {
-         "id": str(fb_user_id),
-         "name": (profile.get("name") or "").strip(),
-         "email": (profile.get("email") or "").strip().lower() or None,
+             {goBack && (
+               <View style={{ width: "100%" }}>
+                 <Button title="Back" onPress={goBack} color={colors.textMuted} />
+               </View>
+             )}
+           </View>
+         </TouchableWithoutFeedback>
+       </ScrollView>
+     </KeyboardAvoidingView>
+   );
+ 
+ }
+ 
+-function VerifyEmailScreen({ email, goToLogin, showFlash }) {
++function VerifyEmailScreen({ email, goToLogin }) {
+   const displayedEmail = (email || "your email").trim() || "your email";
+ 
+-  const openEmailApp = async () => {
+-    try {
+-      await Linking.openURL("mailto:");
+-    } catch (error) {
+-      if (showFlash) {
+-        showFlash("error", "Unable to open your email app right now.");
+-      } else {
+-        Alert.alert("Error", "Unable to open your email app right now.");
+-      }
+-    }
+-  };
+-
+   return (
+     <View style={styles.container}>
+       <Text style={styles.title}>Verify your email</Text>
+       <Text style={styles.subtitle}>
+         We sent a verification link to {displayedEmail}. You must verify your email before you can log in.
+       </Text>
+ 
+-      <TouchableOpacity style={styles.authPrimaryButton} onPress={openEmailApp}>
+-        <Text style={styles.authPrimaryButtonText}>Open Email App</Text>
+-      </TouchableOpacity>
+-
+-      <TouchableOpacity style={styles.authSecondaryButton} onPress={goToLogin}>
++      <TouchableOpacity style={[styles.authSecondaryButton, { marginTop: 24 }]} onPress={goToLogin}>
+         <Text style={styles.authSecondaryButtonText}>Back to Login</Text>
+       </TouchableOpacity>
+ 
+       {/* TODO: Add "Resend Email" button when backend resend-verification endpoint is available. */}
+     </View>
+   );
+ }
+ 
+ 
+ function ForgotPasswordScreen({ goToLogin, goBack, showFlash }) {
+   const [email, setEmail] = useState("");
+   const [submitting, setSubmitting] = useState(false);
+   const [devResetLink, setDevResetLink] = useState(null);
+ 
+   const requestReset = async () => {
+     const trimmedEmail = email.trim();
+     const normalizedEmail = trimmedEmail.toLowerCase();
+ 
+     if (!trimmedEmail || !isValidEmail(trimmedEmail)) {
+       showFlash?.("error", "Please enter a valid email address");
+       return;
      }
  
- 
- def _facebook_auth_response(db: Session, user: models.User) -> dict:
--    access_token = _create_access_token(user.email, user.token_version, user.id)
-+    access_token = _issue_access_token(user.email, user.token_version, user.id)
-     refresh_token, _ = _create_refresh_token(db, user.id)
-     return {
-         "access_token": access_token,
-         "refresh_token": refresh_token,
-         "token_type": "bearer",
-         "user": {
-             "id": user.id,
-             "email": user.email,
-             "username": user.username,
-             "phone": user.phone,
-             "is_provider": user.is_provider,
-             "is_admin": getattr(user, "is_admin", False),
-         },
-     }
- 
- 
- 
- @router.post("/auth/signup", status_code=status.HTTP_201_CREATED)
- def signup(user: schemas.UserCreate, db: Session = Depends(get_db)):
-     try:
-         validate_password(user.password)
-     except ValueError:
-         raise HTTPException(
-             status_code=status.HTTP_400_BAD_REQUEST,
-             detail=PASSWORD_REQUIREMENTS_MESSAGE,
-         )
- 
-     # Check if email already exists
-     existing = crud.get_user_by_email(db, user.email)
-     if existing:
-         raise HTTPException(
-             status_code=status.HTTP_400_BAD_REQUEST,
-             detail="Email already registered",
-         )
- 
-     username_taken = crud.get_user_by_username(db, user.username)
-     if username_taken:
-         raise HTTPException(
-             status_code=status.HTTP_400_BAD_REQUEST,
-             detail="Username already taken",
-         )
- 
-+    phone_normalized = crud.normalize_phone(user.phone)
-+    if not phone_normalized:
-+        raise HTTPException(
-+            status_code=status.HTTP_400_BAD_REQUEST,
-+            detail="Invalid phone number",
-+        )
-+
-+    phone_owner = crud.get_user_by_phone(db, phone_normalized)
-+    if phone_owner:
-+        raise HTTPException(
-+            status_code=status.HTTP_400_BAD_REQUEST,
-+            detail="Phone already registered",
-+        )
-+
-+    user = user.copy(update={"phone": phone_normalized})
-+
-     # Create user
-     try:
-         created = crud.create_user(db, user)
-     except IntegrityError as exc:
-         detail = str(getattr(exc, "orig", exc))
--        if "users_username_lower_unique" in detail:
-+        detail_l = detail.lower()
-+        if "users_username_lower_unique" in detail_l or "username" in detail_l:
-             raise HTTPException(
-                 status_code=status.HTTP_400_BAD_REQUEST,
-                 detail="Username already taken",
-             )
--        if "ix_users_email" in detail or "users_email" in detail:
-+        if "ix_users_email" in detail_l or "users_email" in detail_l or "email" in detail_l:
-             raise HTTPException(
-                 status_code=status.HTTP_400_BAD_REQUEST,
-                 detail="Email already registered",
-             )
-+        if "users_phone" in detail_l or "ix_users_phone" in detail_l or "phone" in detail_l:
-+            raise HTTPException(
-+                status_code=status.HTTP_400_BAD_REQUEST,
-+                detail="Phone already registered",
-+            )
-         raise
-     # If the user chose to register as a provider, ensure the flag is stored
-     # and create their provider row too.
-     if user.is_provider:
-         if not getattr(created, "is_provider", False):
-             created.is_provider = True
-             db.commit()
-             db.refresh(created)
- 
-         crud.get_or_create_provider_for_user(db, created.id)
- 
--    verification_token = _create_email_verification_token(created.email)
-+    try:
-+        verification_token = _create_email_verification_token(created.email)
-+    except Exception:
-+        logger.exception(
-+            "Email verification token generation failed during signup due to configuration issues"
-+        )
-+        raise HTTPException(
-+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-+            detail="Verification system misconfigured. Please contact support.",
-+        )
-     verification_link = (
-         f"{settings.EMAIL_VERIFICATION_URL}?token={verification_token}"
-     )
- 
-     email_sent = True
-     try:
-         send_verification_email(created.email, verification_link)
-     except Exception:
-         email_sent = False
-         logger.exception(
-             "Failed to send verification email during signup for %s",
-             created.email,
-         )
- 
-     response = {
-         "status": "ok",
-         "email_sent": email_sent,
-         "detail": "Account created. Check your email to verify.",
-     }
-     if settings.ENV == "dev":
-         response["verification_link"] = verification_link
- 
-     return response
- 
- 
--def _create_access_token(subject: str, token_version: int, user_id: int) -> str:
-+def _issue_access_token(subject: str, token_version: int, user_id: int) -> str:
-     payload = {
-         "sub": subject,
-         "tv": token_version,
-         "uid": user_id,
-     }
-     return create_access_token(payload)
- 
- def _create_email_verification_token(email: str) -> str:
-     now = datetime.now(timezone.utc)
-     exp = now + timedelta(minutes=settings.EMAIL_TOKEN_EXPIRES_MINUTES)
- 
-     payload = {
-         "sub": email,
-         "type": "email_verification",
-         "iat": int(now.timestamp()),
-         "exp": int(exp.timestamp()),
-         "nonce": secrets.token_urlsafe(8),
-     }
- 
-     return jwt.encode(
-         payload,
-         settings.EMAIL_TOKEN_SECRET,
-         algorithm=get_jwt_algorithm(),
-     
-     )
-@@ -272,91 +303,91 @@ def _decode_email_verification_token(token: str) -> str:
- 
- @router.post("/auth/login")
- def login(
-     form_data: OAuth2PasswordRequestForm = Depends(),
-     db: Session = Depends(get_db),
- ):
-     """
-     Form-style login:
-     - username: email
-     - password: password
-     """
-     user = crud.authenticate_user(db, form_data.username, form_data.password)
- 
-     if not user:
-         raise HTTPException(
-             status_code=status.HTTP_401_UNAUTHORIZED,
-             detail="Incorrect email or password",
-         )
- 
-     if not getattr(user, "is_email_verified", False):
-         raise HTTPException(
-             status_code=status.HTTP_403_FORBIDDEN,
-             detail="Please verify your email before logging in.",
-         )
- 
--    access_token = _create_access_token(user.email, user.token_version, user.id)
-+    access_token = _issue_access_token(user.email, user.token_version, user.id)
-     refresh_token, _ = _create_refresh_token(db, user.id)
- 
-     return {
-         "access_token": access_token,
-         "refresh_token": refresh_token,
-         "token_type": "bearer",
-         "user_id": user.id,
-         "email": user.email,
-         "is_provider": user.is_provider,
-         "is_admin": getattr(user, "is_admin", False),
-     }
- 
- 
- @router.post("/auth/login_by_email")
- def login_by_email(
-     payload: schemas.LoginByEmailPayload,
-     db: Session = Depends(get_db),
- ):
-     """
-     JSON-style login:
-     {
-       "email": "...",
-       "password": "..."
-     }
-     """
-     user = crud.authenticate_user(db, payload.email, payload.password)
- 
-     if not user:
-         raise HTTPException(
-             status_code=status.HTTP_401_UNAUTHORIZED,
-             detail="Incorrect email or password",
-         )
- 
-     if not getattr(user, "is_email_verified", False):
-         raise HTTPException(
-             status_code=status.HTTP_403_FORBIDDEN,
-             detail="Please verify your email before logging in.",
-         )
- 
--    access_token = _create_access_token(user.email, user.token_version, user.id)
-+    access_token = _issue_access_token(user.email, user.token_version, user.id)
-     refresh_token, _ = _create_refresh_token(db, user.id)
- 
-     return {
-         "access_token": access_token,
-         "refresh_token": refresh_token,
-         "token_type": "bearer",
-         "user_id": user.id,
-         "email": user.email,
-         "is_provider": user.is_provider,
-         "is_admin": getattr(user, "is_admin", False),
-     }
- 
- 
- 
- 
- @router.post("/auth/facebook/complete")
- def facebook_complete(
-     payload: schemas.FacebookCompleteRequest,
-     db: Session = Depends(get_db),
- ):
-     phone = crud.normalize_phone(payload.phone)
-     if not phone:
-         raise _facebook_error(status.HTTP_400_BAD_REQUEST, "PHONE_REQUIRED")
- 
-     fb_profile = _verify_facebook_access_token(payload.facebook_access_token)
-@@ -435,51 +466,51 @@ def refresh_session(
-     token_hash = hash_token(raw_token)
-     token_record = crud.get_refresh_token_by_hash(db, token_hash)
-     if not token_record:
-         raise _session_expired_error()
- 
-     if token_record.revoked_at is not None:
-         raise _session_expired_error()
- 
-     user = crud.get_user_by_id(db, token_record.user_id, include_deleted=True)
-     if not user or crud.user_is_deleted(user):
-         raise _session_expired_error()
- 
-     now = datetime.now(GUYANA_TIMEZONE).replace(tzinfo=None)
-     inactivity_cutoff = token_record.last_used_at + timedelta(days=REFRESH_TOKEN_INACTIVITY_DAYS)
-     if now > inactivity_cutoff:
-         crud.revoke_refresh_token(db, token_record)
-         raise _session_expired_error()
- 
-     if user.password_changed_at and token_record.created_at <= user.password_changed_at:
-         crud.revoke_refresh_token(db, token_record)
-         raise _session_expired_error()
- 
-     new_refresh_token, new_record = _create_refresh_token(db, user.id)
-     crud.revoke_refresh_token(db, token_record, replaced_by_token_id=new_record.id)
- 
--    access_token = _create_access_token(user.email, user.token_version, user.id)
-+    access_token = _issue_access_token(user.email, user.token_version, user.id)
-     return {
-         "access_token": access_token,
-         "refresh_token": new_refresh_token,
-         "token_type": "bearer",
-         "user_id": user.id,
-         "email": user.email,
-         "is_provider": user.is_provider,
-         "is_admin": getattr(user, "is_admin", False),
-     }
- 
- 
- @router.post("/auth/logout")
- def logout(
-     payload: schemas.RefreshTokenRequest,
-     db: Session = Depends(get_db),
- ):
-     raw_token = (payload.refresh_token or "").strip()
-     if raw_token:
-         token_hash = hash_token(raw_token)
-         token_record = crud.get_refresh_token_by_hash(db, token_hash)
-         if token_record and token_record.revoked_at is None:
-             crud.revoke_refresh_token(db, token_record)
- 
-     return {"ok": True}
- 
-@@ -624,51 +655,51 @@ def resend_verification_email(
-         }
- 
-     if getattr(user, "is_email_verified", False):
-         return {
-             "status": "ok",
-             "email_sent": False,
-             "detail": "Already verified",
-         }
- 
-     verification_token = _create_email_verification_token(user.email)
-     verification_link = f"{settings.EMAIL_VERIFICATION_URL}?token={verification_token}"
- 
-     email_sent = True
-     try:
-         send_verification_email(user.email, verification_link)
-     except Exception:
-         email_sent = False
-         logger.exception(
-             "Failed to resend verification email for %s",
-             user.email,
-         )
- 
-     response = {
-         "status": "ok",
-         "email_sent": email_sent,
--        "detail": "Account created. Check your email to verify.",
-+        "detail": "Verification email sent. Please check your inbox.",
-     }
-     if settings.ENV == "dev":
-         response["verification_link"] = verification_link
- 
-     return response
- 
- 
- @router.post("/auth/verify-email")
- def verify_email(payload: schemas.VerifyEmailPayload, db: Session = Depends(get_db)):
-     return _verify_email_token(payload.token, db)
- 
- 
- @router.get("/auth/verify")
- def verify_email_link(token: str, db: Session = Depends(get_db)):
-     try:
-         result = _verify_email_token(token, db)
-         if result.get("verified"):
-             redirect_url = f"{settings.FRONTEND_LOGIN_URL}?verified=1"
-         else:
-             redirect_url = (
-                 f"{settings.FRONTEND_LOGIN_URL}"
-                 "?verified=0&reason=invalid_or_expired"
-             )
-     except HTTPException:
-         redirect_url = (
+     setSubmitting(true);
+     setDevResetLink(null);
  
 EOF
 )
