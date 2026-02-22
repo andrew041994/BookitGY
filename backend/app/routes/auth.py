@@ -118,7 +118,7 @@ def _verify_facebook_access_token(user_token: str) -> dict:
 
 
 def _facebook_auth_response(db: Session, user: models.User) -> dict:
-    access_token = _create_access_token(user.email, user.token_version, user.id)
+    access_token = _issue_access_token(user.email, user.token_version, user.id)
     refresh_token, _ = _create_refresh_token(db, user.id)
     return {
         "access_token": access_token,
@@ -161,20 +161,42 @@ def signup(user: schemas.UserCreate, db: Session = Depends(get_db)):
             detail="Username already taken",
         )
 
+    phone_normalized = crud.normalize_phone(user.phone)
+    if not phone_normalized:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid phone number",
+        )
+
+    phone_owner = crud.get_user_by_phone(db, phone_normalized)
+    if phone_owner:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Phone already registered",
+        )
+
+    user = user.copy(update={"phone": phone_normalized})
+
     # Create user
     try:
         created = crud.create_user(db, user)
     except IntegrityError as exc:
         detail = str(getattr(exc, "orig", exc))
-        if "users_username_lower_unique" in detail:
+        detail_l = detail.lower()
+        if "users_username_lower_unique" in detail_l or "username" in detail_l:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Username already taken",
             )
-        if "ix_users_email" in detail or "users_email" in detail:
+        if "ix_users_email" in detail_l or "users_email" in detail_l or "email" in detail_l:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Email already registered",
+            )
+        if "users_phone" in detail_l or "ix_users_phone" in detail_l or "phone" in detail_l:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Phone already registered",
             )
         raise
     # If the user chose to register as a provider, ensure the flag is stored
@@ -187,7 +209,16 @@ def signup(user: schemas.UserCreate, db: Session = Depends(get_db)):
 
         crud.get_or_create_provider_for_user(db, created.id)
 
-    verification_token = _create_email_verification_token(created.email)
+    try:
+        verification_token = _create_email_verification_token(created.email)
+    except Exception:
+        logger.exception(
+            "Email verification token generation failed during signup due to configuration issues"
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Verification system misconfigured. Please contact support.",
+        )
     verification_link = (
         f"{settings.EMAIL_VERIFICATION_URL}?token={verification_token}"
     )
@@ -213,7 +244,7 @@ def signup(user: schemas.UserCreate, db: Session = Depends(get_db)):
     return response
 
 
-def _create_access_token(subject: str, token_version: int, user_id: int) -> str:
+def _issue_access_token(subject: str, token_version: int, user_id: int) -> str:
     payload = {
         "sub": subject,
         "tv": token_version,
@@ -294,7 +325,7 @@ def login(
             detail="Please verify your email before logging in.",
         )
 
-    access_token = _create_access_token(user.email, user.token_version, user.id)
+    access_token = _issue_access_token(user.email, user.token_version, user.id)
     refresh_token, _ = _create_refresh_token(db, user.id)
 
     return {
@@ -334,7 +365,7 @@ def login_by_email(
             detail="Please verify your email before logging in.",
         )
 
-    access_token = _create_access_token(user.email, user.token_version, user.id)
+    access_token = _issue_access_token(user.email, user.token_version, user.id)
     refresh_token, _ = _create_refresh_token(db, user.id)
 
     return {
@@ -457,7 +488,7 @@ def refresh_session(
     new_refresh_token, new_record = _create_refresh_token(db, user.id)
     crud.revoke_refresh_token(db, token_record, replaced_by_token_id=new_record.id)
 
-    access_token = _create_access_token(user.email, user.token_version, user.id)
+    access_token = _issue_access_token(user.email, user.token_version, user.id)
     return {
         "access_token": access_token,
         "refresh_token": new_refresh_token,
@@ -646,7 +677,7 @@ def resend_verification_email(
     response = {
         "status": "ok",
         "email_sent": email_sent,
-        "detail": "Account created. Check your email to verify.",
+        "detail": "Verification email sent. Please check your inbox.",
     }
     if settings.ENV == "dev":
         response["verification_link"] = verification_link

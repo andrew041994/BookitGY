@@ -658,7 +658,20 @@ def normalize_phone(phone: Optional[str]) -> str:
     normalized = (phone or "").strip()
     if not normalized:
         return ""
-    return "".join(ch for ch in normalized if not ch.isspace())
+
+    has_plus = normalized.startswith("+")
+    digits = []
+    for ch in normalized:
+        if ch.isdigit():
+            digits.append(ch)
+
+    if len(digits) < 8:
+        return ""
+
+    compact = "".join(digits)
+    if has_plus:
+        return f"+{compact}"
+    return compact
 
 
 def get_user_by_phone(db: Session, phone: str, *, include_deleted: bool = False):
