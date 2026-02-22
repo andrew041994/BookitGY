@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, status
 from sqlalchemy.orm import Session
-from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 import traceback
 from io import BytesIO
 import os
@@ -100,6 +100,17 @@ def update_users_me(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(exc),
+        )
+    except IntegrityError as exc:
+        detail = str(getattr(exc, "orig", exc))
+        if "users_username_lower_unique" in detail:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Username already taken",
+            )
+        raise HTTPException(
+            status_code=500,
+            detail="Database error while updating user profile.",
         )
     except SQLAlchemyError as e:
         # This will show up in `docker compose logs backend`

@@ -135,6 +135,16 @@ def set_username_from_full_name(
     if not normalized:
         return
 
+    set_username(db, user, normalized)
+
+
+def set_username(
+    db: Session,
+    user: models.User,
+    username: str,
+) -> None:
+    normalized = schemas.normalize_and_validate_username(username)
+
     if user.username == normalized:
         return
 
@@ -908,8 +918,11 @@ def update_user(
 
     # Explicit whitelist of user fields that may be updated from the API
     ALLOWED_USER_FIELDS = {
+        "phone",
         "whatsapp",
         "location",
+        "lat",
+        "long",
         "avatar_url",
     }
 
@@ -917,7 +930,9 @@ def update_user(
         if field in ALLOWED_USER_FIELDS:
             setattr(user, field, value)
 
-    if "full_name" in update_data:
+    if "username" in update_data:
+        set_username(db, user, update_data.get("username"))
+    elif "full_name" in update_data:
         set_username_from_full_name(db, user, update_data.get("full_name"))
 
     db.commit()

@@ -2,8 +2,26 @@ from pydantic import BaseModel, EmailStr, Field, validator
 
 from datetime import datetime, date
 from typing import Optional, List
+import re
 from decimal import Decimal
 
+
+USERNAME_MIN_LENGTH = 3
+USERNAME_MAX_LENGTH = 30
+USERNAME_PATTERN = re.compile(r"^[a-z0-9._]+$")
+
+
+def normalize_and_validate_username(value: str) -> str:
+    normalized = (value or "").strip().lower()
+    if len(normalized) < USERNAME_MIN_LENGTH:
+        raise ValueError(f"Username must be at least {USERNAME_MIN_LENGTH} characters")
+    if len(normalized) > USERNAME_MAX_LENGTH:
+        raise ValueError(f"Username must be at most {USERNAME_MAX_LENGTH} characters")
+    if not USERNAME_PATTERN.match(normalized):
+        raise ValueError(
+            "Username may only contain letters, numbers, underscores, and dots"
+        )
+    return normalized
 
 
 
@@ -34,6 +52,7 @@ class User(UserBase):
 
 class UserUpdate(BaseModel):
     full_name: Optional[str] = None
+    username: Optional[str] = None
     phone: Optional[str] = None
     whatsapp: Optional[str] = None
     location: Optional[str] = None
@@ -41,6 +60,12 @@ class UserUpdate(BaseModel):
     lat: Optional[float] = None
     long: Optional[float] = None
     avatar_url: Optional[str] = None  # 👈 NEW
+
+    @validator("username")
+    def validate_username(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return value
+        return normalize_and_validate_username(value)
 
 
 
@@ -467,12 +492,19 @@ class ProviderProfileOut(BaseModel):
 
 class ProviderProfileUpdate(BaseModel):
     full_name: Optional[str] = None
+    username: Optional[str] = None
     phone: Optional[str] = None
     whatsapp: Optional[str] = None
     location: Optional[str] = None
     bio: Optional[str] = None
     professions: Optional[List[str]] = None
     avatar_url: Optional[str] = None   # 👈 NEW
+
+    @validator("username")
+    def validate_username(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return value
+        return normalize_and_validate_username(value)
 
 
 
@@ -546,10 +578,17 @@ class UserProfileOut(BaseModel):
 
 class UserProfileUpdate(BaseModel):
     full_name: Optional[str] = None
+    username: Optional[str] = None
     phone: Optional[str] = None
     whatsapp: Optional[str] = None
     location: Optional[str] = None
     avatar_url: Optional[str] = None  # 👈 NEW
+
+    @validator("username")
+    def validate_username(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return value
+        return normalize_and_validate_username(value)
 
 
 class ProviderSummary(BaseModel):

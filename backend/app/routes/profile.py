@@ -121,7 +121,15 @@ def update_my_provider_profile(
         )
 
     # Update basic user fields
-    if payload.full_name is not None:
+    if payload.username is not None:
+        try:
+            crud.set_username(db, user, payload.username)
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=str(exc),
+            )
+    elif payload.full_name is not None:
         try:
             crud.set_username_from_full_name(db, user, payload.full_name)
         except ValueError as exc:
@@ -230,7 +238,15 @@ def update_my_profile(
     user: models.User = Depends(get_current_user_from_header),
     db: Session = Depends(get_db),
 ):
-    if payload.full_name is not None:
+    if payload.username is not None:
+        try:
+            crud.set_username(db, user, payload.username)
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=str(exc),
+            )
+    elif payload.full_name is not None:
         try:
             crud.set_username_from_full_name(db, user, payload.full_name)
         except ValueError as exc:
@@ -251,7 +267,17 @@ def update_my_profile(
     if payload.avatar_url is not None:      # 👈 NEW
         user.avatar_url = payload.avatar_url
 
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        detail = str(getattr(exc, "orig", exc))
+        if "users_username_lower_unique" in detail:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Username already taken",
+            )
+        raise
     db.refresh(user)
 
     return schemas.UserProfileOut(
