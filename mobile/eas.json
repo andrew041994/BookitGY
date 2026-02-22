@@ -11,7 +11,8 @@
         "EAS_BUILD_DISABLE_MAVEN_CACHE": "1"
       },
       "android": {
-        "autoIncrement": true
+        "autoIncrement": true,
+        "image": "latest"
       },
       "ios": {
         "autoIncrement": true
@@ -21,7 +22,8 @@
       "developmentClient": true,
       "distribution": "internal",
       "android": {
-        "autoIncrement": true
+        "autoIncrement": true,
+        "image": "latest"
       },
       "ios": {
         "autoIncrement": true

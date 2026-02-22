@@ -29,6 +29,9 @@ export default {
           }
         }
       ],
+        "@react-native-community/datetimepicker",
+        "expo-secure-store",
+        "sentry-expo"
     // [
     //   "react-native-fbsdk-next",
     //   {
