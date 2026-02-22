@@ -33,12 +33,9 @@ import {
 } from "@react-navigation/native";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { enableScreens } from "react-native-screens";
-import axios from "axios";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
-  clearToken,
   clearAllAuthTokens,
-  loadRefreshToken,
   loadToken,
   saveRefreshToken,
   saveToken,
@@ -57,7 +54,7 @@ import {
   SafeAreaView,
   useSafeAreaInsets,
 } from "react-native-safe-area-context";
-import { apiClient } from "./src/api"; 
+import { apiClient } from "./src/api";
 // import { AccessToken, LoginManager } from "react-native-fbsdk-next";
 import BookitGYLogoTransparent from "./assets/bookitgy-logo-transparent.png"
 import { theme } from "./src/theme";
@@ -84,134 +81,7 @@ const API =
   Constants.manifest?.extra?.API_URL ||
   "https://bookitgy.onrender.com";
 
-// const api = axios.create({ baseURL: API });
-// const refreshApi = axios.create({ baseURL: API });
-
-// let accessTokenInMemory = null;
-// let refreshPromise = null;
-// let onApiUnauthorized = null;
-
-// const setApiUnauthorizedHandler = (handler) => {
-//   onApiUnauthorized = handler;
-// };
-
-// const setApiAccessToken = (accessToken) => {
-//   accessTokenInMemory = accessToken || null;
-
-//   if (accessToken) {
-//     api.defaults.headers.common.Authorization = `Bearer ${accessToken}`;
-//     return;
-//   }
-
-//   delete api.defaults.headers.common.Authorization;
-// };
-
-// const loadAccessTokenForRequest = async () => {
-//   if (accessTokenInMemory) return accessTokenInMemory;
-
-//   const storedToken = await loadToken();
-//   if (storedToken) {
-//     setApiAccessToken(storedToken);
-//     return storedToken;
-//   }
-
-//   const legacyToken = await AsyncStorage.getItem("accessToken");
-//   if (legacyToken) {
-//     setApiAccessToken(legacyToken);
-//     return legacyToken;
-//   }
-
-//   setApiAccessToken(null);
-//   return null;
-// };
-
-// const refreshAccessToken = async () => {
-//   const storedRefreshToken = await loadRefreshToken();
-//   if (!storedRefreshToken) {
-//     const missingRefreshError = new Error("Missing refresh token");
-//     missingRefreshError.code = "SESSION_EXPIRED";
-//     throw missingRefreshError;
-//   }
-
-//   const response = await refreshApi.post("/auth/refresh", {
-//     refresh_token: storedRefreshToken,
-//   });
-
-//   const newAccessToken = response?.data?.access_token;
-//   const newRefreshToken = response?.data?.refresh_token || storedRefreshToken;
-
-//   if (!newAccessToken) {
-//     const invalidRefreshError = new Error("Invalid refresh response");
-//     invalidRefreshError.code = "SESSION_EXPIRED";
-//     throw invalidRefreshError;
-//   }
-
-//   await saveToken(newAccessToken);
-//   await saveRefreshToken(newRefreshToken);
-//   setApiAccessToken(newAccessToken);
-//   return newAccessToken;
-// };
-
-// api.interceptors.request.use(async (config) => {
-//   const latestToken = await loadAccessTokenForRequest();
-
-//   if (latestToken) {
-//     config.headers = {
-//       ...(config.headers || {}),
-//       Authorization: `Bearer ${latestToken}`,
-//     };
-//   } else if (config.headers?.Authorization) {
-//     delete config.headers.Authorization;
-//   }
-
-//   return config;
-// });
-
-// api.interceptors.response.use(
-//   (response) => response,
-//   async (error) => {
-//     const originalRequest = error?.config || {};
-//     const status = error?.response?.status;
-//     const requestUrl = originalRequest?.url || "";
-
-//     if (
-//       status !== 401 ||
-//       originalRequest.__isRetryRequest ||
-//       requestUrl.includes("/auth/refresh")
-//     ) {
-//       return Promise.reject(error);
-//     }
-
-//     originalRequest.__isRetryRequest = true;
-
-//     try {
-//       if (!refreshPromise) {
-//         refreshPromise = refreshAccessToken().finally(() => {
-//           refreshPromise = null;
-//         });
-//       }
-
-//       const nextAccessToken = await refreshPromise;
-//       originalRequest.headers = {
-//         ...(originalRequest.headers || {}),
-//         Authorization: `Bearer ${nextAccessToken}`,
-//       };
-
-//       return api(originalRequest);
-//     } catch (refreshError) {
-//       setApiAccessToken(null);
-//       await clearAllAuthTokens();
-//       await AsyncStorage.removeItem("accessToken");
-//       if (typeof onApiUnauthorized === "function") {
-//         await onApiUnauthorized(refreshError);
-//       }
-//       refreshError.isAuthFailure = true;
-//       return Promise.reject(refreshError);
-//     }
-//   }
-// );
-
-  console.log("### API base URL =", API);
+console.log("### API base URL =", API);
 
 
 const colors = theme.colors;
@@ -289,7 +159,6 @@ const persistFacebookSession = async ({
 }) => {
   await saveToken(responseData.access_token);
   await saveRefreshToken(responseData.refresh_token);
-  setApiAccessToken(responseData.access_token);
 
   let meData = null;
   try {
@@ -811,7 +680,6 @@ function LoginScreen({
         },
       });
 
-    // setApiAccessToken(res.data.access_token);
 
     try {
       await saveToken(res.data.access_token);
@@ -1803,6 +1671,8 @@ function ProfileScreen({ authLoading, setToken, showFlash, token }) {
         try {
           const meRes = await apiClient.get("/users/me");
 
+          console.log("[profile] refresh data", meRes?.data);
+
           if (typeof meRes.data?.is_provider === "boolean") {
             isProvider = meRes.data.is_provider;
             setIsProviderUser(isProvider);
@@ -1894,7 +1764,6 @@ function ProfileScreen({ authLoading, setToken, showFlash, token }) {
 
   // const logout = async () => {
   //   try {
-  //     await clearToken();
   //     if (setToken) {
   //       setToken(null);
   //     }
@@ -2092,6 +1961,7 @@ function ProfileScreen({ authLoading, setToken, showFlash, token }) {
       console.log("[profile] save response status", res?.status);
 
       const meRes = await apiClient.get("/users/me");
+      console.log("[profile] refresh data", meRes?.data);
       console.log("[profile] refresh response status", meRes?.status);
 
       setUser(meRes.data);
@@ -5407,7 +5277,7 @@ const to24Hour = (time12) => {
         return;
       }
 
-      const res = await api.delete(`/providers/me/services/${serviceId}`);
+      const res = await apiClient.delete(`/providers/me/services/${serviceId}`);
 
       const responseData = res?.data || {};
       const responseStatus = `${responseData.status || responseData.result || ""}`.toLowerCase();
@@ -5632,7 +5502,7 @@ const handleDeleteCatalogImage = (imageId) => {
               return;
             }
 
-            await api.delete(`/providers/me/catalog/${imageId}`);
+            await apiClient.delete(`/providers/me/catalog/${imageId}`);
 
             setCatalog((prev) =>
               (prev || []).filter((img) => img.id !== imageId)
@@ -5760,6 +5630,7 @@ const uploadAvatar = async (uri) => {
 
     try {
       const meRes = await apiClient.get("/users/me");
+      console.log("[profile] refresh data", meRes?.data);
 
       if (meRes.data?.is_provider) {
         // logged-in user is a provider → use provider avatar endpoint
@@ -8217,7 +8088,6 @@ function MainApp({
           <Tab.Screen name="Dashboard">
             {() => (
               <ProviderDashboardScreen
-                // apiClient={apiClient}
                 token={token}
                 showFlash={showFlash}
               />
@@ -8240,7 +8110,6 @@ function MainApp({
           <Tab.Screen name="Profile">
             {() => (
               <ProfileScreen
-                // apiClient={apiClient}
                 authLoading={authLoading}
                 token={token}
                 setToken={setToken}
@@ -8346,7 +8215,6 @@ function MainApp({
             <Tab.Screen name="Profile">
               {() => (
                 <ProfileScreen
-                  // apiClient={apiClient}
                   authLoading={authLoading}
                   token={token}
                   setToken={setToken}
@@ -8418,52 +8286,6 @@ function App() {
   const url = ExpoLinking.useURL();
 
   const [flash, setFlash] = useState(null);
-  // const apiClient = api;
-
-  const handleUnauthorized = useCallback(async () => {
-     setApiAccessToken(null);
-     try {
-       await clearAllAuthTokens(); // ✅ clears access + refresh (and your new fallbacks)
-     } catch (storageError) {
-       console.log(
-         "[auth] Failed to clear all auth tokens",
-         storageError?.message || storageError
-       );
-     }
-
-     try {
-       await AsyncStorage.removeItem(LEGACY_ACCESS_TOKEN_KEY); // optional, but fine
-     } catch (storageError) {
-       console.log(
-         "[auth] Failed to clear legacy token",
-         storageError?.message || storageError
-       );
-     }
-
-     setToken(null);
-    }, []);
-
-
-  // const handleUnauthorized = useCallback(async () => {
-  //   try {
-  //     await AsyncStorage.removeItem(LEGACY_ACCESS_TOKEN_KEY);
-  //   } catch (storageError) {
-  //     console.log(
-  //       "[auth] Failed to clear legacy token",
-  //       storageError?.message || storageError
-  //     );
-  //   }
-  //   setToken(null);
-  // }, []);
-
-  // useEffect(() => {
-  //   setApiUnauthorizedHandler(handleUnauthorized);
-  //   return () => {
-  //     setApiUnauthorizedHandler(null);
-  //   };
-  // }, [handleUnauthorized]);
-
-
 
   const formatFlashText = useCallback((text) => {
     if (typeof text === "string") return text;
@@ -8509,10 +8331,6 @@ function App() {
   useEffect(() => {
     tokenRef.current = token;
   }, [token]);
-
-  // useEffect(() => {
-  //   setApiAccessToken(token?.token || null);
-  // }, [token?.token]);
 
   useEffect(() => {
     navReadyRef.current = navReady;
@@ -8658,7 +8476,6 @@ function App() {
         if (!restoredToken) {
           if (isActive) setToken(null);
         } else {
-          setApiAccessToken(restoredToken);
           try {
             const meRes = await withTimeout(
               apiClient.get("/users/me", {
@@ -8742,7 +8559,7 @@ function App() {
     return () => {
       isActive = false;
     };
-  }, [apiClient]);
+  }, []);
 
   useEffect(() => {
     if (!authLoading) return undefined;
@@ -8841,7 +8658,6 @@ function App() {
           </>
         ) : (
           <MainApp
-            apiClient={apiClient}
             authLoading={authLoading}
             token={token}
             setToken={setToken}
