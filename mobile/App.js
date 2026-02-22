@@ -642,6 +642,7 @@ function LoginScreen({
   setToken,
   setIsAdmin,
   onFacebookSetupRequired,
+  onEmailNotVerified,
   goToSignup,
   goToForgot,
   goBack,
@@ -733,6 +734,25 @@ function LoginScreen({
       }
     } catch (e) {
       console.log("Login error:", e.response?.data || e.message);
+      const detail = e.response?.data?.detail;
+      const errorCode = normalizeErrorCode(e.response?.data);
+      const verifyHint = `${detail || ""}`.toLowerCase();
+
+      if (
+        errorCode === "EMAIL_NOT_VERIFIED" ||
+        verifyHint.includes("verify") ||
+        verifyHint.includes("not verified")
+      ) {
+        if (showFlash) {
+          showFlash(
+            "error",
+            "Please verify your email first. Check your inbox for the confirmation link."
+          );
+        }
+        onEmailNotVerified?.(normalizedEmail);
+        return;
+      }
+
       if (showFlash) {
         showFlash(
           "error",
@@ -917,6 +937,41 @@ return (
     </KeyboardAvoidingView>
   );
 
+}
+
+function VerifyEmailScreen({ email, goToLogin, showFlash }) {
+  const displayedEmail = (email || "your email").trim() || "your email";
+
+  const openEmailApp = async () => {
+    try {
+      await Linking.openURL("mailto:");
+    } catch (error) {
+      if (showFlash) {
+        showFlash("error", "Unable to open your email app right now.");
+      } else {
+        Alert.alert("Error", "Unable to open your email app right now.");
+      }
+    }
+  };
+
+  return (
+    <View style={styles.container}>
+      <Text style={styles.title}>Verify your email</Text>
+      <Text style={styles.subtitle}>
+        We sent a verification link to {displayedEmail}. You must verify your email before you can log in.
+      </Text>
+
+      <TouchableOpacity style={styles.authPrimaryButton} onPress={openEmailApp}>
+        <Text style={styles.authPrimaryButtonText}>Open Email App</Text>
+      </TouchableOpacity>
+
+      <TouchableOpacity style={styles.authSecondaryButton} onPress={goToLogin}>
+        <Text style={styles.authSecondaryButtonText}>Back to Login</Text>
+      </TouchableOpacity>
+
+      {/* TODO: Add "Resend Email" button when backend resend-verification endpoint is available. */}
+    </View>
+  );
 }
 
 
@@ -1175,7 +1230,7 @@ function FinishSetupScreen({
 
 
 
-function SignupScreen({ goToLogin, goBack, showFlash }) {
+function SignupScreen({ goToLogin, goBack, showFlash, onSignupSuccess }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -1324,12 +1379,12 @@ function SignupScreen({ goToLogin, goBack, showFlash }) {
       });
 
       if (showFlash) {
-        showFlash("success", "Account created! Please verify email and log in.");
+        showFlash("success", "Account created! Check your email to verify.");
       } else {
-        Alert.alert("Success", "Account created! Please verify email and log in.");
+        Alert.alert("Success", "Account created! Check your email to verify.");
       }
 
-      if (goToLogin) goToLogin();
+      onSignupSuccess?.(normalizedEmail);
     } catch (e) {
       console.log("Signup error:", e.response?.data || e.message);
       const detail = e.response?.data?.detail || "Signup failed. Try again.";
@@ -8272,7 +8327,8 @@ function App() {
 
   const [token, setToken] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
-  const [authMode, setAuthMode] = useState("landing"); // 'landing' | 'login' | 'signup' | 'forgot' | 'finishSetup'
+  const [authMode, setAuthMode] = useState("landing"); // 'landing' | 'login' | 'signup' | 'forgot' | 'verifyEmail' | 'finishSetup'
+  const [pendingVerifyEmail, setPendingVerifyEmail] = useState("");
   const [isAdmin, setIsAdmin] = useState(false);
   const [facebookSetup, setFacebookSetup] = useState(null);
   const [pendingDeepLinkUsername, setPendingDeepLinkUsername] = useState(null);
@@ -8621,6 +8677,10 @@ function App() {
                   setFacebookSetup(payload);
                   setAuthMode("finishSetup");
                 }}
+                onEmailNotVerified={(attemptedEmail) => {
+                  setPendingVerifyEmail((attemptedEmail || "").trim().toLowerCase());
+                  setAuthMode("verifyEmail");
+                }}
                 goToSignup={() => setAuthMode("signup")}
                 goToForgot={() => setAuthMode("forgot")}
                 goBack={() => setAuthMode("landing")}
@@ -8633,6 +8693,21 @@ function App() {
                 goToLogin={() => setAuthMode("login")}
                 goBack={() => setAuthMode("landing")}
                 showFlash={showFlash}
+                onSignupSuccess={(createdEmail) => {
+                  setPendingVerifyEmail((createdEmail || "").trim().toLowerCase());
+                  setAuthMode("verifyEmail");
+                }}
+              />
+            )}
+
+            {authMode === "verifyEmail" && (
+              <VerifyEmailScreen
+                email={pendingVerifyEmail}
+                showFlash={showFlash}
+                goToLogin={() => {
+                  setPendingVerifyEmail("");
+                  setAuthMode("login");
+                }}
               />
             )}
             {authMode === "forgot" && (
