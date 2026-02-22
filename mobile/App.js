@@ -84,132 +84,132 @@ const API =
   Constants.manifest?.extra?.API_URL ||
   "https://bookitgy.onrender.com";
 
-const api = axios.create({ baseURL: API });
-const refreshApi = axios.create({ baseURL: API });
+// const api = axios.create({ baseURL: API });
+// const refreshApi = axios.create({ baseURL: API });
 
-let accessTokenInMemory = null;
-let refreshPromise = null;
-let onApiUnauthorized = null;
+// let accessTokenInMemory = null;
+// let refreshPromise = null;
+// let onApiUnauthorized = null;
 
-const setApiUnauthorizedHandler = (handler) => {
-  onApiUnauthorized = handler;
-};
+// const setApiUnauthorizedHandler = (handler) => {
+//   onApiUnauthorized = handler;
+// };
 
-const setApiAccessToken = (accessToken) => {
-  accessTokenInMemory = accessToken || null;
+// const setApiAccessToken = (accessToken) => {
+//   accessTokenInMemory = accessToken || null;
 
-  if (accessToken) {
-    api.defaults.headers.common.Authorization = `Bearer ${accessToken}`;
-    return;
-  }
+//   if (accessToken) {
+//     api.defaults.headers.common.Authorization = `Bearer ${accessToken}`;
+//     return;
+//   }
 
-  delete api.defaults.headers.common.Authorization;
-};
+//   delete api.defaults.headers.common.Authorization;
+// };
 
-const loadAccessTokenForRequest = async () => {
-  if (accessTokenInMemory) return accessTokenInMemory;
+// const loadAccessTokenForRequest = async () => {
+//   if (accessTokenInMemory) return accessTokenInMemory;
 
-  const storedToken = await loadToken();
-  if (storedToken) {
-    setApiAccessToken(storedToken);
-    return storedToken;
-  }
+//   const storedToken = await loadToken();
+//   if (storedToken) {
+//     setApiAccessToken(storedToken);
+//     return storedToken;
+//   }
 
-  const legacyToken = await AsyncStorage.getItem("accessToken");
-  if (legacyToken) {
-    setApiAccessToken(legacyToken);
-    return legacyToken;
-  }
+//   const legacyToken = await AsyncStorage.getItem("accessToken");
+//   if (legacyToken) {
+//     setApiAccessToken(legacyToken);
+//     return legacyToken;
+//   }
 
-  setApiAccessToken(null);
-  return null;
-};
+//   setApiAccessToken(null);
+//   return null;
+// };
 
-const refreshAccessToken = async () => {
-  const storedRefreshToken = await loadRefreshToken();
-  if (!storedRefreshToken) {
-    const missingRefreshError = new Error("Missing refresh token");
-    missingRefreshError.code = "SESSION_EXPIRED";
-    throw missingRefreshError;
-  }
+// const refreshAccessToken = async () => {
+//   const storedRefreshToken = await loadRefreshToken();
+//   if (!storedRefreshToken) {
+//     const missingRefreshError = new Error("Missing refresh token");
+//     missingRefreshError.code = "SESSION_EXPIRED";
+//     throw missingRefreshError;
+//   }
 
-  const response = await refreshApi.post("/auth/refresh", {
-    refresh_token: storedRefreshToken,
-  });
+//   const response = await refreshApi.post("/auth/refresh", {
+//     refresh_token: storedRefreshToken,
+//   });
 
-  const newAccessToken = response?.data?.access_token;
-  const newRefreshToken = response?.data?.refresh_token || storedRefreshToken;
+//   const newAccessToken = response?.data?.access_token;
+//   const newRefreshToken = response?.data?.refresh_token || storedRefreshToken;
 
-  if (!newAccessToken) {
-    const invalidRefreshError = new Error("Invalid refresh response");
-    invalidRefreshError.code = "SESSION_EXPIRED";
-    throw invalidRefreshError;
-  }
+//   if (!newAccessToken) {
+//     const invalidRefreshError = new Error("Invalid refresh response");
+//     invalidRefreshError.code = "SESSION_EXPIRED";
+//     throw invalidRefreshError;
+//   }
 
-  await saveToken(newAccessToken);
-  await saveRefreshToken(newRefreshToken);
-  setApiAccessToken(newAccessToken);
-  return newAccessToken;
-};
+//   await saveToken(newAccessToken);
+//   await saveRefreshToken(newRefreshToken);
+//   setApiAccessToken(newAccessToken);
+//   return newAccessToken;
+// };
 
-api.interceptors.request.use(async (config) => {
-  const latestToken = await loadAccessTokenForRequest();
+// api.interceptors.request.use(async (config) => {
+//   const latestToken = await loadAccessTokenForRequest();
 
-  if (latestToken) {
-    config.headers = {
-      ...(config.headers || {}),
-      Authorization: `Bearer ${latestToken}`,
-    };
-  } else if (config.headers?.Authorization) {
-    delete config.headers.Authorization;
-  }
+//   if (latestToken) {
+//     config.headers = {
+//       ...(config.headers || {}),
+//       Authorization: `Bearer ${latestToken}`,
+//     };
+//   } else if (config.headers?.Authorization) {
+//     delete config.headers.Authorization;
+//   }
 
-  return config;
-});
+//   return config;
+// });
 
-api.interceptors.response.use(
-  (response) => response,
-  async (error) => {
-    const originalRequest = error?.config || {};
-    const status = error?.response?.status;
-    const requestUrl = originalRequest?.url || "";
+// api.interceptors.response.use(
+//   (response) => response,
+//   async (error) => {
+//     const originalRequest = error?.config || {};
+//     const status = error?.response?.status;
+//     const requestUrl = originalRequest?.url || "";
 
-    if (
-      status !== 401 ||
-      originalRequest.__isRetryRequest ||
-      requestUrl.includes("/auth/refresh")
-    ) {
-      return Promise.reject(error);
-    }
+//     if (
+//       status !== 401 ||
+//       originalRequest.__isRetryRequest ||
+//       requestUrl.includes("/auth/refresh")
+//     ) {
+//       return Promise.reject(error);
+//     }
 
-    originalRequest.__isRetryRequest = true;
+//     originalRequest.__isRetryRequest = true;
 
-    try {
-      if (!refreshPromise) {
-        refreshPromise = refreshAccessToken().finally(() => {
-          refreshPromise = null;
-        });
-      }
+//     try {
+//       if (!refreshPromise) {
+//         refreshPromise = refreshAccessToken().finally(() => {
+//           refreshPromise = null;
+//         });
+//       }
 
-      const nextAccessToken = await refreshPromise;
-      originalRequest.headers = {
-        ...(originalRequest.headers || {}),
-        Authorization: `Bearer ${nextAccessToken}`,
-      };
+//       const nextAccessToken = await refreshPromise;
+//       originalRequest.headers = {
+//         ...(originalRequest.headers || {}),
+//         Authorization: `Bearer ${nextAccessToken}`,
+//       };
 
-      return api(originalRequest);
-    } catch (refreshError) {
-      setApiAccessToken(null);
-      await clearAllAuthTokens();
-      await AsyncStorage.removeItem("accessToken");
-      if (typeof onApiUnauthorized === "function") {
-        await onApiUnauthorized(refreshError);
-      }
-      refreshError.isAuthFailure = true;
-      return Promise.reject(refreshError);
-    }
-  }
-);
+//       return api(originalRequest);
+//     } catch (refreshError) {
+//       setApiAccessToken(null);
+//       await clearAllAuthTokens();
+//       await AsyncStorage.removeItem("accessToken");
+//       if (typeof onApiUnauthorized === "function") {
+//         await onApiUnauthorized(refreshError);
+//       }
+//       refreshError.isAuthFailure = true;
+//       return Promise.reject(refreshError);
+//     }
+//   }
+// );
 
   console.log("### API base URL =", API);
 
@@ -293,7 +293,7 @@ const persistFacebookSession = async ({
 
   let meData = null;
   try {
-    const meRes = await api.get(`/users/me`);
+    const meRes = await apiClient.get(`/users/me`);
     meData = meRes.data;
   } catch (meError) {
     console.log("[auth] Failed to fetch /users/me after Facebook login", meError?.message || meError);
@@ -620,7 +620,7 @@ function useFavoriteProviders(userKey) {
     }
 
     try {
-      const res = await api.get(`/providers`);
+      const res = await apiClient.get(`/providers`);
       const list = Array.isArray(res.data)
         ? res.data
         : res.data?.providers || [];
@@ -805,13 +805,13 @@ function LoginScreen({
         password: password,
       }).toString();
 
-    const res = await api.post(`/auth/login`, body, {
+    const res = await apiClient.post(`/auth/login`, body, {
         headers: {
           "Content-Type": "application/x-www-form-urlencoded",
         },
       });
 
-    setApiAccessToken(res.data.access_token);
+    // setApiAccessToken(res.data.access_token);
 
     try {
       await saveToken(res.data.access_token);
@@ -840,7 +840,7 @@ function LoginScreen({
 
     let meData = null;
     try {
-      const meRes = await api.get(`/users/me`);
+      const meRes = await apiClient.get(`/users/me`);
       meData = meRes.data;
     } catch (meError) {
       console.log("[auth] Failed to fetch /users/me after login", meError?.message || meError);
@@ -903,7 +903,7 @@ function LoginScreen({
       };
 
       try {
-        const res = await api.post(`/auth/facebook/complete`, payload);
+        const res = await apiClient.post(`/auth/facebook/complete`, payload);
         await persistFacebookSession({
           responseData: res.data,
           setToken,
@@ -1070,7 +1070,7 @@ function ForgotPasswordScreen({ goToLogin, goBack, showFlash }) {
     setDevResetLink(null);
 
     try {
-      const res = await api.post(`/auth/forgot-password`, {
+      const res = await apiClient.post(`/auth/forgot-password`, {
         email: normalizedEmail,
       });
       const message =
@@ -1217,7 +1217,7 @@ function FinishSetupScreen({
         payload.email = trimmedEmail.toLowerCase();
       }
 
-      const res = await api.post(`/auth/facebook/complete`, payload);
+      const res = await apiClient.post(`/auth/facebook/complete`, payload);
       await persistFacebookSession({
         responseData: res.data,
         setToken,
@@ -1445,7 +1445,7 @@ function SignupScreen({ goToLogin, goBack, showFlash }) {
     whatsappValue = `whatsapp:${whatsappValue}`;
 
     try {
-      await api.post(`/auth/signup`, {
+      await apiClient.post(`/auth/signup`, {
         email: normalizedEmail,
         password: trimmedPassword,
         username: trimmedUsername,
@@ -2167,7 +2167,7 @@ function ProfileScreen({ authLoading, setToken, showFlash, token }) {
     setBookingsLoading(true);
     setBookingsError("");
 
-    const res = await api.get("/bookings/me");
+    const res = await apiClient.get("/bookings/me");
 
     const rawBookings = res.data;
     const bookingsList = Array.isArray(rawBookings)
@@ -2907,7 +2907,7 @@ function ClientHomeScreen({
     // 2) Fetch providers NOW (don’t wait on long GPS)
     const clientCoords = { lat: coords.lat, lng: coords.long };
 
-    const res = await api.get(`/providers`, { timeout: 8000 });
+    const res = await apiClient.get(`/providers`, { timeout: 8000 });
     const list = Array.isArray(res.data) ? res.data : res.data?.providers || [];
 
     // 3) Compute + sort (keep it cheap)
@@ -2969,7 +2969,7 @@ function ClientHomeScreen({
   //         ? { lat: coords.lat, lng: coords.long }
   //         : null;
 
-  //     const res = await api.get(`/providers`);
+  //     const res = await apiClient.get(`/providers`);
   //     const list = Array.isArray(res.data)
   //       ? res.data
   //       : res.data?.providers || [];
@@ -3452,7 +3452,7 @@ function AppointmentsScreen({ token, showFlash }) {
           return;
         }
 
-        const res = await api.get(`/bookings/me`);
+        const res = await apiClient.get(`/bookings/me`);
 
         const raw = res.data;
         const list = Array.isArray(raw)
@@ -3533,7 +3533,7 @@ function AppointmentsScreen({ token, showFlash }) {
                 return;
               }
 
-              await api.post(
+              await apiClient.post(
                 `/bookings/${bookingId}/cancel`,
                 {}
               );
@@ -3879,7 +3879,7 @@ function SearchScreen({ token, showFlash, navigation, route, toggleFavorite, isF
       setProvidersLoading(true);
       setProvidersError("");
 
-      const res = await api.get(`/providers`);
+      const res = await apiClient.get(`/providers`);
 
       // Always normalize the result to an array
       const list = Array.isArray(res.data)
@@ -4147,7 +4147,7 @@ function SearchScreen({ token, showFlash, navigation, route, toggleFavorite, isF
         setAvailabilityLoading(true);
         setAvailabilityError("");
 
-        const res = await api.get(
+        const res = await apiClient.get(
           `/providers/${providerId}/availability`,
           {
             params: {
@@ -4177,7 +4177,7 @@ function SearchScreen({ token, showFlash, navigation, route, toggleFavorite, isF
       setCatalogLoading(true);
       setCatalogError("");
 
-      const res = await api.get(`/providers/${providerId}/catalog`);
+      const res = await apiClient.get(`/providers/${providerId}/catalog`);
 
       setCatalogImages(Array.isArray(res.data) ? res.data : []);
     } catch (err) {
@@ -4221,7 +4221,7 @@ function SearchScreen({ token, showFlash, navigation, route, toggleFavorite, isF
     try {
       setServicesLoading(true);
 
-      const res = await api.get(
+      const res = await apiClient.get(
         `/providers/${providerId}/services`
       );
       setServices(res.data || []);
@@ -4987,7 +4987,7 @@ const loadBookings = async () => {
         return;
       }
 
-      const res = await api.get(`/providers/me/bookings`);
+      const res = await apiClient.get(`/providers/me/bookings`);
 
       setBookings(res.data || []);
     } catch (err) {
@@ -5012,7 +5012,7 @@ const loadWorkingHours = async () => {
       return;
     }
 
-    const res = await api.get(`/providers/me/working-hours`);
+    const res = await apiClient.get(`/providers/me/working-hours`);
 
     const rows = Array.isArray(res.data) ? res.data : [];
 
@@ -5048,7 +5048,7 @@ const loadTodayBookings = useCallback(async () => {
     const authToken = await getAuthToken(token);
     if (!authToken) return;
 
-    const res = await api.get(`/providers/me/bookings/today`);
+    const res = await apiClient.get(`/providers/me/bookings/today`);
     setTodayBookings(res.data || []);
     setTodayError("");
   } catch (err) {
@@ -5075,7 +5075,7 @@ const handleCancelBooking = (bookingId) => {
               return;
             }
 
-            await api.post(
+            await apiClient.post(
               `/providers/me/bookings/${bookingId}/cancel`,
               {}
             );
@@ -5119,7 +5119,7 @@ const loadServices = async () => {
         return;
       }
 
-      const res = await api.get(`/providers/me/services`);
+      const res = await apiClient.get(`/providers/me/services`);
 
         // 🔒 Always normalize to an array
     const rawServices = res.data;
@@ -5210,7 +5210,7 @@ const saveWorkingHours = async () => {
     }
 
     
-    await api.put(`/providers/me/working-hours`, payload);
+    await apiClient.put(`/providers/me/working-hours`, payload);
 
 
     // if (showFlash) showFlash("success", "Working hours saved");
@@ -5363,7 +5363,7 @@ const to24Hour = (time12) => {
     };
 
     // ✅ Create service on backend and get the created record back
-    const res = await api.post(
+    const res = await apiClient.post(
       `/providers/me/services`,
       payload
     );
@@ -5520,7 +5520,7 @@ const loadCatalog = async () => {
       return;
     }
 
-    const res = await api.get(`/providers/me/catalog`);
+    const res = await apiClient.get(`/providers/me/catalog`);
 
     setCatalog(Array.isArray(res.data) ? res.data : []);
   } catch (err) {
@@ -5564,7 +5564,7 @@ const uploadCatalogImage = async (uri) => {
       type: mimeType,
     });
 
-    const res = await api.post(`/providers/me/catalog`, formData, {
+    const res = await apiClient.post(`/providers/me/catalog`, formData, {
       headers: {
         "Content-Type": "multipart/form-data",
       },
@@ -5676,9 +5676,14 @@ const saveProviderProfile = async () => {
     };
 
     // ✅ Save provider profile to backend
-    const res = await api.put(
+    const res = await apiClient.put(
       `/providers/me/profile`,
-      payload
+      payload,
+      {
+        headers: {
+          Authorization: `Bearer ${authToken}`,
+        },
+      }
     );
 
     // ✅ Update local state from server response so UI reflects what’s saved
@@ -5793,7 +5798,7 @@ const uploadAvatar = async (uri) => {
 const loadUpcomingBookings = async () => {
   try {
     const authToken = await getAuthToken(token);
-    const res = await api.get(
+    const res = await apiClient.get(
       `/providers/me/bookings/upcoming`
     );
     setUpcomingBookings(res.data || []);
@@ -5837,13 +5842,13 @@ const handlePinLocation = async () => {
     }
 
     // 1) update the user record
-    await api.put(
+    await apiClient.put(
       `/users/me`,
       { lat: coords.lat, long: coords.long }
     );
 
     // 2) ALSO update the provider record so searches & client view use it
-    await api.put(
+    await apiClient.put(
       `/providers/me/location`,
       { lat: coords.lat, long: coords.long }
     );
@@ -5891,7 +5896,7 @@ const loadProviderSummary = async () => {
     const authToken = await getAuthToken(token);
     if (!authToken) return;
 
-    const res = await api.get(`/providers/me/summary`);
+    const res = await apiClient.get(`/providers/me/summary`);
     setProviderSummary(res.data);
   } catch (err) {
     console.log(
@@ -6789,7 +6794,7 @@ function ProviderBillingScreen({ token, showFlash }) {
 
       const billingEndpoint = `/providers/me/billing/cycles?limit=6`;
 
-      const response = await api.get(billingEndpoint);
+      const response = await apiClient.get(billingEndpoint);
 
       const summaryData = response?.data || null;
       setBillingSummary(summaryData);
@@ -7438,7 +7443,7 @@ function ProviderCalendarScreen({ token, showFlash }) {
         return;
       }
 
-      const res = await api.get(`/providers/me/bookings`, {
+      const res = await apiClient.get(`/providers/me/bookings`, {
         params: {
           start: dateRange.start,
           end: dateRange.end,
@@ -7473,7 +7478,7 @@ function ProviderCalendarScreen({ token, showFlash }) {
         throw noAuthError;
       }
 
-      await api.post(
+      await apiClient.post(
         `/providers/me/bookings/${bookingId}/cancel`,
         {}
       );
@@ -8451,12 +8456,12 @@ function App() {
   //   setToken(null);
   // }, []);
 
-  useEffect(() => {
-    setApiUnauthorizedHandler(handleUnauthorized);
-    return () => {
-      setApiUnauthorizedHandler(null);
-    };
-  }, [handleUnauthorized]);
+  // useEffect(() => {
+  //   setApiUnauthorizedHandler(handleUnauthorized);
+  //   return () => {
+  //     setApiUnauthorizedHandler(null);
+  //   };
+  // }, [handleUnauthorized]);
 
 
 
@@ -8505,9 +8510,9 @@ function App() {
     tokenRef.current = token;
   }, [token]);
 
-  useEffect(() => {
-    setApiAccessToken(token?.token || null);
-  }, [token?.token]);
+  // useEffect(() => {
+  //   setApiAccessToken(token?.token || null);
+  // }, [token?.token]);
 
   useEffect(() => {
     navReadyRef.current = navReady;
