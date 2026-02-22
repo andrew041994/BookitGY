@@ -3695,7 +3695,9 @@ function SearchScreen({ token, showFlash, navigation, route, toggleFavorite, isF
   const [hasRequestedLocation, setHasRequestedLocation] = useState(false);
   const isFocused = useIsFocused();
   const scrollRef = useRef(null);
+  const searchInputRef = useRef(null);
   const resultsOffset = useRef(0);
+  const servicesOffset = useRef(0);
   const initializedNavProviderKeyRef = useRef(null);
   //Radius 
   const distanceChips = [0, 5, 10, 15, 20];
@@ -4037,6 +4039,10 @@ function SearchScreen({ token, showFlash, navigation, route, toggleFavorite, isF
     setShouldScrollToResults(false);
   }, [shouldScrollToResults]);
 
+  const handleServicesLayout = (event) => {
+    servicesOffset.current = event.nativeEvent.layout.y;
+  };
+
 
   const loadAvailability = useCallback(
     async (providerId, serviceId) => {
@@ -4115,6 +4121,15 @@ function SearchScreen({ token, showFlash, navigation, route, toggleFavorite, isF
     setCatalogError("");
     loadProviderCatalog(providerId);
 
+    if (scrollRef.current) {
+      requestAnimationFrame(() => {
+        scrollRef.current?.scrollTo({
+          y: servicesOffset.current || resultsOffset.current,
+          animated: true,
+        });
+      });
+    }
+
     try {
       setServicesLoading(true);
 
@@ -4149,11 +4164,16 @@ function SearchScreen({ token, showFlash, navigation, route, toggleFavorite, isF
     [loadAvailability, selectedProviderId]
   );
 
+  const isProviderSelected = Boolean(selectedProviderId && selectedProvider);
+  const displayProviders = isProviderSelected && selectedProvider
+    ? [selectedProvider]
+    : filteredProviders;
+
   const clientCoords = getClientCoords();
   let searchHasDistance = false;
   let searchLastProviderCoords = null;
   let searchLastDistanceKm = null;
-  const searchCards = filteredProviders.map((p) => {
+  const searchCards = displayProviders.map((p) => {
     const avatar = resolveImageUrl(p.avatar_url || p.profile_photo_url);
     const favorite = isFavorite(p);
     const providerCoords = getProviderCoords(p);
@@ -4197,13 +4217,20 @@ function SearchScreen({ token, showFlash, navigation, route, toggleFavorite, isF
     );
   });
 
-  if (!searchHasDistance && filteredProviders.length) {
+  if (!searchHasDistance && displayProviders.length) {
     console.log("[distance] search list missing distances", {
       clientCoords,
       providerCoords: searchLastProviderCoords,
       distanceKm: searchLastDistanceKm,
     });
   }
+
+  const handleChangeProvider = useCallback(() => {
+    clearSelectedProvider();
+    requestAnimationFrame(() => {
+      searchInputRef.current?.focus();
+    });
+  }, [clearSelectedProvider]);
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -4330,15 +4357,18 @@ function SearchScreen({ token, showFlash, navigation, route, toggleFavorite, isF
           <View style={styles.searchBar}>
             <Ionicons name="search-outline" size={18} color={colors.textMuted} />
             <TextInput
+              ref={searchInputRef}
               style={styles.searchInput}
               placeholder="Search by profession or provider…"
               placeholderTextColor={colors.textSecondary}
               value={searchQuery}
               onChangeText={(value) => {
+                if (isProviderSelected) {
+                  clearSelectedProvider();
+                }
                 if (!normalizeSearchValue(value)) {
                   setSearchQuery(value);
                   setHasSearched(false);
-                  clearSelectedProvider();
                   return;
                 }
                 setSearchQuery(value);
@@ -4398,10 +4428,18 @@ function SearchScreen({ token, showFlash, navigation, route, toggleFavorite, isF
               <Text style={styles.sectionTitle}>Results</Text>
               {hasSearched && !providersLoading ? (
                 <Text style={styles.resultsCount}>
-                  {filteredProviders.length} providers
+                  {displayProviders.length} provider{displayProviders.length === 1 ? "" : "s"}
                 </Text>
               ) : null}
             </View>
+
+            {isProviderSelected && (
+              <View style={styles.selectedProviderActions}>
+                <TouchableOpacity onPress={handleChangeProvider}>
+                  <Text style={styles.changeProviderText}>Change provider</Text>
+                </TouchableOpacity>
+              </View>
+            )}
 
             {!hasSearched && (
               <View style={styles.emptyStateCard}>
@@ -4436,7 +4474,7 @@ function SearchScreen({ token, showFlash, navigation, route, toggleFavorite, isF
             {!providersLoading &&
               !providersError &&
               hasSearched &&
-              filteredProviders.length === 0 && (
+              displayProviders.length === 0 && (
                 <Text style={styles.emptyStateText}>
                   {incomingUsername
                     ? "We couldn't find that provider. Please check the username."
@@ -4447,13 +4485,13 @@ function SearchScreen({ token, showFlash, navigation, route, toggleFavorite, isF
             {!providersLoading &&
               !providersError &&
               hasSearched &&
-              filteredProviders.length > 0 &&
+              displayProviders.length > 0 &&
               searchCards}
           </View>
 
                         {/* Services list for selected provider */}
                       {selectedProvider && (
-                        <View style={styles.card}>
+                        <View style={styles.card} onLayout={handleServicesLayout}>
                           <Text style={styles.sectionTitle}>
                             Services by {selectedProvider.name}
                           </Text>
@@ -9858,6 +9896,15 @@ resultsCount: {
   fontSize: 12,
   color: colors.textMuted,
   fontWeight: "600",
+},
+selectedProviderActions: {
+  alignItems: "flex-start",
+  marginBottom: 10,
+},
+changeProviderText: {
+  fontSize: 13,
+  fontWeight: "600",
+  color: colors.primary,
 },
 emptyStateCard: {
   backgroundColor: colors.surface,

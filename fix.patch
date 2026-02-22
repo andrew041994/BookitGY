@@ -1,35 +1,15 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
 diff --git a/mobile/App.js b/mobile/App.js
-index 2710bea7aabaf83b1f737459d53c6f6cea05b4c7..206c07ece58d681c3a7b2cb7188247b696c68530 100644
+index 206c07ece58d681c3a7b2cb7188247b696c68530..206345fab2533e12f4445e4c163bfbf6011c7a34 100644
 --- a/mobile/App.js
 +++ b/mobile/App.js
-@@ -3653,70 +3653,72 @@ function AppointmentsScreen({ token, showFlash }) {
-           )}
-         </View>
-       </>
-     )}
-   </ScrollView>
- );
- }
- 
-     
- 
- 
- 
- 
- function SearchScreen({ token, showFlash, navigation, route, toggleFavorite, isFavorite, syncFavoritesFromList}) {
-   const incomingUsername = route?.params?.incomingUsername ?? null;
-   const deeplinkNonce = route?.params?.deeplinkNonce ?? null;
-   const [filteredProviders, setFilteredProviders] = useState([]);
-   const [searchQuery, setSearchQuery] = useState("");
-   const [radiusKm, setRadiusKm] = useState(0); // 0 = any distance
-   const [clientLocation, setClientLocation] = useState(null);
+@@ -3673,51 +3673,53 @@ function SearchScreen({ token, showFlash, navigation, route, toggleFavorite, isF
    const [locationError, setLocationError] = useState("");
    const [providers, setProviders] = useState([]);
    const [providersLoading, setProvidersLoading] = useState(true);
    const [providersError, setProvidersError] = useState("");
    const [selectedProvider, setSelectedProvider] = useState(null);
-+  const [selectedProviderId, setSelectedProviderId] = useState(null);
+   const [selectedProviderId, setSelectedProviderId] = useState(null);
    const [services, setServices] = useState([]);
    const [servicesLoading, setServicesLoading] = useState(false);
    const [servicesError, setServicesError] = useState("");
@@ -49,8 +29,10 @@ index 2710bea7aabaf83b1f737459d53c6f6cea05b4c7..206c07ece58d681c3a7b2cb7188247b6
    const [hasRequestedLocation, setHasRequestedLocation] = useState(false);
    const isFocused = useIsFocused();
    const scrollRef = useRef(null);
++  const searchInputRef = useRef(null);
    const resultsOffset = useRef(0);
-+  const initializedNavProviderKeyRef = useRef(null);
++  const servicesOffset = useRef(0);
+   const initializedNavProviderKeyRef = useRef(null);
    //Radius 
    const distanceChips = [0, 5, 10, 15, 20];
  
@@ -75,239 +57,67 @@ index 2710bea7aabaf83b1f737459d53c6f6cea05b4c7..206c07ece58d681c3a7b2cb7188247b6
        lon1 == null ||
        lat2 == null ||
        lon2 == null
-     ) {
-@@ -3792,139 +3794,125 @@ function SearchScreen({ token, showFlash, navigation, route, toggleFavorite, isF
+@@ -4015,50 +4017,54 @@ function SearchScreen({ token, showFlash, navigation, route, toggleFavorite, isF
+     return () => {
+       isMounted = false;
+     };
+   }, [clientLocation, ensureClientLocation, hasRequestedLocation, hasSearched]);
  
-       // Always normalize the result to an array
-       const list = Array.isArray(res.data)
-         ? res.data
-         : res.data?.providers || [];
- 
-       setProviders(list);
-       setFilteredProviders(list);
-       syncFavoritesFromList(list);
-       return list;
-     } catch (err) {
-       console.log(
-         "Error loading providers",
-         err?.response?.data || err?.message
-       );
-       setProvidersError("Could not load providers.");
-       if (showFlash) showFlash("error", "Could not load providers.");
-       return [];
-     } finally {
-       setProvidersLoading(false);
-     }
-   }, [showFlash, syncFavoritesFromList]);
- 
-   const clearSelectedProvider = useCallback(() => {
-     setSelectedProvider(null);
-+    setSelectedProviderId(null);
-     setServices([]);
-     setServicesError("");
-     setSelectedService(null);
-     setAvailability([]);
-     setAvailabilityError("");
-     setCatalogImages([]);
-     setCatalogError("");
-     setSelectedDate(null);
-     setSelectedSlot(null);
-   }, []);
- 
-   // Load providers on mount
-   useEffect(() => {
-     loadProviders();
-   }, [loadProviders]);
- 
-   useEffect(() => {
-     const providerFromNav = route?.params?.provider;
-     if (!providerFromNav) return;
- 
-     const incomingId = getProviderId(providerFromNav);
--    const currentId = getProviderId(selectedProvider);
--    if (incomingId && incomingId === currentId) return;
-+    const initKey = incomingId || providerFromNav?.username || providerFromNav?.name;
-+    if (!initKey || initializedNavProviderKeyRef.current === initKey) return;
-+
-+    // Single source of truth: only initialize from route params once,
-+    // then rely on selectedProviderId + handleSelectProvider for all updates.
-+    initializedNavProviderKeyRef.current = initKey;
- 
-     setSearchQuery(providerFromNav.name || "");
-     setHasSearched(true);
-     setFilteredProviders([providerFromNav]);
-     handleSelectProvider(providerFromNav);
--  }, [route?.params?.provider, selectedProvider, handleSelectProvider]);
-+  }, [route?.params?.provider, handleSelectProvider]);
- 
-   // Add a useEffect that recomputes filteredProviders
-   // whenever providers/search/radius/location changes:
-   useEffect(() => {
-     // 👇 do nothing until the user actually searches or if the query is empty
-     const normalizedQuery = normalizeSearchValue(searchQuery);
-     if (!hasSearched || !normalizedQuery) {
-       setFilteredProviders([]);
-       clearSelectedProvider();
-       return;
-     }
- 
-     const providerList = Array.isArray(providers) ? providers : [];
-     const deeplinkUsername = normalizeSearchValue(incomingUsername);
-     if (
-       deeplinkUsername &&
-       normalizedQuery === deeplinkUsername
-     ) {
-       console.log(
-         "[search] deeplink exact attempt",
-         deeplinkUsername
-       );
-       const exact = providerList.filter((p) => {
-         const u1 = normalizeSearchValue(p.username);
-         const u2 = normalizeSearchValue(p.user?.username);
-         return u1 === deeplinkUsername || u2 === deeplinkUsername;
+   const handleResultsLayout = (event) => {
+     resultsOffset.current = event.nativeEvent.layout.y;
+     if (shouldScrollToResults && scrollRef.current) {
+       scrollRef.current.scrollTo({
+         y: resultsOffset.current,
+         animated: true,
        });
-       console.log(
-         "[search] deeplink exact username",
-         deeplinkUsername,
-         "matches",
-         exact.length
-       );
-       if (exact.length > 0) {
-         setFilteredProviders(exact);
-         return;
-       }
-       console.log("[search] deeplink exact miss, falling back to fuzzy");
+       setShouldScrollToResults(false);
      }
+   };
  
-     const q = normalizedQuery;
--    const providerFromNav = route?.params?.provider;
--    const navProviderId = getProviderId(providerFromNav);
--    const navProviderName = normalizeSearchValue(providerFromNav?.name);
--
--    // If we navigated in with a specific provider, keep the results scoped
--    // to that provider ID so namesakes don't appear.
--    if (
--      navProviderId &&
--      navProviderName &&
--      normalizedQuery === navProviderName
--    ) {
--      const exactMatch = providerList.find(
--        (p) => getProviderId(p) === navProviderId
--      );
--
--      setFilteredProviders([exactMatch || providerFromNav]);
--      return;
--    }
--
-     const clientCoords = getClientCoords();
-     let list = providerList.map((p) => {
-       const providerCoords = getProviderCoords(p);
-       const distance = clientCoords && providerCoords
-         ? haversineKm(
-             clientCoords.lat,
-             clientCoords.lng,
-             providerCoords.lat,
-             providerCoords.lng
-           )
-         : null;
-       const distance_km = Number.isFinite(distance) ? distance : null;
-       return { ...p, distance_km };
+   useEffect(() => {
+     if (!shouldScrollToResults || !scrollRef.current) return;
+     scrollRef.current.scrollTo({
+       y: resultsOffset.current,
+       animated: true,
      });
+     setShouldScrollToResults(false);
+   }, [shouldScrollToResults]);
  
-     // text filter (profession/name/location)
-     if (q) {
-       list = list.filter((p) => {
-         const name = (p.name || "").toLowerCase();
-         const location = (p.location || "").toLowerCase();
-         const username = (p.username || "").toLowerCase();
-         const username2 = (p.user?.username || "").toLowerCase();
-         const professions = (p.professions || []).map((pr) =>
-           (pr || "").toLowerCase()
++  const handleServicesLayout = (event) => {
++    servicesOffset.current = event.nativeEvent.layout.y;
++  };
++
+ 
+   const loadAvailability = useCallback(
+     async (providerId, serviceId) => {
+       try {
+         setAvailabilityLoading(true);
+         setAvailabilityError("");
+ 
+         const res = await apiClient.get(
+           `/providers/${providerId}/availability`,
+           {
+             params: {
+               service_id: serviceId,
+               days: 14,
+             },
+           }
          );
-@@ -3941,51 +3929,51 @@ function SearchScreen({ token, showFlash, navigation, route, toggleFavorite, isF
  
-     // distance filter
-     if (radiusKm > 0) {
-       if (!clientLocation) {
-         setLocationError(
-           "Turn on location services to filter providers by distance."
+         setAvailability(res.data || []);
+       } catch (err) {
+         console.log(
+           "Error loading availability",
+           err.response?.data || err.message
          );
-       } else {
-         setLocationError("");
-         list = list.filter(
-           (p) =>
-             typeof p.distance_km === "number" &&
-             p.distance_km <= radiusKm
-         );
-         list.sort((a, b) => {
-           const da = a.distance_km ?? 999999;
-           const db = b.distance_km ?? 999999;
-           return da - db;
-         });
-       }
-     } else {
-       setLocationError("");
-     }
- 
-     setFilteredProviders(list);
--  }, [providers, searchQuery, radiusKm, clientLocation, hasSearched, route?.params?.provider, clearSelectedProvider]);
-+  }, [providers, searchQuery, radiusKm, clientLocation, hasSearched, incomingUsername, clearSelectedProvider]);
- 
- 
- 
-   const ensureClientLocation = useCallback(async () => {
-     try {
-       const { status } = await Location.requestForegroundPermissionsAsync();
-       if (status !== "granted") {
-         setLocationError(
-           "Location permission is required to filter by distance."
-         );
-         if (showFlash) {
-           showFlash(
-             "error",
-             "Please enable location permission to use distance filters."
-           );
-         }
-         return null;
-       }
- 
-       const loc = await Location.getCurrentPositionAsync({});
-       const coords = {
-         lat: loc.coords.latitude,
-         long: loc.coords.longitude,
-       };
-       setClientLocation(coords);
-@@ -4082,192 +4070,190 @@ function SearchScreen({ token, showFlash, navigation, route, toggleFavorite, isF
-   );
- 
-   const loadProviderCatalog = useCallback(async (providerId) => {
-     try {
-       setCatalogLoading(true);
-       setCatalogError("");
- 
-       const res = await apiClient.get(`/providers/${providerId}/catalog`);
- 
-       setCatalogImages(Array.isArray(res.data) ? res.data : []);
-     } catch (err) {
-       console.log(
-         "Error loading provider catalog",
-         err.response?.data || err.message
-       );
-       setCatalogError(
-         err.response?.data?.detail || "Could not load provider photos."
-       );
-     } finally {
-       setCatalogLoading(false);
-     }
-   }, []);
- 
+         setAvailabilityError("Could not load availability for this service.");
+         if (showFlash) showFlash("error", "Could not load availability.");
+@@ -4093,140 +4099,161 @@ function SearchScreen({ token, showFlash, navigation, route, toggleFavorite, isF
  
    const handleSelectProvider = useCallback(async (provider) => {
--    setSelectedProvider(provider);
--
      const providerId = getProviderId(provider);
-+    setSelectedProvider(provider);
-+    setSelectedProviderId(providerId || null);
+     setSelectedProvider(provider);
+     setSelectedProviderId(providerId || null);
      if (!providerId) {
        setServices([]);
        setServicesError("Provider information is missing.");
@@ -328,6 +138,15 @@ index 2710bea7aabaf83b1f737459d53c6f6cea05b4c7..206c07ece58d681c3a7b2cb7188247b6
      setCatalogError("");
      loadProviderCatalog(providerId);
  
++    if (scrollRef.current) {
++      requestAnimationFrame(() => {
++        scrollRef.current?.scrollTo({
++          y: servicesOffset.current || resultsOffset.current,
++          animated: true,
++        });
++      });
++    }
++
      try {
        setServicesLoading(true);
  
@@ -355,21 +174,24 @@ index 2710bea7aabaf83b1f737459d53c6f6cea05b4c7..206c07ece58d681c3a7b2cb7188247b6
        setSelectedDate(null);
        setSelectedSlot(null);
  
--      if (!selectedProvider) return;
-+      if (!selectedProviderId) return;
+       if (!selectedProviderId) return;
  
--      await loadAvailability(getProviderId(selectedProvider), service.id);
-+      await loadAvailability(selectedProviderId, service.id);
+       await loadAvailability(selectedProviderId, service.id);
      },
--    [loadAvailability, selectedProvider]
-+    [loadAvailability, selectedProviderId]
+     [loadAvailability, selectedProviderId]
    );
  
++  const isProviderSelected = Boolean(selectedProviderId && selectedProvider);
++  const displayProviders = isProviderSelected && selectedProvider
++    ? [selectedProvider]
++    : filteredProviders;
++
    const clientCoords = getClientCoords();
    let searchHasDistance = false;
    let searchLastProviderCoords = null;
    let searchLastDistanceKm = null;
-   const searchCards = filteredProviders.map((p) => {
+-  const searchCards = filteredProviders.map((p) => {
++  const searchCards = displayProviders.map((p) => {
      const avatar = resolveImageUrl(p.avatar_url || p.profile_photo_url);
      const favorite = isFavorite(p);
      const providerCoords = getProviderCoords(p);
@@ -407,17 +229,14 @@ index 2710bea7aabaf83b1f737459d53c6f6cea05b4c7..206c07ece58d681c3a7b2cb7188247b6
          onFavoriteToggle={() => toggleFavorite(p)}
          onPress={() => handleSelectProvider(p)}
          ctaLabel={null}
--        isSelected={
--          selectedProvider &&
--          getProviderId(selectedProvider) === getProviderId(p)
--        }
-+        isSelected={selectedProviderId && selectedProviderId === getProviderId(p)}
+         isSelected={selectedProviderId && selectedProviderId === getProviderId(p)}
          style={styles.providerCardList}
        />
      );
    });
  
-   if (!searchHasDistance && filteredProviders.length) {
+-  if (!searchHasDistance && filteredProviders.length) {
++  if (!searchHasDistance && displayProviders.length) {
      console.log("[distance] search list missing distances", {
        clientCoords,
        providerCoords: searchLastProviderCoords,
@@ -425,22 +244,27 @@ index 2710bea7aabaf83b1f737459d53c6f6cea05b4c7..206c07ece58d681c3a7b2cb7188247b6
      });
    }
  
++  const handleChangeProvider = useCallback(() => {
++    clearSelectedProvider();
++    requestAnimationFrame(() => {
++      searchInputRef.current?.focus();
++    });
++  }, [clearSelectedProvider]);
++
    const handleRefresh = useCallback(async () => {
      setRefreshing(true);
      const list = await loadProviders();
  
--    if (selectedProvider) {
-+    if (selectedProviderId) {
+     if (selectedProviderId) {
        const match = (list || []).find(
--        (p) => getProviderId(p) === getProviderId(selectedProvider)
-+        (p) => getProviderId(p) === selectedProviderId
+         (p) => getProviderId(p) === selectedProviderId
        );
  
        if (match) {
          await handleSelectProvider(match);
        } else {
          setSelectedProvider(null);
-+        setSelectedProviderId(null);
+         setSelectedProviderId(null);
          setServices([]);
          setAvailability([]);
          setCatalogImages([]);
@@ -448,40 +272,253 @@ index 2710bea7aabaf83b1f737459d53c6f6cea05b4c7..206c07ece58d681c3a7b2cb7188247b6
      }
  
      setRefreshing(false);
--  }, [handleSelectProvider, loadProviders, selectedProvider]);
-+  }, [handleSelectProvider, loadProviders, selectedProviderId]);
+   }, [handleSelectProvider, loadProviders, selectedProviderId]);
  
    const handleBookAppointment = async () => {
--    if (!selectedService || !selectedSlot || !selectedProvider) return;
-+    if (!selectedService || !selectedSlot || !selectedProviderId) return;
+     if (!selectedService || !selectedSlot || !selectedProviderId) return;
+@@ -4308,59 +4335,62 @@ function SearchScreen({ token, showFlash, navigation, route, toggleFavorite, isF
+       const key = makeDateKey(d); // YYYY-MM-DD
+       const hasSlots = (availabilityMap[key] || []).length > 0;
  
--    const providerId = getProviderId(selectedProvider);
-+    const providerId = selectedProviderId;
-     if (!providerId) return;
+       days.push({ key, date: d, hasSlots });
+     }
+     return days;
+   };
  
-     try {
-       setBookingLoading(true);
+   const calendarDays = buildCalendarDays();
  
+   const formatTimeLabel = (isoString) => {
+     const d = new Date(isoString);
+     return d.toLocaleTimeString("en-US", {
+       hour: "numeric",
+       minute: "2-digit",
+     });
+   };
  
-       await apiClient.post("/bookings", {
-         service_id: selectedService.id,
-         start_time: selectedSlot,
-       });
+     return (
+       <SafeAreaView style={styles.searchSafeArea}>
+         <View style={styles.searchHeader}>
+           <Text style={styles.searchHeaderTitle}>Search providers</Text>
+           <View style={styles.searchBar}>
+             <Ionicons name="search-outline" size={18} color={colors.textMuted} />
+             <TextInput
++              ref={searchInputRef}
+               style={styles.searchInput}
+               placeholder="Search by profession or provider…"
+               placeholderTextColor={colors.textSecondary}
+               value={searchQuery}
+               onChangeText={(value) => {
++                if (isProviderSelected) {
++                  clearSelectedProvider();
++                }
+                 if (!normalizeSearchValue(value)) {
+                   setSearchQuery(value);
+                   setHasSearched(false);
+-                  clearSelectedProvider();
+                   return;
+                 }
+                 setSearchQuery(value);
+               }}
+               onSubmitEditing={handleSearchSubmit}
+               returnKeyType="search"
+             />
+           </View>
+           <View style={styles.chipsRow}>
+             <ScrollView
+               horizontal
+               showsHorizontalScrollIndicator={false}
+               contentContainerStyle={styles.chipsContent}
+             >
+               {distanceChips.map((km) => {
+                 const selected = radiusKm === km;
+                 const label = km === 0 ? "Any" : `${km}km`;
+                 return (
+                   <TouchableOpacity
+                     key={km}
+                     style={[
+                       styles.filterChip,
+                       selected && styles.filterChipSelected,
+                     ]}
+                     onPress={() => handleRadiusChange(km)}
+@@ -4376,106 +4406,114 @@ function SearchScreen({ token, showFlash, navigation, route, toggleFavorite, isF
+                   </TouchableOpacity>
+                 );
+               })}
+             </ScrollView>
+           </View>
+           {locationError ? (
+             <Text style={styles.locationErrorText}>{locationError}</Text>
+           ) : null}
+         </View>
  
+         <ScrollView
+           ref={scrollRef}
+           contentContainerStyle={styles.searchContent}
+           refreshControl={
+             <RefreshControl
+               refreshing={refreshing}
+               onRefresh={handleRefresh}
+             />
+           }
+         >
+           <View style={styles.resultsSection} onLayout={handleResultsLayout}>
+             <View style={styles.resultsHeader}>
+               <Text style={styles.sectionTitle}>Results</Text>
+               {hasSearched && !providersLoading ? (
+                 <Text style={styles.resultsCount}>
+-                  {filteredProviders.length} providers
++                  {displayProviders.length} provider{displayProviders.length === 1 ? "" : "s"}
+                 </Text>
+               ) : null}
+             </View>
  
-       // Refresh availability so this slot disappears
-       await loadAvailability(providerId, selectedService.id);
++            {isProviderSelected && (
++              <View style={styles.selectedProviderActions}>
++                <TouchableOpacity onPress={handleChangeProvider}>
++                  <Text style={styles.changeProviderText}>Change provider</Text>
++                </TouchableOpacity>
++              </View>
++            )}
++
+             {!hasSearched && (
+               <View style={styles.emptyStateCard}>
+                 <Text style={styles.emptyStateTitle}>
+                   Ready to discover your next service?
+                 </Text>
+                 <Text style={styles.emptyStateText}>
+                   Search by profession or provider name to see who is available.
+                   Use the distance chips to filter nearby options.
+                 </Text>
+               </View>
+             )}
  
-       // Clear selection
-       setSelectedSlot(null);
+             {providersLoading && hasSearched && (
+               <View style={styles.skeletonList}>
+                 {[0, 1, 2].map((item) => (
+                   <View key={item} style={styles.skeletonCard}>
+                     <View style={styles.skeletonAvatar} />
+                     <View style={styles.skeletonDetails}>
+                       <View style={styles.skeletonLine} />
+                       <View style={styles.skeletonLineShort} />
+                     </View>
+                   </View>
+                 ))}
+               </View>
+             )}
  
-       if (showFlash) showFlash("success", "Booking created!");
-       else Alert.alert("Success", "Booking created!");
-     } catch (err) {
-       console.log(
-         "Error creating booking",
-         err.response?.data || err.message
-       );
+             {!providersLoading && providersError && hasSearched && (
+               <Text style={styles.errorText}>{providersError}</Text>
+             )}
+ 
+             {!providersLoading &&
+               !providersError &&
+               hasSearched &&
+-              filteredProviders.length === 0 && (
++              displayProviders.length === 0 && (
+                 <Text style={styles.emptyStateText}>
+                   {incomingUsername
+                     ? "We couldn't find that provider. Please check the username."
+                     : "No providers found. Try adjusting your search or distance filter."}
+                 </Text>
+               )}
+ 
+             {!providersLoading &&
+               !providersError &&
+               hasSearched &&
+-              filteredProviders.length > 0 &&
++              displayProviders.length > 0 &&
+               searchCards}
+           </View>
+ 
+                         {/* Services list for selected provider */}
+                       {selectedProvider && (
+-                        <View style={styles.card}>
++                        <View style={styles.card} onLayout={handleServicesLayout}>
+                           <Text style={styles.sectionTitle}>
+                             Services by {selectedProvider.name}
+                           </Text>
+ 
+                           {/* Catalog preview */}
+                           {catalogLoading && (
+                             <View style={{ paddingVertical: 8 }}>
+                               <ActivityIndicator />
+                               <Text style={styles.serviceMeta}>Loading photos…</Text>
+                             </View>
+                           )}
+ 
+                           {!catalogLoading && catalogError ? (
+                             <Text style={styles.errorText}>{catalogError}</Text>
+                           ) : null}
+ 
+                           {!catalogLoading &&
+                             !catalogError &&
+                             catalogImages.length > 0 && (
+                               <ScrollView
+                                 horizontal
+                                 showsHorizontalScrollIndicator={false}
+                                 style={styles.searchCatalogStrip}
+                               >
+                                 {catalogImages.map((img) => (
+@@ -9837,50 +9875,59 @@ filterChipTextSelected: {
+ },
+ locationErrorText: {
+   marginTop: 6,
+   fontSize: 12,
+   color: colors.error,
+ },
+ searchContent: {
+   paddingHorizontal: 16,
+   paddingTop: 12,
+   paddingBottom: 32,
+ },
+ resultsSection: {
+   marginBottom: 16,
+ },
+ resultsHeader: {
+   flexDirection: "row",
+   alignItems: "center",
+   justifyContent: "space-between",
+   marginBottom: 8,
+ },
+ resultsCount: {
+   fontSize: 12,
+   color: colors.textMuted,
+   fontWeight: "600",
+ },
++selectedProviderActions: {
++  alignItems: "flex-start",
++  marginBottom: 10,
++},
++changeProviderText: {
++  fontSize: 13,
++  fontWeight: "600",
++  color: colors.primary,
++},
+ emptyStateCard: {
+   backgroundColor: colors.surface,
+   borderRadius: 14,
+   padding: 16,
+   borderWidth: 1,
+   borderColor: colors.border,
+ },
+ emptyStateTitle: {
+   fontSize: 15,
+   fontWeight: "700",
+   color: colors.textPrimary,
+   marginBottom: 6,
+ },
+ emptyStateText: {
+   fontSize: 13,
+   color: colors.textSecondary,
+   lineHeight: 18,
+ },
+ skeletonList: {
+   gap: 12,
+ },
+ skeletonCard: {
+   flexDirection: "row",
+   alignItems: "center",
+   backgroundColor: colors.surface,
  
 EOF
 )
