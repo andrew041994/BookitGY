@@ -21,6 +21,12 @@ def _ensure_email_configured() -> None:
 
 def _send_email(message: Mail, error_detail: str) -> None:
     try:
+
+        raw = settings.SENDGRID_API_KEY
+        api_key = (raw or "").strip()
+        print("[EMAIL DEBUG] key prefix:", api_key[:3], "len:", len(api_key))
+        client = SendGridAPIClient(api_key)
+        
         client = SendGridAPIClient(settings.SENDGRID_API_KEY)
         response = client.send(message)
         print("[EMAIL] sendgrid status:", response.status_code)
