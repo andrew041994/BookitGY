@@ -8212,7 +8212,7 @@ function MainApp({
           <Tab.Screen name="Dashboard">
             {() => (
               <ProviderDashboardScreen
-                apiClient={apiClient}
+                // apiClient={apiClient}
                 token={token}
                 showFlash={showFlash}
               />
@@ -8235,7 +8235,7 @@ function MainApp({
           <Tab.Screen name="Profile">
             {() => (
               <ProfileScreen
-                apiClient={apiClient}
+                // apiClient={apiClient}
                 authLoading={authLoading}
                 token={token}
                 setToken={setToken}
@@ -8341,7 +8341,7 @@ function MainApp({
             <Tab.Screen name="Profile">
               {() => (
                 <ProfileScreen
-                  apiClient={apiClient}
+                  // apiClient={apiClient}
                   authLoading={authLoading}
                   token={token}
                   setToken={setToken}
@@ -8413,7 +8413,7 @@ function App() {
   const url = ExpoLinking.useURL();
 
   const [flash, setFlash] = useState(null);
-  const apiClient = api;
+  // const apiClient = api;
 
   const handleUnauthorized = useCallback(async () => {
      setApiAccessToken(null);
