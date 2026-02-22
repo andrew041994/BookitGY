@@ -3675,6 +3675,7 @@ function SearchScreen({ token, showFlash, navigation, route, toggleFavorite, isF
   const [providersLoading, setProvidersLoading] = useState(true);
   const [providersError, setProvidersError] = useState("");
   const [selectedProvider, setSelectedProvider] = useState(null);
+  const [selectedProviderId, setSelectedProviderId] = useState(null);
   const [services, setServices] = useState([]);
   const [servicesLoading, setServicesLoading] = useState(false);
   const [servicesError, setServicesError] = useState("");
@@ -3695,6 +3696,7 @@ function SearchScreen({ token, showFlash, navigation, route, toggleFavorite, isF
   const isFocused = useIsFocused();
   const scrollRef = useRef(null);
   const resultsOffset = useRef(0);
+  const initializedNavProviderKeyRef = useRef(null);
   //Radius 
   const distanceChips = [0, 5, 10, 15, 20];
 
@@ -3814,6 +3816,7 @@ function SearchScreen({ token, showFlash, navigation, route, toggleFavorite, isF
 
   const clearSelectedProvider = useCallback(() => {
     setSelectedProvider(null);
+    setSelectedProviderId(null);
     setServices([]);
     setServicesError("");
     setSelectedService(null);
@@ -3835,14 +3838,18 @@ function SearchScreen({ token, showFlash, navigation, route, toggleFavorite, isF
     if (!providerFromNav) return;
 
     const incomingId = getProviderId(providerFromNav);
-    const currentId = getProviderId(selectedProvider);
-    if (incomingId && incomingId === currentId) return;
+    const initKey = incomingId || providerFromNav?.username || providerFromNav?.name;
+    if (!initKey || initializedNavProviderKeyRef.current === initKey) return;
+
+    // Single source of truth: only initialize from route params once,
+    // then rely on selectedProviderId + handleSelectProvider for all updates.
+    initializedNavProviderKeyRef.current = initKey;
 
     setSearchQuery(providerFromNav.name || "");
     setHasSearched(true);
     setFilteredProviders([providerFromNav]);
     handleSelectProvider(providerFromNav);
-  }, [route?.params?.provider, selectedProvider, handleSelectProvider]);
+  }, [route?.params?.provider, handleSelectProvider]);
 
   // Add a useEffect that recomputes filteredProviders
   // whenever providers/search/radius/location changes:
@@ -3884,25 +3891,6 @@ function SearchScreen({ token, showFlash, navigation, route, toggleFavorite, isF
     }
 
     const q = normalizedQuery;
-    const providerFromNav = route?.params?.provider;
-    const navProviderId = getProviderId(providerFromNav);
-    const navProviderName = normalizeSearchValue(providerFromNav?.name);
-
-    // If we navigated in with a specific provider, keep the results scoped
-    // to that provider ID so namesakes don't appear.
-    if (
-      navProviderId &&
-      navProviderName &&
-      normalizedQuery === navProviderName
-    ) {
-      const exactMatch = providerList.find(
-        (p) => getProviderId(p) === navProviderId
-      );
-
-      setFilteredProviders([exactMatch || providerFromNav]);
-      return;
-    }
-
     const clientCoords = getClientCoords();
     let list = providerList.map((p) => {
       const providerCoords = getProviderCoords(p);
@@ -3963,7 +3951,7 @@ function SearchScreen({ token, showFlash, navigation, route, toggleFavorite, isF
     }
 
     setFilteredProviders(list);
-  }, [providers, searchQuery, radiusKm, clientLocation, hasSearched, route?.params?.provider, clearSelectedProvider]);
+  }, [providers, searchQuery, radiusKm, clientLocation, hasSearched, incomingUsername, clearSelectedProvider]);
 
 
 
@@ -4104,9 +4092,9 @@ function SearchScreen({ token, showFlash, navigation, route, toggleFavorite, isF
 
 
   const handleSelectProvider = useCallback(async (provider) => {
-    setSelectedProvider(provider);
-
     const providerId = getProviderId(provider);
+    setSelectedProvider(provider);
+    setSelectedProviderId(providerId || null);
     if (!providerId) {
       setServices([]);
       setServicesError("Provider information is missing.");
@@ -4154,11 +4142,11 @@ function SearchScreen({ token, showFlash, navigation, route, toggleFavorite, isF
       setSelectedDate(null);
       setSelectedSlot(null);
 
-      if (!selectedProvider) return;
+      if (!selectedProviderId) return;
 
-      await loadAvailability(getProviderId(selectedProvider), service.id);
+      await loadAvailability(selectedProviderId, service.id);
     },
-    [loadAvailability, selectedProvider]
+    [loadAvailability, selectedProviderId]
   );
 
   const clientCoords = getClientCoords();
@@ -4203,10 +4191,7 @@ function SearchScreen({ token, showFlash, navigation, route, toggleFavorite, isF
         onFavoriteToggle={() => toggleFavorite(p)}
         onPress={() => handleSelectProvider(p)}
         ctaLabel={null}
-        isSelected={
-          selectedProvider &&
-          getProviderId(selectedProvider) === getProviderId(p)
-        }
+        isSelected={selectedProviderId && selectedProviderId === getProviderId(p)}
         style={styles.providerCardList}
       />
     );
@@ -4224,15 +4209,16 @@ function SearchScreen({ token, showFlash, navigation, route, toggleFavorite, isF
     setRefreshing(true);
     const list = await loadProviders();
 
-    if (selectedProvider) {
+    if (selectedProviderId) {
       const match = (list || []).find(
-        (p) => getProviderId(p) === getProviderId(selectedProvider)
+        (p) => getProviderId(p) === selectedProviderId
       );
 
       if (match) {
         await handleSelectProvider(match);
       } else {
         setSelectedProvider(null);
+        setSelectedProviderId(null);
         setServices([]);
         setAvailability([]);
         setCatalogImages([]);
@@ -4240,12 +4226,12 @@ function SearchScreen({ token, showFlash, navigation, route, toggleFavorite, isF
     }
 
     setRefreshing(false);
-  }, [handleSelectProvider, loadProviders, selectedProvider]);
+  }, [handleSelectProvider, loadProviders, selectedProviderId]);
 
   const handleBookAppointment = async () => {
-    if (!selectedService || !selectedSlot || !selectedProvider) return;
+    if (!selectedService || !selectedSlot || !selectedProviderId) return;
 
-    const providerId = getProviderId(selectedProvider);
+    const providerId = selectedProviderId;
     if (!providerId) return;
 
     try {

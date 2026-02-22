@@ -1,88 +1,487 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
 diff --git a/mobile/App.js b/mobile/App.js
-index d5f9e4d1f7d716c0d3906d019ff22e4eb98a553d..2710bea7aabaf83b1f737459d53c6f6cea05b4c7 100644
+index 2710bea7aabaf83b1f737459d53c6f6cea05b4c7..206c07ece58d681c3a7b2cb7188247b696c68530 100644
 --- a/mobile/App.js
 +++ b/mobile/App.js
-@@ -917,77 +917,61 @@ return (
+@@ -3653,70 +3653,72 @@ function AppointmentsScreen({ token, showFlash }) {
            )}
- 
-             {goToSignup && (
-               <View style={{ width: "100%", marginBottom: 10 }}>
-                 <Button
-                   title="Need an account? Sign Up"
-                   onPress={goToSignup}
-                   color={colors.primary}
-                 />
-               </View>
-             )}
- 
-             {goBack && (
-               <View style={{ width: "100%" }}>
-                 <Button title="Back" onPress={goBack} color={colors.textMuted} />
-               </View>
-             )}
-           </View>
-         </TouchableWithoutFeedback>
-       </ScrollView>
-     </KeyboardAvoidingView>
-   );
- 
+         </View>
+       </>
+     )}
+   </ScrollView>
+ );
  }
  
--function VerifyEmailScreen({ email, goToLogin, showFlash }) {
-+function VerifyEmailScreen({ email, goToLogin }) {
-   const displayedEmail = (email || "your email").trim() || "your email";
- 
--  const openEmailApp = async () => {
--    try {
--      await Linking.openURL("mailto:");
--    } catch (error) {
--      if (showFlash) {
--        showFlash("error", "Unable to open your email app right now.");
--      } else {
--        Alert.alert("Error", "Unable to open your email app right now.");
--      }
--    }
--  };
--
-   return (
-     <View style={styles.container}>
-       <Text style={styles.title}>Verify your email</Text>
-       <Text style={styles.subtitle}>
-         We sent a verification link to {displayedEmail}. You must verify your email before you can log in.
-       </Text>
- 
--      <TouchableOpacity style={styles.authPrimaryButton} onPress={openEmailApp}>
--        <Text style={styles.authPrimaryButtonText}>Open Email App</Text>
--      </TouchableOpacity>
--
--      <TouchableOpacity style={styles.authSecondaryButton} onPress={goToLogin}>
-+      <TouchableOpacity style={[styles.authSecondaryButton, { marginTop: 24 }]} onPress={goToLogin}>
-         <Text style={styles.authSecondaryButtonText}>Back to Login</Text>
-       </TouchableOpacity>
- 
-       {/* TODO: Add "Resend Email" button when backend resend-verification endpoint is available. */}
-     </View>
-   );
- }
+     
  
  
- function ForgotPasswordScreen({ goToLogin, goBack, showFlash }) {
-   const [email, setEmail] = useState("");
-   const [submitting, setSubmitting] = useState(false);
-   const [devResetLink, setDevResetLink] = useState(null);
  
-   const requestReset = async () => {
-     const trimmedEmail = email.trim();
-     const normalizedEmail = trimmedEmail.toLowerCase();
  
-     if (!trimmedEmail || !isValidEmail(trimmedEmail)) {
-       showFlash?.("error", "Please enter a valid email address");
+ function SearchScreen({ token, showFlash, navigation, route, toggleFavorite, isFavorite, syncFavoritesFromList}) {
+   const incomingUsername = route?.params?.incomingUsername ?? null;
+   const deeplinkNonce = route?.params?.deeplinkNonce ?? null;
+   const [filteredProviders, setFilteredProviders] = useState([]);
+   const [searchQuery, setSearchQuery] = useState("");
+   const [radiusKm, setRadiusKm] = useState(0); // 0 = any distance
+   const [clientLocation, setClientLocation] = useState(null);
+   const [locationError, setLocationError] = useState("");
+   const [providers, setProviders] = useState([]);
+   const [providersLoading, setProvidersLoading] = useState(true);
+   const [providersError, setProvidersError] = useState("");
+   const [selectedProvider, setSelectedProvider] = useState(null);
++  const [selectedProviderId, setSelectedProviderId] = useState(null);
+   const [services, setServices] = useState([]);
+   const [servicesLoading, setServicesLoading] = useState(false);
+   const [servicesError, setServicesError] = useState("");
+   const [selectedService, setSelectedService] = useState(null);
+   const [catalogImages, setCatalogImages] = useState([]);
+   const [catalogLoading, setCatalogLoading] = useState(false);
+   const [catalogError, setCatalogError] = useState("");
+   const [availability, setAvailability] = useState([]);
+   const [availabilityLoading, setAvailabilityLoading] = useState(false);
+   const [availabilityError, setAvailabilityError] = useState("");
+   const [selectedDate, setSelectedDate] = useState(null);
+   const [selectedSlot, setSelectedSlot] = useState(null); // ISO string
+   const [bookingLoading, setBookingLoading] = useState(false);
+   const [hasSearched, setHasSearched] = useState(false); // 👈 NEW
+   const [refreshing, setRefreshing] = useState(false);
+   const [shouldScrollToResults, setShouldScrollToResults] = useState(false);
+   const [hasRequestedLocation, setHasRequestedLocation] = useState(false);
+   const isFocused = useIsFocused();
+   const scrollRef = useRef(null);
+   const resultsOffset = useRef(0);
++  const initializedNavProviderKeyRef = useRef(null);
+   //Radius 
+   const distanceChips = [0, 5, 10, 15, 20];
+ 
+   useEffect(() => {
+     if (!isFocused) return;
+     if (!incomingUsername) return;
+     console.log(
+       "[deeplink] consumed in SearchScreen",
+       incomingUsername,
+       deeplinkNonce,
+       "focused",
+       isFocused
+     );
+     setSearchQuery(incomingUsername);
+     setHasSearched(true);
+     setShouldScrollToResults(true);
+   }, [incomingUsername, deeplinkNonce, isFocused]);
+ 
+   const haversineKm = (lat1, lon1, lat2, lon2) => {
+     if (
+       lat1 == null ||
+       lon1 == null ||
+       lat2 == null ||
+       lon2 == null
+     ) {
+@@ -3792,139 +3794,125 @@ function SearchScreen({ token, showFlash, navigation, route, toggleFavorite, isF
+ 
+       // Always normalize the result to an array
+       const list = Array.isArray(res.data)
+         ? res.data
+         : res.data?.providers || [];
+ 
+       setProviders(list);
+       setFilteredProviders(list);
+       syncFavoritesFromList(list);
+       return list;
+     } catch (err) {
+       console.log(
+         "Error loading providers",
+         err?.response?.data || err?.message
+       );
+       setProvidersError("Could not load providers.");
+       if (showFlash) showFlash("error", "Could not load providers.");
+       return [];
+     } finally {
+       setProvidersLoading(false);
+     }
+   }, [showFlash, syncFavoritesFromList]);
+ 
+   const clearSelectedProvider = useCallback(() => {
+     setSelectedProvider(null);
++    setSelectedProviderId(null);
+     setServices([]);
+     setServicesError("");
+     setSelectedService(null);
+     setAvailability([]);
+     setAvailabilityError("");
+     setCatalogImages([]);
+     setCatalogError("");
+     setSelectedDate(null);
+     setSelectedSlot(null);
+   }, []);
+ 
+   // Load providers on mount
+   useEffect(() => {
+     loadProviders();
+   }, [loadProviders]);
+ 
+   useEffect(() => {
+     const providerFromNav = route?.params?.provider;
+     if (!providerFromNav) return;
+ 
+     const incomingId = getProviderId(providerFromNav);
+-    const currentId = getProviderId(selectedProvider);
+-    if (incomingId && incomingId === currentId) return;
++    const initKey = incomingId || providerFromNav?.username || providerFromNav?.name;
++    if (!initKey || initializedNavProviderKeyRef.current === initKey) return;
++
++    // Single source of truth: only initialize from route params once,
++    // then rely on selectedProviderId + handleSelectProvider for all updates.
++    initializedNavProviderKeyRef.current = initKey;
+ 
+     setSearchQuery(providerFromNav.name || "");
+     setHasSearched(true);
+     setFilteredProviders([providerFromNav]);
+     handleSelectProvider(providerFromNav);
+-  }, [route?.params?.provider, selectedProvider, handleSelectProvider]);
++  }, [route?.params?.provider, handleSelectProvider]);
+ 
+   // Add a useEffect that recomputes filteredProviders
+   // whenever providers/search/radius/location changes:
+   useEffect(() => {
+     // 👇 do nothing until the user actually searches or if the query is empty
+     const normalizedQuery = normalizeSearchValue(searchQuery);
+     if (!hasSearched || !normalizedQuery) {
+       setFilteredProviders([]);
+       clearSelectedProvider();
        return;
      }
  
-     setSubmitting(true);
-     setDevResetLink(null);
+     const providerList = Array.isArray(providers) ? providers : [];
+     const deeplinkUsername = normalizeSearchValue(incomingUsername);
+     if (
+       deeplinkUsername &&
+       normalizedQuery === deeplinkUsername
+     ) {
+       console.log(
+         "[search] deeplink exact attempt",
+         deeplinkUsername
+       );
+       const exact = providerList.filter((p) => {
+         const u1 = normalizeSearchValue(p.username);
+         const u2 = normalizeSearchValue(p.user?.username);
+         return u1 === deeplinkUsername || u2 === deeplinkUsername;
+       });
+       console.log(
+         "[search] deeplink exact username",
+         deeplinkUsername,
+         "matches",
+         exact.length
+       );
+       if (exact.length > 0) {
+         setFilteredProviders(exact);
+         return;
+       }
+       console.log("[search] deeplink exact miss, falling back to fuzzy");
+     }
+ 
+     const q = normalizedQuery;
+-    const providerFromNav = route?.params?.provider;
+-    const navProviderId = getProviderId(providerFromNav);
+-    const navProviderName = normalizeSearchValue(providerFromNav?.name);
+-
+-    // If we navigated in with a specific provider, keep the results scoped
+-    // to that provider ID so namesakes don't appear.
+-    if (
+-      navProviderId &&
+-      navProviderName &&
+-      normalizedQuery === navProviderName
+-    ) {
+-      const exactMatch = providerList.find(
+-        (p) => getProviderId(p) === navProviderId
+-      );
+-
+-      setFilteredProviders([exactMatch || providerFromNav]);
+-      return;
+-    }
+-
+     const clientCoords = getClientCoords();
+     let list = providerList.map((p) => {
+       const providerCoords = getProviderCoords(p);
+       const distance = clientCoords && providerCoords
+         ? haversineKm(
+             clientCoords.lat,
+             clientCoords.lng,
+             providerCoords.lat,
+             providerCoords.lng
+           )
+         : null;
+       const distance_km = Number.isFinite(distance) ? distance : null;
+       return { ...p, distance_km };
+     });
+ 
+     // text filter (profession/name/location)
+     if (q) {
+       list = list.filter((p) => {
+         const name = (p.name || "").toLowerCase();
+         const location = (p.location || "").toLowerCase();
+         const username = (p.username || "").toLowerCase();
+         const username2 = (p.user?.username || "").toLowerCase();
+         const professions = (p.professions || []).map((pr) =>
+           (pr || "").toLowerCase()
+         );
+@@ -3941,51 +3929,51 @@ function SearchScreen({ token, showFlash, navigation, route, toggleFavorite, isF
+ 
+     // distance filter
+     if (radiusKm > 0) {
+       if (!clientLocation) {
+         setLocationError(
+           "Turn on location services to filter providers by distance."
+         );
+       } else {
+         setLocationError("");
+         list = list.filter(
+           (p) =>
+             typeof p.distance_km === "number" &&
+             p.distance_km <= radiusKm
+         );
+         list.sort((a, b) => {
+           const da = a.distance_km ?? 999999;
+           const db = b.distance_km ?? 999999;
+           return da - db;
+         });
+       }
+     } else {
+       setLocationError("");
+     }
+ 
+     setFilteredProviders(list);
+-  }, [providers, searchQuery, radiusKm, clientLocation, hasSearched, route?.params?.provider, clearSelectedProvider]);
++  }, [providers, searchQuery, radiusKm, clientLocation, hasSearched, incomingUsername, clearSelectedProvider]);
+ 
+ 
+ 
+   const ensureClientLocation = useCallback(async () => {
+     try {
+       const { status } = await Location.requestForegroundPermissionsAsync();
+       if (status !== "granted") {
+         setLocationError(
+           "Location permission is required to filter by distance."
+         );
+         if (showFlash) {
+           showFlash(
+             "error",
+             "Please enable location permission to use distance filters."
+           );
+         }
+         return null;
+       }
+ 
+       const loc = await Location.getCurrentPositionAsync({});
+       const coords = {
+         lat: loc.coords.latitude,
+         long: loc.coords.longitude,
+       };
+       setClientLocation(coords);
+@@ -4082,192 +4070,190 @@ function SearchScreen({ token, showFlash, navigation, route, toggleFavorite, isF
+   );
+ 
+   const loadProviderCatalog = useCallback(async (providerId) => {
+     try {
+       setCatalogLoading(true);
+       setCatalogError("");
+ 
+       const res = await apiClient.get(`/providers/${providerId}/catalog`);
+ 
+       setCatalogImages(Array.isArray(res.data) ? res.data : []);
+     } catch (err) {
+       console.log(
+         "Error loading provider catalog",
+         err.response?.data || err.message
+       );
+       setCatalogError(
+         err.response?.data?.detail || "Could not load provider photos."
+       );
+     } finally {
+       setCatalogLoading(false);
+     }
+   }, []);
+ 
+ 
+   const handleSelectProvider = useCallback(async (provider) => {
+-    setSelectedProvider(provider);
+-
+     const providerId = getProviderId(provider);
++    setSelectedProvider(provider);
++    setSelectedProviderId(providerId || null);
+     if (!providerId) {
+       setServices([]);
+       setServicesError("Provider information is missing.");
+       return;
+     }
+ 
+     // Reset downstream state
+     setServices([]);
+     setServicesError("");
+     setSelectedService(null);
+     setAvailability([]);
+     setAvailabilityError("");
+     setSelectedDate(null);
+     setSelectedSlot(null);
+ 
+     // Reset and load catalog for this provider
+     setCatalogImages([]);
+     setCatalogError("");
+     loadProviderCatalog(providerId);
+ 
+     try {
+       setServicesLoading(true);
+ 
+       const res = await apiClient.get(
+         `/providers/${providerId}/services`
+       );
+       setServices(res.data || []);
+     } catch (err) {
+       console.log(
+         "Error loading services",
+         err.response?.data || err.message
+       );
+       setServicesError("Could not load services for this provider.");
+       if (showFlash) showFlash("error", "Could not load provider services.");
+     } finally {
+       setServicesLoading(false);
+     }
+   }, [loadProviderCatalog, showFlash]);
+ 
+   const handleSelectService = useCallback(
+     async (service) => {
+       setSelectedService(service);
+       setAvailability([]);
+       setAvailabilityError("");
+       setSelectedDate(null);
+       setSelectedSlot(null);
+ 
+-      if (!selectedProvider) return;
++      if (!selectedProviderId) return;
+ 
+-      await loadAvailability(getProviderId(selectedProvider), service.id);
++      await loadAvailability(selectedProviderId, service.id);
+     },
+-    [loadAvailability, selectedProvider]
++    [loadAvailability, selectedProviderId]
+   );
+ 
+   const clientCoords = getClientCoords();
+   let searchHasDistance = false;
+   let searchLastProviderCoords = null;
+   let searchLastDistanceKm = null;
+   const searchCards = filteredProviders.map((p) => {
+     const avatar = resolveImageUrl(p.avatar_url || p.profile_photo_url);
+     const favorite = isFavorite(p);
+     const providerCoords = getProviderCoords(p);
+     const baseDistance = toNum(p.distance_km);
+     const computedDistance =
+       baseDistance != null
+         ? baseDistance
+         : clientCoords && providerCoords
+         ? getDistanceKm(
+             clientCoords.lat,
+             clientCoords.lng,
+             providerCoords.lat,
+             providerCoords.lng
+           )
+         : null;
+     const distanceKm = Number.isFinite(computedDistance)
+       ? computedDistance
+       : null;
+     if (distanceKm != null) {
+       searchHasDistance = true;
+     }
+     searchLastProviderCoords = providerCoords;
+     searchLastDistanceKm = distanceKm;
+     const professionLabel = p.professions?.length
+       ? p.professions.join(" · ")
+       : p.profession || null;
+     return (
+       <ProviderCard
+         key={getProviderId(p) || p.name}
+         provider={p}
+         avatarUrl={avatar}
+         profession={professionLabel}
+         distanceKm={distanceKm}
+         isFavorite={favorite}
+         onFavoriteToggle={() => toggleFavorite(p)}
+         onPress={() => handleSelectProvider(p)}
+         ctaLabel={null}
+-        isSelected={
+-          selectedProvider &&
+-          getProviderId(selectedProvider) === getProviderId(p)
+-        }
++        isSelected={selectedProviderId && selectedProviderId === getProviderId(p)}
+         style={styles.providerCardList}
+       />
+     );
+   });
+ 
+   if (!searchHasDistance && filteredProviders.length) {
+     console.log("[distance] search list missing distances", {
+       clientCoords,
+       providerCoords: searchLastProviderCoords,
+       distanceKm: searchLastDistanceKm,
+     });
+   }
+ 
+   const handleRefresh = useCallback(async () => {
+     setRefreshing(true);
+     const list = await loadProviders();
+ 
+-    if (selectedProvider) {
++    if (selectedProviderId) {
+       const match = (list || []).find(
+-        (p) => getProviderId(p) === getProviderId(selectedProvider)
++        (p) => getProviderId(p) === selectedProviderId
+       );
+ 
+       if (match) {
+         await handleSelectProvider(match);
+       } else {
+         setSelectedProvider(null);
++        setSelectedProviderId(null);
+         setServices([]);
+         setAvailability([]);
+         setCatalogImages([]);
+       }
+     }
+ 
+     setRefreshing(false);
+-  }, [handleSelectProvider, loadProviders, selectedProvider]);
++  }, [handleSelectProvider, loadProviders, selectedProviderId]);
+ 
+   const handleBookAppointment = async () => {
+-    if (!selectedService || !selectedSlot || !selectedProvider) return;
++    if (!selectedService || !selectedSlot || !selectedProviderId) return;
+ 
+-    const providerId = getProviderId(selectedProvider);
++    const providerId = selectedProviderId;
+     if (!providerId) return;
+ 
+     try {
+       setBookingLoading(true);
+ 
+ 
+       await apiClient.post("/bookings", {
+         service_id: selectedService.id,
+         start_time: selectedSlot,
+       });
+ 
+ 
+       // Refresh availability so this slot disappears
+       await loadAvailability(providerId, selectedService.id);
+ 
+       // Clear selection
+       setSelectedSlot(null);
+ 
+       if (showFlash) showFlash("success", "Booking created!");
+       else Alert.alert("Success", "Booking created!");
+     } catch (err) {
+       console.log(
+         "Error creating booking",
+         err.response?.data || err.message
+       );
  
 EOF
 )
