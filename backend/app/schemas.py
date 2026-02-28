@@ -301,14 +301,14 @@ class AdminProviderListItemOut(BaseModel):
     account_number: Optional[str] = None
     profession: Optional[str] = None
     whatsapp: Optional[str] = None
-    email: Optional[EmailStr] = None
+    email: Optional[str] = None
 
 
 class AdminClientListItemOut(BaseModel):
     id: int
     username: Optional[str] = None
     whatsapp: Optional[str] = None
-    email: Optional[EmailStr] = None
+    email: Optional[str] = None
     created_at: Optional[datetime] = None
 
 
