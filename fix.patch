@@ -1,524 +1,764 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
-diff --git a/mobile/App.js b/mobile/App.js
-index 206c07ece58d681c3a7b2cb7188247b696c68530..206345fab2533e12f4445e4c163bfbf6011c7a34 100644
---- a/mobile/App.js
-+++ b/mobile/App.js
-@@ -3673,51 +3673,53 @@ function SearchScreen({ token, showFlash, navigation, route, toggleFavorite, isF
-   const [locationError, setLocationError] = useState("");
-   const [providers, setProviders] = useState([]);
-   const [providersLoading, setProvidersLoading] = useState(true);
-   const [providersError, setProvidersError] = useState("");
-   const [selectedProvider, setSelectedProvider] = useState(null);
-   const [selectedProviderId, setSelectedProviderId] = useState(null);
-   const [services, setServices] = useState([]);
-   const [servicesLoading, setServicesLoading] = useState(false);
-   const [servicesError, setServicesError] = useState("");
-   const [selectedService, setSelectedService] = useState(null);
-   const [catalogImages, setCatalogImages] = useState([]);
-   const [catalogLoading, setCatalogLoading] = useState(false);
-   const [catalogError, setCatalogError] = useState("");
-   const [availability, setAvailability] = useState([]);
-   const [availabilityLoading, setAvailabilityLoading] = useState(false);
-   const [availabilityError, setAvailabilityError] = useState("");
-   const [selectedDate, setSelectedDate] = useState(null);
-   const [selectedSlot, setSelectedSlot] = useState(null); // ISO string
-   const [bookingLoading, setBookingLoading] = useState(false);
-   const [hasSearched, setHasSearched] = useState(false); // 👈 NEW
-   const [refreshing, setRefreshing] = useState(false);
-   const [shouldScrollToResults, setShouldScrollToResults] = useState(false);
-   const [hasRequestedLocation, setHasRequestedLocation] = useState(false);
-   const isFocused = useIsFocused();
-   const scrollRef = useRef(null);
-+  const searchInputRef = useRef(null);
-   const resultsOffset = useRef(0);
-+  const servicesOffset = useRef(0);
-   const initializedNavProviderKeyRef = useRef(null);
-   //Radius 
-   const distanceChips = [0, 5, 10, 15, 20];
- 
-   useEffect(() => {
-     if (!isFocused) return;
-     if (!incomingUsername) return;
-     console.log(
-       "[deeplink] consumed in SearchScreen",
-       incomingUsername,
-       deeplinkNonce,
-       "focused",
-       isFocused
-     );
-     setSearchQuery(incomingUsername);
-     setHasSearched(true);
-     setShouldScrollToResults(true);
-   }, [incomingUsername, deeplinkNonce, isFocused]);
- 
-   const haversineKm = (lat1, lon1, lat2, lon2) => {
-     if (
-       lat1 == null ||
-       lon1 == null ||
-       lat2 == null ||
-       lon2 == null
-@@ -4015,50 +4017,54 @@ function SearchScreen({ token, showFlash, navigation, route, toggleFavorite, isF
-     return () => {
-       isMounted = false;
-     };
-   }, [clientLocation, ensureClientLocation, hasRequestedLocation, hasSearched]);
- 
-   const handleResultsLayout = (event) => {
-     resultsOffset.current = event.nativeEvent.layout.y;
-     if (shouldScrollToResults && scrollRef.current) {
-       scrollRef.current.scrollTo({
-         y: resultsOffset.current,
-         animated: true,
-       });
-       setShouldScrollToResults(false);
-     }
-   };
- 
-   useEffect(() => {
-     if (!shouldScrollToResults || !scrollRef.current) return;
-     scrollRef.current.scrollTo({
-       y: resultsOffset.current,
-       animated: true,
-     });
-     setShouldScrollToResults(false);
-   }, [shouldScrollToResults]);
- 
-+  const handleServicesLayout = (event) => {
-+    servicesOffset.current = event.nativeEvent.layout.y;
-+  };
-+
- 
-   const loadAvailability = useCallback(
-     async (providerId, serviceId) => {
-       try {
-         setAvailabilityLoading(true);
-         setAvailabilityError("");
- 
-         const res = await apiClient.get(
-           `/providers/${providerId}/availability`,
-           {
-             params: {
-               service_id: serviceId,
-               days: 14,
-             },
-           }
-         );
- 
-         setAvailability(res.data || []);
-       } catch (err) {
-         console.log(
-           "Error loading availability",
-           err.response?.data || err.message
-         );
-         setAvailabilityError("Could not load availability for this service.");
-         if (showFlash) showFlash("error", "Could not load availability.");
-@@ -4093,140 +4099,161 @@ function SearchScreen({ token, showFlash, navigation, route, toggleFavorite, isF
- 
-   const handleSelectProvider = useCallback(async (provider) => {
-     const providerId = getProviderId(provider);
-     setSelectedProvider(provider);
-     setSelectedProviderId(providerId || null);
-     if (!providerId) {
-       setServices([]);
-       setServicesError("Provider information is missing.");
-       return;
-     }
- 
-     // Reset downstream state
-     setServices([]);
-     setServicesError("");
-     setSelectedService(null);
-     setAvailability([]);
-     setAvailabilityError("");
-     setSelectedDate(null);
-     setSelectedSlot(null);
- 
-     // Reset and load catalog for this provider
-     setCatalogImages([]);
-     setCatalogError("");
-     loadProviderCatalog(providerId);
- 
-+    if (scrollRef.current) {
-+      requestAnimationFrame(() => {
-+        scrollRef.current?.scrollTo({
-+          y: servicesOffset.current || resultsOffset.current,
-+          animated: true,
-+        });
-+      });
-+    }
-+
-     try {
-       setServicesLoading(true);
- 
-       const res = await apiClient.get(
-         `/providers/${providerId}/services`
-       );
-       setServices(res.data || []);
-     } catch (err) {
-       console.log(
-         "Error loading services",
-         err.response?.data || err.message
-       );
-       setServicesError("Could not load services for this provider.");
-       if (showFlash) showFlash("error", "Could not load provider services.");
-     } finally {
-       setServicesLoading(false);
-     }
-   }, [loadProviderCatalog, showFlash]);
- 
-   const handleSelectService = useCallback(
-     async (service) => {
-       setSelectedService(service);
-       setAvailability([]);
-       setAvailabilityError("");
-       setSelectedDate(null);
-       setSelectedSlot(null);
- 
-       if (!selectedProviderId) return;
- 
-       await loadAvailability(selectedProviderId, service.id);
-     },
-     [loadAvailability, selectedProviderId]
-   );
- 
-+  const isProviderSelected = Boolean(selectedProviderId && selectedProvider);
-+  const displayProviders = isProviderSelected && selectedProvider
-+    ? [selectedProvider]
-+    : filteredProviders;
-+
-   const clientCoords = getClientCoords();
-   let searchHasDistance = false;
-   let searchLastProviderCoords = null;
-   let searchLastDistanceKm = null;
--  const searchCards = filteredProviders.map((p) => {
-+  const searchCards = displayProviders.map((p) => {
-     const avatar = resolveImageUrl(p.avatar_url || p.profile_photo_url);
-     const favorite = isFavorite(p);
-     const providerCoords = getProviderCoords(p);
-     const baseDistance = toNum(p.distance_km);
-     const computedDistance =
-       baseDistance != null
-         ? baseDistance
-         : clientCoords && providerCoords
-         ? getDistanceKm(
-             clientCoords.lat,
-             clientCoords.lng,
-             providerCoords.lat,
-             providerCoords.lng
-           )
-         : null;
-     const distanceKm = Number.isFinite(computedDistance)
-       ? computedDistance
-       : null;
-     if (distanceKm != null) {
-       searchHasDistance = true;
-     }
-     searchLastProviderCoords = providerCoords;
-     searchLastDistanceKm = distanceKm;
-     const professionLabel = p.professions?.length
-       ? p.professions.join(" · ")
-       : p.profession || null;
-     return (
-       <ProviderCard
-         key={getProviderId(p) || p.name}
-         provider={p}
-         avatarUrl={avatar}
-         profession={professionLabel}
-         distanceKm={distanceKm}
-         isFavorite={favorite}
-         onFavoriteToggle={() => toggleFavorite(p)}
-         onPress={() => handleSelectProvider(p)}
-         ctaLabel={null}
-         isSelected={selectedProviderId && selectedProviderId === getProviderId(p)}
-         style={styles.providerCardList}
-       />
-     );
-   });
- 
--  if (!searchHasDistance && filteredProviders.length) {
-+  if (!searchHasDistance && displayProviders.length) {
-     console.log("[distance] search list missing distances", {
-       clientCoords,
-       providerCoords: searchLastProviderCoords,
-       distanceKm: searchLastDistanceKm,
-     });
+diff --git a/frontend/src/main.jsx b/frontend/src/main.jsx
+index ab938c9ada5ad6d8cf1f70674944bb10b9b9f786..e3056878ec6d824ab2187912bba3a6526419ba2f 100644
+--- a/frontend/src/main.jsx
++++ b/frontend/src/main.jsx
+@@ -1767,74 +1767,105 @@ function App() {
+                 {report?.by_provider?.length ? (
+                   report.by_provider.map((row) => (
+                     <tr key={row.provider_id}>
+                       <td>{row.provider_name || '—'}</td>
+                       <td>{row.profession || '—'}</td>
+                       <td>{row.total_bookings}</td>
+                       <td>{row.completed}</td>
+                       <td>{row.cancelled}</td>
+                       <td>{row.upcoming}</td>
+                     </tr>
+                   ))
+                 ) : (
+                   <tr>
+                     <td colSpan={6}>{loading ? 'Loading…' : 'No bookings found for this range.'}</td>
+                   </tr>
+                 )}
+               </tbody>
+             </table>
+           </div>
+         </div>
+       </div>
+     )
    }
  
-+  const handleChangeProvider = useCallback(() => {
-+    clearSelectedProvider();
-+    requestAnimationFrame(() => {
-+      searchInputRef.current?.focus();
-+    });
-+  }, [clearSelectedProvider]);
+   const AdminProviderPerformanceReports = () => {
++    const [activeTab, setActiveTab] = React.useState('performance')
+     const [startDate, setStartDate] = React.useState(() => {
+       const today = new Date()
+       const start = new Date()
+       start.setDate(today.getDate() - 29)
+       return formatDateInput(start)
+     })
+     const [endDate, setEndDate] = React.useState(() => formatDateInput(new Date()))
+     const [status, setStatus] = React.useState('all')
+     const [profession, setProfession] = React.useState('all')
+     const [professions, setProfessions] = React.useState([])
+     const [summary, setSummary] = React.useState(null)
+     const [retention, setRetention] = React.useState(null)
+     const [loading, setLoading] = React.useState(false)
+     const [loadingProfessions, setLoadingProfessions] = React.useState(false)
+     const [error, setError] = React.useState('')
+ 
++    const [providers, setProviders] = React.useState([])
++    const [providersLoading, setProvidersLoading] = React.useState(false)
++    const [providersError, setProvidersError] = React.useState('')
++    const [providersSearchInput, setProvidersSearchInput] = React.useState('')
++    const [providersSearch, setProvidersSearch] = React.useState('')
++    const [providersOffset, setProvidersOffset] = React.useState(0)
++    const providersLimit = 50
 +
-   const handleRefresh = useCallback(async () => {
-     setRefreshing(true);
-     const list = await loadProviders();
+     const statusOptions = [
+       { value: 'all', label: 'All' },
+       { value: 'completed', label: 'Completed' },
+       { value: 'cancelled', label: 'Cancelled' },
+       { value: 'confirmed', label: 'Confirmed' },
+       { value: 'pending', label: 'Pending' },
+     ]
  
-     if (selectedProviderId) {
-       const match = (list || []).find(
-         (p) => getProviderId(p) === selectedProviderId
-       );
- 
-       if (match) {
-         await handleSelectProvider(match);
-       } else {
-         setSelectedProvider(null);
-         setSelectedProviderId(null);
-         setServices([]);
-         setAvailability([]);
-         setCatalogImages([]);
++    const loadProviders = React.useCallback(async () => {
++      setProvidersLoading(true)
++      setProvidersError('')
++      try {
++        const params = {
++          limit: providersLimit,
++          offset: providersOffset,
++        }
++        if (providersSearch.trim()) {
++          params.search = providersSearch.trim()
++        }
++        const res = await apiClient.get('/admin/providers/list', { params })
++        setProviders(Array.isArray(res.data) ? res.data : [])
++      } catch (err) {
++        logApiError(err)
++        setProviders([])
++        setProvidersError('Unable to load providers list. Please try again.')
++      } finally {
++        setProvidersLoading(false)
++      }
++    }, [providersOffset, providersSearch])
++
+     const loadProfessions = React.useCallback(async () => {
+       setLoadingProfessions(true)
+       try {
+         const res = await apiClient.get('/admin/reports/professions')
+         setProfessions(res.data.professions || [])
+       } catch (err) {
+         logApiError(err)
+         setError('Unable to load professions. Please try again.')
+       } finally {
+         setLoadingProfessions(false)
        }
-     }
+     }, [])
  
-     setRefreshing(false);
-   }, [handleSelectProvider, loadProviders, selectedProviderId]);
+     const runReport = React.useCallback(async () => {
+       const parsedStart = parseDateInput(startDate)
+       const parsedEnd = parseDateInput(endDate)
  
-   const handleBookAppointment = async () => {
-     if (!selectedService || !selectedSlot || !selectedProviderId) return;
-@@ -4308,59 +4335,62 @@ function SearchScreen({ token, showFlash, navigation, route, toggleFavorite, isF
-       const key = makeDateKey(d); // YYYY-MM-DD
-       const hasSlots = (availabilityMap[key] || []).length > 0;
+       if (!parsedStart || !parsedEnd) {
+         setError('Start and end dates are required.')
+         return
+       }
  
-       days.push({ key, date: d, hasSlots });
-     }
-     return days;
-   };
+       if (parsedStart > parsedEnd) {
+         setError('Start date must be on or before end date.')
+         return
+@@ -1858,312 +1889,423 @@ function App() {
+               end: endDate,
+               profession,
+             },
+           }),
+         ])
+         setSummary(summaryRes.data)
+         setRetention(retentionRes.data)
+       } catch (err) {
+         logApiError(err)
+         setError('Unable to load provider performance reports. Please try again.')
+         setSummary(null)
+         setRetention(null)
+       } finally {
+         setLoading(false)
+       }
+     }, [endDate, profession, startDate, status])
  
-   const calendarDays = buildCalendarDays();
+     React.useEffect(() => {
+       loadProfessions()
+     }, [loadProfessions])
  
-   const formatTimeLabel = (isoString) => {
-     const d = new Date(isoString);
-     return d.toLocaleTimeString("en-US", {
-       hour: "numeric",
-       minute: "2-digit",
-     });
-   };
+     React.useEffect(() => {
+       runReport()
+     }, [runReport])
+ 
++    React.useEffect(() => {
++      if (activeTab === 'providers') {
++        loadProviders()
++      }
++    }, [activeTab, loadProviders])
++
++    const handleProviderSearchSubmit = (event) => {
++      event.preventDefault()
++      setProvidersOffset(0)
++      setProvidersSearch(providersSearchInput)
++    }
++
++    const handleClearProviderSearch = () => {
++      setProvidersSearchInput('')
++      setProvidersSearch('')
++      setProvidersOffset(0)
++    }
++
+     const showRevenue = summary?.revenue_supported
+     const retentionMonths = retention?.months?.length || 0
  
      return (
-       <SafeAreaView style={styles.searchSafeArea}>
-         <View style={styles.searchHeader}>
-           <Text style={styles.searchHeaderTitle}>Search providers</Text>
-           <View style={styles.searchBar}>
-             <Ionicons name="search-outline" size={18} color={colors.textMuted} />
-             <TextInput
-+              ref={searchInputRef}
-               style={styles.searchInput}
-               placeholder="Search by profession or provider…"
-               placeholderTextColor={colors.textSecondary}
-               value={searchQuery}
-               onChangeText={(value) => {
-+                if (isProviderSelected) {
-+                  clearSelectedProvider();
-+                }
-                 if (!normalizeSearchValue(value)) {
-                   setSearchQuery(value);
-                   setHasSearched(false);
--                  clearSelectedProvider();
-                   return;
-                 }
-                 setSearchQuery(value);
-               }}
-               onSubmitEditing={handleSearchSubmit}
-               returnKeyType="search"
-             />
-           </View>
-           <View style={styles.chipsRow}>
-             <ScrollView
-               horizontal
-               showsHorizontalScrollIndicator={false}
-               contentContainerStyle={styles.chipsContent}
+       <div className="admin-page">
+         <div className="admin-header">
+           <div>
+             <p className="eyebrow">Reports</p>
+             <h1>Provider Performance Reports</h1>
+             <p className="header-subtitle">Understand which providers drive value and who needs help.</p>
+           </div>
+         </div>
+ 
+         <div className="admin-card">
+-          <div className="form-grid">
+-            <label className="form-field">
+-              <span>Start date</span>
+-              <input
+-                type="date"
+-                value={startDate}
+-                onChange={(e) => setStartDate(e.target.value)}
+-              />
+-            </label>
+-            <label className="form-field">
+-              <span>End date</span>
+-              <input
+-                type="date"
+-                value={endDate}
+-                onChange={(e) => setEndDate(e.target.value)}
+-              />
+-            </label>
+-            <label className="form-field">
+-              <span>Profession</span>
+-              <select value={profession} onChange={(e) => setProfession(e.target.value)}>
+-                <option value="all">All</option>
+-                {professions.map((name) => (
+-                  <option key={name} value={name}>
+-                    {name}
+-                  </option>
+-                ))}
+-              </select>
+-            </label>
+-            <label className="form-field">
+-              <span>Status</span>
+-              <select value={status} onChange={(e) => setStatus(e.target.value)}>
+-                {statusOptions.map((option) => (
+-                  <option key={option.value} value={option.value}>
+-                    {option.label}
+-                  </option>
+-                ))}
+-              </select>
+-            </label>
+-          </div>
+-
+-          <div className="button-row">
++          <div className="admin-tabs" role="tablist" aria-label="Provider reports tabs">
+             <button
+-              className="primary-btn"
+-              onClick={runReport}
+-              disabled={loading}
++              type="button"
++              className={`admin-tab ${activeTab === 'performance' ? 'active' : ''}`}
++              onClick={() => setActiveTab('performance')}
              >
-               {distanceChips.map((km) => {
-                 const selected = radiusKm === km;
-                 const label = km === 0 ? "Any" : `${km}km`;
-                 return (
-                   <TouchableOpacity
-                     key={km}
-                     style={[
-                       styles.filterChip,
-                       selected && styles.filterChipSelected,
-                     ]}
-                     onPress={() => handleRadiusChange(km)}
-@@ -4376,106 +4406,114 @@ function SearchScreen({ token, showFlash, navigation, route, toggleFavorite, isF
-                   </TouchableOpacity>
-                 );
-               })}
-             </ScrollView>
-           </View>
-           {locationError ? (
-             <Text style={styles.locationErrorText}>{locationError}</Text>
-           ) : null}
-         </View>
+-              {loading ? 'Running…' : 'Run report'}
++              Performance
++            </button>
++            <button
++              type="button"
++              className={`admin-tab ${activeTab === 'providers' ? 'active' : ''}`}
++              onClick={() => setActiveTab('providers')}
++            >
++              Providers List
+             </button>
+-            <span className="muted">Default: last 30 days</span>
+-            {loadingProfessions && <span className="muted">Loading professions…</span>}
+           </div>
  
-         <ScrollView
-           ref={scrollRef}
-           contentContainerStyle={styles.searchContent}
-           refreshControl={
-             <RefreshControl
-               refreshing={refreshing}
-               onRefresh={handleRefresh}
-             />
-           }
-         >
-           <View style={styles.resultsSection} onLayout={handleResultsLayout}>
-             <View style={styles.resultsHeader}>
-               <Text style={styles.sectionTitle}>Results</Text>
-               {hasSearched && !providersLoading ? (
-                 <Text style={styles.resultsCount}>
--                  {filteredProviders.length} providers
-+                  {displayProviders.length} provider{displayProviders.length === 1 ? "" : "s"}
-                 </Text>
-               ) : null}
-             </View>
- 
-+            {isProviderSelected && (
-+              <View style={styles.selectedProviderActions}>
-+                <TouchableOpacity onPress={handleChangeProvider}>
-+                  <Text style={styles.changeProviderText}>Change provider</Text>
-+                </TouchableOpacity>
-+              </View>
-+            )}
+-          {error && <p className="form-error">{error}</p>}
+-          {loading && !error && <p className="muted">Loading provider performance…</p>}
+-
+-          <div className="report-section">
+-            <h2>Top performing providers</h2>
+-            <p className="muted">By bookings in the selected range.</p>
+-            <div className="provider-missing-table">
+-              <table>
+-                <thead>
+-                  <tr>
+-                    <th>Provider</th>
+-                    <th>Profession</th>
+-                    <th>Total bookings</th>
+-                  </tr>
+-                </thead>
+-                <tbody>
+-                  {summary?.top_providers_by_bookings?.length ? (
+-                    summary.top_providers_by_bookings.map((row) => (
+-                      <tr key={row.provider_id}>
+-                        <td>{row.provider_name || '—'}</td>
+-                        <td>{row.profession || '—'}</td>
+-                        <td>{row.total_bookings ?? '—'}</td>
++          {activeTab === 'performance' ? (
++            <>
++              <div className="form-grid">
++                <label className="form-field">
++                  <span>Start date</span>
++                  <input
++                    type="date"
++                    value={startDate}
++                    onChange={(e) => setStartDate(e.target.value)}
++                  />
++                </label>
++                <label className="form-field">
++                  <span>End date</span>
++                  <input
++                    type="date"
++                    value={endDate}
++                    onChange={(e) => setEndDate(e.target.value)}
++                  />
++                </label>
++                <label className="form-field">
++                  <span>Profession</span>
++                  <select value={profession} onChange={(e) => setProfession(e.target.value)}>
++                    <option value="all">All</option>
++                    {professions.map((name) => (
++                      <option key={name} value={name}>
++                        {name}
++                      </option>
++                    ))}
++                  </select>
++                </label>
++                <label className="form-field">
++                  <span>Status</span>
++                  <select value={status} onChange={(e) => setStatus(e.target.value)}>
++                    {statusOptions.map((option) => (
++                      <option key={option.value} value={option.value}>
++                        {option.label}
++                      </option>
++                    ))}
++                  </select>
++                </label>
++              </div>
 +
-             {!hasSearched && (
-               <View style={styles.emptyStateCard}>
-                 <Text style={styles.emptyStateTitle}>
-                   Ready to discover your next service?
-                 </Text>
-                 <Text style={styles.emptyStateText}>
-                   Search by profession or provider name to see who is available.
-                   Use the distance chips to filter nearby options.
-                 </Text>
-               </View>
-             )}
++              <div className="button-row">
++                <button
++                  className="primary-btn"
++                  onClick={runReport}
++                  disabled={loading}
++                >
++                  {loading ? 'Running…' : 'Run report'}
++                </button>
++                <span className="muted">Default: last 30 days</span>
++                {loadingProfessions && <span className="muted">Loading professions…</span>}
++              </div>
++
++              {error && <p className="form-error">{error}</p>}
++              {loading && !error && <p className="muted">Loading provider performance…</p>}
++
++              <div className="report-section">
++                <h2>Top performing providers</h2>
++                <p className="muted">By bookings in the selected range.</p>
++                <div className="provider-missing-table">
++                  <table>
++                    <thead>
++                      <tr>
++                        <th>Provider</th>
++                        <th>Profession</th>
++                        <th>Total bookings</th>
+                       </tr>
+-                    ))
+-                  ) : (
+-                    <tr>
+-                      <td colSpan={3}>{loading ? 'Loading…' : 'No provider activity found.'}</td>
+-                    </tr>
+-                  )}
+-                </tbody>
+-              </table>
+-            </div>
+-          </div>
++                    </thead>
++                    <tbody>
++                      {summary?.top_providers_by_bookings?.length ? (
++                        summary.top_providers_by_bookings.map((row) => (
++                          <tr key={row.provider_id}>
++                            <td>{row.provider_name || '—'}</td>
++                            <td>{row.profession || '—'}</td>
++                            <td>{row.total_bookings ?? '—'}</td>
++                          </tr>
++                        ))
++                      ) : (
++                        <tr>
++                          <td colSpan={3}>{loading ? 'Loading…' : 'No provider activity found.'}</td>
++                        </tr>
++                      )}
++                    </tbody>
++                  </table>
++                </div>
++              </div>
++
++              {showRevenue && (
++                <div className="report-section">
++                  <h2>Top earning providers</h2>
++                  <p className="muted">Ordered by total revenue.</p>
++                  <div className="provider-missing-table">
++                    <table>
++                      <thead>
++                        <tr>
++                          <th>Provider</th>
++                          <th>Profession</th>
++                          <th>Total revenue (GYD)</th>
++                        </tr>
++                      </thead>
++                      <tbody>
++                        {summary?.top_providers_by_revenue?.length ? (
++                          summary.top_providers_by_revenue.map((row) => (
++                            <tr key={row.provider_id}>
++                              <td>{row.provider_name || '—'}</td>
++                              <td>{row.profession || '—'}</td>
++                              <td>{typeof row.total_revenue === 'number' ? row.total_revenue.toFixed(2) : '—'}</td>
++                            </tr>
++                          ))
++                        ) : (
++                          <tr>
++                            <td colSpan={3}>{loading ? 'Loading…' : 'No revenue data available.'}</td>
++                          </tr>
++                        )}
++                      </tbody>
++                    </table>
++                  </div>
++                </div>
++              )}
++
++              <div className="report-section">
++                <h2>Most frequently booked services</h2>
++                <p className="muted">Services that drive the most demand.</p>
++                <div className="provider-missing-table">
++                  <table>
++                    <thead>
++                      <tr>
++                        <th>Service</th>
++                        <th>Provider</th>
++                        <th>Bookings</th>
++                      </tr>
++                    </thead>
++                    <tbody>
++                      {summary?.most_booked_services?.length ? (
++                        summary.most_booked_services.map((row) => (
++                          <tr key={row.service_id}>
++                            <td>{row.service_name || '—'}</td>
++                            <td>{row.provider_name || '—'}</td>
++                            <td>{row.bookings}</td>
++                          </tr>
++                        ))
++                      ) : (
++                        <tr>
++                          <td colSpan={3}>{loading ? 'Loading…' : 'No service activity found.'}</td>
++                        </tr>
++                      )}
++                    </tbody>
++                  </table>
++                </div>
++              </div>
++
++              <div className="report-section">
++                <h2>Provider retention</h2>
++                <p className="muted">Providers active each month ({retentionMonths} months in range).</p>
++                <div className="provider-missing-table">
++                  <table>
++                    <thead>
++                      <tr>
++                        <th>Provider</th>
++                        <th>Profession</th>
++                        <th>Months active</th>
++                        <th>Last active month</th>
++                      </tr>
++                    </thead>
++                    <tbody>
++                      {retention?.providers?.length ? (
++                        retention.providers.map((row) => (
++                          <tr key={row.provider_id}>
++                            <td>{row.provider_name || '—'}</td>
++                            <td>{row.profession || '—'}</td>
++                            <td>{row.months_active_count}</td>
++                            <td>{row.last_active_month || '—'}</td>
++                          </tr>
++                        ))
++                      ) : (
++                        <tr>
++                          <td colSpan={4}>{loading ? 'Loading…' : 'No retention data found.'}</td>
++                        </tr>
++                      )}
++                    </tbody>
++                  </table>
++                </div>
++              </div>
++
++              <div className="report-section">
++                <h2>Low activity providers</h2>
++                <p className="muted">Providers with 0–3 bookings in the selected range.</p>
++                <div className="provider-missing-table">
++                  <table>
++                    <thead>
++                      <tr>
++                        <th>Provider</th>
++                        <th>Profession</th>
++                        <th>Bookings</th>
++                      </tr>
++                    </thead>
++                    <tbody>
++                      {summary?.low_activity_providers?.length ? (
++                        summary.low_activity_providers.map((row) => (
++                          <tr key={row.provider_id}>
++                            <td>{row.provider_name || '—'}</td>
++                            <td>{row.profession || '—'}</td>
++                            <td>{row.bookings_in_range ?? '—'}</td>
++                          </tr>
++                        ))
++                      ) : (
++                        <tr>
++                          <td colSpan={3}>{loading ? 'Loading…' : 'No low-activity providers found.'}</td>
++                        </tr>
++                      )}
++                    </tbody>
++                  </table>
++                </div>
++              </div>
++
++              <div className="report-section">
++                <h2>High cancellation rates</h2>
++                <p className="muted">Providers with the highest cancellation percentage.</p>
++                <div className="provider-missing-table">
++                  <table>
++                    <thead>
++                      <tr>
++                        <th>Provider</th>
++                        <th>Profession</th>
++                        <th>Cancellations</th>
++                        <th>Total bookings</th>
++                        <th>Cancellation %</th>
++                      </tr>
++                    </thead>
++                    <tbody>
++                      {summary?.high_cancellation_rates?.length ? (
++                        summary.high_cancellation_rates.map((row) => (
++                          <tr key={row.provider_id}>
++                            <td>{row.provider_name || '—'}</td>
++                            <td>{row.profession || '—'}</td>
++                            <td>{row.cancelled}</td>
++                            <td>{row.total_bookings}</td>
++                            <td>{(row.cancellation_rate * 100).toFixed(1)}%</td>
++                          </tr>
++                        ))
++                      ) : (
++                        <tr>
++                          <td colSpan={5}>{loading ? 'Loading…' : 'No cancellation data found.'}</td>
++                        </tr>
++                      )}
++                    </tbody>
++                  </table>
++                </div>
++              </div>
++            </>
++          ) : (
++            <>
++              <form className="providers-list-search" onSubmit={handleProviderSearchSubmit}>
++                <input
++                  type="text"
++                  placeholder="Search username or WhatsApp"
++                  value={providersSearchInput}
++                  onChange={(e) => setProvidersSearchInput(e.target.value)}
++                />
++                <button className="primary-btn" type="submit" disabled={providersLoading}>
++                  Search
++                </button>
++                <button className="secondary-btn" type="button" onClick={handleClearProviderSearch} disabled={providersLoading}>
++                  Clear
++                </button>
++              </form>
++
++              {providersError && <p className="form-error">{providersError}</p>}
++              {providersLoading && <p className="muted">Loading providers…</p>}
  
-             {providersLoading && hasSearched && (
-               <View style={styles.skeletonList}>
-                 {[0, 1, 2].map((item) => (
-                   <View key={item} style={styles.skeletonCard}>
-                     <View style={styles.skeletonAvatar} />
-                     <View style={styles.skeletonDetails}>
-                       <View style={styles.skeletonLine} />
-                       <View style={styles.skeletonLineShort} />
-                     </View>
-                   </View>
-                 ))}
-               </View>
-             )}
+-          {showRevenue && (
+-            <div className="report-section">
+-              <h2>Top earning providers</h2>
+-              <p className="muted">Ordered by total revenue.</p>
+               <div className="provider-missing-table">
+                 <table>
+                   <thead>
+                     <tr>
+-                      <th>Provider</th>
++                      <th>ID</th>
++                      <th>Username</th>
++                      <th>Account #</th>
+                       <th>Profession</th>
+-                      <th>Total revenue (GYD)</th>
++                      <th>WhatsApp</th>
++                      <th>Email</th>
+                     </tr>
+                   </thead>
+                   <tbody>
+-                    {summary?.top_providers_by_revenue?.length ? (
+-                      summary.top_providers_by_revenue.map((row) => (
+-                        <tr key={row.provider_id}>
+-                          <td>{row.provider_name || '—'}</td>
+-                          <td>{row.profession || '—'}</td>
+-                          <td>{typeof row.total_revenue === 'number' ? row.total_revenue.toFixed(2) : '—'}</td>
+-                        </tr>
+-                      ))
+-                    ) : (
++                    {!providersLoading && providers.length === 0 ? (
+                       <tr>
+-                        <td colSpan={3}>{loading ? 'Loading…' : 'No revenue data available.'}</td>
++                        <td colSpan={6}>No providers found.</td>
+                       </tr>
++                    ) : (
++                      providers.map((provider) => (
++                        <tr key={provider.id}>
++                          <td>{provider.id}</td>
++                          <td>{provider.username || '—'}</td>
++                          <td>{provider.account_number || '—'}</td>
++                          <td>{provider.profession || '—'}</td>
++                          <td>{provider.whatsapp || '—'}</td>
++                          <td>{provider.email || '—'}</td>
++                        </tr>
++                      ))
+                     )}
+                   </tbody>
+                 </table>
+               </div>
+-            </div>
+-          )}
+-
+-          <div className="report-section">
+-            <h2>Most frequently booked services</h2>
+-            <p className="muted">Services that drive the most demand.</p>
+-            <div className="provider-missing-table">
+-              <table>
+-                <thead>
+-                  <tr>
+-                    <th>Service</th>
+-                    <th>Provider</th>
+-                    <th>Bookings</th>
+-                  </tr>
+-                </thead>
+-                <tbody>
+-                  {summary?.most_booked_services?.length ? (
+-                    summary.most_booked_services.map((row) => (
+-                      <tr key={row.service_id}>
+-                        <td>{row.service_name || '—'}</td>
+-                        <td>{row.provider_name || '—'}</td>
+-                        <td>{row.bookings}</td>
+-                      </tr>
+-                    ))
+-                  ) : (
+-                    <tr>
+-                      <td colSpan={3}>{loading ? 'Loading…' : 'No service activity found.'}</td>
+-                    </tr>
+-                  )}
+-                </tbody>
+-              </table>
+-            </div>
+-          </div>
+-
+-          <div className="report-section">
+-            <h2>Provider retention</h2>
+-            <p className="muted">Providers active each month ({retentionMonths} months in range).</p>
+-            <div className="provider-missing-table">
+-              <table>
+-                <thead>
+-                  <tr>
+-                    <th>Provider</th>
+-                    <th>Profession</th>
+-                    <th>Months active</th>
+-                    <th>Last active month</th>
+-                  </tr>
+-                </thead>
+-                <tbody>
+-                  {retention?.providers?.length ? (
+-                    retention.providers.map((row) => (
+-                      <tr key={row.provider_id}>
+-                        <td>{row.provider_name || '—'}</td>
+-                        <td>{row.profession || '—'}</td>
+-                        <td>{row.months_active_count}</td>
+-                        <td>{row.last_active_month || '—'}</td>
+-                      </tr>
+-                    ))
+-                  ) : (
+-                    <tr>
+-                      <td colSpan={4}>{loading ? 'Loading…' : 'No retention data found.'}</td>
+-                    </tr>
+-                  )}
+-                </tbody>
+-              </table>
+-            </div>
+-          </div>
+-
+-          <div className="report-section">
+-            <h2>Low activity providers</h2>
+-            <p className="muted">Providers with 0–3 bookings in the selected range.</p>
+-            <div className="provider-missing-table">
+-              <table>
+-                <thead>
+-                  <tr>
+-                    <th>Provider</th>
+-                    <th>Profession</th>
+-                    <th>Bookings</th>
+-                  </tr>
+-                </thead>
+-                <tbody>
+-                  {summary?.low_activity_providers?.length ? (
+-                    summary.low_activity_providers.map((row) => (
+-                      <tr key={row.provider_id}>
+-                        <td>{row.provider_name || '—'}</td>
+-                        <td>{row.profession || '—'}</td>
+-                        <td>{row.bookings_in_range ?? '—'}</td>
+-                      </tr>
+-                    ))
+-                  ) : (
+-                    <tr>
+-                      <td colSpan={3}>{loading ? 'Loading…' : 'No low-activity providers found.'}</td>
+-                    </tr>
+-                  )}
+-                </tbody>
+-              </table>
+-            </div>
+-          </div>
  
-             {!providersLoading && providersError && hasSearched && (
-               <Text style={styles.errorText}>{providersError}</Text>
-             )}
+-          <div className="report-section">
+-            <h2>High cancellation rates</h2>
+-            <p className="muted">Providers with the highest cancellation percentage.</p>
+-            <div className="provider-missing-table">
+-              <table>
+-                <thead>
+-                  <tr>
+-                    <th>Provider</th>
+-                    <th>Profession</th>
+-                    <th>Cancellations</th>
+-                    <th>Total bookings</th>
+-                    <th>Cancellation %</th>
+-                  </tr>
+-                </thead>
+-                <tbody>
+-                  {summary?.high_cancellation_rates?.length ? (
+-                    summary.high_cancellation_rates.map((row) => (
+-                      <tr key={row.provider_id}>
+-                        <td>{row.provider_name || '—'}</td>
+-                        <td>{row.profession || '—'}</td>
+-                        <td>{row.cancelled}</td>
+-                        <td>{row.total_bookings}</td>
+-                        <td>{(row.cancellation_rate * 100).toFixed(1)}%</td>
+-                      </tr>
+-                    ))
+-                  ) : (
+-                    <tr>
+-                      <td colSpan={5}>{loading ? 'Loading…' : 'No cancellation data found.'}</td>
+-                    </tr>
+-                  )}
+-                </tbody>
+-              </table>
+-            </div>
+-          </div>
++              <div className="button-row providers-pagination-row">
++                <button
++                  className="secondary-btn"
++                  type="button"
++                  onClick={() => setProvidersOffset((current) => Math.max(0, current - providersLimit))}
++                  disabled={providersLoading || providersOffset === 0}
++                >
++                  Previous
++                </button>
++                <button
++                  className="secondary-btn"
++                  type="button"
++                  onClick={() => setProvidersOffset((current) => current + providersLimit)}
++                  disabled={providersLoading || providers.length < providersLimit}
++                >
++                  Next
++                </button>
++              </div>
++            </>
++          )}
+         </div>
+       </div>
+     )
+   }
  
-             {!providersLoading &&
-               !providersError &&
-               hasSearched &&
--              filteredProviders.length === 0 && (
-+              displayProviders.length === 0 && (
-                 <Text style={styles.emptyStateText}>
-                   {incomingUsername
-                     ? "We couldn't find that provider. Please check the username."
-                     : "No providers found. Try adjusting your search or distance filter."}
-                 </Text>
-               )}
- 
-             {!providersLoading &&
-               !providersError &&
-               hasSearched &&
--              filteredProviders.length > 0 &&
-+              displayProviders.length > 0 &&
-               searchCards}
-           </View>
- 
-                         {/* Services list for selected provider */}
-                       {selectedProvider && (
--                        <View style={styles.card}>
-+                        <View style={styles.card} onLayout={handleServicesLayout}>
-                           <Text style={styles.sectionTitle}>
-                             Services by {selectedProvider.name}
-                           </Text>
- 
-                           {/* Catalog preview */}
-                           {catalogLoading && (
-                             <View style={{ paddingVertical: 8 }}>
-                               <ActivityIndicator />
-                               <Text style={styles.serviceMeta}>Loading photos…</Text>
-                             </View>
-                           )}
- 
-                           {!catalogLoading && catalogError ? (
-                             <Text style={styles.errorText}>{catalogError}</Text>
-                           ) : null}
- 
-                           {!catalogLoading &&
-                             !catalogError &&
-                             catalogImages.length > 0 && (
-                               <ScrollView
-                                 horizontal
-                                 showsHorizontalScrollIndicator={false}
-                                 style={styles.searchCatalogStrip}
-                               >
-                                 {catalogImages.map((img) => (
-@@ -9837,50 +9875,59 @@ filterChipTextSelected: {
- },
- locationErrorText: {
-   marginTop: 6,
-   fontSize: 12,
-   color: colors.error,
- },
- searchContent: {
-   paddingHorizontal: 16,
-   paddingTop: 12,
-   paddingBottom: 32,
- },
- resultsSection: {
-   marginBottom: 16,
- },
- resultsHeader: {
-   flexDirection: "row",
-   alignItems: "center",
-   justifyContent: "space-between",
-   marginBottom: 8,
- },
- resultsCount: {
-   fontSize: 12,
-   color: colors.textMuted,
-   fontWeight: "600",
- },
-+selectedProviderActions: {
-+  alignItems: "flex-start",
-+  marginBottom: 10,
-+},
-+changeProviderText: {
-+  fontSize: 13,
-+  fontWeight: "600",
-+  color: colors.primary,
-+},
- emptyStateCard: {
-   backgroundColor: colors.surface,
-   borderRadius: 14,
-   padding: 16,
-   borderWidth: 1,
-   borderColor: colors.border,
- },
- emptyStateTitle: {
-   fontSize: 15,
-   fontWeight: "700",
-   color: colors.textPrimary,
-   marginBottom: 6,
- },
- emptyStateText: {
-   fontSize: 13,
-   color: colors.textSecondary,
-   lineHeight: 18,
- },
- skeletonList: {
-   gap: 12,
- },
- skeletonCard: {
-   flexDirection: "row",
-   alignItems: "center",
-   backgroundColor: colors.surface,
+   const AdminLayout = () => {
+     const location = useLocation()
+     return (
+       <div className="admin-shell">
+         <aside className="admin-sidebar">
+           <nav className="sidebar-nav">
+             <NavLink to="/admin/promotions" className={({ isActive }) => isActive ? 'sidebar-link active' : 'sidebar-link'}>
+               Promotions
+             </NavLink>
+             <NavLink to="/admin/service-charge" className={({ isActive }) => isActive ? 'sidebar-link active' : 'sidebar-link'}>
+               Service Charge
+             </NavLink>
+             <NavLink to="/admin/billing" className={({ isActive }) => isActive ? 'sidebar-link active' : 'sidebar-link'}>
+               Billing
+             </NavLink>
+             <NavLink
+               to="/admin/provider-locations"
+               className={({ isActive }) => isActive ? 'sidebar-link active' : 'sidebar-link'}
+             >
+               Provider Locations
  
 EOF
 )

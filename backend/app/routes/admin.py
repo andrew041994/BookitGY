@@ -108,6 +108,59 @@ def list_provider_locations(
     return crud.list_admin_provider_locations(db)
 
 
+
+
+@router.get("/providers/list", response_model=List[schemas.AdminProviderListItemOut])
+def list_providers(
+    search: Optional[str] = Query(None),
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+    db: Session = Depends(get_db),
+    _: models.User = Depends(_require_admin),
+):
+    profession_expr = _profession_label_expression(db)
+
+    query = (
+        db.query(
+            models.Provider.id.label("id"),
+            models.User.username.label("username"),
+            models.Provider.account_number.label("account_number"),
+            profession_expr.label("profession"),
+            models.User.whatsapp.label("whatsapp"),
+            models.User.email.label("email"),
+        )
+        .join(models.User, models.Provider.user_id == models.User.id)
+    )
+
+    normalized_search = (search or "").strip()
+    if normalized_search:
+        pattern = f"%{normalized_search}%"
+        query = query.filter(
+            (models.User.username.ilike(pattern))
+            | (models.User.whatsapp.ilike(pattern))
+        )
+
+    rows = (
+        query
+        .order_by(models.Provider.id.desc())
+        .limit(limit)
+        .offset(offset)
+        .all()
+    )
+
+    return [
+        {
+            "id": row.id,
+            "username": row.username,
+            "account_number": row.account_number,
+            "profession": row.profession,
+            "whatsapp": row.whatsapp,
+            "email": row.email,
+        }
+        for row in rows
+    ]
+
+
 @router.get("/cancellations", response_model=List[schemas.AdminProviderCancellationOut])
 def list_provider_cancellations(
     month: int = Query(..., ge=1, le=12),

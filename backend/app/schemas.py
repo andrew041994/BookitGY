@@ -295,6 +295,15 @@ class AdminProviderCancellationOut(BaseModel):
     total_cancellations: int
 
 
+class AdminProviderListItemOut(BaseModel):
+    id: int
+    username: str
+    account_number: Optional[str] = None
+    profession: Optional[str] = None
+    whatsapp: Optional[str] = None
+    email: Optional[EmailStr] = None
+
+
 class AdminSignupReportOut(BaseModel):
     start: date
     end: date
