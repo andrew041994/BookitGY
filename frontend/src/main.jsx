@@ -2289,6 +2289,150 @@ function App() {
     )
   }
 
+  const AdminClientsList = () => {
+    const [clients, setClients] = React.useState([])
+    const [loading, setLoading] = React.useState(false)
+    const [error, setError] = React.useState('')
+    const [searchInput, setSearchInput] = React.useState('')
+    const [search, setSearch] = React.useState('')
+    const [offset, setOffset] = React.useState(0)
+    const limit = 50
+
+    const loadClients = React.useCallback(async () => {
+      setLoading(true)
+      setError('')
+      try {
+        const params = { limit, offset }
+        if (search.trim()) {
+          params.search = search.trim()
+        }
+        const res = await apiClient.get('/admin/clients/list', { params })
+        setClients(Array.isArray(res.data) ? res.data : [])
+      } catch (err) {
+        logApiError(err)
+        setClients([])
+        setError('Unable to load clients list. Please try again.')
+      } finally {
+        setLoading(false)
+      }
+    }, [offset, search])
+
+    React.useEffect(() => {
+      loadClients()
+    }, [loadClients])
+
+    const handleSearchSubmit = (event) => {
+      event.preventDefault()
+      setOffset(0)
+      setSearch(searchInput)
+    }
+
+    const handleClearSearch = () => {
+      setSearchInput('')
+      setSearch('')
+      setOffset(0)
+    }
+
+    const formatCreated = (value) => {
+      if (!value) return '—'
+      const parsed = new Date(value)
+      if (Number.isNaN(parsed.getTime())) return '—'
+      return parsed.toLocaleDateString(undefined, {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+      })
+    }
+
+    return (
+      <div className="admin-page">
+        <div className="admin-header">
+          <div>
+            <p className="eyebrow">Clients</p>
+            <h1>Clients List</h1>
+            <p className="header-subtitle">Search and review client accounts.</p>
+          </div>
+        </div>
+
+        <div className="admin-card">
+          <form className="providers-list-search" onSubmit={handleSearchSubmit}>
+            <input
+              type="text"
+              value={searchInput}
+              onChange={(event) => setSearchInput(event.target.value)}
+              placeholder="Search by username or WhatsApp"
+              aria-label="Search clients"
+            />
+            <button className="primary-btn" type="submit" disabled={loading}>
+              Search
+            </button>
+            <button
+              className="secondary-btn"
+              type="button"
+              onClick={handleClearSearch}
+              disabled={loading && !searchInput && !search}
+            >
+              Clear
+            </button>
+          </form>
+
+          {loading && <p className="muted">Loading clients…</p>}
+          {error && <p className="form-error">{error}</p>}
+
+          <div className="provider-missing-table">
+            <table>
+              <thead>
+                <tr>
+                  <th>ID</th>
+                  <th>Username</th>
+                  <th>WhatsApp</th>
+                  <th>Email</th>
+                  <th>Created</th>
+                </tr>
+              </thead>
+              <tbody>
+                {!loading && clients.length === 0 ? (
+                  <tr>
+                    <td colSpan={5}>No clients found.</td>
+                  </tr>
+                ) : (
+                  clients.map((client) => (
+                    <tr key={client.id}>
+                      <td>{client.id}</td>
+                      <td>{client.username || '—'}</td>
+                      <td>{client.whatsapp || '—'}</td>
+                      <td>{client.email || '—'}</td>
+                      <td>{formatCreated(client.created_at)}</td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="button-row providers-pagination-row">
+            <button
+              className="secondary-btn"
+              type="button"
+              onClick={() => setOffset((current) => Math.max(0, current - limit))}
+              disabled={loading || offset === 0}
+            >
+              Previous
+            </button>
+            <button
+              className="secondary-btn"
+              type="button"
+              onClick={() => setOffset((current) => current + limit)}
+              disabled={loading || clients.length < limit}
+            >
+              Next
+            </button>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   const AdminLayout = () => {
     const location = useLocation()
     return (
@@ -2333,6 +2477,12 @@ function App() {
               className={({ isActive }) => isActive ? 'sidebar-link active' : 'sidebar-link'}
             >
               Provider Performance
+            </NavLink>
+            <NavLink
+              to="/admin/clients"
+              className={({ isActive }) => isActive ? 'sidebar-link active' : 'sidebar-link'}
+            >
+              Clients
             </NavLink>
           </nav>
           <div className="sidebar-footer">
@@ -2398,6 +2548,7 @@ function App() {
           <Route path="signups" element={<AdminSignupReport />} />
           <Route path="booking-metrics" element={<AdminBookingMetrics />} />
           <Route path="provider-performance" element={<AdminProviderPerformanceReports />} />
+          <Route path="clients" element={<AdminClientsList />} />
         </Route>
       </Routes>
     </BrowserRouter>

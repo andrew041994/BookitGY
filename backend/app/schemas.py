@@ -304,6 +304,14 @@ class AdminProviderListItemOut(BaseModel):
     email: Optional[EmailStr] = None
 
 
+class AdminClientListItemOut(BaseModel):
+    id: int
+    username: Optional[str] = None
+    whatsapp: Optional[str] = None
+    email: Optional[EmailStr] = None
+    created_at: Optional[datetime] = None
+
+
 class AdminSignupReportOut(BaseModel):
     start: date
     end: date

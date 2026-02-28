@@ -110,6 +110,53 @@ def list_provider_locations(
 
 
 
+@router.get("/clients/list", response_model=List[schemas.AdminClientListItemOut])
+def list_clients(
+    search: Optional[str] = Query(None),
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+    db: Session = Depends(get_db),
+    _: models.User = Depends(_require_admin),
+):
+    query = (
+        db.query(
+            models.User.id.label("id"),
+            models.User.username.label("username"),
+            models.User.whatsapp.label("whatsapp"),
+            models.User.email.label("email"),
+            models.User.created_at.label("created_at"),
+        )
+        .filter(models.User.is_provider.is_(False), models.User.is_admin.is_(False))
+    )
+
+    normalized_search = (search or "").strip()
+    if normalized_search:
+        pattern = f"%{normalized_search}%"
+        query = query.filter(
+            (models.User.username.ilike(pattern))
+            | (models.User.whatsapp.ilike(pattern))
+        )
+
+    rows = (
+        query
+        .order_by(models.User.id.desc())
+        .limit(limit)
+        .offset(offset)
+        .all()
+    )
+
+    return [
+        {
+            "id": row.id,
+            "username": row.username,
+            "whatsapp": row.whatsapp,
+            "email": row.email,
+            "created_at": row.created_at,
+        }
+        for row in rows
+    ]
+
+
 @router.get("/providers/list", response_model=List[schemas.AdminProviderListItemOut])
 def list_providers(
     search: Optional[str] = Query(None),

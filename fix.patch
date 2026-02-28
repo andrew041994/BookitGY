@@ -1,744 +1,178 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
 diff --git a/frontend/src/main.jsx b/frontend/src/main.jsx
-index ab938c9ada5ad6d8cf1f70674944bb10b9b9f786..e3056878ec6d824ab2187912bba3a6526419ba2f 100644
+index e3056878ec6d824ab2187912bba3a6526419ba2f..9810e2dae66a94a0d0c1c99f6a1e229758c9bc0d 100644
 --- a/frontend/src/main.jsx
 +++ b/frontend/src/main.jsx
-@@ -1767,74 +1767,105 @@ function App() {
-                 {report?.by_provider?.length ? (
-                   report.by_provider.map((row) => (
-                     <tr key={row.provider_id}>
-                       <td>{row.provider_name || '—'}</td>
-                       <td>{row.profession || '—'}</td>
-                       <td>{row.total_bookings}</td>
-                       <td>{row.completed}</td>
-                       <td>{row.cancelled}</td>
-                       <td>{row.upcoming}</td>
-                     </tr>
-                   ))
-                 ) : (
-                   <tr>
-                     <td colSpan={6}>{loading ? 'Loading…' : 'No bookings found for this range.'}</td>
-                   </tr>
-                 )}
-               </tbody>
-             </table>
-           </div>
+@@ -2267,95 +2267,245 @@ function App() {
+               <div className="button-row providers-pagination-row">
+                 <button
+                   className="secondary-btn"
+                   type="button"
+                   onClick={() => setProvidersOffset((current) => Math.max(0, current - providersLimit))}
+                   disabled={providersLoading || providersOffset === 0}
+                 >
+                   Previous
+                 </button>
+                 <button
+                   className="secondary-btn"
+                   type="button"
+                   onClick={() => setProvidersOffset((current) => current + providersLimit)}
+                   disabled={providersLoading || providers.length < providersLimit}
+                 >
+                   Next
+                 </button>
+               </div>
+             </>
+           )}
          </div>
        </div>
      )
    }
  
-   const AdminProviderPerformanceReports = () => {
-+    const [activeTab, setActiveTab] = React.useState('performance')
-     const [startDate, setStartDate] = React.useState(() => {
-       const today = new Date()
-       const start = new Date()
-       start.setDate(today.getDate() - 29)
-       return formatDateInput(start)
-     })
-     const [endDate, setEndDate] = React.useState(() => formatDateInput(new Date()))
-     const [status, setStatus] = React.useState('all')
-     const [profession, setProfession] = React.useState('all')
-     const [professions, setProfessions] = React.useState([])
-     const [summary, setSummary] = React.useState(null)
-     const [retention, setRetention] = React.useState(null)
-     const [loading, setLoading] = React.useState(false)
-     const [loadingProfessions, setLoadingProfessions] = React.useState(false)
-     const [error, setError] = React.useState('')
- 
-+    const [providers, setProviders] = React.useState([])
-+    const [providersLoading, setProvidersLoading] = React.useState(false)
-+    const [providersError, setProvidersError] = React.useState('')
-+    const [providersSearchInput, setProvidersSearchInput] = React.useState('')
-+    const [providersSearch, setProvidersSearch] = React.useState('')
-+    const [providersOffset, setProvidersOffset] = React.useState(0)
-+    const providersLimit = 50
++  const AdminClientsList = () => {
++    const [clients, setClients] = React.useState([])
++    const [loading, setLoading] = React.useState(false)
++    const [error, setError] = React.useState('')
++    const [searchInput, setSearchInput] = React.useState('')
++    const [search, setSearch] = React.useState('')
++    const [offset, setOffset] = React.useState(0)
++    const limit = 50
 +
-     const statusOptions = [
-       { value: 'all', label: 'All' },
-       { value: 'completed', label: 'Completed' },
-       { value: 'cancelled', label: 'Cancelled' },
-       { value: 'confirmed', label: 'Confirmed' },
-       { value: 'pending', label: 'Pending' },
-     ]
- 
-+    const loadProviders = React.useCallback(async () => {
-+      setProvidersLoading(true)
-+      setProvidersError('')
++    const loadClients = React.useCallback(async () => {
++      setLoading(true)
++      setError('')
 +      try {
-+        const params = {
-+          limit: providersLimit,
-+          offset: providersOffset,
++        const params = { limit, offset }
++        if (search.trim()) {
++          params.search = search.trim()
 +        }
-+        if (providersSearch.trim()) {
-+          params.search = providersSearch.trim()
-+        }
-+        const res = await apiClient.get('/admin/providers/list', { params })
-+        setProviders(Array.isArray(res.data) ? res.data : [])
++        const res = await apiClient.get('/admin/clients/list', { params })
++        setClients(Array.isArray(res.data) ? res.data : [])
 +      } catch (err) {
 +        logApiError(err)
-+        setProviders([])
-+        setProvidersError('Unable to load providers list. Please try again.')
++        setClients([])
++        setError('Unable to load clients list. Please try again.')
 +      } finally {
-+        setProvidersLoading(false)
++        setLoading(false)
 +      }
-+    }, [providersOffset, providersSearch])
++    }, [offset, search])
 +
-     const loadProfessions = React.useCallback(async () => {
-       setLoadingProfessions(true)
-       try {
-         const res = await apiClient.get('/admin/reports/professions')
-         setProfessions(res.data.professions || [])
-       } catch (err) {
-         logApiError(err)
-         setError('Unable to load professions. Please try again.')
-       } finally {
-         setLoadingProfessions(false)
-       }
-     }, [])
- 
-     const runReport = React.useCallback(async () => {
-       const parsedStart = parseDateInput(startDate)
-       const parsedEnd = parseDateInput(endDate)
- 
-       if (!parsedStart || !parsedEnd) {
-         setError('Start and end dates are required.')
-         return
-       }
- 
-       if (parsedStart > parsedEnd) {
-         setError('Start date must be on or before end date.')
-         return
-@@ -1858,312 +1889,423 @@ function App() {
-               end: endDate,
-               profession,
-             },
-           }),
-         ])
-         setSummary(summaryRes.data)
-         setRetention(retentionRes.data)
-       } catch (err) {
-         logApiError(err)
-         setError('Unable to load provider performance reports. Please try again.')
-         setSummary(null)
-         setRetention(null)
-       } finally {
-         setLoading(false)
-       }
-     }, [endDate, profession, startDate, status])
- 
-     React.useEffect(() => {
-       loadProfessions()
-     }, [loadProfessions])
- 
-     React.useEffect(() => {
-       runReport()
-     }, [runReport])
- 
 +    React.useEffect(() => {
-+      if (activeTab === 'providers') {
-+        loadProviders()
-+      }
-+    }, [activeTab, loadProviders])
++      loadClients()
++    }, [loadClients])
 +
-+    const handleProviderSearchSubmit = (event) => {
++    const handleSearchSubmit = (event) => {
 +      event.preventDefault()
-+      setProvidersOffset(0)
-+      setProvidersSearch(providersSearchInput)
++      setOffset(0)
++      setSearch(searchInput)
 +    }
 +
-+    const handleClearProviderSearch = () => {
-+      setProvidersSearchInput('')
-+      setProvidersSearch('')
-+      setProvidersOffset(0)
++    const handleClearSearch = () => {
++      setSearchInput('')
++      setSearch('')
++      setOffset(0)
 +    }
 +
-     const showRevenue = summary?.revenue_supported
-     const retentionMonths = retention?.months?.length || 0
- 
-     return (
-       <div className="admin-page">
-         <div className="admin-header">
-           <div>
-             <p className="eyebrow">Reports</p>
-             <h1>Provider Performance Reports</h1>
-             <p className="header-subtitle">Understand which providers drive value and who needs help.</p>
-           </div>
-         </div>
- 
-         <div className="admin-card">
--          <div className="form-grid">
--            <label className="form-field">
--              <span>Start date</span>
--              <input
--                type="date"
--                value={startDate}
--                onChange={(e) => setStartDate(e.target.value)}
--              />
--            </label>
--            <label className="form-field">
--              <span>End date</span>
--              <input
--                type="date"
--                value={endDate}
--                onChange={(e) => setEndDate(e.target.value)}
--              />
--            </label>
--            <label className="form-field">
--              <span>Profession</span>
--              <select value={profession} onChange={(e) => setProfession(e.target.value)}>
--                <option value="all">All</option>
--                {professions.map((name) => (
--                  <option key={name} value={name}>
--                    {name}
--                  </option>
--                ))}
--              </select>
--            </label>
--            <label className="form-field">
--              <span>Status</span>
--              <select value={status} onChange={(e) => setStatus(e.target.value)}>
--                {statusOptions.map((option) => (
--                  <option key={option.value} value={option.value}>
--                    {option.label}
--                  </option>
--                ))}
--              </select>
--            </label>
--          </div>
--
--          <div className="button-row">
-+          <div className="admin-tabs" role="tablist" aria-label="Provider reports tabs">
-             <button
--              className="primary-btn"
--              onClick={runReport}
--              disabled={loading}
-+              type="button"
-+              className={`admin-tab ${activeTab === 'performance' ? 'active' : ''}`}
-+              onClick={() => setActiveTab('performance')}
-             >
--              {loading ? 'Running…' : 'Run report'}
-+              Performance
++    const formatCreated = (value) => {
++      if (!value) return '—'
++      const parsed = new Date(value)
++      if (Number.isNaN(parsed.getTime())) return '—'
++      return parsed.toLocaleDateString(undefined, {
++        year: 'numeric',
++        month: 'short',
++        day: 'numeric',
++      })
++    }
++
++    return (
++      <div className="admin-page">
++        <div className="admin-header">
++          <div>
++            <p className="eyebrow">Clients</p>
++            <h1>Clients List</h1>
++            <p className="header-subtitle">Search and review client accounts.</p>
++          </div>
++        </div>
++
++        <div className="admin-card">
++          <form className="providers-list-search" onSubmit={handleSearchSubmit}>
++            <input
++              type="text"
++              value={searchInput}
++              onChange={(event) => setSearchInput(event.target.value)}
++              placeholder="Search by username or WhatsApp"
++              aria-label="Search clients"
++            />
++            <button className="primary-btn" type="submit" disabled={loading}>
++              Search
 +            </button>
 +            <button
++              className="secondary-btn"
 +              type="button"
-+              className={`admin-tab ${activeTab === 'providers' ? 'active' : ''}`}
-+              onClick={() => setActiveTab('providers')}
++              onClick={handleClearSearch}
++              disabled={loading && !searchInput && !search}
 +            >
-+              Providers List
-             </button>
--            <span className="muted">Default: last 30 days</span>
--            {loadingProfessions && <span className="muted">Loading professions…</span>}
-           </div>
- 
--          {error && <p className="form-error">{error}</p>}
--          {loading && !error && <p className="muted">Loading provider performance…</p>}
--
--          <div className="report-section">
--            <h2>Top performing providers</h2>
--            <p className="muted">By bookings in the selected range.</p>
--            <div className="provider-missing-table">
--              <table>
--                <thead>
--                  <tr>
--                    <th>Provider</th>
--                    <th>Profession</th>
--                    <th>Total bookings</th>
--                  </tr>
--                </thead>
--                <tbody>
--                  {summary?.top_providers_by_bookings?.length ? (
--                    summary.top_providers_by_bookings.map((row) => (
--                      <tr key={row.provider_id}>
--                        <td>{row.provider_name || '—'}</td>
--                        <td>{row.profession || '—'}</td>
--                        <td>{row.total_bookings ?? '—'}</td>
-+          {activeTab === 'performance' ? (
-+            <>
-+              <div className="form-grid">
-+                <label className="form-field">
-+                  <span>Start date</span>
-+                  <input
-+                    type="date"
-+                    value={startDate}
-+                    onChange={(e) => setStartDate(e.target.value)}
-+                  />
-+                </label>
-+                <label className="form-field">
-+                  <span>End date</span>
-+                  <input
-+                    type="date"
-+                    value={endDate}
-+                    onChange={(e) => setEndDate(e.target.value)}
-+                  />
-+                </label>
-+                <label className="form-field">
-+                  <span>Profession</span>
-+                  <select value={profession} onChange={(e) => setProfession(e.target.value)}>
-+                    <option value="all">All</option>
-+                    {professions.map((name) => (
-+                      <option key={name} value={name}>
-+                        {name}
-+                      </option>
-+                    ))}
-+                  </select>
-+                </label>
-+                <label className="form-field">
-+                  <span>Status</span>
-+                  <select value={status} onChange={(e) => setStatus(e.target.value)}>
-+                    {statusOptions.map((option) => (
-+                      <option key={option.value} value={option.value}>
-+                        {option.label}
-+                      </option>
-+                    ))}
-+                  </select>
-+                </label>
-+              </div>
++              Clear
++            </button>
++          </form>
 +
-+              <div className="button-row">
-+                <button
-+                  className="primary-btn"
-+                  onClick={runReport}
-+                  disabled={loading}
-+                >
-+                  {loading ? 'Running…' : 'Run report'}
-+                </button>
-+                <span className="muted">Default: last 30 days</span>
-+                {loadingProfessions && <span className="muted">Loading professions…</span>}
-+              </div>
++          {loading && <p className="muted">Loading clients…</p>}
++          {error && <p className="form-error">{error}</p>}
 +
-+              {error && <p className="form-error">{error}</p>}
-+              {loading && !error && <p className="muted">Loading provider performance…</p>}
++          <div className="provider-missing-table">
++            <table>
++              <thead>
++                <tr>
++                  <th>ID</th>
++                  <th>Username</th>
++                  <th>WhatsApp</th>
++                  <th>Email</th>
++                  <th>Created</th>
++                </tr>
++              </thead>
++              <tbody>
++                {!loading && clients.length === 0 ? (
++                  <tr>
++                    <td colSpan={5}>No clients found.</td>
++                  </tr>
++                ) : (
++                  clients.map((client) => (
++                    <tr key={client.id}>
++                      <td>{client.id}</td>
++                      <td>{client.username || '—'}</td>
++                      <td>{client.whatsapp || '—'}</td>
++                      <td>{client.email || '—'}</td>
++                      <td>{formatCreated(client.created_at)}</td>
++                    </tr>
++                  ))
++                )}
++              </tbody>
++            </table>
++          </div>
 +
-+              <div className="report-section">
-+                <h2>Top performing providers</h2>
-+                <p className="muted">By bookings in the selected range.</p>
-+                <div className="provider-missing-table">
-+                  <table>
-+                    <thead>
-+                      <tr>
-+                        <th>Provider</th>
-+                        <th>Profession</th>
-+                        <th>Total bookings</th>
-                       </tr>
--                    ))
--                  ) : (
--                    <tr>
--                      <td colSpan={3}>{loading ? 'Loading…' : 'No provider activity found.'}</td>
--                    </tr>
--                  )}
--                </tbody>
--              </table>
--            </div>
--          </div>
-+                    </thead>
-+                    <tbody>
-+                      {summary?.top_providers_by_bookings?.length ? (
-+                        summary.top_providers_by_bookings.map((row) => (
-+                          <tr key={row.provider_id}>
-+                            <td>{row.provider_name || '—'}</td>
-+                            <td>{row.profession || '—'}</td>
-+                            <td>{row.total_bookings ?? '—'}</td>
-+                          </tr>
-+                        ))
-+                      ) : (
-+                        <tr>
-+                          <td colSpan={3}>{loading ? 'Loading…' : 'No provider activity found.'}</td>
-+                        </tr>
-+                      )}
-+                    </tbody>
-+                  </table>
-+                </div>
-+              </div>
++          <div className="button-row providers-pagination-row">
++            <button
++              className="secondary-btn"
++              type="button"
++              onClick={() => setOffset((current) => Math.max(0, current - limit))}
++              disabled={loading || offset === 0}
++            >
++              Previous
++            </button>
++            <button
++              className="secondary-btn"
++              type="button"
++              onClick={() => setOffset((current) => current + limit)}
++              disabled={loading || clients.length < limit}
++            >
++              Next
++            </button>
++          </div>
++        </div>
++      </div>
++    )
++  }
 +
-+              {showRevenue && (
-+                <div className="report-section">
-+                  <h2>Top earning providers</h2>
-+                  <p className="muted">Ordered by total revenue.</p>
-+                  <div className="provider-missing-table">
-+                    <table>
-+                      <thead>
-+                        <tr>
-+                          <th>Provider</th>
-+                          <th>Profession</th>
-+                          <th>Total revenue (GYD)</th>
-+                        </tr>
-+                      </thead>
-+                      <tbody>
-+                        {summary?.top_providers_by_revenue?.length ? (
-+                          summary.top_providers_by_revenue.map((row) => (
-+                            <tr key={row.provider_id}>
-+                              <td>{row.provider_name || '—'}</td>
-+                              <td>{row.profession || '—'}</td>
-+                              <td>{typeof row.total_revenue === 'number' ? row.total_revenue.toFixed(2) : '—'}</td>
-+                            </tr>
-+                          ))
-+                        ) : (
-+                          <tr>
-+                            <td colSpan={3}>{loading ? 'Loading…' : 'No revenue data available.'}</td>
-+                          </tr>
-+                        )}
-+                      </tbody>
-+                    </table>
-+                  </div>
-+                </div>
-+              )}
-+
-+              <div className="report-section">
-+                <h2>Most frequently booked services</h2>
-+                <p className="muted">Services that drive the most demand.</p>
-+                <div className="provider-missing-table">
-+                  <table>
-+                    <thead>
-+                      <tr>
-+                        <th>Service</th>
-+                        <th>Provider</th>
-+                        <th>Bookings</th>
-+                      </tr>
-+                    </thead>
-+                    <tbody>
-+                      {summary?.most_booked_services?.length ? (
-+                        summary.most_booked_services.map((row) => (
-+                          <tr key={row.service_id}>
-+                            <td>{row.service_name || '—'}</td>
-+                            <td>{row.provider_name || '—'}</td>
-+                            <td>{row.bookings}</td>
-+                          </tr>
-+                        ))
-+                      ) : (
-+                        <tr>
-+                          <td colSpan={3}>{loading ? 'Loading…' : 'No service activity found.'}</td>
-+                        </tr>
-+                      )}
-+                    </tbody>
-+                  </table>
-+                </div>
-+              </div>
-+
-+              <div className="report-section">
-+                <h2>Provider retention</h2>
-+                <p className="muted">Providers active each month ({retentionMonths} months in range).</p>
-+                <div className="provider-missing-table">
-+                  <table>
-+                    <thead>
-+                      <tr>
-+                        <th>Provider</th>
-+                        <th>Profession</th>
-+                        <th>Months active</th>
-+                        <th>Last active month</th>
-+                      </tr>
-+                    </thead>
-+                    <tbody>
-+                      {retention?.providers?.length ? (
-+                        retention.providers.map((row) => (
-+                          <tr key={row.provider_id}>
-+                            <td>{row.provider_name || '—'}</td>
-+                            <td>{row.profession || '—'}</td>
-+                            <td>{row.months_active_count}</td>
-+                            <td>{row.last_active_month || '—'}</td>
-+                          </tr>
-+                        ))
-+                      ) : (
-+                        <tr>
-+                          <td colSpan={4}>{loading ? 'Loading…' : 'No retention data found.'}</td>
-+                        </tr>
-+                      )}
-+                    </tbody>
-+                  </table>
-+                </div>
-+              </div>
-+
-+              <div className="report-section">
-+                <h2>Low activity providers</h2>
-+                <p className="muted">Providers with 0–3 bookings in the selected range.</p>
-+                <div className="provider-missing-table">
-+                  <table>
-+                    <thead>
-+                      <tr>
-+                        <th>Provider</th>
-+                        <th>Profession</th>
-+                        <th>Bookings</th>
-+                      </tr>
-+                    </thead>
-+                    <tbody>
-+                      {summary?.low_activity_providers?.length ? (
-+                        summary.low_activity_providers.map((row) => (
-+                          <tr key={row.provider_id}>
-+                            <td>{row.provider_name || '—'}</td>
-+                            <td>{row.profession || '—'}</td>
-+                            <td>{row.bookings_in_range ?? '—'}</td>
-+                          </tr>
-+                        ))
-+                      ) : (
-+                        <tr>
-+                          <td colSpan={3}>{loading ? 'Loading…' : 'No low-activity providers found.'}</td>
-+                        </tr>
-+                      )}
-+                    </tbody>
-+                  </table>
-+                </div>
-+              </div>
-+
-+              <div className="report-section">
-+                <h2>High cancellation rates</h2>
-+                <p className="muted">Providers with the highest cancellation percentage.</p>
-+                <div className="provider-missing-table">
-+                  <table>
-+                    <thead>
-+                      <tr>
-+                        <th>Provider</th>
-+                        <th>Profession</th>
-+                        <th>Cancellations</th>
-+                        <th>Total bookings</th>
-+                        <th>Cancellation %</th>
-+                      </tr>
-+                    </thead>
-+                    <tbody>
-+                      {summary?.high_cancellation_rates?.length ? (
-+                        summary.high_cancellation_rates.map((row) => (
-+                          <tr key={row.provider_id}>
-+                            <td>{row.provider_name || '—'}</td>
-+                            <td>{row.profession || '—'}</td>
-+                            <td>{row.cancelled}</td>
-+                            <td>{row.total_bookings}</td>
-+                            <td>{(row.cancellation_rate * 100).toFixed(1)}%</td>
-+                          </tr>
-+                        ))
-+                      ) : (
-+                        <tr>
-+                          <td colSpan={5}>{loading ? 'Loading…' : 'No cancellation data found.'}</td>
-+                        </tr>
-+                      )}
-+                    </tbody>
-+                  </table>
-+                </div>
-+              </div>
-+            </>
-+          ) : (
-+            <>
-+              <form className="providers-list-search" onSubmit={handleProviderSearchSubmit}>
-+                <input
-+                  type="text"
-+                  placeholder="Search username or WhatsApp"
-+                  value={providersSearchInput}
-+                  onChange={(e) => setProvidersSearchInput(e.target.value)}
-+                />
-+                <button className="primary-btn" type="submit" disabled={providersLoading}>
-+                  Search
-+                </button>
-+                <button className="secondary-btn" type="button" onClick={handleClearProviderSearch} disabled={providersLoading}>
-+                  Clear
-+                </button>
-+              </form>
-+
-+              {providersError && <p className="form-error">{providersError}</p>}
-+              {providersLoading && <p className="muted">Loading providers…</p>}
- 
--          {showRevenue && (
--            <div className="report-section">
--              <h2>Top earning providers</h2>
--              <p className="muted">Ordered by total revenue.</p>
-               <div className="provider-missing-table">
-                 <table>
-                   <thead>
-                     <tr>
--                      <th>Provider</th>
-+                      <th>ID</th>
-+                      <th>Username</th>
-+                      <th>Account #</th>
-                       <th>Profession</th>
--                      <th>Total revenue (GYD)</th>
-+                      <th>WhatsApp</th>
-+                      <th>Email</th>
-                     </tr>
-                   </thead>
-                   <tbody>
--                    {summary?.top_providers_by_revenue?.length ? (
--                      summary.top_providers_by_revenue.map((row) => (
--                        <tr key={row.provider_id}>
--                          <td>{row.provider_name || '—'}</td>
--                          <td>{row.profession || '—'}</td>
--                          <td>{typeof row.total_revenue === 'number' ? row.total_revenue.toFixed(2) : '—'}</td>
--                        </tr>
--                      ))
--                    ) : (
-+                    {!providersLoading && providers.length === 0 ? (
-                       <tr>
--                        <td colSpan={3}>{loading ? 'Loading…' : 'No revenue data available.'}</td>
-+                        <td colSpan={6}>No providers found.</td>
-                       </tr>
-+                    ) : (
-+                      providers.map((provider) => (
-+                        <tr key={provider.id}>
-+                          <td>{provider.id}</td>
-+                          <td>{provider.username || '—'}</td>
-+                          <td>{provider.account_number || '—'}</td>
-+                          <td>{provider.profession || '—'}</td>
-+                          <td>{provider.whatsapp || '—'}</td>
-+                          <td>{provider.email || '—'}</td>
-+                        </tr>
-+                      ))
-                     )}
-                   </tbody>
-                 </table>
-               </div>
--            </div>
--          )}
--
--          <div className="report-section">
--            <h2>Most frequently booked services</h2>
--            <p className="muted">Services that drive the most demand.</p>
--            <div className="provider-missing-table">
--              <table>
--                <thead>
--                  <tr>
--                    <th>Service</th>
--                    <th>Provider</th>
--                    <th>Bookings</th>
--                  </tr>
--                </thead>
--                <tbody>
--                  {summary?.most_booked_services?.length ? (
--                    summary.most_booked_services.map((row) => (
--                      <tr key={row.service_id}>
--                        <td>{row.service_name || '—'}</td>
--                        <td>{row.provider_name || '—'}</td>
--                        <td>{row.bookings}</td>
--                      </tr>
--                    ))
--                  ) : (
--                    <tr>
--                      <td colSpan={3}>{loading ? 'Loading…' : 'No service activity found.'}</td>
--                    </tr>
--                  )}
--                </tbody>
--              </table>
--            </div>
--          </div>
--
--          <div className="report-section">
--            <h2>Provider retention</h2>
--            <p className="muted">Providers active each month ({retentionMonths} months in range).</p>
--            <div className="provider-missing-table">
--              <table>
--                <thead>
--                  <tr>
--                    <th>Provider</th>
--                    <th>Profession</th>
--                    <th>Months active</th>
--                    <th>Last active month</th>
--                  </tr>
--                </thead>
--                <tbody>
--                  {retention?.providers?.length ? (
--                    retention.providers.map((row) => (
--                      <tr key={row.provider_id}>
--                        <td>{row.provider_name || '—'}</td>
--                        <td>{row.profession || '—'}</td>
--                        <td>{row.months_active_count}</td>
--                        <td>{row.last_active_month || '—'}</td>
--                      </tr>
--                    ))
--                  ) : (
--                    <tr>
--                      <td colSpan={4}>{loading ? 'Loading…' : 'No retention data found.'}</td>
--                    </tr>
--                  )}
--                </tbody>
--              </table>
--            </div>
--          </div>
--
--          <div className="report-section">
--            <h2>Low activity providers</h2>
--            <p className="muted">Providers with 0–3 bookings in the selected range.</p>
--            <div className="provider-missing-table">
--              <table>
--                <thead>
--                  <tr>
--                    <th>Provider</th>
--                    <th>Profession</th>
--                    <th>Bookings</th>
--                  </tr>
--                </thead>
--                <tbody>
--                  {summary?.low_activity_providers?.length ? (
--                    summary.low_activity_providers.map((row) => (
--                      <tr key={row.provider_id}>
--                        <td>{row.provider_name || '—'}</td>
--                        <td>{row.profession || '—'}</td>
--                        <td>{row.bookings_in_range ?? '—'}</td>
--                      </tr>
--                    ))
--                  ) : (
--                    <tr>
--                      <td colSpan={3}>{loading ? 'Loading…' : 'No low-activity providers found.'}</td>
--                    </tr>
--                  )}
--                </tbody>
--              </table>
--            </div>
--          </div>
- 
--          <div className="report-section">
--            <h2>High cancellation rates</h2>
--            <p className="muted">Providers with the highest cancellation percentage.</p>
--            <div className="provider-missing-table">
--              <table>
--                <thead>
--                  <tr>
--                    <th>Provider</th>
--                    <th>Profession</th>
--                    <th>Cancellations</th>
--                    <th>Total bookings</th>
--                    <th>Cancellation %</th>
--                  </tr>
--                </thead>
--                <tbody>
--                  {summary?.high_cancellation_rates?.length ? (
--                    summary.high_cancellation_rates.map((row) => (
--                      <tr key={row.provider_id}>
--                        <td>{row.provider_name || '—'}</td>
--                        <td>{row.profession || '—'}</td>
--                        <td>{row.cancelled}</td>
--                        <td>{row.total_bookings}</td>
--                        <td>{(row.cancellation_rate * 100).toFixed(1)}%</td>
--                      </tr>
--                    ))
--                  ) : (
--                    <tr>
--                      <td colSpan={5}>{loading ? 'Loading…' : 'No cancellation data found.'}</td>
--                    </tr>
--                  )}
--                </tbody>
--              </table>
--            </div>
--          </div>
-+              <div className="button-row providers-pagination-row">
-+                <button
-+                  className="secondary-btn"
-+                  type="button"
-+                  onClick={() => setProvidersOffset((current) => Math.max(0, current - providersLimit))}
-+                  disabled={providersLoading || providersOffset === 0}
-+                >
-+                  Previous
-+                </button>
-+                <button
-+                  className="secondary-btn"
-+                  type="button"
-+                  onClick={() => setProvidersOffset((current) => current + providersLimit)}
-+                  disabled={providersLoading || providers.length < providersLimit}
-+                >
-+                  Next
-+                </button>
-+              </div>
-+            </>
-+          )}
-         </div>
-       </div>
-     )
-   }
- 
    const AdminLayout = () => {
      const location = useLocation()
      return (
@@ -759,6 +193,96 @@ index ab938c9ada5ad6d8cf1f70674944bb10b9b9f786..e3056878ec6d824ab2187912bba3a652
                className={({ isActive }) => isActive ? 'sidebar-link active' : 'sidebar-link'}
              >
                Provider Locations
+             </NavLink>
+             <NavLink
+               to="/admin/cancellations"
+               className={({ isActive }) => isActive ? 'sidebar-link active' : 'sidebar-link'}
+             >
+               Cancellations
+             </NavLink>
+             <NavLink
+               to="/admin/signups"
+               className={({ isActive }) => isActive ? 'sidebar-link active' : 'sidebar-link'}
+             >
+               Signups Report
+             </NavLink>
+             <NavLink
+               to="/admin/booking-metrics"
+               className={({ isActive }) => isActive ? 'sidebar-link active' : 'sidebar-link'}
+             >
+               Booking Metrics
+             </NavLink>
+             <NavLink
+               to="/admin/provider-performance"
+               className={({ isActive }) => isActive ? 'sidebar-link active' : 'sidebar-link'}
+             >
+               Provider Performance
+             </NavLink>
++            <NavLink
++              to="/admin/clients"
++              className={({ isActive }) => isActive ? 'sidebar-link active' : 'sidebar-link'}
++            >
++              Clients
++            </NavLink>
+           </nav>
+           <div className="sidebar-footer">
+             Logged in · {token ? 'Authenticated' : 'Guest'}
+           </div>
+         </aside>
+         <main className="admin-main" key={location.pathname}>
+           <Outlet />
+         </main>
+       </div>
+     )
+   }
+ 
+   return (
+     <BrowserRouter>
+       <nav className="app-nav">
+         <div className="nav-inner">
+           <Link to="/" className="nav-brand" aria-label="BookitGY home">
+             <img src="/bookitgy-logo.png" alt="BookitGY" />
+             <div className="brand-text">
+               <span className="brand-name">BookitGY</span>
+               <span className="brand-subtitle">BookitGY</span>
+             </div>
+           </Link>
+           <div className="nav-actions">
+             {token ? (
+@@ -2376,32 +2526,33 @@ function App() {
+           </div>
+         </div>
+       </nav>
+       <Routes>
+         <Route path="/" element={<Home />} />
+         <Route path="/login" element={<Login />} />
+         <Route path="/reset-password" element={<ResetPassword />} />
+         <Route path="/p/:username" element={<ProviderLanding />} />
+         <Route
+           path="/admin"
+           element={(
+             <ProtectedRoute>
+               <AdminLayout />
+             </ProtectedRoute>
+           )}
+         >
+           <Route index element={<Navigate to="/admin/promotions" replace />} />
+           <Route path="promotions" element={<AdminPromotions />} />
+           <Route path="service-charge" element={<ServiceChargeSettings />} />
+           <Route path="billing" element={<AdminBilling />} />
+           <Route path="provider-locations" element={<AdminProviderLocations />} />
+           <Route path="cancellations" element={<AdminCancellations />} />
+           <Route path="signups" element={<AdminSignupReport />} />
+           <Route path="booking-metrics" element={<AdminBookingMetrics />} />
+           <Route path="provider-performance" element={<AdminProviderPerformanceReports />} />
++          <Route path="clients" element={<AdminClientsList />} />
+         </Route>
+       </Routes>
+     </BrowserRouter>
+   )
+ }
+ 
+ ReactDOM.createRoot(document.getElementById('root')).render(<App />)
  
 EOF
 )
