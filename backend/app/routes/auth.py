@@ -77,6 +77,15 @@ def _google_client_id() -> str:
     return client_id
 
 
+def _mask_id(value: str | None) -> str:
+    token = (value or "").strip()
+    if not token:
+        return ""
+    if len(token) <= 10:
+        return f"{token[:3]}…{token[-2:]}"
+    return f"{token[:6]}…{token[-4:]}"
+
+
 def _verify_google_id_token(id_token: str) -> dict:
     token = (id_token or "").strip()
     if not token:
@@ -560,6 +569,10 @@ def auth_google(
 ):
     id_token = (payload.id_token or "").strip()
     authorization_code = (payload.authorization_code or "").strip()
+    logger.info("POST /auth/google id_token_provided=%s", bool(id_token))
+
+    if not id_token:
+        logger.info("POST /auth/google GOOGLE_TOKEN_REQUIRED")
 
     if not id_token and authorization_code:
         raise _google_error(
@@ -568,29 +581,53 @@ def auth_google(
             "authorization_code flow is not supported yet",
         )
 
-    google_profile = _verify_google_id_token(id_token)
+    try:
+        google_profile = _verify_google_id_token(id_token)
+    except Exception as exc:
+        logger.info(
+            "POST /auth/google verification_failed reason=%s: %s",
+            exc.__class__.__name__,
+            str(exc),
+        )
+        raise
+
     google_sub = google_profile["sub"]
     google_email = google_profile["email"]
+    logger.info(
+        "POST /auth/google verified email=%s sub=%s email_verified=%s",
+        google_email,
+        _mask_id(google_sub),
+        google_profile.get("email_verified", False),
+    )
 
     existing_google_user = crud.get_user_by_google_sub(db, google_sub)
     if existing_google_user:
+        logger.info("POST /auth/google existing linked google_sub user found")
         return _google_auth_response(db, existing_google_user)
+
+    logger.info("POST /auth/google no google_sub match")
 
     existing_local_user = crud.get_user_by_email(db, google_email)
     if existing_local_user:
+        logger.info("POST /auth/google email collision with local user (not linked)")
         raise _google_error(
             status.HTTP_409_CONFLICT,
             "EMAIL_EXISTS_NOT_LINKED",
             "An account already exists with this email. Log in with your password to link Google.",
         )
 
-    user = crud.create_user_for_google(
-        db,
-        email=google_email,
-        google_sub=google_sub,
-        name=google_profile.get("name"),
-        email_verified=google_profile.get("email_verified", False),
-    )
+    logger.info("POST /auth/google creating new user from google")
+    try:
+        user = crud.create_user_for_google(
+            db,
+            email=google_email,
+            google_sub=google_sub,
+            name=google_profile.get("name"),
+            email_verified=google_profile.get("email_verified", False),
+        )
+    except IntegrityError:
+        logger.info("POST /auth/google integrity error while creating new user from google")
+        raise
 
     return _google_auth_response(db, user)
 
@@ -603,6 +640,10 @@ def link_google(
 ):
     id_token = (payload.id_token or "").strip()
     authorization_code = (payload.authorization_code or "").strip()
+    logger.info("POST /auth/link-google id_token_provided=%s", bool(id_token))
+
+    if not id_token:
+        logger.info("POST /auth/link-google GOOGLE_TOKEN_REQUIRED")
 
     if not id_token and authorization_code:
         raise _google_error(
@@ -611,9 +652,24 @@ def link_google(
             "authorization_code flow is not supported yet",
         )
 
-    google_profile = _verify_google_id_token(id_token)
+    try:
+        google_profile = _verify_google_id_token(id_token)
+    except Exception as exc:
+        logger.info(
+            "POST /auth/link-google verification_failed reason=%s: %s",
+            exc.__class__.__name__,
+            str(exc),
+        )
+        raise
+
     google_sub = google_profile["sub"]
     google_email = google_profile["email"]
+    logger.info(
+        "POST /auth/link-google verified email=%s sub=%s email_verified=%s",
+        google_email,
+        _mask_id(google_sub),
+        google_profile.get("email_verified", False),
+    )
 
     if current_user.google_sub == google_sub:
         return _google_auth_response(db, current_user)
@@ -649,7 +705,11 @@ def link_google(
         current_user.is_email_verified = True
         current_user.email_verified_at = current_user.email_verified_at or now_guyana()
 
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        logger.info("POST /auth/link-google integrity error while linking google_sub to existing user")
+        raise
     db.refresh(current_user)
 
     return _google_auth_response(db, current_user)

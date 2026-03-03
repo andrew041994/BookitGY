@@ -1,124 +1,270 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
-diff --git a/mobile/App.js b/mobile/App.js
-index 47c7624ce2f5d7d54f6ffe2bc5d89c57db8b9cc1..b349a78c98a6dc86b30a3c1ff4c6fcc4a2379cb0 100644
---- a/mobile/App.js
-+++ b/mobile/App.js
-@@ -876,98 +876,111 @@ function LoginScreen({
-     } catch (error) {
-       console.log("Facebook login error:", error?.response?.data || error?.message || error);
-       showFlash?.("error", "Facebook login failed. Please try again.");
-     } finally {
-       setFacebookLoading(false);
-     }
-   };
+diff --git a/backend/app/routes/auth.py b/backend/app/routes/auth.py
+index 5e54f8381d7ca28c1a90f429beae119f89310baa..c58607af0c9cb750af59937b961614dd96bc9797 100644
+--- a/backend/app/routes/auth.py
++++ b/backend/app/routes/auth.py
+@@ -55,50 +55,59 @@ def _session_expired_error() -> HTTPException:
+         detail={"detail": "session_expired", "code": "SESSION_EXPIRED"},
+     )
  
-   const loginWithGoogle = async () => {
-     if (!googleRequest) {
-       showFlash?.("error", "Google Sign-In is not configured yet.");
-       return;
-     }
  
-     let googleAuthResult = null;
-     let googleTokenPayload = null;
  
-     setGoogleLoading(true);
-     try {
-       const result = await promptGoogleAuth();
-       googleAuthResult = result;
-       if (result?.type !== "success") {
-         return;
-       }
  
--      const authCode = result?.params?.code;
--      const idToken = result?.params?.id_token || result?.authentication?.idToken;
--      const payload = authCode ? { code: authCode } : idToken ? { id_token: idToken } : null;
-+      const idToken =
-+        googleAuthResult?.authentication?.idToken ||
-+        googleAuthResult?.params?.id_token ||
-+        googleTokenPayload?.idToken ||
-+        null;
+ def _google_error(status_code: int, code: str, message: str | None = None) -> HTTPException:
+     return HTTPException(
+         status_code=status_code,
+         detail={"detail": message or code, "code": code},
+     )
+ 
+ 
+ def _google_client_id() -> str:
+     client_id = (settings.GOOGLE_CLIENT_ID or "").strip()
+     if not client_id:
+         # Required env var for Google Sign-In verification.
+         raise _google_error(
+             status.HTTP_500_INTERNAL_SERVER_ERROR,
+             "GOOGLE_AUTH_NOT_CONFIGURED",
+             "Google auth is not configured",
+         )
+     return client_id
+ 
+ 
++def _mask_id(value: str | None) -> str:
++    token = (value or "").strip()
++    if not token:
++        return ""
++    if len(token) <= 10:
++        return f"{token[:3]}…{token[-2:]}"
++    return f"{token[:6]}…{token[-4:]}"
 +
-+      console.log("[google] id_token present?", Boolean(idToken), "len=", idToken?.length);
 +
-+      const payload = {
-+        id_token: idToken,
-+      };
-       googleTokenPayload = payload;
+ def _verify_google_id_token(id_token: str) -> dict:
+     token = (id_token or "").strip()
+     if not token:
+         raise _google_error(status.HTTP_400_BAD_REQUEST, "GOOGLE_TOKEN_REQUIRED")
  
-       if (!payload) {
-         showFlash?.("error", "Unable to read Google login token. Please try again.");
-         return;
-       }
+     client_id = _google_client_id()
  
-       const res = await apiClient.post(`/auth/google`, payload);
-       await saveToken(res.data.access_token);
-       await saveRefreshToken(res.data.refresh_token);
+     try:
+         unverified_header = jwt.get_unverified_header(token)
+         kid = unverified_header.get("kid")
+     except Exception:
+         raise _google_error(status.HTTP_401_UNAUTHORIZED, "GOOGLE_TOKEN_INVALID")
  
-       if (res.data?.needs_onboarding) {
-         onGoogleOnboardingRequired?.({
-           initialPhone: "",
-           initialIsProvider: false,
-         });
-         return;
-       }
+     if not kid:
+         raise _google_error(status.HTTP_401_UNAUTHORIZED, "GOOGLE_TOKEN_INVALID")
  
-       let meData = null;
-       try {
-         const meRes = await apiClient.get(`/users/me`);
-         meData = meRes.data;
-       } catch (meError) {
-         console.log("[auth] Failed to fetch /users/me after Google login", meError?.message || meError);
-       }
+     try:
+         jwks_resp = requests.get("https://www.googleapis.com/oauth2/v3/certs", timeout=10)
+         jwks = jwks_resp.json() if jwks_resp.ok else {}
+     except Exception:
+         raise _google_error(status.HTTP_401_UNAUTHORIZED, "GOOGLE_TOKEN_INVALID")
  
-       setToken({
-         token: res.data.access_token,
-         userId: meData?.id || meData?.user_id || res.data.user_id,
-         email: meData?.email || res.data.email,
-         username: meData?.username,
-         isProvider: typeof meData?.is_provider === "boolean" ? meData?.is_provider : res.data.is_provider,
-         isAdmin: typeof meData?.is_admin === "boolean" ? meData?.is_admin : res.data.is_admin,
-       });
+     key_data = None
+     for key in jwks.get("keys", []):
+         if key.get("kid") == kid:
+@@ -538,140 +547,191 @@ def facebook_complete(
+         if "users_phone" in detail or "phone" in detail:
+             raise _facebook_error(status.HTTP_400_BAD_REQUEST, "PHONE_TAKEN")
+         raise
  
-       setIsAdmin(
-         typeof meData?.is_admin === "boolean" ? meData?.is_admin : !!res.data.is_admin
-       );
+     if payload.is_provider:
+         crud.get_or_create_provider_for_user(db, user.id)
  
-       clearPendingGoogleLink?.();
-       showFlash?.("success", "Logged in successfully");
-     } catch (error) {
-       console.log("Google login error:", error?.response?.data || error?.message || error);
--      const errorCode = normalizeErrorCode(error?.response?.data);
-+      const data = error?.response?.data;
+     crud.create_oauth_identity(
+         db,
+         user_id=user.id,
+         provider="facebook",
+         provider_user_id=fb_profile["id"],
+         email=fb_email or request_email,
+     )
+ 
+     return _facebook_auth_response(db, user)
+ 
+ 
+ @router.post("/auth/google", response_model=schemas.GoogleAuthResponse)
+ def auth_google(
+     payload: schemas.GoogleAuthRequest,
+     db: Session = Depends(get_db),
+ ):
+     id_token = (payload.id_token or "").strip()
+     authorization_code = (payload.authorization_code or "").strip()
++    logger.info("POST /auth/google id_token_provided=%s", bool(id_token))
 +
-+      const errorCode =
-+        data?.code ||
-+        data?.detail?.code ||
-+        normalizeErrorCode(data);
-       const statusCode = error?.response?.status;
++    if not id_token:
++        logger.info("POST /auth/google GOOGLE_TOKEN_REQUIRED")
  
-       if (
-         errorCode === "EMAIL_EXISTS_NOT_LINKED" &&
-         (statusCode === 400 || statusCode === 409)
-       ) {
-         const googleEmail =
-           googleAuthResult?.params?.email ||
-           googleAuthResult?.authentication?.email ||
-           googleAuthResult?.params?.login_hint ||
-           null;
+     if not id_token and authorization_code:
+         raise _google_error(
+             status.HTTP_400_BAD_REQUEST,
+             "GOOGLE_AUTH_CODE_NOT_SUPPORTED",
+             "authorization_code flow is not supported yet",
+         )
  
-         onGoogleLinkRequired?.({
-           tokenPayload: googleTokenPayload,
-           email: googleEmail,
-         });
-         showFlash?.(
-           "error",
-           "An account already exists with this email. Log in with your password to link Google."
-         );
-         return;
-       }
+-    google_profile = _verify_google_id_token(id_token)
++    try:
++        google_profile = _verify_google_id_token(id_token)
++    except Exception as exc:
++        logger.info(
++            "POST /auth/google verification_failed reason=%s: %s",
++            exc.__class__.__name__,
++            str(exc),
++        )
++        raise
++
+     google_sub = google_profile["sub"]
+     google_email = google_profile["email"]
++    logger.info(
++        "POST /auth/google verified email=%s sub=%s email_verified=%s",
++        google_email,
++        _mask_id(google_sub),
++        google_profile.get("email_verified", False),
++    )
  
-       showFlash?.("error", "Google login failed. Please try again.");
-     } finally {
+     existing_google_user = crud.get_user_by_google_sub(db, google_sub)
+     if existing_google_user:
++        logger.info("POST /auth/google existing linked google_sub user found")
+         return _google_auth_response(db, existing_google_user)
+ 
++    logger.info("POST /auth/google no google_sub match")
++
+     existing_local_user = crud.get_user_by_email(db, google_email)
+     if existing_local_user:
++        logger.info("POST /auth/google email collision with local user (not linked)")
+         raise _google_error(
+             status.HTTP_409_CONFLICT,
+             "EMAIL_EXISTS_NOT_LINKED",
+             "An account already exists with this email. Log in with your password to link Google.",
+         )
+ 
+-    user = crud.create_user_for_google(
+-        db,
+-        email=google_email,
+-        google_sub=google_sub,
+-        name=google_profile.get("name"),
+-        email_verified=google_profile.get("email_verified", False),
+-    )
++    logger.info("POST /auth/google creating new user from google")
++    try:
++        user = crud.create_user_for_google(
++            db,
++            email=google_email,
++            google_sub=google_sub,
++            name=google_profile.get("name"),
++            email_verified=google_profile.get("email_verified", False),
++        )
++    except IntegrityError:
++        logger.info("POST /auth/google integrity error while creating new user from google")
++        raise
+ 
+     return _google_auth_response(db, user)
+ 
+ 
+ @router.post("/auth/link-google", response_model=schemas.LinkGoogleResponse)
+ def link_google(
+     payload: schemas.LinkGoogleRequest,
+     db: Session = Depends(get_db),
+     current_user: models.User = Depends(get_current_user_from_header),
+ ):
+     id_token = (payload.id_token or "").strip()
+     authorization_code = (payload.authorization_code or "").strip()
++    logger.info("POST /auth/link-google id_token_provided=%s", bool(id_token))
++
++    if not id_token:
++        logger.info("POST /auth/link-google GOOGLE_TOKEN_REQUIRED")
+ 
+     if not id_token and authorization_code:
+         raise _google_error(
+             status.HTTP_400_BAD_REQUEST,
+             "GOOGLE_AUTH_CODE_NOT_SUPPORTED",
+             "authorization_code flow is not supported yet",
+         )
+ 
+-    google_profile = _verify_google_id_token(id_token)
++    try:
++        google_profile = _verify_google_id_token(id_token)
++    except Exception as exc:
++        logger.info(
++            "POST /auth/link-google verification_failed reason=%s: %s",
++            exc.__class__.__name__,
++            str(exc),
++        )
++        raise
++
+     google_sub = google_profile["sub"]
+     google_email = google_profile["email"]
++    logger.info(
++        "POST /auth/link-google verified email=%s sub=%s email_verified=%s",
++        google_email,
++        _mask_id(google_sub),
++        google_profile.get("email_verified", False),
++    )
+ 
+     if current_user.google_sub == google_sub:
+         return _google_auth_response(db, current_user)
+ 
+     if current_user.google_sub:
+         raise _google_error(
+             status.HTTP_409_CONFLICT,
+             "GOOGLE_ALREADY_LINKED",
+             "This account is already linked to a different Google account.",
+         )
+ 
+     existing_google_user = crud.get_user_by_google_sub(db, google_sub)
+     if existing_google_user and existing_google_user.id != current_user.id:
+         raise _google_error(
+             status.HTTP_409_CONFLICT,
+             "GOOGLE_ALREADY_LINKED",
+             "This Google account is already linked to another BookitGY user.",
+         )
+ 
+     current_email = (current_user.email or "").strip().lower()
+     if google_email != current_email:
+         raise _google_error(
+             status.HTTP_400_BAD_REQUEST,
+             "EMAIL_MISMATCH",
+             "Google email does not match this account.",
+         )
+ 
+     current_user.google_sub = google_sub
+     if not (current_user.auth_provider or "").strip():
+         current_user.auth_provider = "local"
+ 
+     if google_profile.get("email_verified") and not current_user.is_email_verified:
+         current_user.is_email_verified = True
+         current_user.email_verified_at = current_user.email_verified_at or now_guyana()
+ 
+-    db.commit()
++    try:
++        db.commit()
++    except IntegrityError:
++        logger.info("POST /auth/link-google integrity error while linking google_sub to existing user")
++        raise
+     db.refresh(current_user)
+ 
+     return _google_auth_response(db, current_user)
+ 
+ 
+ @router.post("/auth/complete-profile", response_model=schemas.CompleteProfileResponse)
+ def complete_profile(
+     payload: schemas.CompleteProfileRequest,
+     db: Session = Depends(get_db),
+     current_user: models.User = Depends(get_current_user_from_header),
+ ):
+     phone_normalized = crud.normalize_phone(payload.phone)
+     if not phone_normalized:
+         raise HTTPException(
+             status_code=status.HTTP_400_BAD_REQUEST,
+             detail="Invalid phone number",
+         )
+ 
+     phone_owner = crud.get_user_by_phone(db, phone_normalized)
+     if phone_owner and phone_owner.id != current_user.id:
+         raise HTTPException(
+             status_code=status.HTTP_400_BAD_REQUEST,
+             detail="Phone already registered",
+         )
+ 
  
 EOF
 )
