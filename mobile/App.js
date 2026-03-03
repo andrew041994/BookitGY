@@ -897,6 +897,49 @@ function LoginScreen({
 // IMPORTANT: This assumes you changed your Google auth request to ResponseType.Code + usePKCE:true
 // (otherwise `result.params.code` won't exist).
 
+const DEBUG_GOOGLE_IDTOKEN = __DEV__;
+
+const decodeBase64UrlToUtf8 = (value) => {
+  if (typeof value !== "string" || !value) {
+    return "";
+  }
+
+  const b64 = value
+    .replace(/-/g, "+")
+    .replace(/_/g, "/")
+    .padEnd(Math.ceil(value.length / 4) * 4, "=");
+
+  if (typeof Buffer !== "undefined" && Buffer?.from) {
+    return Buffer.from(b64, "base64").toString("utf8");
+  }
+
+  if (typeof globalThis?.atob === "function") {
+    const binary = globalThis.atob(b64);
+    const escaped = Array.from(binary)
+      .map((char) => `%${char.charCodeAt(0).toString(16).padStart(2, "0")}`)
+      .join("");
+    return decodeURIComponent(escaped);
+  }
+
+  throw new Error("No base64 decoder available");
+};
+
+const decodeJwtNoVerify = (token) => {
+  if (typeof token !== "string") {
+    throw new Error("id_token is not a string");
+  }
+
+  const parts = token.split(".");
+  if (parts.length !== 3) {
+    throw new Error("id_token is not a JWT");
+  }
+
+  const header = JSON.parse(decodeBase64UrlToUtf8(parts[0]));
+  const payload = JSON.parse(decodeBase64UrlToUtf8(parts[1]));
+
+  return { header, payload };
+};
+
 const loginWithGoogle = async () => {
   if (!request) {
     showFlash?.("error", "Google Sign-In is not configured yet.");
@@ -981,6 +1024,25 @@ const loginWithGoogle = async () => {
         "Google token exchange did not return an ID token. Ensure scopes include openid."
       );
       return;
+    }
+
+    if (DEBUG_GOOGLE_IDTOKEN) {
+      try {
+        const decoded = decodeJwtNoVerify(idToken);
+        console.log("[google] id_token payload", {
+          aud: decoded?.payload?.aud,
+          iss: decoded?.payload?.iss,
+          azp: decoded?.payload?.azp,
+          email: decoded?.payload?.email,
+          exp: decoded?.payload?.exp,
+        });
+        console.log("[google] id_token header", {
+          kid: decoded?.header?.kid,
+          alg: decoded?.header?.alg,
+        });
+      } catch (jwtDecodeError) {
+        console.log("[google] id_token decode skipped:", jwtDecodeError?.message || jwtDecodeError);
+      }
     }
 
     // Keep backend payload identical

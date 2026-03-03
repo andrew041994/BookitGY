@@ -1,109 +1,25 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
 diff --git a/mobile/App.js b/mobile/App.js
-index 4cbd775e5dbea839bf2aaf9275a7d8437e377513..d3604b52aab7df77415185e16bb22a95c6151ad2 100644
+index d3604b52aab7df77415185e16bb22a95c6151ad2..e65e05a08462faa2cf65e370d2c541f434a37b1d 100644
 --- a/mobile/App.js
 +++ b/mobile/App.js
-@@ -648,76 +648,76 @@ function LandingScreen({ goToLogin, goToSignup }) {
- // 🔹 Dedicated login screen component
- const ENABLE_FACEBOOK_AUTH = process.env.EXPO_PUBLIC_ENABLE_FACEBOOK_AUTH === "true";
+@@ -875,50 +875,93 @@ function LoginScreen({
+             initialIsProvider: false,
+           });
+           return;
+         }
  
- function LoginScreen({
-   setToken,
-   setIsAdmin,
-   onFacebookSetupRequired,
-   onGoogleOnboardingRequired,
-   pendingGoogleLink,
-   onGoogleLinkRequired,
-   onCancelGoogleLink,
-   clearPendingGoogleLink,
-   onEmailNotVerified,
-   goToSignup,
-   goToForgot,
-   goBack,
-   showFlash,
- }) {
-   const [email, setEmail] = useState("");
-   const [password, setPassword] = useState("");
-   const [loading, setLoading] = useState(false);
-   const [facebookLoading, setFacebookLoading] = useState(false);
-   const [googleLoading, setGoogleLoading] = useState(false);
- 
-   // Expo Go requires the proxy redirect, while standalone/TestFlight should use app scheme redirects.
--  
--const isExpoGo = Constants.appOwnership === "expo"; // only true in Expo Go
--const useProxy = isExpoGo; // false in dev-client / TestFlight / App Store
--
--console.log("[google] useProxy =", useProxy);
--
--const discovery = AuthSession.useAutoDiscovery("https://accounts.google.com");
-+  const isExpoGo = Constants.appOwnership === "expo";
-+  const useProxy = isExpoGo;
-+  const hasLoggedGoogleEnvRef = useRef(false);
- 
--const [request, response, promptAsync] = Google.useAuthRequest(
--  {
--    expoClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
--    iosClientId: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID,
--    androidClientId: process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID,
--    webClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
--
--    // ✅ code flow (not id_token)
--    responseType: AuthSession.ResponseType.Code,
-+  useEffect(() => {
-+    if (hasLoggedGoogleEnvRef.current) return;
-+    hasLoggedGoogleEnvRef.current = true;
-+    console.log("[google] appOwnership:", Constants.appOwnership);
-+    console.log("[google] isExpoGo:", isExpoGo);
-+    console.log("[google] useProxy:", useProxy);
-+  }, [isExpoGo, useProxy]);
- 
--    // ✅ ensures code_verifier / code_challenge are used
--    usePKCE: true,
-+  const discovery = AuthSession.useAutoDiscovery("https://accounts.google.com");
- 
--    // ✅ make sure you ask for openid so token exchange includes id_token
--    scopes: ["openid", "profile", "email"],
--  },
--  discovery
--);
-+  const [request, response, promptAsync] = Google.useAuthRequest(
-+    {
-+      expoClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
-+      iosClientId: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID,
-+      androidClientId: process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID,
-+      webClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
-+      responseType: AuthSession.ResponseType.Code,
-+      usePKCE: true,
-+      scopes: ["openid", "profile", "email"],
-+    },
-+    discovery
-+  );
- 
-   const pendingGoogleLinkEmailLabel = pendingGoogleLink?.email || "this email";
- 
- 
-   const login = async () => {
-     const trimmedEmail = email.trim();
-     const normalizedEmail = trimmedEmail.toLowerCase();
- 
-     if (!trimmedEmail || !isValidEmail(trimmedEmail)) {
-       if (showFlash) {
-         showFlash("error", "Please enter a valid email address");
-       } else {
-         Alert.alert("Error", "Please enter a valid email address");
+         showFlash?.("error", getFacebookCompleteErrorMessage(errorCode));
        }
-       return;
-   }
+     } catch (error) {
+       console.log("Facebook login error:", error?.response?.data || error?.message || error);
+       showFlash?.("error", "Facebook login failed. Please try again.");
+     } finally {
+       setFacebookLoading(false);
+     }
+   };
  
-   setLoading(true);
- 
-     try {
-       const body = new URLSearchParams({
-         username: normalizedEmail,
-         password: password,
-       }).toString();
- 
-@@ -891,101 +891,102 @@ const [request, response, promptAsync] = Google.useAuthRequest(
+   // DROP-IN replacement for loginWithGoogle
  // Requires these to exist in your file/scope already:
  // - request, promptAsync, useProxy, apiClient, saveToken, saveRefreshToken
  // - setToken, setIsAdmin, setGoogleLoading, showFlash
@@ -113,6 +29,49 @@ index 4cbd775e5dbea839bf2aaf9275a7d8437e377513..d3604b52aab7df77415185e16bb22a95
  // IMPORTANT: This assumes you changed your Google auth request to ResponseType.Code + usePKCE:true
  // (otherwise `result.params.code` won't exist).
  
++const DEBUG_GOOGLE_IDTOKEN = __DEV__;
++
++const decodeBase64UrlToUtf8 = (value) => {
++  if (typeof value !== "string" || !value) {
++    return "";
++  }
++
++  const b64 = value
++    .replace(/-/g, "+")
++    .replace(/_/g, "/")
++    .padEnd(Math.ceil(value.length / 4) * 4, "=");
++
++  if (typeof Buffer !== "undefined" && Buffer?.from) {
++    return Buffer.from(b64, "base64").toString("utf8");
++  }
++
++  if (typeof globalThis?.atob === "function") {
++    const binary = globalThis.atob(b64);
++    const escaped = Array.from(binary)
++      .map((char) => `%${char.charCodeAt(0).toString(16).padStart(2, "0")}`)
++      .join("");
++    return decodeURIComponent(escaped);
++  }
++
++  throw new Error("No base64 decoder available");
++};
++
++const decodeJwtNoVerify = (token) => {
++  if (typeof token !== "string") {
++    throw new Error("id_token is not a string");
++  }
++
++  const parts = token.split(".");
++  if (parts.length !== 3) {
++    throw new Error("id_token is not a JWT");
++  }
++
++  const header = JSON.parse(decodeBase64UrlToUtf8(parts[0]));
++  const payload = JSON.parse(decodeBase64UrlToUtf8(parts[1]));
++
++  return { header, payload };
++};
++
  const loginWithGoogle = async () => {
    if (!request) {
      showFlash?.("error", "Google Sign-In is not configured yet.");
@@ -129,67 +88,23 @@ index 4cbd775e5dbea839bf2aaf9275a7d8437e377513..d3604b52aab7df77415185e16bb22a95
        return;
      }
  
--console.log("[google] request.url:", request?.url);
--console.log("[google] responseType:", request?.responseType);
--console.log("[google] codeVerifier present?", Boolean(request?.codeVerifier));
--console.log("[google] redirectUri:", request?.redirectUri);
-+    console.log("[google] request.url:", request?.url);
-+    console.log("[google] request.redirectUri:", request?.redirectUri);
-+    console.log("[google] request.responseType:", request?.responseType);
-+    console.log("[google] codeVerifier present?", Boolean(request?.codeVerifier));
+     console.log("[google] request.url:", request?.url);
+     console.log("[google] request.redirectUri:", request?.redirectUri);
+     console.log("[google] request.responseType:", request?.responseType);
+     console.log("[google] codeVerifier present?", Boolean(request?.codeVerifier));
  
      const result = await promptAsync({ useProxy });
      googleAuthResult = result;
  
      if (result?.type !== "success") {
-       return;
-     }
- 
-     // --- Code Flow (PKCE): get the authorization code ---
-     const codeRaw = result?.params?.code ?? null;
-     const code = typeof codeRaw === "string" ? codeRaw.trim() : "";
- 
-     console.log("[google] code present?", Boolean(code), "len=", code?.length);
- 
-     if (!code) {
-       showFlash?.(
-         "error",
-         "Google did not return an auth code. Ensure responseType=Code and usePKCE=true."
-       );
-       return;
-     }
- 
-     // --- Exchange code -> tokens (id_token will be returned here) ---
--    // Prefer the request-generated redirectUri to avoid mismatch.
--    const redirectUri =
--      request?.redirectUri ||
--      AuthSession.makeRedirectUri({ scheme: process.env.EXPO_PUBLIC_GOOGLE_IOS_REVERSED_CLIENT_ID });
-+    const redirectUri = request?.redirectUri;
-+    if (!redirectUri) {
-+      showFlash?.("error", "Google redirect URI missing. Please try again.");
-+      return;
-+    }
- 
-     // Use whatever discovery you already have in scope (recommended):
-     // const discovery = AuthSession.useAutoDiscovery("https://accounts.google.com");
-     // If you don't have it, you must define it where hooks are allowed (top-level in component).
-     if (typeof discovery === "undefined" || !discovery?.tokenEndpoint) {
-       showFlash?.(
-         "error",
-         "Google discovery not ready. Ensure you defined: const discovery = AuthSession.useAutoDiscovery('https://accounts.google.com');"
-       );
-       return;
-     }
- 
-     const tokenRes = await AuthSession.exchangeCodeAsync(
+@@ -961,50 +1004,69 @@ const loginWithGoogle = async () => {
        {
          clientId: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID, // TestFlight => iOS client
          code,
          redirectUri,
          extraParams: {
            // PKCE verifier generated by the request
--          code_verifier: request?.codeVerifier || "",
-+          code_verifier: request.codeVerifier,
+           code_verifier: request.codeVerifier,
          },
        },
        discovery
@@ -208,6 +123,25 @@ index 4cbd775e5dbea839bf2aaf9275a7d8437e377513..d3604b52aab7df77415185e16bb22a95
        return;
      }
  
++    if (DEBUG_GOOGLE_IDTOKEN) {
++      try {
++        const decoded = decodeJwtNoVerify(idToken);
++        console.log("[google] id_token payload", {
++          aud: decoded?.payload?.aud,
++          iss: decoded?.payload?.iss,
++          azp: decoded?.payload?.azp,
++          email: decoded?.payload?.email,
++          exp: decoded?.payload?.exp,
++        });
++        console.log("[google] id_token header", {
++          kid: decoded?.header?.kid,
++          alg: decoded?.header?.alg,
++        });
++      } catch (jwtDecodeError) {
++        console.log("[google] id_token decode skipped:", jwtDecodeError?.message || jwtDecodeError);
++      }
++    }
++
      // Keep backend payload identical
      const payload = { id_token: idToken };
      googleTokenPayload = payload;
@@ -215,6 +149,24 @@ index 4cbd775e5dbea839bf2aaf9275a7d8437e377513..d3604b52aab7df77415185e16bb22a95
      const res = await apiClient.post(`/auth/google`, payload);
      await saveToken(res.data.access_token);
      await saveRefreshToken(res.data.refresh_token);
+ 
+     if (res.data?.needs_onboarding) {
+       onGoogleOnboardingRequired?.({
+         initialPhone: "",
+         initialIsProvider: false,
+       });
+       return;
+     }
+ 
+     let meData = null;
+     try {
+       const meRes = await apiClient.get(`/users/me`);
+       meData = meRes.data;
+     } catch (meError) {
+       console.log(
+         "[auth] Failed to fetch /users/me after Google login",
+         meError?.message || meError
+       );
  
 EOF
 )
