@@ -1,212 +1,561 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
-diff --git a/backend/tests/test_google_auth_onboarding.py b/backend/tests/test_google_auth_onboarding.py
-index 865d74cd9c974a2ef5567bc09c572208cf1b9d2b..ee9bc7c1643df836166e39706a71aa1d92a9d2df 100644
---- a/backend/tests/test_google_auth_onboarding.py
-+++ b/backend/tests/test_google_auth_onboarding.py
-@@ -101,25 +101,203 @@ def test_complete_profile_sets_phone_provider_and_creates_provider(db_session, m
-         auth_resp = client.post("/auth/google", json={"id_token": "dummy"})
-         assert auth_resp.status_code == 200
+diff --git a/mobile/App.js b/mobile/App.js
+index f2b1b8fe48875037e4952108959c14ce6e1ee175..47c7624ce2f5d7d54f6ffe2bc5d89c57db8b9cc1 100644
+--- a/mobile/App.js
++++ b/mobile/App.js
+@@ -631,84 +631,90 @@ function LandingScreen({ goToLogin, goToSignup }) {
+               style={styles.authPrimaryButton}
+               onPress={goToLogin}
+             >
+               <Text style={styles.authPrimaryButtonText}>LOGIN</Text>
+             </TouchableOpacity>
  
-         from app.security import get_current_user_from_header
+             <TouchableOpacity
+               style={styles.authSecondaryButton}
+               onPress={goToSignup}
+             >
+               <Text style={styles.authSecondaryButtonText}>SIGN UP</Text>
+             </TouchableOpacity>
+           </View>
+         </View>
+       );
+     }
  
-         google_user = session.query(models.User).filter(models.User.email == "google2@example.com").first()
-         app.dependency_overrides[get_current_user_from_header] = lambda: google_user
+ // 🔹 Dedicated login screen component
+ const ENABLE_FACEBOOK_AUTH = process.env.EXPO_PUBLIC_ENABLE_FACEBOOK_AUTH === "true";
  
-         complete = client.post(
-             "/auth/complete-profile",
-             json={"phone": "+592 777 8888", "is_provider": True},
-         )
-         assert complete.status_code == 200
-         body = complete.json()
-         assert body["needs_onboarding"] is False
-         assert body["user"]["phone"] == "+5927778888"
-         assert body["user"]["is_provider"] is True
+ function LoginScreen({
+   setToken,
+   setIsAdmin,
+   onFacebookSetupRequired,
+   onGoogleOnboardingRequired,
++  pendingGoogleLink,
++  onGoogleLinkRequired,
++  onCancelGoogleLink,
++  clearPendingGoogleLink,
+   onEmailNotVerified,
+   goToSignup,
+   goToForgot,
+   goBack,
+   showFlash,
+ }) {
+   const [email, setEmail] = useState("");
+   const [password, setPassword] = useState("");
+   const [loading, setLoading] = useState(false);
+   const [facebookLoading, setFacebookLoading] = useState(false);
+   const [googleLoading, setGoogleLoading] = useState(false);
  
-         user = session.query(models.User).filter(models.User.email == "google2@example.com").first()
-         assert user is not None
-         provider = session.query(models.Provider).filter(models.Provider.user_id == user.id).first()
-         assert provider is not None
-         assert provider.account_number.startswith("ACC-")
-     finally:
-         app.dependency_overrides = {}
+   const googleClientIds = useMemo(
+     () => ({
+       androidClientId:
+         process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID ||
+         Constants.expoConfig?.extra?.GOOGLE_ANDROID_CLIENT_ID,
+       iosClientId:
+         process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID ||
+         Constants.expoConfig?.extra?.GOOGLE_IOS_CLIENT_ID,
+       webClientId:
+         process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID ||
+         Constants.expoConfig?.extra?.GOOGLE_WEB_CLIENT_ID,
+     }),
+     []
+   );
+ 
+   const [googleRequest, , promptGoogleAuth] = Google.useAuthRequest({
+     ...googleClientIds,
+     scopes: ["openid", "profile", "email"],
+     responseType: AuthSession.ResponseType.Code,
+     usePKCE: true,
+   });
+ 
++  const pendingGoogleLinkEmailLabel = pendingGoogleLink?.email || "this email";
 +
-+
-+def test_google_auth_returns_machine_readable_conflict_for_existing_local_email(db_session, monkeypatch):
-+    session, models, _ = db_session
-+    client, app, auth_routes = _build_client(session)
-+
-+    try:
-+        local_user = models.User(
-+            email="existing@example.com",
-+            username="existinguser",
-+            phone="+5926000000",
-+            hashed_password="hashed",
-+            is_email_verified=True,
-+            auth_provider="local",
-+        )
-+        session.add(local_user)
-+        session.commit()
-+
-+        monkeypatch.setattr(
-+            auth_routes,
-+            "_verify_google_id_token",
-+            lambda _token: {
-+                "sub": "google-sub-existing",
-+                "email": "existing@example.com",
-+                "email_verified": True,
-+                "name": "Existing User",
-+            },
-+        )
-+
-+        resp = client.post("/auth/google", json={"id_token": "dummy"})
-+        assert resp.status_code == 409
-+        assert resp.json()["detail"] == {
-+            "code": "EMAIL_EXISTS_NOT_LINKED",
-+            "detail": "An account already exists with this email. Log in with your password to link Google.",
+ 
+   const login = async () => {
+     const trimmedEmail = email.trim();
+     const normalizedEmail = trimmedEmail.toLowerCase();
+ 
+     if (!trimmedEmail || !isValidEmail(trimmedEmail)) {
+       if (showFlash) {
+         showFlash("error", "Please enter a valid email address");
+       } else {
+         Alert.alert("Error", "Please enter a valid email address");
+       }
+       return;
+   }
+ 
+   setLoading(true);
+ 
+     try {
+       const body = new URLSearchParams({
+         username: normalizedEmail,
+         password: password,
+       }).toString();
+ 
+     const res = await apiClient.post(`/auth/login`, body, {
+         headers: {
+           "Content-Type": "application/x-www-form-urlencoded",
+@@ -719,50 +725,68 @@ function LoginScreen({
+     try {
+       await saveToken(res.data.access_token);
+       await saveRefreshToken(res.data.refresh_token);
+       const persistedToken = await loadToken();
+       console.log("[auth] login success -> token saved:", Boolean(persistedToken));
+       if (!persistedToken) {
+         Alert.alert(
+           "Save issue",
+           "We couldn't save your login securely. You'll stay logged in for now."
+         );
+       }
+     } catch (err) {
+       console.error(
+         "[LOGIN_NATIVE_CRASH_GUARD] Failed to persist access token",
+         err
+       );
+       // Sentry.Native.captureException(err, {
+       //   extra: { scope: "token-persistence" },
+       // });
+       Alert.alert(
+         "Save issue",
+         "We couldn't save your login securely. You'll stay logged in for now."
+       );
+     }
+ 
++    if (pendingGoogleLink?.tokenPayload) {
++      try {
++        await apiClient.post(`/auth/link-google`, pendingGoogleLink.tokenPayload);
++        showFlash?.("success", "Google account linked.");
++        clearPendingGoogleLink?.();
++      } catch (linkError) {
++        const linkErrorCode = normalizeErrorCode(linkError?.response?.data);
++        if (linkErrorCode === "GOOGLE_ALREADY_LINKED") {
++          showFlash?.("error", "This Google account is already linked to another account.");
++          clearPendingGoogleLink?.();
++        } else {
++          console.log("Google link error:", linkError?.response?.data || linkError?.message || linkError);
++          showFlash?.("error", "Unable to link your Google account right now.");
++          clearPendingGoogleLink?.();
 +        }
-+    finally:
-+        app.dependency_overrides = {}
++      }
++    }
 +
+     let meData = null;
+     try {
+       const meRes = await apiClient.get(`/users/me`);
+       meData = meRes.data;
+     } catch (meError) {
+       console.log("[auth] Failed to fetch /users/me after login", meError?.message || meError);
+     }
+ 
+     // Successful login
+       setToken({
+         token: res.data.access_token,
+         userId: meData?.id || meData?.user_id || res.data.user_id,
+         email: meData?.email || res.data.email,
+         username: meData?.username,
+         isProvider: typeof meData?.is_provider === "boolean" ? meData?.is_provider : res.data.is_provider,
+         isAdmin: typeof meData?.is_admin === "boolean" ? meData?.is_admin : res.data.is_admin,
+       });
+ 
+       setIsAdmin(
+         typeof meData?.is_admin === "boolean" ? meData?.is_admin : !!res.data.is_admin
+       );
+ 
+     if (showFlash) {
+         showFlash("success", "Logged in successfully");
+       }
+@@ -809,160 +833,202 @@ function LoginScreen({
+       if (loginResult?.isCancelled) {
+         return;
+       }
+ 
+       const accessTokenData = await AccessToken.getCurrentAccessToken();
+       const facebookAccessToken = accessTokenData?.accessToken;
+ 
+       if (!facebookAccessToken) {
+         showFlash?.("error", "Could not get Facebook access token. Please try again.");
+         return;
+       }
+ 
+       const payload = {
+         facebook_access_token: facebookAccessToken,
+         phone: "",
+         is_provider: false,
+       };
+ 
+       try {
+         const res = await apiClient.post(`/auth/facebook/complete`, payload);
+         await persistFacebookSession({
+           responseData: res.data,
+           setToken,
+           setIsAdmin,
+         });
+-        showFlash?.("success", "Logged in successfully");
++        clearPendingGoogleLink?.();
++      showFlash?.("success", "Logged in successfully");
+       } catch (requestError) {
+         const errorCode = normalizeErrorCode(requestError?.response?.data);
+         if (errorCode === "EMAIL_REQUIRED" || errorCode === "PHONE_REQUIRED") {
+           onFacebookSetupRequired?.({
+             facebookAccessToken,
+             requiresEmail: errorCode === "EMAIL_REQUIRED",
+             requiresPhone: true,
+             initialPhone: "",
+             initialEmail: "",
+             initialIsProvider: false,
+           });
+           return;
+         }
+ 
+         showFlash?.("error", getFacebookCompleteErrorMessage(errorCode));
+       }
+     } catch (error) {
+       console.log("Facebook login error:", error?.response?.data || error?.message || error);
+       showFlash?.("error", "Facebook login failed. Please try again.");
+     } finally {
+       setFacebookLoading(false);
+     }
+   };
+ 
+   const loginWithGoogle = async () => {
+     if (!googleRequest) {
+       showFlash?.("error", "Google Sign-In is not configured yet.");
+       return;
+     }
+ 
++    let googleAuthResult = null;
++    let googleTokenPayload = null;
 +
-+def test_link_google_links_current_user_and_is_idempotent(db_session, monkeypatch):
-+    session, models, _ = db_session
-+    client, app, auth_routes = _build_client(session)
+     setGoogleLoading(true);
+     try {
+       const result = await promptGoogleAuth();
++      googleAuthResult = result;
+       if (result?.type !== "success") {
+         return;
+       }
+ 
+       const authCode = result?.params?.code;
+       const idToken = result?.params?.id_token || result?.authentication?.idToken;
+       const payload = authCode ? { code: authCode } : idToken ? { id_token: idToken } : null;
++      googleTokenPayload = payload;
+ 
+       if (!payload) {
+         showFlash?.("error", "Unable to read Google login token. Please try again.");
+         return;
+       }
+ 
+       const res = await apiClient.post(`/auth/google`, payload);
+       await saveToken(res.data.access_token);
+       await saveRefreshToken(res.data.refresh_token);
+ 
+       if (res.data?.needs_onboarding) {
+         onGoogleOnboardingRequired?.({
+           initialPhone: "",
+           initialIsProvider: false,
+         });
+         return;
+       }
+ 
+       let meData = null;
+       try {
+         const meRes = await apiClient.get(`/users/me`);
+         meData = meRes.data;
+       } catch (meError) {
+         console.log("[auth] Failed to fetch /users/me after Google login", meError?.message || meError);
+       }
+ 
+       setToken({
+         token: res.data.access_token,
+         userId: meData?.id || meData?.user_id || res.data.user_id,
+         email: meData?.email || res.data.email,
+         username: meData?.username,
+         isProvider: typeof meData?.is_provider === "boolean" ? meData?.is_provider : res.data.is_provider,
+         isAdmin: typeof meData?.is_admin === "boolean" ? meData?.is_admin : res.data.is_admin,
+       });
+ 
+       setIsAdmin(
+         typeof meData?.is_admin === "boolean" ? meData?.is_admin : !!res.data.is_admin
+       );
+ 
++      clearPendingGoogleLink?.();
+       showFlash?.("success", "Logged in successfully");
+     } catch (error) {
+       console.log("Google login error:", error?.response?.data || error?.message || error);
++      const errorCode = normalizeErrorCode(error?.response?.data);
++      const statusCode = error?.response?.status;
 +
-+    try:
-+        local_user = models.User(
-+            email="linkme@example.com",
-+            username="linkme",
-+            phone="+5926111111",
-+            hashed_password="hashed",
-+            is_email_verified=False,
-+            auth_provider="local",
-+        )
-+        session.add(local_user)
-+        session.commit()
-+        session.refresh(local_user)
++      if (
++        errorCode === "EMAIL_EXISTS_NOT_LINKED" &&
++        (statusCode === 400 || statusCode === 409)
++      ) {
++        const googleEmail =
++          googleAuthResult?.params?.email ||
++          googleAuthResult?.authentication?.email ||
++          googleAuthResult?.params?.login_hint ||
++          null;
 +
-+        from app.security import get_current_user_from_header
++        onGoogleLinkRequired?.({
++          tokenPayload: googleTokenPayload,
++          email: googleEmail,
++        });
++        showFlash?.(
++          "error",
++          "An account already exists with this email. Log in with your password to link Google."
++        );
++        return;
++      }
 +
-+        app.dependency_overrides[get_current_user_from_header] = lambda: local_user
+       showFlash?.("error", "Google login failed. Please try again.");
+     } finally {
+       setGoogleLoading(false);
+     }
+   };
+ 
+ return (
+     <KeyboardAvoidingView
+       style={styles.avoider}
+       behavior={Platform.OS === "ios" ? "padding" : "height"}
+       keyboardVerticalOffset={Platform.OS === "ios" ? 40 : 0} // tweak if needed
+ 
+     >
+       <ScrollView
+         contentContainerStyle={styles.scrollContent}
+         keyboardShouldPersistTaps="handled"
+       >
+         <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+           <View style={styles.container}>
+             <View style={styles.logoWrapper}>
+               <Image
+                 source={BookitGYLogoTransparent}
+                 style={styles.logo}
+               />
+             </View>
+         <Text style={styles.title}>Login</Text>
+ 
++        {pendingGoogleLink?.tokenPayload && (
++          <View style={styles.linkGoogleBanner}>
++            <Text style={styles.linkGoogleBannerText}>
++              {`Log in to link Google: ${pendingGoogleLinkEmailLabel}`}
++            </Text>
++            <TouchableOpacity onPress={onCancelGoogleLink}>
++              <Text style={styles.linkGoogleBannerAction}>Cancel</Text>
++            </TouchableOpacity>
++          </View>
++        )}
 +
-+        monkeypatch.setattr(
-+            auth_routes,
-+            "_verify_google_id_token",
-+            lambda _token: {
-+                "sub": "google-sub-linkme",
-+                "email": "linkme@example.com",
-+                "email_verified": True,
-+                "name": "Link Me",
-+            },
-+        )
+         <TextInput
+           style={styles.input}
+           placeholder="Email"
+           placeholderTextColor={styles.inputPlaceholder.color}
+           value={email}
+           autoCapitalize="none"
+           onChangeText={setEmail}
+         />
+ 
+         <TextInput
+           style={[
+             styles.input,
+             Platform.OS === "android" && {
+               fontFamily: "sans-serif",
+               letterSpacing: 0,
+               includeFontPadding: false,
+             },
+           ]}
+           placeholder="Password"
+           placeholderTextColor={styles.inputPlaceholder.color}
+           value={password}
+           onChangeText={setPassword}
+           textContentType="password"
+           autoComplete="password"
+           importantForAutofill="yes"
+@@ -8462,50 +8528,51 @@ function FlashMessage({ flash }) {
+         { backgroundColor, borderColor },
+       ]}
+     >
+       <Text style={[styles.flashText, { color: textColor }]}>
+         {flash.text}
+       </Text>
+     </View>
+   );
+ }
+ 
+ 
+ // 🔹 App orchestrates landing/login/signup/forgot-password vs main app
+ 
+ const DEEPLINK_DEBUG = false;
+ 
+ function App() {
+ 
+   const mountIdRef = useRef(Math.random().toString(16).slice(2));
+   console.log("APP MOUNT ID:", mountIdRef.current);
+   useEffect(() => console.log("APP useEffect ran for mount", mountIdRef.current), []);
+ 
+   const [token, setToken] = useState(null);
+   const [authLoading, setAuthLoading] = useState(true);
+   const [authMode, setAuthMode] = useState("landing"); // 'landing' | 'login' | 'signup' | 'forgot' | 'verifyEmail' | 'finishSetup'
+   const [pendingVerifyEmail, setPendingVerifyEmail] = useState("");
++  const [pendingGoogleLink, setPendingGoogleLink] = useState(null);
+   const [isAdmin, setIsAdmin] = useState(false);
+   const [setupContext, setSetupContext] = useState(null);
+   const [pendingDeepLinkUsername, setPendingDeepLinkUsername] = useState(null);
+   const [navReady, setNavReady] = useState(false);
+   const navReadyRef = useRef(false);
+   const navigationRef = useRef(null);
+   const authBootstrapRef = useRef({ inFlight: false, completed: false });
+   const tokenRef = useRef(token);
+   const lastDeeplinkHandledAtRef = useRef(0);
+   const lastHandledUrlRef = useRef(null);
+   const url = ExpoLinking.useURL();
+ 
+   const [flash, setFlash] = useState(null);
+ 
+   const formatFlashText = useCallback((text) => {
+     if (typeof text === "string") return text;
+     if (text == null) return "Something went wrong.";
+ 
+     const formatErrorItem = (item) => {
+       if (typeof item === "string") return item;
+       if (!item || typeof item !== "object") return String(item);
+ 
+       const message = item.msg || item.message;
+       if (Array.isArray(item.loc) && item.loc.length > 0) {
+         const field = item.loc[item.loc.length - 1];
+@@ -8799,50 +8866,60 @@ function App() {
+     <SafeAreaProvider>
+       <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }} edges={["top", "bottom"]}>
+         <FlashMessage flash={flash} />
+ 
+         {!token ? (
+           <>
+             {authMode === "landing" && (
+               <LandingScreen
+                 goToLogin={() => setAuthMode("login")}
+                 goToSignup={() => setAuthMode("signup")}
+               />
+             )}
+ 
+             {authMode === "login" && (
+               <LoginScreen
+                 setToken={setToken}
+                 setIsAdmin={setIsAdmin}
+                 onFacebookSetupRequired={(payload) => {
+                   setSetupContext({ mode: "facebook", ...payload });
+                   setAuthMode("finishSetup");
+                 }}
+                 onGoogleOnboardingRequired={(payload) => {
+                   setSetupContext({ mode: "google", ...payload });
+                   setAuthMode("finishSetup");
+                 }}
++                pendingGoogleLink={pendingGoogleLink}
++                onGoogleLinkRequired={(payload) => {
++                  setPendingGoogleLink(payload);
++                  setAuthMode("login");
++                }}
++                onCancelGoogleLink={() => {
++                  setPendingGoogleLink(null);
++                  showFlash("info", "Google linking canceled.");
++                }}
++                clearPendingGoogleLink={() => setPendingGoogleLink(null)}
+                 onEmailNotVerified={(attemptedEmail) => {
+                   setPendingVerifyEmail((attemptedEmail || "").trim().toLowerCase());
+                   setAuthMode("verifyEmail");
+                 }}
+                 goToSignup={() => setAuthMode("signup")}
+                 goToForgot={() => setAuthMode("forgot")}
+                 goBack={() => setAuthMode("landing")}
+                 showFlash={showFlash}
+               />
+             )}
+ 
+             {authMode === "signup" && (
+               <SignupScreen
+                 goToLogin={() => setAuthMode("login")}
+                 goBack={() => setAuthMode("landing")}
+                 showFlash={showFlash}
+                 onSignupSuccess={(createdEmail) => {
+                   setPendingVerifyEmail((createdEmail || "").trim().toLowerCase());
+                   setAuthMode("verifyEmail");
+                 }}
+               />
+             )}
+ 
+             {authMode === "verifyEmail" && (
+               <VerifyEmailScreen
+@@ -10595,50 +10672,75 @@ authSecondaryButton: {
+ },
+ facebookButton: {
+   backgroundColor: "#1877F2",
+   paddingVertical: 12,
+   borderRadius: 8,
+   alignItems: "center",
+ },
+ facebookButtonText: {
+   color: "#ffffff",
+   fontSize: 16,
+   fontWeight: "600",
+ },
+ googleButton: {
+   backgroundColor: "#ffffff",
+   paddingVertical: 12,
+   borderRadius: 8,
+   alignItems: "center",
+   borderWidth: 1,
+   borderColor: colors.border,
+ },
+ googleButtonText: {
+   color: colors.textPrimary,
+   fontSize: 16,
+   fontWeight: "600",
+ },
 +
-+        resp = client.post("/auth/link-google", json={"id_token": "dummy"})
-+        assert resp.status_code == 200
-+        body = resp.json()
-+        assert body["access_token"]
-+        assert body["refresh_token"]
-+
-+        session.refresh(local_user)
-+        assert local_user.google_sub == "google-sub-linkme"
-+        assert local_user.auth_provider == "local"
-+        assert local_user.is_email_verified is True
-+
-+        resp2 = client.post("/auth/link-google", json={"id_token": "dummy"})
-+        assert resp2.status_code == 200
-+    finally:
-+        app.dependency_overrides = {}
-+
-+
-+def test_link_google_conflicts_when_google_already_linked_elsewhere(db_session, monkeypatch):
-+    session, models, _ = db_session
-+    client, app, auth_routes = _build_client(session)
-+
-+    try:
-+        current_user = models.User(
-+            email="current@example.com",
-+            username="currentuser",
-+            phone="+5926222222",
-+            hashed_password="hashed",
-+            is_email_verified=True,
-+            auth_provider="local",
-+        )
-+        other_user = models.User(
-+            email="other@example.com",
-+            username="otheruser",
-+            phone="+5926333333",
-+            hashed_password="hashed",
-+            is_email_verified=True,
-+            auth_provider="google",
-+            google_sub="google-sub-taken",
-+        )
-+        session.add(current_user)
-+        session.add(other_user)
-+        session.commit()
-+
-+        from app.security import get_current_user_from_header
-+
-+        app.dependency_overrides[get_current_user_from_header] = lambda: current_user
-+
-+        monkeypatch.setattr(
-+            auth_routes,
-+            "_verify_google_id_token",
-+            lambda _token: {
-+                "sub": "google-sub-taken",
-+                "email": "current@example.com",
-+                "email_verified": True,
-+                "name": "Current User",
-+            },
-+        )
-+
-+        resp = client.post("/auth/link-google", json={"id_token": "dummy"})
-+        assert resp.status_code == 409
-+        assert resp.json()["detail"] == {
-+            "code": "GOOGLE_ALREADY_LINKED",
-+            "detail": "This Google account is already linked to another BookitGY user.",
-+        }
-+    finally:
-+        app.dependency_overrides = {}
-+
-+
-+def test_link_google_rejects_email_mismatch(db_session, monkeypatch):
-+    session, models, _ = db_session
-+    client, app, auth_routes = _build_client(session)
-+
-+    try:
-+        current_user = models.User(
-+            email="mismatch@example.com",
-+            username="mismatchuser",
-+            phone="+5926444444",
-+            hashed_password="hashed",
-+            is_email_verified=True,
-+            auth_provider="local",
-+        )
-+        session.add(current_user)
-+        session.commit()
-+
-+        from app.security import get_current_user_from_header
-+
-+        app.dependency_overrides[get_current_user_from_header] = lambda: current_user
-+
-+        monkeypatch.setattr(
-+            auth_routes,
-+            "_verify_google_id_token",
-+            lambda _token: {
-+                "sub": "google-sub-mismatch",
-+                "email": "other@example.com",
-+                "email_verified": True,
-+                "name": "Mismatch",
-+            },
-+        )
-+
-+        resp = client.post("/auth/link-google", json={"id_token": "dummy"})
-+        assert resp.status_code == 400
-+        assert resp.json()["detail"] == {
-+            "code": "EMAIL_MISMATCH",
-+            "detail": "Google email does not match this account.",
-+        }
-+    finally:
-+        app.dependency_overrides = {}
++linkGoogleBanner: {
++  width: "100%",
++  backgroundColor: "rgba(77, 163, 255, 0.12)",
++  borderRadius: 8,
++  borderWidth: 1,
++  borderColor: "rgba(77, 163, 255, 0.45)",
++  paddingHorizontal: 12,
++  paddingVertical: 10,
++  marginBottom: 12,
++  flexDirection: "row",
++  alignItems: "center",
++  justifyContent: "space-between",
++},
++linkGoogleBannerText: {
++  color: colors.textPrimary,
++  fontSize: 13,
++  flex: 1,
++  marginRight: 8,
++},
++linkGoogleBannerAction: {
++  color: colors.primary,
++  fontWeight: "700",
++  fontSize: 13,
++},
+ signupButton: {
+   backgroundColor: colors.primary,
+   paddingVertical: 14,
+   borderRadius: 6,
+   alignItems: "center",
+   marginBottom: 12,
+   shadowColor: "#000",
+   shadowOpacity: 0.15,
+   shadowOffset: { width: 0, height: 2 },
+   shadowRadius: 3,
+   elevation: 3,
+ },
+ signupButtonDisabled: {
+   backgroundColor: colors.textMuted,
+   opacity: 0.6,
+ },
+ signupButtonText: {
+   color: colors.textPrimary,
+   fontSize: 16,
+   fontWeight: "600",
+ },
+ saveServiceButton: {
+   paddingVertical: 12,
+   borderRadius: 6,
+   alignItems: "center",
  
 EOF
 )

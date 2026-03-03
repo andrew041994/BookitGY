@@ -653,6 +653,10 @@ function LoginScreen({
   setIsAdmin,
   onFacebookSetupRequired,
   onGoogleOnboardingRequired,
+  pendingGoogleLink,
+  onGoogleLinkRequired,
+  onCancelGoogleLink,
+  clearPendingGoogleLink,
   onEmailNotVerified,
   goToSignup,
   goToForgot,
@@ -686,6 +690,8 @@ function LoginScreen({
     responseType: AuthSession.ResponseType.Code,
     usePKCE: true,
   });
+
+  const pendingGoogleLinkEmailLabel = pendingGoogleLink?.email || "this email";
 
 
   const login = async () => {
@@ -739,6 +745,24 @@ function LoginScreen({
         "Save issue",
         "We couldn't save your login securely. You'll stay logged in for now."
       );
+    }
+
+    if (pendingGoogleLink?.tokenPayload) {
+      try {
+        await apiClient.post(`/auth/link-google`, pendingGoogleLink.tokenPayload);
+        showFlash?.("success", "Google account linked.");
+        clearPendingGoogleLink?.();
+      } catch (linkError) {
+        const linkErrorCode = normalizeErrorCode(linkError?.response?.data);
+        if (linkErrorCode === "GOOGLE_ALREADY_LINKED") {
+          showFlash?.("error", "This Google account is already linked to another account.");
+          clearPendingGoogleLink?.();
+        } else {
+          console.log("Google link error:", linkError?.response?.data || linkError?.message || linkError);
+          showFlash?.("error", "Unable to link your Google account right now.");
+          clearPendingGoogleLink?.();
+        }
+      }
     }
 
     let meData = null;
@@ -831,7 +855,8 @@ function LoginScreen({
           setToken,
           setIsAdmin,
         });
-        showFlash?.("success", "Logged in successfully");
+        clearPendingGoogleLink?.();
+      showFlash?.("success", "Logged in successfully");
       } catch (requestError) {
         const errorCode = normalizeErrorCode(requestError?.response?.data);
         if (errorCode === "EMAIL_REQUIRED" || errorCode === "PHONE_REQUIRED") {
@@ -862,9 +887,13 @@ function LoginScreen({
       return;
     }
 
+    let googleAuthResult = null;
+    let googleTokenPayload = null;
+
     setGoogleLoading(true);
     try {
       const result = await promptGoogleAuth();
+      googleAuthResult = result;
       if (result?.type !== "success") {
         return;
       }
@@ -872,6 +901,7 @@ function LoginScreen({
       const authCode = result?.params?.code;
       const idToken = result?.params?.id_token || result?.authentication?.idToken;
       const payload = authCode ? { code: authCode } : idToken ? { id_token: idToken } : null;
+      googleTokenPayload = payload;
 
       if (!payload) {
         showFlash?.("error", "Unable to read Google login token. Please try again.");
@@ -911,9 +941,34 @@ function LoginScreen({
         typeof meData?.is_admin === "boolean" ? meData?.is_admin : !!res.data.is_admin
       );
 
+      clearPendingGoogleLink?.();
       showFlash?.("success", "Logged in successfully");
     } catch (error) {
       console.log("Google login error:", error?.response?.data || error?.message || error);
+      const errorCode = normalizeErrorCode(error?.response?.data);
+      const statusCode = error?.response?.status;
+
+      if (
+        errorCode === "EMAIL_EXISTS_NOT_LINKED" &&
+        (statusCode === 400 || statusCode === 409)
+      ) {
+        const googleEmail =
+          googleAuthResult?.params?.email ||
+          googleAuthResult?.authentication?.email ||
+          googleAuthResult?.params?.login_hint ||
+          null;
+
+        onGoogleLinkRequired?.({
+          tokenPayload: googleTokenPayload,
+          email: googleEmail,
+        });
+        showFlash?.(
+          "error",
+          "An account already exists with this email. Log in with your password to link Google."
+        );
+        return;
+      }
+
       showFlash?.("error", "Google login failed. Please try again.");
     } finally {
       setGoogleLoading(false);
@@ -940,6 +995,17 @@ return (
               />
             </View>
         <Text style={styles.title}>Login</Text>
+
+        {pendingGoogleLink?.tokenPayload && (
+          <View style={styles.linkGoogleBanner}>
+            <Text style={styles.linkGoogleBannerText}>
+              {`Log in to link Google: ${pendingGoogleLinkEmailLabel}`}
+            </Text>
+            <TouchableOpacity onPress={onCancelGoogleLink}>
+              <Text style={styles.linkGoogleBannerAction}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        )}
 
         <TextInput
           style={styles.input}
@@ -8484,6 +8550,7 @@ function App() {
   const [authLoading, setAuthLoading] = useState(true);
   const [authMode, setAuthMode] = useState("landing"); // 'landing' | 'login' | 'signup' | 'forgot' | 'verifyEmail' | 'finishSetup'
   const [pendingVerifyEmail, setPendingVerifyEmail] = useState("");
+  const [pendingGoogleLink, setPendingGoogleLink] = useState(null);
   const [isAdmin, setIsAdmin] = useState(false);
   const [setupContext, setSetupContext] = useState(null);
   const [pendingDeepLinkUsername, setPendingDeepLinkUsername] = useState(null);
@@ -8821,6 +8888,16 @@ function App() {
                   setSetupContext({ mode: "google", ...payload });
                   setAuthMode("finishSetup");
                 }}
+                pendingGoogleLink={pendingGoogleLink}
+                onGoogleLinkRequired={(payload) => {
+                  setPendingGoogleLink(payload);
+                  setAuthMode("login");
+                }}
+                onCancelGoogleLink={() => {
+                  setPendingGoogleLink(null);
+                  showFlash("info", "Google linking canceled.");
+                }}
+                clearPendingGoogleLink={() => setPendingGoogleLink(null)}
                 onEmailNotVerified={(attemptedEmail) => {
                   setPendingVerifyEmail((attemptedEmail || "").trim().toLowerCase());
                   setAuthMode("verifyEmail");
@@ -10616,6 +10693,31 @@ googleButtonText: {
   color: colors.textPrimary,
   fontSize: 16,
   fontWeight: "600",
+},
+
+linkGoogleBanner: {
+  width: "100%",
+  backgroundColor: "rgba(77, 163, 255, 0.12)",
+  borderRadius: 8,
+  borderWidth: 1,
+  borderColor: "rgba(77, 163, 255, 0.45)",
+  paddingHorizontal: 12,
+  paddingVertical: 10,
+  marginBottom: 12,
+  flexDirection: "row",
+  alignItems: "center",
+  justifyContent: "space-between",
+},
+linkGoogleBannerText: {
+  color: colors.textPrimary,
+  fontSize: 13,
+  flex: 1,
+  marginRight: 8,
+},
+linkGoogleBannerAction: {
+  color: colors.primary,
+  fontWeight: "700",
+  fontSize: 13,
 },
 signupButton: {
   backgroundColor: colors.primary,
