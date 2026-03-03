@@ -109,6 +109,11 @@ class GoogleAuthRequest(BaseModel):
     authorization_code: Optional[str] = None
 
 
+class LinkGoogleRequest(BaseModel):
+    id_token: Optional[str] = None
+    authorization_code: Optional[str] = None
+
+
 class GoogleAuthUserOut(BaseModel):
     id: int
     email: Optional[EmailStr] = None
@@ -122,6 +127,14 @@ class GoogleAuthUserOut(BaseModel):
 
 
 class GoogleAuthResponse(BaseModel):
+    access_token: str
+    refresh_token: str
+    token_type: str
+    user: GoogleAuthUserOut
+    needs_onboarding: bool
+
+
+class LinkGoogleResponse(BaseModel):
     access_token: str
     refresh_token: str
     token_type: str

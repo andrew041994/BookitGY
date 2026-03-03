@@ -123,3 +123,181 @@ def test_complete_profile_sets_phone_provider_and_creates_provider(db_session, m
         assert provider.account_number.startswith("ACC-")
     finally:
         app.dependency_overrides = {}
+
+
+def test_google_auth_returns_machine_readable_conflict_for_existing_local_email(db_session, monkeypatch):
+    session, models, _ = db_session
+    client, app, auth_routes = _build_client(session)
+
+    try:
+        local_user = models.User(
+            email="existing@example.com",
+            username="existinguser",
+            phone="+5926000000",
+            hashed_password="hashed",
+            is_email_verified=True,
+            auth_provider="local",
+        )
+        session.add(local_user)
+        session.commit()
+
+        monkeypatch.setattr(
+            auth_routes,
+            "_verify_google_id_token",
+            lambda _token: {
+                "sub": "google-sub-existing",
+                "email": "existing@example.com",
+                "email_verified": True,
+                "name": "Existing User",
+            },
+        )
+
+        resp = client.post("/auth/google", json={"id_token": "dummy"})
+        assert resp.status_code == 409
+        assert resp.json()["detail"] == {
+            "code": "EMAIL_EXISTS_NOT_LINKED",
+            "detail": "An account already exists with this email. Log in with your password to link Google.",
+        }
+    finally:
+        app.dependency_overrides = {}
+
+
+def test_link_google_links_current_user_and_is_idempotent(db_session, monkeypatch):
+    session, models, _ = db_session
+    client, app, auth_routes = _build_client(session)
+
+    try:
+        local_user = models.User(
+            email="linkme@example.com",
+            username="linkme",
+            phone="+5926111111",
+            hashed_password="hashed",
+            is_email_verified=False,
+            auth_provider="local",
+        )
+        session.add(local_user)
+        session.commit()
+        session.refresh(local_user)
+
+        from app.security import get_current_user_from_header
+
+        app.dependency_overrides[get_current_user_from_header] = lambda: local_user
+
+        monkeypatch.setattr(
+            auth_routes,
+            "_verify_google_id_token",
+            lambda _token: {
+                "sub": "google-sub-linkme",
+                "email": "linkme@example.com",
+                "email_verified": True,
+                "name": "Link Me",
+            },
+        )
+
+        resp = client.post("/auth/link-google", json={"id_token": "dummy"})
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["access_token"]
+        assert body["refresh_token"]
+
+        session.refresh(local_user)
+        assert local_user.google_sub == "google-sub-linkme"
+        assert local_user.auth_provider == "local"
+        assert local_user.is_email_verified is True
+
+        resp2 = client.post("/auth/link-google", json={"id_token": "dummy"})
+        assert resp2.status_code == 200
+    finally:
+        app.dependency_overrides = {}
+
+
+def test_link_google_conflicts_when_google_already_linked_elsewhere(db_session, monkeypatch):
+    session, models, _ = db_session
+    client, app, auth_routes = _build_client(session)
+
+    try:
+        current_user = models.User(
+            email="current@example.com",
+            username="currentuser",
+            phone="+5926222222",
+            hashed_password="hashed",
+            is_email_verified=True,
+            auth_provider="local",
+        )
+        other_user = models.User(
+            email="other@example.com",
+            username="otheruser",
+            phone="+5926333333",
+            hashed_password="hashed",
+            is_email_verified=True,
+            auth_provider="google",
+            google_sub="google-sub-taken",
+        )
+        session.add(current_user)
+        session.add(other_user)
+        session.commit()
+
+        from app.security import get_current_user_from_header
+
+        app.dependency_overrides[get_current_user_from_header] = lambda: current_user
+
+        monkeypatch.setattr(
+            auth_routes,
+            "_verify_google_id_token",
+            lambda _token: {
+                "sub": "google-sub-taken",
+                "email": "current@example.com",
+                "email_verified": True,
+                "name": "Current User",
+            },
+        )
+
+        resp = client.post("/auth/link-google", json={"id_token": "dummy"})
+        assert resp.status_code == 409
+        assert resp.json()["detail"] == {
+            "code": "GOOGLE_ALREADY_LINKED",
+            "detail": "This Google account is already linked to another BookitGY user.",
+        }
+    finally:
+        app.dependency_overrides = {}
+
+
+def test_link_google_rejects_email_mismatch(db_session, monkeypatch):
+    session, models, _ = db_session
+    client, app, auth_routes = _build_client(session)
+
+    try:
+        current_user = models.User(
+            email="mismatch@example.com",
+            username="mismatchuser",
+            phone="+5926444444",
+            hashed_password="hashed",
+            is_email_verified=True,
+            auth_provider="local",
+        )
+        session.add(current_user)
+        session.commit()
+
+        from app.security import get_current_user_from_header
+
+        app.dependency_overrides[get_current_user_from_header] = lambda: current_user
+
+        monkeypatch.setattr(
+            auth_routes,
+            "_verify_google_id_token",
+            lambda _token: {
+                "sub": "google-sub-mismatch",
+                "email": "other@example.com",
+                "email_verified": True,
+                "name": "Mismatch",
+            },
+        )
+
+        resp = client.post("/auth/link-google", json={"id_token": "dummy"})
+        assert resp.status_code == 400
+        assert resp.json()["detail"] == {
+            "code": "EMAIL_MISMATCH",
+            "detail": "Google email does not match this account.",
+        }
+    finally:
+        app.dependency_overrides = {}

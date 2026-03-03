@@ -28,7 +28,7 @@ from app.utils.tokens import (
     normalize_utc,
 )
 
-from app.utils.time import GUYANA_TIMEZONE
+from app.utils.time import GUYANA_TIMEZONE, now_guyana
 
 router = APIRouter(tags=["auth"])
 settings = get_settings()
@@ -580,8 +580,8 @@ def auth_google(
     if existing_local_user:
         raise _google_error(
             status.HTTP_409_CONFLICT,
-            "GOOGLE_EMAIL_ALREADY_EXISTS",
-            "Account with this email already exists. Sign in with email/password first.",
+            "EMAIL_EXISTS_NOT_LINKED",
+            "An account already exists with this email. Log in with your password to link Google.",
         )
 
     user = crud.create_user_for_google(
@@ -593,6 +593,66 @@ def auth_google(
     )
 
     return _google_auth_response(db, user)
+
+
+@router.post("/auth/link-google", response_model=schemas.LinkGoogleResponse)
+def link_google(
+    payload: schemas.LinkGoogleRequest,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user_from_header),
+):
+    id_token = (payload.id_token or "").strip()
+    authorization_code = (payload.authorization_code or "").strip()
+
+    if not id_token and authorization_code:
+        raise _google_error(
+            status.HTTP_400_BAD_REQUEST,
+            "GOOGLE_AUTH_CODE_NOT_SUPPORTED",
+            "authorization_code flow is not supported yet",
+        )
+
+    google_profile = _verify_google_id_token(id_token)
+    google_sub = google_profile["sub"]
+    google_email = google_profile["email"]
+
+    if current_user.google_sub == google_sub:
+        return _google_auth_response(db, current_user)
+
+    if current_user.google_sub:
+        raise _google_error(
+            status.HTTP_409_CONFLICT,
+            "GOOGLE_ALREADY_LINKED",
+            "This account is already linked to a different Google account.",
+        )
+
+    existing_google_user = crud.get_user_by_google_sub(db, google_sub)
+    if existing_google_user and existing_google_user.id != current_user.id:
+        raise _google_error(
+            status.HTTP_409_CONFLICT,
+            "GOOGLE_ALREADY_LINKED",
+            "This Google account is already linked to another BookitGY user.",
+        )
+
+    current_email = (current_user.email or "").strip().lower()
+    if google_email != current_email:
+        raise _google_error(
+            status.HTTP_400_BAD_REQUEST,
+            "EMAIL_MISMATCH",
+            "Google email does not match this account.",
+        )
+
+    current_user.google_sub = google_sub
+    if not (current_user.auth_provider or "").strip():
+        current_user.auth_provider = "local"
+
+    if google_profile.get("email_verified") and not current_user.is_email_verified:
+        current_user.is_email_verified = True
+        current_user.email_verified_at = current_user.email_verified_at or now_guyana()
+
+    db.commit()
+    db.refresh(current_user)
+
+    return _google_auth_response(db, current_user)
 
 
 @router.post("/auth/complete-profile", response_model=schemas.CompleteProfileResponse)
