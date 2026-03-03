@@ -669,18 +669,24 @@ function LoginScreen({
   const [facebookLoading, setFacebookLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
 
-  const useProxy = Constants.appOwnership === "expo";
+  // const useProxy = Constants.appOwnership === "expo";
+//  const redirectUri = "https://auth.expo.io/@andrew041994/bookitgy";
+  
 
-  const redirectUri = AuthSession.makeRedirectUri({ useProxy: true });
 
-  console.log("[google] redirectUri =", redirectUri);
+  const useProxy = true; // for Expo Go testing
+const PROXY_REDIRECT = "https://auth.expo.io/@andrew041994/bookitgy";
 
-  const [request, response, promptAsync] = Google.useAuthRequest({
-    iosClientId: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID,
-    androidClientId: process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID,
-    webClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
-    redirectUri,
-  });
+const redirectUri = PROXY_REDIRECT;
+console.log("[google] redirectUri =", redirectUri);
+
+const [request, response, promptAsync] = Google.useAuthRequest({
+  expoClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID, // <-- IMPORTANT
+  iosClientId: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID,
+  androidClientId: process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID,
+  webClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
+  redirectUri,
+});
 
   const pendingGoogleLinkEmailLabel = pendingGoogleLink?.email || "this email";
 
