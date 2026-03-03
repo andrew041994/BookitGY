@@ -18,6 +18,7 @@ export default {
   assetBundlePatterns: ["**/*"],
   newArchEnabled: false,
   plugins: [
+    "expo-web-browser",
     "./plugins/remove-ad-id-permission",
     [
         "expo-build-properties",
