@@ -670,11 +670,11 @@ function LoginScreen({
   const [googleLoading, setGoogleLoading] = useState(false);
 
   // Expo Go requires the proxy redirect, while standalone/TestFlight should use app scheme redirects.
-  const useProxy = Constants.appOwnership === "expo";
-  const redirectUri = AuthSession.makeRedirectUri({
-    useProxy,
-    scheme: "bookitgy",
-  });
+  const useProxy = Constants.appOwnership === "expo"; // Expo Go only
+ const redirectUri = AuthSession.makeRedirectUri({
+  scheme: "bookitgy",
+  useProxy,
+});
   console.log("[google] useProxy =", useProxy, "redirectUri =", redirectUri);
 
 const [request, response, promptAsync] = Google.useAuthRequest({
