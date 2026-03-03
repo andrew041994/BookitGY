@@ -669,22 +669,20 @@ function LoginScreen({
   const [facebookLoading, setFacebookLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
 
-  // const useProxy = Constants.appOwnership === "expo";
-//  const redirectUri = "https://auth.expo.io/@andrew041994/bookitgy";
-  
-
-
-  const useProxy = true; // for Expo Go testing
-const PROXY_REDIRECT = "https://auth.expo.io/@andrew041994/bookitgy";
-
-const redirectUri = PROXY_REDIRECT;
-console.log("[google] redirectUri =", redirectUri);
+  // Expo Go requires the proxy redirect, while standalone/TestFlight should use app scheme redirects.
+  const useProxy = Constants.appOwnership === "expo";
+  const redirectUri = AuthSession.makeRedirectUri({
+    useProxy,
+    scheme: "bookitgy",
+  });
+  console.log("[google] useProxy =", useProxy, "redirectUri =", redirectUri);
 
 const [request, response, promptAsync] = Google.useAuthRequest({
   expoClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID, // <-- IMPORTANT
   iosClientId: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID,
   androidClientId: process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID,
   webClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
+  responseType: AuthSession.ResponseType.IdToken,
   redirectUri,
 });
 
@@ -889,29 +887,32 @@ const [request, response, promptAsync] = Google.useAuthRequest({
 
     setGoogleLoading(true);
     try {
-      const result = await promptAsync({ useProxy: true });
+      const result = await promptAsync({ useProxy });
       googleAuthResult = result;
       if (result?.type !== "success") {
         return;
       }
 
-      const idToken =
+      const idTokenRaw =
         googleAuthResult?.authentication?.idToken ||
         googleAuthResult?.params?.id_token ||
-        googleTokenPayload?.idToken ||
         null;
+      const idToken = typeof idTokenRaw === "string" ? idTokenRaw.trim() : "";
 
       console.log("[google] id_token present?", Boolean(idToken), "len=", idToken?.length);
+
+      if (!idToken) {
+        showFlash?.(
+          "error",
+          "Google did not return an ID token. Check responseType/client IDs/redirect."
+        );
+        return;
+      }
 
       const payload = {
         id_token: idToken,
       };
       googleTokenPayload = payload;
-
-      if (!payload) {
-        showFlash?.("error", "Unable to read Google login token. Please try again.");
-        return;
-      }
 
       const res = await apiClient.post(`/auth/google`, payload);
       await saveToken(res.data.access_token);
@@ -979,7 +980,17 @@ const [request, response, promptAsync] = Google.useAuthRequest({
         return;
       }
 
-      showFlash?.("error", "Google login failed. Please try again.");
+      const backendCode =
+        data?.code ||
+        data?.detail?.code ||
+        null;
+
+      showFlash?.(
+        "error",
+        backendCode
+          ? `Google login failed (${backendCode}). Please try again.`
+          : "Google login failed. Please try again."
+      );
     } finally {
       setGoogleLoading(false);
     }
