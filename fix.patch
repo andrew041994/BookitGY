@@ -1,9 +1,10 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
 diff --git a/mobile/App.js b/mobile/App.js
-index 28b3f06418ca6424399f03eff7fe7dcb0cf28477..02ef475cbab600ddfeaf10b2d477f1a82a6c75bb 100644
+index 4cbd775e5dbea839bf2aaf9275a7d8437e377513..d3604b52aab7df77415185e16bb22a95c6151ad2 100644
 --- a/mobile/App.js
 +++ b/mobile/App.js
-@@ -649,64 +649,76 @@ function LandingScreen({ goToLogin, goToSignup }) {
+@@ -648,76 +648,76 @@ function LandingScreen({ goToLogin, goToSignup }) {
+ // 🔹 Dedicated login screen component
  const ENABLE_FACEBOOK_AUTH = process.env.EXPO_PUBLIC_ENABLE_FACEBOOK_AUTH === "true";
  
  function LoginScreen({
@@ -28,47 +29,55 @@ index 28b3f06418ca6424399f03eff7fe7dcb0cf28477..02ef475cbab600ddfeaf10b2d477f1a8
    const [googleLoading, setGoogleLoading] = useState(false);
  
    // Expo Go requires the proxy redirect, while standalone/TestFlight should use app scheme redirects.
-   const useProxy = Constants.appOwnership === "expo"; // Expo Go only
-- const redirectUri = AuthSession.makeRedirectUri({
--  scheme: "bookitgy",
--  useProxy,
--});
--  console.log("[google] useProxy =", useProxy, "redirectUri =", redirectUri);
+-  
+-const isExpoGo = Constants.appOwnership === "expo"; // only true in Expo Go
+-const useProxy = isExpoGo; // false in dev-client / TestFlight / App Store
 -
--const [request, response, promptAsync] = Google.useAuthRequest({
--  expoClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID, // <-- IMPORTANT
--  iosClientId: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID,
--  androidClientId: process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID,
--  webClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
--  responseType: AuthSession.ResponseType.IdToken,
--  redirectUri,
--});
-+  const googleIosClientId = (process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID || "").trim();
-+  const googleIosSchemeMatch = googleIosClientId.match(/-(.+)\.apps\.googleusercontent\.com$/);
-+  const googleIosScheme =
-+    (process.env.EXPO_PUBLIC_GOOGLE_IOS_REVERSED_CLIENT_ID || "").trim() ||
-+    (googleIosSchemeMatch ? `com.googleusercontent.apps.${googleIosSchemeMatch[1]}` : undefined);
-+  const redirectUri = AuthSession.makeRedirectUri({
-+    useProxy,
-+    scheme: googleIosScheme,
-+  });
-+  console.log(
-+    "[google] useProxy =",
-+    useProxy,
-+    "scheme =",
-+    googleIosScheme,
-+    "redirectUri =",
-+    redirectUri
+-console.log("[google] useProxy =", useProxy);
+-
+-const discovery = AuthSession.useAutoDiscovery("https://accounts.google.com");
++  const isExpoGo = Constants.appOwnership === "expo";
++  const useProxy = isExpoGo;
++  const hasLoggedGoogleEnvRef = useRef(false);
+ 
+-const [request, response, promptAsync] = Google.useAuthRequest(
+-  {
+-    expoClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
+-    iosClientId: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID,
+-    androidClientId: process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID,
+-    webClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
+-
+-    // ✅ code flow (not id_token)
+-    responseType: AuthSession.ResponseType.Code,
++  useEffect(() => {
++    if (hasLoggedGoogleEnvRef.current) return;
++    hasLoggedGoogleEnvRef.current = true;
++    console.log("[google] appOwnership:", Constants.appOwnership);
++    console.log("[google] isExpoGo:", isExpoGo);
++    console.log("[google] useProxy:", useProxy);
++  }, [isExpoGo, useProxy]);
+ 
+-    // ✅ ensures code_verifier / code_challenge are used
+-    usePKCE: true,
++  const discovery = AuthSession.useAutoDiscovery("https://accounts.google.com");
+ 
+-    // ✅ make sure you ask for openid so token exchange includes id_token
+-    scopes: ["openid", "profile", "email"],
+-  },
+-  discovery
+-);
++  const [request, response, promptAsync] = Google.useAuthRequest(
++    {
++      expoClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
++      iosClientId: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID,
++      androidClientId: process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID,
++      webClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
++      responseType: AuthSession.ResponseType.Code,
++      usePKCE: true,
++      scopes: ["openid", "profile", "email"],
++    },
++    discovery
 +  );
-+
-+  const [request, response, promptAsync] = Google.useAuthRequest({
-+    expoClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID, // <-- IMPORTANT
-+    iosClientId: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID,
-+    androidClientId: process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID,
-+    webClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
-+    responseType: AuthSession.ResponseType.IdToken,
-+    redirectUri,
-+  });
  
    const pendingGoogleLinkEmailLabel = pendingGoogleLink?.email || "this email";
  
@@ -94,6 +103,118 @@ index 28b3f06418ca6424399f03eff7fe7dcb0cf28477..02ef475cbab600ddfeaf10b2d477f1a8
          password: password,
        }).toString();
  
+@@ -891,101 +891,102 @@ const [request, response, promptAsync] = Google.useAuthRequest(
+ // Requires these to exist in your file/scope already:
+ // - request, promptAsync, useProxy, apiClient, saveToken, saveRefreshToken
+ // - setToken, setIsAdmin, setGoogleLoading, showFlash
+ // - onGoogleOnboardingRequired, onGoogleLinkRequired, clearPendingGoogleLink
+ // - normalizeErrorCode, AuthSession (imported), and ideally `discovery` (see note below)
+ //
+ // IMPORTANT: This assumes you changed your Google auth request to ResponseType.Code + usePKCE:true
+ // (otherwise `result.params.code` won't exist).
+ 
+ const loginWithGoogle = async () => {
+   if (!request) {
+     showFlash?.("error", "Google Sign-In is not configured yet.");
+     return;
+   }
+ 
+   let googleAuthResult = null;
+   let googleTokenPayload = null;
+ 
+   setGoogleLoading(true);
+   try {
+     if (!request) {
+       showFlash?.("error", "Google not ready yet.");
+       return;
+     }
+ 
+-console.log("[google] request.url:", request?.url);
+-console.log("[google] responseType:", request?.responseType);
+-console.log("[google] codeVerifier present?", Boolean(request?.codeVerifier));
+-console.log("[google] redirectUri:", request?.redirectUri);
++    console.log("[google] request.url:", request?.url);
++    console.log("[google] request.redirectUri:", request?.redirectUri);
++    console.log("[google] request.responseType:", request?.responseType);
++    console.log("[google] codeVerifier present?", Boolean(request?.codeVerifier));
+ 
+     const result = await promptAsync({ useProxy });
+     googleAuthResult = result;
+ 
+     if (result?.type !== "success") {
+       return;
+     }
+ 
+     // --- Code Flow (PKCE): get the authorization code ---
+     const codeRaw = result?.params?.code ?? null;
+     const code = typeof codeRaw === "string" ? codeRaw.trim() : "";
+ 
+     console.log("[google] code present?", Boolean(code), "len=", code?.length);
+ 
+     if (!code) {
+       showFlash?.(
+         "error",
+         "Google did not return an auth code. Ensure responseType=Code and usePKCE=true."
+       );
+       return;
+     }
+ 
+     // --- Exchange code -> tokens (id_token will be returned here) ---
+-    // Prefer the request-generated redirectUri to avoid mismatch.
+-    const redirectUri =
+-      request?.redirectUri ||
+-      AuthSession.makeRedirectUri({ scheme: process.env.EXPO_PUBLIC_GOOGLE_IOS_REVERSED_CLIENT_ID });
++    const redirectUri = request?.redirectUri;
++    if (!redirectUri) {
++      showFlash?.("error", "Google redirect URI missing. Please try again.");
++      return;
++    }
+ 
+     // Use whatever discovery you already have in scope (recommended):
+     // const discovery = AuthSession.useAutoDiscovery("https://accounts.google.com");
+     // If you don't have it, you must define it where hooks are allowed (top-level in component).
+     if (typeof discovery === "undefined" || !discovery?.tokenEndpoint) {
+       showFlash?.(
+         "error",
+         "Google discovery not ready. Ensure you defined: const discovery = AuthSession.useAutoDiscovery('https://accounts.google.com');"
+       );
+       return;
+     }
+ 
+     const tokenRes = await AuthSession.exchangeCodeAsync(
+       {
+         clientId: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID, // TestFlight => iOS client
+         code,
+         redirectUri,
+         extraParams: {
+           // PKCE verifier generated by the request
+-          code_verifier: request?.codeVerifier || "",
++          code_verifier: request.codeVerifier,
+         },
+       },
+       discovery
+     );
+ 
+     const idTokenRaw = tokenRes?.idToken ?? null;
+     const idToken = typeof idTokenRaw === "string" ? idTokenRaw.trim() : "";
+ 
+     console.log("[google] id_token present?", Boolean(idToken), "len=", idToken?.length);
+ 
+     if (!idToken) {
+       showFlash?.(
+         "error",
+         "Google token exchange did not return an ID token. Ensure scopes include openid."
+       );
+       return;
+     }
+ 
+     // Keep backend payload identical
+     const payload = { id_token: idToken };
+     googleTokenPayload = payload;
+ 
+     const res = await apiClient.post(`/auth/google`, payload);
+     await saveToken(res.data.access_token);
+     await saveRefreshToken(res.data.refresh_token);
  
 EOF
 )
