@@ -65,16 +65,16 @@ def _google_error(status_code: int, code: str, message: str | None = None) -> HT
     )
 
 
-def _google_client_id() -> str:
-    client_id = (settings.GOOGLE_CLIENT_ID or "").strip()
-    if not client_id:
+def _google_client_ids() -> list[str]:
+    client_ids = [client_id.strip() for client_id in (settings.GOOGLE_CLIENT_IDS or []) if client_id.strip()]
+    if not client_ids:
         # Required env var for Google Sign-In verification.
         raise _google_error(
             status.HTTP_500_INTERNAL_SERVER_ERROR,
             "GOOGLE_AUTH_NOT_CONFIGURED",
             "Google auth is not configured",
         )
-    return client_id
+    return client_ids
 
 
 def _mask_id(value: str | None) -> str:
@@ -91,7 +91,7 @@ def _verify_google_id_token(id_token: str) -> dict:
     if not token:
         raise _google_error(status.HTTP_400_BAD_REQUEST, "GOOGLE_TOKEN_REQUIRED")
 
-    client_id = _google_client_id()
+    client_ids = _google_client_ids()
 
     try:
         unverified_header = jwt.get_unverified_header(token)
@@ -122,7 +122,7 @@ def _verify_google_id_token(id_token: str) -> dict:
             token,
             key_data,
             algorithms=["RS256"],
-            audience=client_id,
+            audience=client_ids,
             issuer=["https://accounts.google.com", "accounts.google.com"],
         )
     except Exception:

@@ -152,8 +152,20 @@ class Settings:
 
         # -----------------------------
         # Google OAuth (validated only when /auth/google is called)
+        # Accept either GOOGLE_CLIENT_IDS (csv) or legacy GOOGLE_CLIENT_ID.
         # -----------------------------
-        self.GOOGLE_CLIENT_ID: str = os.getenv("GOOGLE_CLIENT_ID", "")
+        raw_google_client_ids = os.getenv("GOOGLE_CLIENT_IDS", "")
+        self.GOOGLE_CLIENT_IDS: List[str] = [
+            client_id.strip()
+            for client_id in raw_google_client_ids.split(",")
+            if client_id.strip()
+        ]
+        legacy_google_client_id = os.getenv("GOOGLE_CLIENT_ID", "").strip()
+        if not self.GOOGLE_CLIENT_IDS and legacy_google_client_id:
+            self.GOOGLE_CLIENT_IDS = [legacy_google_client_id]
+
+        # Backward-compatible single value for legacy call sites.
+        self.GOOGLE_CLIENT_ID: str = self.GOOGLE_CLIENT_IDS[0] if self.GOOGLE_CLIENT_IDS else ""
 
         # -----------------------------
         # SendGrid email
