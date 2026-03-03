@@ -8573,35 +8573,6 @@ function App() {
     return false; // disable deep links for now
   }, []); 
 
-
-  // const handleIncomingUrl = useCallback((url, source) => {
-  //   // console.log("[deeplink] handleIncomingUrl", source, url);
-  //   if (DEEPLINK_DEBUG) showFlash("info", `[DL] ${source}: ${url || "(null)"}`);
-  //   if (url && url === lastHandledUrlRef.current) {
-  //     // console.log("[deeplink] duplicate url ignored", url);
-  //     return false;
-  //   }
-  //   const username = extractUsernameFromUrl(url);
-  //   // console.log("[deeplink] extracted username", username);
-  //   if (!username) {
-  //     if (DEEPLINK_DEBUG) showFlash("error", "[DL] parse failed");
-  //     return false;
-  //   }
-  //   if (DEEPLINK_DEBUG) showFlash("success", `[DL] user: ${username}`);
-  //   if (tokenRef.current?.isProvider === true) {
-  //     showFlash("error", "Open as a client to view provider links.");
-  //     return true;
-  //   }
-
-  //   lastHandledUrlRef.current = url;
-  //   lastDeeplinkHandledAtRef.current = Date.now();
-
-  //   const queued = { username, nonce: Date.now() };
-  //   // console.log("[deeplink] queued", queued.username, queued.nonce);
-  //   setPendingDeepLinkUsername(queued);
-  //   return true;
-  // }, [showFlash]);
-
   useEffect(() => {
     let isActive = true;
 
