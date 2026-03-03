@@ -102,6 +102,56 @@ class FacebookProfileUser(BaseModel):
         from_attributes = True
 
 
+
+
+class GoogleAuthRequest(BaseModel):
+    id_token: Optional[str] = None
+    authorization_code: Optional[str] = None
+
+
+class GoogleAuthUserOut(BaseModel):
+    id: int
+    email: Optional[EmailStr] = None
+    username: Optional[str] = None
+    phone: Optional[str] = None
+    is_provider: bool
+    is_admin: bool
+
+    class Config:
+        from_attributes = True
+
+
+class GoogleAuthResponse(BaseModel):
+    access_token: str
+    refresh_token: str
+    token_type: str
+    user: GoogleAuthUserOut
+    needs_onboarding: bool
+
+
+class CompleteProfileRequest(BaseModel):
+    phone: str
+    is_provider: bool
+
+
+class CompleteProfileUserOut(BaseModel):
+    id: int
+    email: Optional[EmailStr] = None
+    username: Optional[str] = None
+    phone: Optional[str] = None
+    is_provider: bool
+    is_admin: bool
+    is_email_verified: bool
+    is_suspended: bool
+
+    class Config:
+        from_attributes = True
+
+
+class CompleteProfileResponse(BaseModel):
+    user: CompleteProfileUserOut
+    needs_onboarding: bool
+
 class LoginByEmailPayload(BaseModel):
     email: str
     password: str

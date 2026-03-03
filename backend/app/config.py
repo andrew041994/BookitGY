@@ -151,6 +151,11 @@ class Settings:
         self.FACEBOOK_GRAPH_VERSION: str = os.getenv("FACEBOOK_GRAPH_VERSION", "v19.0")
 
         # -----------------------------
+        # Google OAuth (validated only when /auth/google is called)
+        # -----------------------------
+        self.GOOGLE_CLIENT_ID: str = os.getenv("GOOGLE_CLIENT_ID", "")
+
+        # -----------------------------
         # SendGrid email
         # -----------------------------
         self.SENDGRID_API_KEY: str = os.getenv("SENDGRID_API_KEY", "")

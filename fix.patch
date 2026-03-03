@@ -1,288 +1,135 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
-diff --git a/frontend/src/main.jsx b/frontend/src/main.jsx
-index e3056878ec6d824ab2187912bba3a6526419ba2f..9810e2dae66a94a0d0c1c99f6a1e229758c9bc0d 100644
---- a/frontend/src/main.jsx
-+++ b/frontend/src/main.jsx
-@@ -2267,95 +2267,245 @@ function App() {
-               <div className="button-row providers-pagination-row">
-                 <button
-                   className="secondary-btn"
-                   type="button"
-                   onClick={() => setProvidersOffset((current) => Math.max(0, current - providersLimit))}
-                   disabled={providersLoading || providersOffset === 0}
-                 >
-                   Previous
-                 </button>
-                 <button
-                   className="secondary-btn"
-                   type="button"
-                   onClick={() => setProvidersOffset((current) => current + providersLimit)}
-                   disabled={providersLoading || providers.length < providersLimit}
-                 >
-                   Next
-                 </button>
-               </div>
-             </>
-           )}
-         </div>
-       </div>
-     )
-   }
- 
-+  const AdminClientsList = () => {
-+    const [clients, setClients] = React.useState([])
-+    const [loading, setLoading] = React.useState(false)
-+    const [error, setError] = React.useState('')
-+    const [searchInput, setSearchInput] = React.useState('')
-+    const [search, setSearch] = React.useState('')
-+    const [offset, setOffset] = React.useState(0)
-+    const limit = 50
+diff --git a/backend/tests/test_google_auth_onboarding.py b/backend/tests/test_google_auth_onboarding.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..865d74cd9c974a2ef5567bc09c572208cf1b9d2b
+--- /dev/null
++++ b/backend/tests/test_google_auth_onboarding.py
+@@ -0,0 +1,125 @@
++from fastapi.testclient import TestClient
 +
-+    const loadClients = React.useCallback(async () => {
-+      setLoading(true)
-+      setError('')
-+      try {
-+        const params = { limit, offset }
-+        if (search.trim()) {
-+          params.search = search.trim()
-+        }
-+        const res = await apiClient.get('/admin/clients/list', { params })
-+        setClients(Array.isArray(res.data) ? res.data : [])
-+      } catch (err) {
-+        logApiError(err)
-+        setClients([])
-+        setError('Unable to load clients list. Please try again.')
-+      } finally {
-+        setLoading(false)
-+      }
-+    }, [offset, search])
 +
-+    React.useEffect(() => {
-+      loadClients()
-+    }, [loadClients])
++def _build_client(session):
++    from app.main import app
++    from app.database import get_db
++    from app.routes import auth as auth_routes
 +
-+    const handleSearchSubmit = (event) => {
-+      event.preventDefault()
-+      setOffset(0)
-+      setSearch(searchInput)
-+    }
++    def override_get_db():
++        try:
++            yield session
++        finally:
++            pass
 +
-+    const handleClearSearch = () => {
-+      setSearchInput('')
-+      setSearch('')
-+      setOffset(0)
-+    }
++    app.dependency_overrides[get_db] = override_get_db
++    app.dependency_overrides[auth_routes.get_db] = override_get_db
++    client = TestClient(app)
++    return client, app, auth_routes
 +
-+    const formatCreated = (value) => {
-+      if (!value) return '—'
-+      const parsed = new Date(value)
-+      if (Number.isNaN(parsed.getTime())) return '—'
-+      return parsed.toLocaleDateString(undefined, {
-+        year: 'numeric',
-+        month: 'short',
-+        day: 'numeric',
-+      })
-+    }
 +
-+    return (
-+      <div className="admin-page">
-+        <div className="admin-header">
-+          <div>
-+            <p className="eyebrow">Clients</p>
-+            <h1>Clients List</h1>
-+            <p className="header-subtitle">Search and review client accounts.</p>
-+          </div>
-+        </div>
++def test_signup_login_still_works(db_session):
++    session, _, _ = db_session
++    client, app, _ = _build_client(session)
 +
-+        <div className="admin-card">
-+          <form className="providers-list-search" onSubmit={handleSearchSubmit}>
-+            <input
-+              type="text"
-+              value={searchInput}
-+              onChange={(event) => setSearchInput(event.target.value)}
-+              placeholder="Search by username or WhatsApp"
-+              aria-label="Search clients"
-+            />
-+            <button className="primary-btn" type="submit" disabled={loading}>
-+              Search
-+            </button>
-+            <button
-+              className="secondary-btn"
-+              type="button"
-+              onClick={handleClearSearch}
-+              disabled={loading && !searchInput && !search}
-+            >
-+              Clear
-+            </button>
-+          </form>
++    try:
++        signup = client.post(
++            "/auth/signup",
++            json={
++                "email": "local@example.com",
++                "username": "localuser",
++                "phone": "592 333 2222",
++                "password": "StrongPass123!",
++                "is_provider": False,
++            },
++        )
++        assert signup.status_code == 201
 +
-+          {loading && <p className="muted">Loading clients…</p>}
-+          {error && <p className="form-error">{error}</p>}
++        verify = client.post("/auth/verify-email", json={"token": signup.json()["verification_link"].split("token=")[1]})
++        assert verify.status_code == 200
 +
-+          <div className="provider-missing-table">
-+            <table>
-+              <thead>
-+                <tr>
-+                  <th>ID</th>
-+                  <th>Username</th>
-+                  <th>WhatsApp</th>
-+                  <th>Email</th>
-+                  <th>Created</th>
-+                </tr>
-+              </thead>
-+              <tbody>
-+                {!loading && clients.length === 0 ? (
-+                  <tr>
-+                    <td colSpan={5}>No clients found.</td>
-+                  </tr>
-+                ) : (
-+                  clients.map((client) => (
-+                    <tr key={client.id}>
-+                      <td>{client.id}</td>
-+                      <td>{client.username || '—'}</td>
-+                      <td>{client.whatsapp || '—'}</td>
-+                      <td>{client.email || '—'}</td>
-+                      <td>{formatCreated(client.created_at)}</td>
-+                    </tr>
-+                  ))
-+                )}
-+              </tbody>
-+            </table>
-+          </div>
++        login = client.post(
++            "/auth/login_by_email",
++            json={"email": "local@example.com", "password": "StrongPass123!"},
++        )
++        assert login.status_code == 200
++        body = login.json()
++        assert body["access_token"]
++        assert body["refresh_token"]
++    finally:
++        app.dependency_overrides = {}
 +
-+          <div className="button-row providers-pagination-row">
-+            <button
-+              className="secondary-btn"
-+              type="button"
-+              onClick={() => setOffset((current) => Math.max(0, current - limit))}
-+              disabled={loading || offset === 0}
-+            >
-+              Previous
-+            </button>
-+            <button
-+              className="secondary-btn"
-+              type="button"
-+              onClick={() => setOffset((current) => current + limit)}
-+              disabled={loading || clients.length < limit}
-+            >
-+              Next
-+            </button>
-+          </div>
-+        </div>
-+      </div>
-+    )
-+  }
 +
-   const AdminLayout = () => {
-     const location = useLocation()
-     return (
-       <div className="admin-shell">
-         <aside className="admin-sidebar">
-           <nav className="sidebar-nav">
-             <NavLink to="/admin/promotions" className={({ isActive }) => isActive ? 'sidebar-link active' : 'sidebar-link'}>
-               Promotions
-             </NavLink>
-             <NavLink to="/admin/service-charge" className={({ isActive }) => isActive ? 'sidebar-link active' : 'sidebar-link'}>
-               Service Charge
-             </NavLink>
-             <NavLink to="/admin/billing" className={({ isActive }) => isActive ? 'sidebar-link active' : 'sidebar-link'}>
-               Billing
-             </NavLink>
-             <NavLink
-               to="/admin/provider-locations"
-               className={({ isActive }) => isActive ? 'sidebar-link active' : 'sidebar-link'}
-             >
-               Provider Locations
-             </NavLink>
-             <NavLink
-               to="/admin/cancellations"
-               className={({ isActive }) => isActive ? 'sidebar-link active' : 'sidebar-link'}
-             >
-               Cancellations
-             </NavLink>
-             <NavLink
-               to="/admin/signups"
-               className={({ isActive }) => isActive ? 'sidebar-link active' : 'sidebar-link'}
-             >
-               Signups Report
-             </NavLink>
-             <NavLink
-               to="/admin/booking-metrics"
-               className={({ isActive }) => isActive ? 'sidebar-link active' : 'sidebar-link'}
-             >
-               Booking Metrics
-             </NavLink>
-             <NavLink
-               to="/admin/provider-performance"
-               className={({ isActive }) => isActive ? 'sidebar-link active' : 'sidebar-link'}
-             >
-               Provider Performance
-             </NavLink>
-+            <NavLink
-+              to="/admin/clients"
-+              className={({ isActive }) => isActive ? 'sidebar-link active' : 'sidebar-link'}
-+            >
-+              Clients
-+            </NavLink>
-           </nav>
-           <div className="sidebar-footer">
-             Logged in · {token ? 'Authenticated' : 'Guest'}
-           </div>
-         </aside>
-         <main className="admin-main" key={location.pathname}>
-           <Outlet />
-         </main>
-       </div>
-     )
-   }
- 
-   return (
-     <BrowserRouter>
-       <nav className="app-nav">
-         <div className="nav-inner">
-           <Link to="/" className="nav-brand" aria-label="BookitGY home">
-             <img src="/bookitgy-logo.png" alt="BookitGY" />
-             <div className="brand-text">
-               <span className="brand-name">BookitGY</span>
-               <span className="brand-subtitle">BookitGY</span>
-             </div>
-           </Link>
-           <div className="nav-actions">
-             {token ? (
-@@ -2376,32 +2526,33 @@ function App() {
-           </div>
-         </div>
-       </nav>
-       <Routes>
-         <Route path="/" element={<Home />} />
-         <Route path="/login" element={<Login />} />
-         <Route path="/reset-password" element={<ResetPassword />} />
-         <Route path="/p/:username" element={<ProviderLanding />} />
-         <Route
-           path="/admin"
-           element={(
-             <ProtectedRoute>
-               <AdminLayout />
-             </ProtectedRoute>
-           )}
-         >
-           <Route index element={<Navigate to="/admin/promotions" replace />} />
-           <Route path="promotions" element={<AdminPromotions />} />
-           <Route path="service-charge" element={<ServiceChargeSettings />} />
-           <Route path="billing" element={<AdminBilling />} />
-           <Route path="provider-locations" element={<AdminProviderLocations />} />
-           <Route path="cancellations" element={<AdminCancellations />} />
-           <Route path="signups" element={<AdminSignupReport />} />
-           <Route path="booking-metrics" element={<AdminBookingMetrics />} />
-           <Route path="provider-performance" element={<AdminProviderPerformanceReports />} />
-+          <Route path="clients" element={<AdminClientsList />} />
-         </Route>
-       </Routes>
-     </BrowserRouter>
-   )
- }
- 
- ReactDOM.createRoot(document.getElementById('root')).render(<App />)
++def test_google_auth_creates_user_with_onboarding_flag(db_session, monkeypatch):
++    session, models, _ = db_session
++    client, app, auth_routes = _build_client(session)
++
++    try:
++        monkeypatch.setattr(
++            auth_routes,
++            "_verify_google_id_token",
++            lambda _token: {
++                "sub": "google-sub-1",
++                "email": "google1@example.com",
++                "email_verified": True,
++                "name": "Google User",
++            },
++        )
++
++        resp = client.post("/auth/google", json={"id_token": "dummy"})
++        assert resp.status_code == 200
++        body = resp.json()
++        assert body["needs_onboarding"] is True
++        assert body["access_token"]
++
++        user = session.query(models.User).filter(models.User.email == "google1@example.com").first()
++        assert user is not None
++        assert user.google_sub == "google-sub-1"
++        assert user.phone is None
++        assert user.auth_provider == "google"
++        assert user.is_email_verified is True
++    finally:
++        app.dependency_overrides = {}
++
++
++def test_complete_profile_sets_phone_provider_and_creates_provider(db_session, monkeypatch):
++    session, models, _ = db_session
++    client, app, auth_routes = _build_client(session)
++
++    try:
++        monkeypatch.setattr(
++            auth_routes,
++            "_verify_google_id_token",
++            lambda _token: {
++                "sub": "google-sub-2",
++                "email": "google2@example.com",
++                "email_verified": True,
++                "name": "Provider User",
++            },
++        )
++
++        auth_resp = client.post("/auth/google", json={"id_token": "dummy"})
++        assert auth_resp.status_code == 200
++
++        from app.security import get_current_user_from_header
++
++        google_user = session.query(models.User).filter(models.User.email == "google2@example.com").first()
++        app.dependency_overrides[get_current_user_from_header] = lambda: google_user
++
++        complete = client.post(
++            "/auth/complete-profile",
++            json={"phone": "+592 777 8888", "is_provider": True},
++        )
++        assert complete.status_code == 200
++        body = complete.json()
++        assert body["needs_onboarding"] is False
++        assert body["user"]["phone"] == "+5927778888"
++        assert body["user"]["is_provider"] is True
++
++        user = session.query(models.User).filter(models.User.email == "google2@example.com").first()
++        assert user is not None
++        provider = session.query(models.Provider).filter(models.Provider.user_id == user.id).first()
++        assert provider is not None
++        assert provider.account_number.startswith("ACC-")
++    finally:
++        app.dependency_overrides = {}
  
 EOF
 )

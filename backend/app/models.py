@@ -26,6 +26,8 @@ class User(Base):
     id = Column(Integer, primary_key=True, index=True)
     username = Column(String, unique=True, index=True, nullable=False)
     email = Column(String, unique=True, index=True)
+    google_sub = Column(String, unique=True, index=True, nullable=True)
+    auth_provider = Column(String, nullable=False, default="local")
     hashed_password = Column(String)
     phone = Column(String)
     whatsapp = Column(String)  # e.g. whatsapp:+592xxxxxxx

@@ -58,6 +58,105 @@ def _session_expired_error() -> HTTPException:
 
 
 
+def _google_error(status_code: int, code: str, message: str | None = None) -> HTTPException:
+    return HTTPException(
+        status_code=status_code,
+        detail={"detail": message or code, "code": code},
+    )
+
+
+def _google_client_id() -> str:
+    client_id = (settings.GOOGLE_CLIENT_ID or "").strip()
+    if not client_id:
+        # Required env var for Google Sign-In verification.
+        raise _google_error(
+            status.HTTP_500_INTERNAL_SERVER_ERROR,
+            "GOOGLE_AUTH_NOT_CONFIGURED",
+            "Google auth is not configured",
+        )
+    return client_id
+
+
+def _verify_google_id_token(id_token: str) -> dict:
+    token = (id_token or "").strip()
+    if not token:
+        raise _google_error(status.HTTP_400_BAD_REQUEST, "GOOGLE_TOKEN_REQUIRED")
+
+    client_id = _google_client_id()
+
+    try:
+        unverified_header = jwt.get_unverified_header(token)
+        kid = unverified_header.get("kid")
+    except Exception:
+        raise _google_error(status.HTTP_401_UNAUTHORIZED, "GOOGLE_TOKEN_INVALID")
+
+    if not kid:
+        raise _google_error(status.HTTP_401_UNAUTHORIZED, "GOOGLE_TOKEN_INVALID")
+
+    try:
+        jwks_resp = requests.get("https://www.googleapis.com/oauth2/v3/certs", timeout=10)
+        jwks = jwks_resp.json() if jwks_resp.ok else {}
+    except Exception:
+        raise _google_error(status.HTTP_401_UNAUTHORIZED, "GOOGLE_TOKEN_INVALID")
+
+    key_data = None
+    for key in jwks.get("keys", []):
+        if key.get("kid") == kid:
+            key_data = key
+            break
+
+    if not key_data:
+        raise _google_error(status.HTTP_401_UNAUTHORIZED, "GOOGLE_TOKEN_INVALID")
+
+    try:
+        payload = jwt.decode(
+            token,
+            key_data,
+            algorithms=["RS256"],
+            audience=client_id,
+            issuer=["https://accounts.google.com", "accounts.google.com"],
+        )
+    except Exception:
+        raise _google_error(status.HTTP_401_UNAUTHORIZED, "GOOGLE_TOKEN_INVALID")
+
+    if not payload.get("sub"):
+        raise _google_error(status.HTTP_401_UNAUTHORIZED, "GOOGLE_TOKEN_INVALID")
+
+    email = (payload.get("email") or "").strip().lower() or None
+    if not email:
+        raise _google_error(status.HTTP_400_BAD_REQUEST, "GOOGLE_EMAIL_REQUIRED")
+
+    return {
+        "sub": str(payload["sub"]),
+        "email": email,
+        "email_verified": bool(payload.get("email_verified")),
+        "name": (payload.get("name") or "").strip() or None,
+    }
+
+
+def _google_needs_onboarding(user: models.User) -> bool:
+    return not bool((user.phone or "").strip())
+
+
+def _google_auth_response(db: Session, user: models.User) -> dict:
+    access_token = _issue_access_token(user.email, user.token_version, user.id)
+    refresh_token, _ = _create_refresh_token(db, user.id)
+    return {
+        "access_token": access_token,
+        "refresh_token": refresh_token,
+        "token_type": "bearer",
+        "user": {
+            "id": user.id,
+            "email": user.email,
+            "username": user.username,
+            "phone": user.phone,
+            "is_provider": user.is_provider,
+            "is_admin": getattr(user, "is_admin", False),
+        },
+        "needs_onboarding": _google_needs_onboarding(user),
+    }
+
+
 def _facebook_error(status_code: int, code: str) -> HTTPException:
     return HTTPException(status_code=status_code, detail={"detail": code, "code": code})
 
@@ -452,6 +551,82 @@ def facebook_complete(
     )
 
     return _facebook_auth_response(db, user)
+
+
+@router.post("/auth/google", response_model=schemas.GoogleAuthResponse)
+def auth_google(
+    payload: schemas.GoogleAuthRequest,
+    db: Session = Depends(get_db),
+):
+    id_token = (payload.id_token or "").strip()
+    authorization_code = (payload.authorization_code or "").strip()
+
+    if not id_token and authorization_code:
+        raise _google_error(
+            status.HTTP_400_BAD_REQUEST,
+            "GOOGLE_AUTH_CODE_NOT_SUPPORTED",
+            "authorization_code flow is not supported yet",
+        )
+
+    google_profile = _verify_google_id_token(id_token)
+    google_sub = google_profile["sub"]
+    google_email = google_profile["email"]
+
+    existing_google_user = crud.get_user_by_google_sub(db, google_sub)
+    if existing_google_user:
+        return _google_auth_response(db, existing_google_user)
+
+    existing_local_user = crud.get_user_by_email(db, google_email)
+    if existing_local_user:
+        raise _google_error(
+            status.HTTP_409_CONFLICT,
+            "GOOGLE_EMAIL_ALREADY_EXISTS",
+            "Account with this email already exists. Sign in with email/password first.",
+        )
+
+    user = crud.create_user_for_google(
+        db,
+        email=google_email,
+        google_sub=google_sub,
+        name=google_profile.get("name"),
+        email_verified=google_profile.get("email_verified", False),
+    )
+
+    return _google_auth_response(db, user)
+
+
+@router.post("/auth/complete-profile", response_model=schemas.CompleteProfileResponse)
+def complete_profile(
+    payload: schemas.CompleteProfileRequest,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user_from_header),
+):
+    phone_normalized = crud.normalize_phone(payload.phone)
+    if not phone_normalized:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid phone number",
+        )
+
+    phone_owner = crud.get_user_by_phone(db, phone_normalized)
+    if phone_owner and phone_owner.id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Phone already registered",
+        )
+
+    current_user.phone = phone_normalized
+    current_user.is_provider = payload.is_provider
+    db.commit()
+    db.refresh(current_user)
+
+    if payload.is_provider:
+        crud.get_or_create_provider_for_user(db, current_user.id)
+
+    return {
+        "user": current_user,
+        "needs_onboarding": False,
+    }
 
 
 @router.post("/auth/refresh")

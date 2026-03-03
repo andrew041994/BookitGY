@@ -684,6 +684,17 @@ def get_user_by_phone(db: Session, phone: str, *, include_deleted: bool = False)
     return query.first()
 
 
+
+
+def get_user_by_google_sub(db: Session, google_sub: str, *, include_deleted: bool = False):
+    if not google_sub:
+        return None
+    query = db.query(models.User).filter(models.User.google_sub == google_sub)
+    if not include_deleted:
+        query = _apply_not_deleted_filter(query)
+    return query.first()
+
+
 def get_oauth_identity(db: Session, provider: str, provider_user_id: str):
     return (
         db.query(models.OAuthIdentity)
@@ -713,6 +724,37 @@ def create_oauth_identity(
     db.commit()
     db.refresh(record)
     return record
+
+
+
+
+def create_user_for_google(
+    db: Session,
+    *,
+    email: str,
+    google_sub: str,
+    name: Optional[str] = None,
+    email_verified: bool = False,
+) -> models.User:
+    normalized_email = (email or "").strip().lower()
+    username_seed = name or normalized_email.split("@")[0] or "google_user"
+    normalized_username = generate_unique_username(db, username_seed)
+
+    user = models.User(
+        email=normalized_email,
+        phone=None,
+        username=normalized_username,
+        is_provider=False,
+        auth_provider="google",
+        google_sub=google_sub,
+        is_email_verified=bool(email_verified),
+        email_verified_at=now_guyana() if email_verified else None,
+        hashed_password=hash_password(os.urandom(16).hex()),
+    )
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    return user
 
 
 def create_user_for_oauth(
