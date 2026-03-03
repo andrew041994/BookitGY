@@ -671,14 +671,11 @@ function LoginScreen({
 
   const useProxy = Constants.appOwnership === "expo";
 
-  const redirectUri = AuthSession.makeRedirectUri({
-    useProxy,
-    scheme: "bookitgy",
-  });
+  const redirectUri = AuthSession.makeRedirectUri({ useProxy: true });
 
   console.log("[google] redirectUri =", redirectUri);
 
-  const [googleRequest, , promptGoogleAuth] = Google.useAuthRequest({
+  const [request, response, promptAsync] = Google.useAuthRequest({
     iosClientId: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID,
     androidClientId: process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID,
     webClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
@@ -876,7 +873,7 @@ function LoginScreen({
   };
 
   const loginWithGoogle = async () => {
-    if (!googleRequest) {
+    if (!request) {
       showFlash?.("error", "Google Sign-In is not configured yet.");
       return;
     }
@@ -886,7 +883,7 @@ function LoginScreen({
 
     setGoogleLoading(true);
     try {
-      const result = await promptGoogleAuth({ useProxy });
+      const result = await promptAsync({ useProxy: true });
       googleAuthResult = result;
       if (result?.type !== "success") {
         return;

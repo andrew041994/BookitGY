@@ -1,11 +1,9 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
 diff --git a/mobile/App.js b/mobile/App.js
-index b349a78c98a6dc86b30a3c1ff4c6fcc4a2379cb0..ccf451353af783ab6750e2d7adbfefa388a8765f 100644
+index ccf451353af783ab6750e2d7adbfefa388a8765f..651f4aef9757e6769a0b82ac01ce061e248c7c9b 100644
 --- a/mobile/App.js
 +++ b/mobile/App.js
-@@ -647,70 +647,64 @@ function LandingScreen({ goToLogin, goToSignup }) {
- 
- // 🔹 Dedicated login screen component
+@@ -649,58 +649,55 @@ function LandingScreen({ goToLogin, goToSignup }) {
  const ENABLE_FACEBOOK_AUTH = process.env.EXPO_PUBLIC_ENABLE_FACEBOOK_AUTH === "true";
  
  function LoginScreen({
@@ -29,38 +27,22 @@ index b349a78c98a6dc86b30a3c1ff4c6fcc4a2379cb0..ccf451353af783ab6750e2d7adbfefa3
    const [facebookLoading, setFacebookLoading] = useState(false);
    const [googleLoading, setGoogleLoading] = useState(false);
  
--  const googleClientIds = useMemo(
--    () => ({
--      androidClientId:
--        process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID ||
--        Constants.expoConfig?.extra?.GOOGLE_ANDROID_CLIENT_ID,
--      iosClientId:
--        process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID ||
--        Constants.expoConfig?.extra?.GOOGLE_IOS_CLIENT_ID,
--      webClientId:
--        process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID ||
--        Constants.expoConfig?.extra?.GOOGLE_WEB_CLIENT_ID,
--    }),
--    []
--  );
-+  const useProxy = Constants.appOwnership === "expo";
-+
-+  const redirectUri = AuthSession.makeRedirectUri({
-+    useProxy,
-+    scheme: "bookitgy",
-+  });
-+
-+  console.log("[google] redirectUri =", redirectUri);
+   const useProxy = Constants.appOwnership === "expo";
  
-   const [googleRequest, , promptGoogleAuth] = Google.useAuthRequest({
--    ...googleClientIds,
--    scopes: ["openid", "profile", "email"],
--    responseType: AuthSession.ResponseType.Code,
--    usePKCE: true,
-+    iosClientId: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID,
-+    androidClientId: process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID,
-+    webClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
-+    redirectUri,
+-  const redirectUri = AuthSession.makeRedirectUri({
+-    useProxy,
+-    scheme: "bookitgy",
+-  });
++  const redirectUri = AuthSession.makeRedirectUri({ useProxy: true });
+ 
+   console.log("[google] redirectUri =", redirectUri);
+ 
+-  const [googleRequest, , promptGoogleAuth] = Google.useAuthRequest({
++  const [request, response, promptAsync] = Google.useAuthRequest({
+     iosClientId: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID,
+     androidClientId: process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID,
+     webClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
+     redirectUri,
    });
  
    const pendingGoogleLinkEmailLabel = pendingGoogleLink?.email || "this email";
@@ -82,11 +64,17 @@ index b349a78c98a6dc86b30a3c1ff4c6fcc4a2379cb0..ccf451353af783ab6750e2d7adbfefa3
    setLoading(true);
  
      try {
-       const body = new URLSearchParams({
-         username: normalizedEmail,
-         password: password,
-       }).toString();
-@@ -870,51 +864,51 @@ function LoginScreen({
+@@ -854,61 +851,61 @@ function LoginScreen({
+       } catch (requestError) {
+         const errorCode = normalizeErrorCode(requestError?.response?.data);
+         if (errorCode === "EMAIL_REQUIRED" || errorCode === "PHONE_REQUIRED") {
+           onFacebookSetupRequired?.({
+             facebookAccessToken,
+             requiresEmail: errorCode === "EMAIL_REQUIRED",
+             requiresPhone: true,
+             initialPhone: "",
+             initialEmail: "",
+             initialIsProvider: false,
            });
            return;
          }
@@ -102,7 +90,8 @@ index b349a78c98a6dc86b30a3c1ff4c6fcc4a2379cb0..ccf451353af783ab6750e2d7adbfefa3
    };
  
    const loginWithGoogle = async () => {
-     if (!googleRequest) {
+-    if (!googleRequest) {
++    if (!request) {
        showFlash?.("error", "Google Sign-In is not configured yet.");
        return;
      }
@@ -112,8 +101,8 @@ index b349a78c98a6dc86b30a3c1ff4c6fcc4a2379cb0..ccf451353af783ab6750e2d7adbfefa3
  
      setGoogleLoading(true);
      try {
--      const result = await promptGoogleAuth();
-+      const result = await promptGoogleAuth({ useProxy });
+-      const result = await promptGoogleAuth({ useProxy });
++      const result = await promptAsync({ useProxy: true });
        googleAuthResult = result;
        if (result?.type !== "success") {
          return;
