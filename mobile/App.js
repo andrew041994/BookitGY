@@ -24,6 +24,9 @@ import {
   FlatList,
 } from "react-native";
 import * as ExpoLinking from "expo-linking";
+import * as AuthSession from "expo-auth-session";
+import * as Google from "expo-auth-session/providers/google";
+import * as WebBrowser from "expo-web-browser";
 
 import {
   NavigationContainer,
@@ -66,6 +69,7 @@ try {
 } catch (e) {}
 
 enableScreens(false);
+WebBrowser.maybeCompleteAuthSession();
 
 
 
@@ -151,6 +155,12 @@ const normalizeErrorCode = (payload) => {
 
 const getFacebookCompleteErrorMessage = (code) =>
   FB_COMPLETE_ERROR_MESSAGES[code] || "Unable to complete Facebook login. Please try again.";
+
+const isOnboardingIncomplete = (userData) => {
+  if (!userData || typeof userData !== "object") return false;
+  if (userData?.needs_onboarding === true) return true;
+  return String(userData?.phone || "").trim().length === 0;
+};
 
 const persistFacebookSession = async ({
   responseData,
@@ -642,6 +652,7 @@ function LoginScreen({
   setToken,
   setIsAdmin,
   onFacebookSetupRequired,
+  onGoogleOnboardingRequired,
   onEmailNotVerified,
   goToSignup,
   goToForgot,
@@ -652,6 +663,29 @@ function LoginScreen({
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [facebookLoading, setFacebookLoading] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
+
+  const googleClientIds = useMemo(
+    () => ({
+      androidClientId:
+        process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID ||
+        Constants.expoConfig?.extra?.GOOGLE_ANDROID_CLIENT_ID,
+      iosClientId:
+        process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID ||
+        Constants.expoConfig?.extra?.GOOGLE_IOS_CLIENT_ID,
+      webClientId:
+        process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID ||
+        Constants.expoConfig?.extra?.GOOGLE_WEB_CLIENT_ID,
+    }),
+    []
+  );
+
+  const [googleRequest, , promptGoogleAuth] = Google.useAuthRequest({
+    ...googleClientIds,
+    scopes: ["openid", "profile", "email"],
+    responseType: AuthSession.ResponseType.Code,
+    usePKCE: true,
+  });
 
 
   const login = async () => {
@@ -822,6 +856,70 @@ function LoginScreen({
     }
   };
 
+  const loginWithGoogle = async () => {
+    if (!googleRequest) {
+      showFlash?.("error", "Google Sign-In is not configured yet.");
+      return;
+    }
+
+    setGoogleLoading(true);
+    try {
+      const result = await promptGoogleAuth();
+      if (result?.type !== "success") {
+        return;
+      }
+
+      const authCode = result?.params?.code;
+      const idToken = result?.params?.id_token || result?.authentication?.idToken;
+      const payload = authCode ? { code: authCode } : idToken ? { id_token: idToken } : null;
+
+      if (!payload) {
+        showFlash?.("error", "Unable to read Google login token. Please try again.");
+        return;
+      }
+
+      const res = await apiClient.post(`/auth/google`, payload);
+      await saveToken(res.data.access_token);
+      await saveRefreshToken(res.data.refresh_token);
+
+      if (res.data?.needs_onboarding) {
+        onGoogleOnboardingRequired?.({
+          initialPhone: "",
+          initialIsProvider: false,
+        });
+        return;
+      }
+
+      let meData = null;
+      try {
+        const meRes = await apiClient.get(`/users/me`);
+        meData = meRes.data;
+      } catch (meError) {
+        console.log("[auth] Failed to fetch /users/me after Google login", meError?.message || meError);
+      }
+
+      setToken({
+        token: res.data.access_token,
+        userId: meData?.id || meData?.user_id || res.data.user_id,
+        email: meData?.email || res.data.email,
+        username: meData?.username,
+        isProvider: typeof meData?.is_provider === "boolean" ? meData?.is_provider : res.data.is_provider,
+        isAdmin: typeof meData?.is_admin === "boolean" ? meData?.is_admin : res.data.is_admin,
+      });
+
+      setIsAdmin(
+        typeof meData?.is_admin === "boolean" ? meData?.is_admin : !!res.data.is_admin
+      );
+
+      showFlash?.("success", "Logged in successfully");
+    } catch (error) {
+      console.log("Google login error:", error?.response?.data || error?.message || error);
+      showFlash?.("error", "Google login failed. Please try again.");
+    } finally {
+      setGoogleLoading(false);
+    }
+  };
+
 return (
     <KeyboardAvoidingView
       style={styles.avoider}
@@ -902,6 +1000,19 @@ return (
               )}
             </View>
           )}
+
+          <View style={{ width: "100%", marginBottom: 12 }}>
+            {googleLoading ? (
+              <ActivityIndicator size="large" color={colors.primary} />
+            ) : (
+              <TouchableOpacity
+                style={styles.googleButton}
+                onPress={loginWithGoogle}
+              >
+                <Text style={styles.googleButtonText}>Continue with Google</Text>
+              </TouchableOpacity>
+            )}
+          </View>
 
           {goToForgot && (
             <TouchableOpacity onPress={goToForgot} style={styles.forgotLink}>
@@ -1078,20 +1189,20 @@ function ForgotPasswordScreen({ goToLogin, goBack, showFlash }) {
 }
 
 function FinishSetupScreen({
-  facebookSetup,
+  setupContext,
   setToken,
   setIsAdmin,
   goBackToLogin,
   showFlash,
 }) {
-  const [phone, setPhone] = useState(facebookSetup?.initialPhone || "");
-  const [email, setEmail] = useState(facebookSetup?.initialEmail || "");
+  const [phone, setPhone] = useState(setupContext?.initialPhone || "");
+  const [email, setEmail] = useState(setupContext?.initialEmail || "");
   const [isProvider, setIsProvider] = useState(
-    facebookSetup?.initialIsProvider || false
+    setupContext?.initialIsProvider || false
   );
   const [submitting, setSubmitting] = useState(false);
 
-  const requiresEmail = !!facebookSetup?.requiresEmail;
+  const requiresEmail = !!setupContext?.requiresEmail;
 
   const submitFinishSetup = async () => {
     const trimmedPhone = phone.trim();
@@ -1099,6 +1210,11 @@ function FinishSetupScreen({
 
     if (!trimmedPhone) {
       showFlash?.("error", "Phone is required.");
+      return;
+    }
+
+    if (!/^\d+$/.test(trimmedPhone)) {
+      showFlash?.("error", "Phone must contain only digits.");
       return;
     }
 
@@ -1114,26 +1230,54 @@ function FinishSetupScreen({
 
     setSubmitting(true);
     try {
-      const payload = {
-        facebook_access_token: facebookSetup?.facebookAccessToken,
-        phone: trimmedPhone,
-        is_provider: isProvider,
-      };
+      if (setupContext?.mode === "facebook") {
+        const payload = {
+          facebook_access_token: setupContext?.facebookAccessToken,
+          phone: trimmedPhone,
+          is_provider: isProvider,
+        };
 
-      if (trimmedEmail) {
-        payload.email = trimmedEmail.toLowerCase();
+        if (trimmedEmail) {
+          payload.email = trimmedEmail.toLowerCase();
+        }
+
+        const res = await apiClient.post(`/auth/facebook/complete`, payload);
+        await persistFacebookSession({
+          responseData: res.data,
+          setToken,
+          setIsAdmin,
+        });
+      } else {
+        await apiClient.post(`/auth/complete-profile`, {
+          phone: trimmedPhone,
+          is_provider: isProvider,
+        });
+
+        const meRes = await apiClient.get(`/users/me`);
+        const meData = meRes.data;
+        const latestToken = await loadToken();
+        setToken({
+          token: latestToken,
+          userId: meData?.id || meData?.user_id,
+          email: meData?.email,
+          username: meData?.username,
+          isProvider: Boolean(meData?.is_provider),
+          isAdmin: Boolean(meData?.is_admin),
+        });
+        setIsAdmin(Boolean(meData?.is_admin));
       }
 
-      const res = await apiClient.post(`/auth/facebook/complete`, payload);
-      await persistFacebookSession({
-        responseData: res.data,
-        setToken,
-        setIsAdmin,
-      });
       showFlash?.("success", "Logged in successfully");
     } catch (error) {
       const errorCode = normalizeErrorCode(error?.response?.data);
-      showFlash?.("error", getFacebookCompleteErrorMessage(errorCode));
+      const detailMessage = String(error?.response?.data?.detail || "").toLowerCase();
+      if (errorCode === "PHONE_TAKEN" || detailMessage.includes("phone") && detailMessage.includes("use")) {
+        showFlash?.("error", "This phone number is already in use.");
+      } else if (setupContext?.mode === "facebook") {
+        showFlash?.("error", getFacebookCompleteErrorMessage(errorCode));
+      } else {
+        showFlash?.("error", "Unable to complete setup. Please try again.");
+      }
     } finally {
       setSubmitting(false);
     }
@@ -1155,7 +1299,7 @@ function FinishSetupScreen({
 
             <TextInput
               style={styles.input}
-              placeholder="Phone"
+              placeholder="Phone (592XXXXXXX)"
               placeholderTextColor={styles.inputPlaceholder.color}
               value={phone}
               onChangeText={setPhone}
@@ -1184,7 +1328,10 @@ function FinishSetupScreen({
               accessibilityState={{ checked: isProvider }}
             >
               <View style={styles.toggleTextGroup}>
-                <Text style={styles.toggleLabel}>I’m a provider</Text>
+                <Text style={styles.toggleLabel}>Register as Service Provider</Text>
+                <Text style={styles.toggleHelper}>
+                  Turn this on if you offer services to clients.
+                </Text>
               </View>
               <Switch value={isProvider} onValueChange={setIsProvider} />
             </Pressable>
@@ -8338,7 +8485,7 @@ function App() {
   const [authMode, setAuthMode] = useState("landing"); // 'landing' | 'login' | 'signup' | 'forgot' | 'verifyEmail' | 'finishSetup'
   const [pendingVerifyEmail, setPendingVerifyEmail] = useState("");
   const [isAdmin, setIsAdmin] = useState(false);
-  const [facebookSetup, setFacebookSetup] = useState(null);
+  const [setupContext, setSetupContext] = useState(null);
   const [pendingDeepLinkUsername, setPendingDeepLinkUsername] = useState(null);
   const [navReady, setNavReady] = useState(false);
   const navReadyRef = useRef(false);
@@ -8551,15 +8698,25 @@ function App() {
             console.log("[auth] /users/me success", meRes?.status);
             const latestToken = await getAuthToken();
             if (isActive) {
-              setToken({
-                token: latestToken || restoredToken,
-                userId: meRes.data?.id || meRes.data?.user_id,
-                email: meRes.data?.email,
-                username: meRes.data?.username,
-                isProvider: Boolean(meRes.data?.is_provider),
-                isAdmin: Boolean(meRes.data?.is_admin),
-              });
-              setIsAdmin(Boolean(meRes.data?.is_admin));
+              if (isOnboardingIncomplete(meRes.data)) {
+                setSetupContext({
+                  mode: "google",
+                  initialPhone: meRes.data?.phone || "",
+                  initialIsProvider: Boolean(meRes.data?.is_provider),
+                });
+                setAuthMode("finishSetup");
+                setToken(null);
+              } else {
+                setToken({
+                  token: latestToken || restoredToken,
+                  userId: meRes.data?.id || meRes.data?.user_id,
+                  email: meRes.data?.email,
+                  username: meRes.data?.username,
+                  isProvider: Boolean(meRes.data?.is_provider),
+                  isAdmin: Boolean(meRes.data?.is_admin),
+                });
+                setIsAdmin(Boolean(meRes.data?.is_admin));
+              }
             }
           } catch (err) {
             console.log(
@@ -8682,7 +8839,11 @@ function App() {
                 setToken={setToken}
                 setIsAdmin={setIsAdmin}
                 onFacebookSetupRequired={(payload) => {
-                  setFacebookSetup(payload);
+                  setSetupContext({ mode: "facebook", ...payload });
+                  setAuthMode("finishSetup");
+                }}
+                onGoogleOnboardingRequired={(payload) => {
+                  setSetupContext({ mode: "google", ...payload });
                   setAuthMode("finishSetup");
                 }}
                 onEmailNotVerified={(attemptedEmail) => {
@@ -8728,11 +8889,11 @@ function App() {
 
             {authMode === "finishSetup" && (
               <FinishSetupScreen
-                facebookSetup={facebookSetup}
+                setupContext={setupContext}
                 setToken={setToken}
                 setIsAdmin={setIsAdmin}
                 goBackToLogin={() => {
-                  setFacebookSetup(null);
+                  setSetupContext(null);
                   setAuthMode("login");
                 }}
                 showFlash={showFlash}
@@ -10463,6 +10624,19 @@ facebookButton: {
 },
 facebookButtonText: {
   color: "#ffffff",
+  fontSize: 16,
+  fontWeight: "600",
+},
+googleButton: {
+  backgroundColor: "#ffffff",
+  paddingVertical: 12,
+  borderRadius: 8,
+  alignItems: "center",
+  borderWidth: 1,
+  borderColor: colors.border,
+},
+googleButtonText: {
+  color: colors.textPrimary,
   fontSize: 16,
   fontWeight: "600",
 },

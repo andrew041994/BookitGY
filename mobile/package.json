@@ -21,6 +21,7 @@
     "axios": "^1.13.2",
     "babel-preset-expo": "~54.0.10",
     "expo": "^54.0.33",
+    "expo-auth-session": "~6.1.0",
     "expo-build-properties": "~1.0.10",
     "expo-constants": "^18.0.13",
     "expo-image-picker": "~17.0.10",
