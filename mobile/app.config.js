@@ -5,7 +5,7 @@ console.log(">>> USING app.config.js <<<");
 export default {
   name: "BookitGY",
   slug: "bookitgy",
-  scheme: "bookitgy",
+  scheme: "com.googleusercontent.apps.887566895968-vb27nom663urb6ni2mk46dgsl21a836u",
   version: "1.0.1",
   orientation: "portrait",
   icon: "./assets/icon.png",
