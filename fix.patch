@@ -1,11 +1,9 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
 diff --git a/mobile/App.js b/mobile/App.js
-index ec3df7db58e03cb6dc83cde9305aa86573df032f..7bcc8ea7f730092b49fffdcfd3f47b4ea5a7f961 100644
+index 28b3f06418ca6424399f03eff7fe7dcb0cf28477..02ef475cbab600ddfeaf10b2d477f1a82a6c75bb 100644
 --- a/mobile/App.js
 +++ b/mobile/App.js
-@@ -647,66 +647,64 @@ function LandingScreen({ goToLogin, goToSignup }) {
- 
- // 🔹 Dedicated login screen component
+@@ -649,64 +649,76 @@ function LandingScreen({ goToLogin, goToSignup }) {
  const ENABLE_FACEBOOK_AUTH = process.env.EXPO_PUBLIC_ENABLE_FACEBOOK_AUTH === "true";
  
  function LoginScreen({
@@ -29,32 +27,48 @@ index ec3df7db58e03cb6dc83cde9305aa86573df032f..7bcc8ea7f730092b49fffdcfd3f47b4e
    const [facebookLoading, setFacebookLoading] = useState(false);
    const [googleLoading, setGoogleLoading] = useState(false);
  
--  // const useProxy = Constants.appOwnership === "expo";
--//  const redirectUri = "https://auth.expo.io/@andrew041994/bookitgy";
--  
+   // Expo Go requires the proxy redirect, while standalone/TestFlight should use app scheme redirects.
+   const useProxy = Constants.appOwnership === "expo"; // Expo Go only
+- const redirectUri = AuthSession.makeRedirectUri({
+-  scheme: "bookitgy",
+-  useProxy,
+-});
+-  console.log("[google] useProxy =", useProxy, "redirectUri =", redirectUri);
 -
--
--  const useProxy = true; // for Expo Go testing
--const PROXY_REDIRECT = "https://auth.expo.io/@andrew041994/bookitgy";
--
--const redirectUri = PROXY_REDIRECT;
--console.log("[google] redirectUri =", redirectUri);
-+  // Expo Go requires the proxy redirect, while standalone/TestFlight should use app scheme redirects.
-+  const useProxy = Constants.appOwnership === "expo";
+-const [request, response, promptAsync] = Google.useAuthRequest({
+-  expoClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID, // <-- IMPORTANT
+-  iosClientId: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID,
+-  androidClientId: process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID,
+-  webClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
+-  responseType: AuthSession.ResponseType.IdToken,
+-  redirectUri,
+-});
++  const googleIosClientId = (process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID || "").trim();
++  const googleIosSchemeMatch = googleIosClientId.match(/-(.+)\.apps\.googleusercontent\.com$/);
++  const googleIosScheme =
++    (process.env.EXPO_PUBLIC_GOOGLE_IOS_REVERSED_CLIENT_ID || "").trim() ||
++    (googleIosSchemeMatch ? `com.googleusercontent.apps.${googleIosSchemeMatch[1]}` : undefined);
 +  const redirectUri = AuthSession.makeRedirectUri({
 +    useProxy,
-+    scheme: "bookitgy",
++    scheme: googleIosScheme,
 +  });
-+  console.log("[google] useProxy =", useProxy, "redirectUri =", redirectUri);
- 
- const [request, response, promptAsync] = Google.useAuthRequest({
-   expoClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID, // <-- IMPORTANT
-   iosClientId: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID,
-   androidClientId: process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID,
-   webClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
-+  responseType: AuthSession.ResponseType.IdToken,
-   redirectUri,
- });
++  console.log(
++    "[google] useProxy =",
++    useProxy,
++    "scheme =",
++    googleIosScheme,
++    "redirectUri =",
++    redirectUri
++  );
++
++  const [request, response, promptAsync] = Google.useAuthRequest({
++    expoClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID, // <-- IMPORTANT
++    iosClientId: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID,
++    androidClientId: process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID,
++    webClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
++    responseType: AuthSession.ResponseType.IdToken,
++    redirectUri,
++  });
  
    const pendingGoogleLinkEmailLabel = pendingGoogleLink?.email || "this email";
  
@@ -78,155 +92,8 @@ index ec3df7db58e03cb6dc83cde9305aa86573df032f..7bcc8ea7f730092b49fffdcfd3f47b4e
        const body = new URLSearchParams({
          username: normalizedEmail,
          password: password,
-@@ -867,74 +865,77 @@ const [request, response, promptAsync] = Google.useAuthRequest({
-           });
-           return;
-         }
+       }).toString();
  
-         showFlash?.("error", getFacebookCompleteErrorMessage(errorCode));
-       }
-     } catch (error) {
-       console.log("Facebook login error:", error?.response?.data || error?.message || error);
-       showFlash?.("error", "Facebook login failed. Please try again.");
-     } finally {
-       setFacebookLoading(false);
-     }
-   };
- 
-   const loginWithGoogle = async () => {
-     if (!request) {
-       showFlash?.("error", "Google Sign-In is not configured yet.");
-       return;
-     }
- 
-     let googleAuthResult = null;
-     let googleTokenPayload = null;
- 
-     setGoogleLoading(true);
-     try {
--      const result = await promptAsync({ useProxy: true });
-+      const result = await promptAsync({ useProxy });
-       googleAuthResult = result;
-       if (result?.type !== "success") {
-         return;
-       }
- 
--      const idToken =
-+      const idTokenRaw =
-         googleAuthResult?.authentication?.idToken ||
-         googleAuthResult?.params?.id_token ||
--        googleTokenPayload?.idToken ||
-         null;
-+      const idToken = typeof idTokenRaw === "string" ? idTokenRaw.trim() : "";
- 
-       console.log("[google] id_token present?", Boolean(idToken), "len=", idToken?.length);
- 
-+      if (!idToken) {
-+        showFlash?.(
-+          "error",
-+          "Google did not return an ID token. Check responseType/client IDs/redirect."
-+        );
-+        return;
-+      }
-+
-       const payload = {
-         id_token: idToken,
-       };
-       googleTokenPayload = payload;
- 
--      if (!payload) {
--        showFlash?.("error", "Unable to read Google login token. Please try again.");
--        return;
--      }
--
-       const res = await apiClient.post(`/auth/google`, payload);
-       await saveToken(res.data.access_token);
-       await saveRefreshToken(res.data.refresh_token);
- 
-       if (res.data?.needs_onboarding) {
-         onGoogleOnboardingRequired?.({
-           initialPhone: "",
-           initialIsProvider: false,
-         });
-         return;
-       }
- 
-       let meData = null;
-       try {
-         const meRes = await apiClient.get(`/users/me`);
-         meData = meRes.data;
-       } catch (meError) {
-         console.log("[auth] Failed to fetch /users/me after Google login", meError?.message || meError);
-       }
- 
-       setToken({
-         token: res.data.access_token,
-         userId: meData?.id || meData?.user_id || res.data.user_id,
-         email: meData?.email || res.data.email,
-         username: meData?.username,
-@@ -957,51 +958,61 @@ const [request, response, promptAsync] = Google.useAuthRequest({
-         data?.detail?.code ||
-         normalizeErrorCode(data);
-       const statusCode = error?.response?.status;
- 
-       if (
-         errorCode === "EMAIL_EXISTS_NOT_LINKED" &&
-         (statusCode === 400 || statusCode === 409)
-       ) {
-         const googleEmail =
-           googleAuthResult?.params?.email ||
-           googleAuthResult?.authentication?.email ||
-           googleAuthResult?.params?.login_hint ||
-           null;
- 
-         onGoogleLinkRequired?.({
-           tokenPayload: googleTokenPayload,
-           email: googleEmail,
-         });
-         showFlash?.(
-           "error",
-           "An account already exists with this email. Log in with your password to link Google."
-         );
-         return;
-       }
- 
--      showFlash?.("error", "Google login failed. Please try again.");
-+      const backendCode =
-+        data?.code ||
-+        data?.detail?.code ||
-+        null;
-+
-+      showFlash?.(
-+        "error",
-+        backendCode
-+          ? `Google login failed (${backendCode}). Please try again.`
-+          : "Google login failed. Please try again."
-+      );
-     } finally {
-       setGoogleLoading(false);
-     }
-   };
- 
- return (
-     <KeyboardAvoidingView
-       style={styles.avoider}
-       behavior={Platform.OS === "ios" ? "padding" : "height"}
-       keyboardVerticalOffset={Platform.OS === "ios" ? 40 : 0} // tweak if needed
- 
-     >
-       <ScrollView
-         contentContainerStyle={styles.scrollContent}
-         keyboardShouldPersistTaps="handled"
-       >
-         <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-           <View style={styles.container}>
-             <View style={styles.logoWrapper}>
-               <Image
-                 source={BookitGYLogoTransparent}
-                 style={styles.logo}
-               />
-             </View>
-         <Text style={styles.title}>Login</Text>
  
 EOF
 )

@@ -671,20 +671,32 @@ function LoginScreen({
 
   // Expo Go requires the proxy redirect, while standalone/TestFlight should use app scheme redirects.
   const useProxy = Constants.appOwnership === "expo"; // Expo Go only
- const redirectUri = AuthSession.makeRedirectUri({
-  scheme: "bookitgy",
-  useProxy,
-});
-  console.log("[google] useProxy =", useProxy, "redirectUri =", redirectUri);
+  const googleIosClientId = (process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID || "").trim();
+  const googleIosSchemeMatch = googleIosClientId.match(/-(.+)\.apps\.googleusercontent\.com$/);
+  const googleIosScheme =
+    (process.env.EXPO_PUBLIC_GOOGLE_IOS_REVERSED_CLIENT_ID || "").trim() ||
+    (googleIosSchemeMatch ? `com.googleusercontent.apps.${googleIosSchemeMatch[1]}` : undefined);
+  const redirectUri = AuthSession.makeRedirectUri({
+    useProxy,
+    scheme: googleIosScheme,
+  });
+  console.log(
+    "[google] useProxy =",
+    useProxy,
+    "scheme =",
+    googleIosScheme,
+    "redirectUri =",
+    redirectUri
+  );
 
-const [request, response, promptAsync] = Google.useAuthRequest({
-  expoClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID, // <-- IMPORTANT
-  iosClientId: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID,
-  androidClientId: process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID,
-  webClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
-  responseType: AuthSession.ResponseType.IdToken,
-  redirectUri,
-});
+  const [request, response, promptAsync] = Google.useAuthRequest({
+    expoClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID, // <-- IMPORTANT
+    iosClientId: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID,
+    androidClientId: process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID,
+    webClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
+    responseType: AuthSession.ResponseType.IdToken,
+    redirectUri,
+  });
 
   const pendingGoogleLinkEmailLabel = pendingGoogleLink?.email || "this email";
 
