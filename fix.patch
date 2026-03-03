@@ -1,58 +1,120 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
-diff --git a/mobile/package.json b/mobile/package.json
-index d1964c684719bbaf45e31bba653debc159038049..0b98d8df958bd07613ae14c9fe1c34abeaf65a0d 100644
---- a/mobile/package.json
-+++ b/mobile/package.json
-@@ -1,48 +1,49 @@
- {
-   "name": "guyana-booker-mobile",
-   "version": "1.0.0",
-   "main": "node_modules/expo/AppEntry.js",
-   "scripts": {
-     "start": "expo start",
-     "android": "expo run:android",
-     "ios": "expo run:ios",
-     "version:bump": "node ./scripts/bump-version.mjs --patch",
-     "version:bump:minor": "node ./scripts/bump-version.mjs --minor",
-     "version:bump:major": "node ./scripts/bump-version.mjs --major",
-     "version:set": "node ./scripts/bump-version.mjs --set",
-     "ios:release": "npm run version:bump && eas build -p ios --profile production",
-     "android:release": "npm run version:bump && eas build -p android --profile production"
-   },
-   "dependencies": {
-     "@react-native-async-storage/async-storage": "2.2.0",
-     "@react-native-community/datetimepicker": "8.4.4",
-     "@react-navigation/bottom-tabs": "^6.6.1",
-     "@react-navigation/native": "^6.1.18",
-     "axios": "^1.13.2",
-     "babel-preset-expo": "~54.0.10",
-     "expo": "^54.0.33",
-+    "expo-auth-session": "~6.1.0",
-     "expo-build-properties": "~1.0.10",
-     "expo-constants": "^18.0.13",
-     "expo-image-picker": "~17.0.10",
-     "expo-linking": "^8.0.11",
-     "expo-location": "~19.0.8",
-     "expo-secure-store": "~15.0.8",
-     "react": "19.1.0",
-     "react-dom": "19.1.0",
-     "react-native": "0.81.5",
-     "react-native-calendars": "^1.1314.0",
-     "react-native-dotenv": "^3.4.11",
-     "react-native-gesture-handler": "~2.28.0",
-     "react-native-maps": "1.20.1",
-     "react-native-safe-area-context": "~5.6.0",
-     "react-native-screens": "~4.16.0",
-     "react-native-web": "^0.21.0",
-     "sentry-expo": "~7.0.0",
-     "tslib": "^2.8.1"
-   },
-   "devDependencies": {
-     "@babel/core": "^7.20.0",
-     "@react-native-community/cli": "^20.1.1",
-     "@types/react": "~19.1.10",
-     "@types/react-dom": "~19.1.7",
-     "typescript": "~5.9.2"
+diff --git a/mobile/App.js b/mobile/App.js
+index 161dcb239653044d34768f90bb7bd4e2fd77860d..f2b1b8fe48875037e4952108959c14ce6e1ee175 100644
+--- a/mobile/App.js
++++ b/mobile/App.js
+@@ -8647,51 +8647,55 @@ function App() {
+       authBootstrapRef.current.inFlight = true;
+       const bootstrapStartedAt = Date.now();
+       console.log("[auth] bootstrap start");
+       try {
+         const restoredToken = await withTimeout(
+           getAuthToken(),
+           AUTH_TOKEN_TIMEOUT_MS,
+           "getAuthToken"
+         );
+         console.log("[auth] token loaded:", Boolean(restoredToken));
+ 
+         if (!restoredToken) {
+           if (isActive) setToken(null);
+         } else {
+           try {
+             const meRes = await withTimeout(
+               apiClient.get("/users/me", {
+                 timeout: AUTH_ME_TIMEOUT_MS,
+               }),
+               AUTH_ME_TIMEOUT_MS,
+               "/users/me"
+             );
+             console.log("[auth] /users/me success", meRes?.status);
+             const latestToken = await getAuthToken();
+             if (isActive) {
+-              if (isOnboardingIncomplete(meRes.data)) {
++              const needsOnboarding =
++                isOnboardingIncomplete(meRes.data) &&
++                (meRes.data?.auth_provider === "google" || meRes.data?.google_sub);
++
++              if (needsOnboarding) {
+                 setSetupContext({
+                   mode: "google",
+                   initialPhone: meRes.data?.phone || "",
+                   initialIsProvider: Boolean(meRes.data?.is_provider),
+                 });
+                 setAuthMode("finishSetup");
+                 setToken(null);
+               } else {
+                 setToken({
+                   token: latestToken || restoredToken,
+                   userId: meRes.data?.id || meRes.data?.user_id,
+                   email: meRes.data?.email,
+                   username: meRes.data?.username,
+                   isProvider: Boolean(meRes.data?.is_provider),
+                   isAdmin: Boolean(meRes.data?.is_admin),
+                 });
+                 setIsAdmin(Boolean(meRes.data?.is_admin));
+               }
+             }
+           } catch (err) {
+             console.log(
+               "[auth] Failed to load user info during bootstrap",
+               err?.message || err
+             );
+             console.log(
+@@ -8841,51 +8845,53 @@ function App() {
+             )}
+ 
+             {authMode === "verifyEmail" && (
+               <VerifyEmailScreen
+                 email={pendingVerifyEmail}
+                 showFlash={showFlash}
+                 goToLogin={() => {
+                   setPendingVerifyEmail("");
+                   setAuthMode("login");
+                 }}
+               />
+             )}
+             {authMode === "forgot" && (
+               <ForgotPasswordScreen
+                 goToLogin={() => setAuthMode("login")}
+                 goBack={() => setAuthMode("landing")}
+                 showFlash={showFlash}
+               />
+             )}
+ 
+             {authMode === "finishSetup" && (
+               <FinishSetupScreen
+                 setupContext={setupContext}
+                 setToken={setToken}
+                 setIsAdmin={setIsAdmin}
+-                goBackToLogin={() => {
++                goBackToLogin={async () => {
++                  try { await clearAllAuthTokens(); } catch (e) {}
++                  try { await AsyncStorage.removeItem(LEGACY_ACCESS_TOKEN_KEY); } catch (e) {}
+                   setSetupContext(null);
+                   setAuthMode("login");
+                 }}
+                 showFlash={showFlash}
+               />
+             )}
+           </>
+         ) : (
+           <MainApp
+             authLoading={authLoading}
+             token={token}
+             setToken={setToken}
+             showFlash={showFlash}
+             navigationRef={navigationRef}
+             setNavReady={setNavReady}
+           />
+         )}
+       </SafeAreaView>
+     </SafeAreaProvider>
+   );
+ }
+ 
+ 
+ 
+ 
  
 EOF
 )

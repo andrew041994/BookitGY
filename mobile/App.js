@@ -8669,7 +8669,11 @@ function App() {
             console.log("[auth] /users/me success", meRes?.status);
             const latestToken = await getAuthToken();
             if (isActive) {
-              if (isOnboardingIncomplete(meRes.data)) {
+              const needsOnboarding =
+                isOnboardingIncomplete(meRes.data) &&
+                (meRes.data?.auth_provider === "google" || meRes.data?.google_sub);
+
+              if (needsOnboarding) {
                 setSetupContext({
                   mode: "google",
                   initialPhone: meRes.data?.phone || "",
@@ -8863,7 +8867,9 @@ function App() {
                 setupContext={setupContext}
                 setToken={setToken}
                 setIsAdmin={setIsAdmin}
-                goBackToLogin={() => {
+                goBackToLogin={async () => {
+                  try { await clearAllAuthTokens(); } catch (e) {}
+                  try { await AsyncStorage.removeItem(LEGACY_ACCESS_TOKEN_KEY); } catch (e) {}
                   setSetupContext(null);
                   setAuthMode("login");
                 }}
