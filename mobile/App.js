@@ -669,26 +669,20 @@ function LoginScreen({
   const [facebookLoading, setFacebookLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
 
-  const googleClientIds = useMemo(
-    () => ({
-      androidClientId:
-        process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID ||
-        Constants.expoConfig?.extra?.GOOGLE_ANDROID_CLIENT_ID,
-      iosClientId:
-        process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID ||
-        Constants.expoConfig?.extra?.GOOGLE_IOS_CLIENT_ID,
-      webClientId:
-        process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID ||
-        Constants.expoConfig?.extra?.GOOGLE_WEB_CLIENT_ID,
-    }),
-    []
-  );
+  const useProxy = Constants.appOwnership === "expo";
+
+  const redirectUri = AuthSession.makeRedirectUri({
+    useProxy,
+    scheme: "bookitgy",
+  });
+
+  console.log("[google] redirectUri =", redirectUri);
 
   const [googleRequest, , promptGoogleAuth] = Google.useAuthRequest({
-    ...googleClientIds,
-    scopes: ["openid", "profile", "email"],
-    responseType: AuthSession.ResponseType.Code,
-    usePKCE: true,
+    iosClientId: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID,
+    androidClientId: process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID,
+    webClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
+    redirectUri,
   });
 
   const pendingGoogleLinkEmailLabel = pendingGoogleLink?.email || "this email";
@@ -892,7 +886,7 @@ function LoginScreen({
 
     setGoogleLoading(true);
     try {
-      const result = await promptGoogleAuth();
+      const result = await promptGoogleAuth({ useProxy });
       googleAuthResult = result;
       if (result?.type !== "success") {
         return;
