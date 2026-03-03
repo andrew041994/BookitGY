@@ -670,17 +670,32 @@ function LoginScreen({
   const [googleLoading, setGoogleLoading] = useState(false);
 
   // Expo Go requires the proxy redirect, while standalone/TestFlight should use app scheme redirects.
-  const useProxy = Constants.appOwnership === "expo"; // Expo Go only
+  
+const isExpoGo = Constants.appOwnership === "expo"; // only true in Expo Go
+const useProxy = isExpoGo; // false in dev-client / TestFlight / App Store
 
 console.log("[google] useProxy =", useProxy);
 
-const [request, response, promptAsync] = Google.useAuthRequest({
-  expoClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
-  iosClientId: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID,
-  androidClientId: process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID,
-  webClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
-  responseType: AuthSession.ResponseType.IdToken,
-});
+const discovery = AuthSession.useAutoDiscovery("https://accounts.google.com");
+
+const [request, response, promptAsync] = Google.useAuthRequest(
+  {
+    expoClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
+    iosClientId: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID,
+    androidClientId: process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID,
+    webClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
+
+    // ✅ code flow (not id_token)
+    responseType: AuthSession.ResponseType.Code,
+
+    // ✅ ensures code_verifier / code_challenge are used
+    usePKCE: true,
+
+    // ✅ make sure you ask for openid so token exchange includes id_token
+    scopes: ["openid", "profile", "email"],
+  },
+  discovery
+);
 
   const pendingGoogleLinkEmailLabel = pendingGoogleLink?.email || "this email";
 
@@ -872,129 +887,184 @@ const [request, response, promptAsync] = Google.useAuthRequest({
     }
   };
 
-  const loginWithGoogle = async () => {
+  // DROP-IN replacement for loginWithGoogle
+// Requires these to exist in your file/scope already:
+// - request, promptAsync, useProxy, apiClient, saveToken, saveRefreshToken
+// - setToken, setIsAdmin, setGoogleLoading, showFlash
+// - onGoogleOnboardingRequired, onGoogleLinkRequired, clearPendingGoogleLink
+// - normalizeErrorCode, AuthSession (imported), and ideally `discovery` (see note below)
+//
+// IMPORTANT: This assumes you changed your Google auth request to ResponseType.Code + usePKCE:true
+// (otherwise `result.params.code` won't exist).
+
+const loginWithGoogle = async () => {
+  if (!request) {
+    showFlash?.("error", "Google Sign-In is not configured yet.");
+    return;
+  }
+
+  let googleAuthResult = null;
+  let googleTokenPayload = null;
+
+  setGoogleLoading(true);
+  try {
     if (!request) {
-      showFlash?.("error", "Google Sign-In is not configured yet.");
+      showFlash?.("error", "Google not ready yet.");
       return;
     }
 
-    let googleAuthResult = null;
-    let googleTokenPayload = null;
+console.log("[google] request.url:", request?.url);
+console.log("[google] responseType:", request?.responseType);
+console.log("[google] codeVerifier present?", Boolean(request?.codeVerifier));
+console.log("[google] redirectUri:", request?.redirectUri);
 
-    setGoogleLoading(true);
-    try {
-        if (!request) {
-        showFlash?.("error", "Google not ready yet.");
-        return;
-      }
-      const result = await promptAsync({ useProxy });
-      googleAuthResult = result;
-      if (result?.type !== "success") {
-        return;
-      }
+    const result = await promptAsync({ useProxy });
+    googleAuthResult = result;
 
-      const idTokenRaw =
-        googleAuthResult?.authentication?.idToken ||
-        googleAuthResult?.params?.id_token ||
-        null;
-      const idToken = typeof idTokenRaw === "string" ? idTokenRaw.trim() : "";
+    if (result?.type !== "success") {
+      return;
+    }
 
-      console.log("[google] id_token present?", Boolean(idToken), "len=", idToken?.length);
+    // --- Code Flow (PKCE): get the authorization code ---
+    const codeRaw = result?.params?.code ?? null;
+    const code = typeof codeRaw === "string" ? codeRaw.trim() : "";
 
-      if (!idToken) {
-        showFlash?.(
-          "error",
-          "Google did not return an ID token. Check responseType/client IDs/redirect."
-        );
-        return;
-      }
+    console.log("[google] code present?", Boolean(code), "len=", code?.length);
 
-      const payload = {
-        id_token: idToken,
-      };
-      googleTokenPayload = payload;
-
-      const res = await apiClient.post(`/auth/google`, payload);
-      await saveToken(res.data.access_token);
-      await saveRefreshToken(res.data.refresh_token);
-
-      if (res.data?.needs_onboarding) {
-        onGoogleOnboardingRequired?.({
-          initialPhone: "",
-          initialIsProvider: false,
-        });
-        return;
-      }
-
-      let meData = null;
-      try {
-        const meRes = await apiClient.get(`/users/me`);
-        meData = meRes.data;
-      } catch (meError) {
-        console.log("[auth] Failed to fetch /users/me after Google login", meError?.message || meError);
-      }
-
-      setToken({
-        token: res.data.access_token,
-        userId: meData?.id || meData?.user_id || res.data.user_id,
-        email: meData?.email || res.data.email,
-        username: meData?.username,
-        isProvider: typeof meData?.is_provider === "boolean" ? meData?.is_provider : res.data.is_provider,
-        isAdmin: typeof meData?.is_admin === "boolean" ? meData?.is_admin : res.data.is_admin,
-      });
-
-      setIsAdmin(
-        typeof meData?.is_admin === "boolean" ? meData?.is_admin : !!res.data.is_admin
-      );
-
-      clearPendingGoogleLink?.();
-      showFlash?.("success", "Logged in successfully");
-    } catch (error) {
-      console.log("Google login error:", error?.response?.data || error?.message || error);
-      const data = error?.response?.data;
-
-      const errorCode =
-        data?.code ||
-        data?.detail?.code ||
-        normalizeErrorCode(data);
-      const statusCode = error?.response?.status;
-
-      if (
-        errorCode === "EMAIL_EXISTS_NOT_LINKED" &&
-        (statusCode === 400 || statusCode === 409)
-      ) {
-        const googleEmail =
-          googleAuthResult?.params?.email ||
-          googleAuthResult?.authentication?.email ||
-          googleAuthResult?.params?.login_hint ||
-          null;
-
-        onGoogleLinkRequired?.({
-          tokenPayload: googleTokenPayload,
-          email: googleEmail,
-        });
-        showFlash?.(
-          "error",
-          "An account already exists with this email. Log in with your password to link Google."
-        );
-        return;
-      }
-
-      const backendCode =
-        data?.code ||
-        data?.detail?.code ||
-        null;
-
+    if (!code) {
       showFlash?.(
         "error",
-        backendCode
-          ? `Google login failed (${backendCode}). Please try again.`
-          : "Google login failed. Please try again."
+        "Google did not return an auth code. Ensure responseType=Code and usePKCE=true."
       );
-    } finally {
-      setGoogleLoading(false);
+      return;
     }
-  };
+
+    // --- Exchange code -> tokens (id_token will be returned here) ---
+    // Prefer the request-generated redirectUri to avoid mismatch.
+    const redirectUri =
+      request?.redirectUri ||
+      AuthSession.makeRedirectUri({ scheme: process.env.EXPO_PUBLIC_GOOGLE_IOS_REVERSED_CLIENT_ID });
+
+    // Use whatever discovery you already have in scope (recommended):
+    // const discovery = AuthSession.useAutoDiscovery("https://accounts.google.com");
+    // If you don't have it, you must define it where hooks are allowed (top-level in component).
+    if (typeof discovery === "undefined" || !discovery?.tokenEndpoint) {
+      showFlash?.(
+        "error",
+        "Google discovery not ready. Ensure you defined: const discovery = AuthSession.useAutoDiscovery('https://accounts.google.com');"
+      );
+      return;
+    }
+
+    const tokenRes = await AuthSession.exchangeCodeAsync(
+      {
+        clientId: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID, // TestFlight => iOS client
+        code,
+        redirectUri,
+        extraParams: {
+          // PKCE verifier generated by the request
+          code_verifier: request?.codeVerifier || "",
+        },
+      },
+      discovery
+    );
+
+    const idTokenRaw = tokenRes?.idToken ?? null;
+    const idToken = typeof idTokenRaw === "string" ? idTokenRaw.trim() : "";
+
+    console.log("[google] id_token present?", Boolean(idToken), "len=", idToken?.length);
+
+    if (!idToken) {
+      showFlash?.(
+        "error",
+        "Google token exchange did not return an ID token. Ensure scopes include openid."
+      );
+      return;
+    }
+
+    // Keep backend payload identical
+    const payload = { id_token: idToken };
+    googleTokenPayload = payload;
+
+    const res = await apiClient.post(`/auth/google`, payload);
+    await saveToken(res.data.access_token);
+    await saveRefreshToken(res.data.refresh_token);
+
+    if (res.data?.needs_onboarding) {
+      onGoogleOnboardingRequired?.({
+        initialPhone: "",
+        initialIsProvider: false,
+      });
+      return;
+    }
+
+    let meData = null;
+    try {
+      const meRes = await apiClient.get(`/users/me`);
+      meData = meRes.data;
+    } catch (meError) {
+      console.log(
+        "[auth] Failed to fetch /users/me after Google login",
+        meError?.message || meError
+      );
+    }
+
+    setToken({
+      token: res.data.access_token,
+      userId: meData?.id || meData?.user_id || res.data.user_id,
+      email: meData?.email || res.data.email,
+      username: meData?.username,
+      isProvider:
+        typeof meData?.is_provider === "boolean"
+          ? meData?.is_provider
+          : res.data.is_provider,
+      isAdmin:
+        typeof meData?.is_admin === "boolean" ? meData?.is_admin : res.data.is_admin,
+    });
+
+    setIsAdmin(typeof meData?.is_admin === "boolean" ? meData?.is_admin : !!res.data.is_admin);
+
+    clearPendingGoogleLink?.();
+    showFlash?.("success", "Logged in successfully");
+  } catch (error) {
+    console.log("Google login error:", error?.response?.data || error?.message || error);
+    const data = error?.response?.data;
+
+    const errorCode = data?.code || data?.detail?.code || normalizeErrorCode(data);
+    const statusCode = error?.response?.status;
+
+    if (
+      errorCode === "EMAIL_EXISTS_NOT_LINKED" &&
+      (statusCode === 400 || statusCode === 409)
+    ) {
+      const googleEmail =
+        googleAuthResult?.params?.email ||
+        googleAuthResult?.params?.login_hint ||
+        null;
+
+      onGoogleLinkRequired?.({
+        tokenPayload: googleTokenPayload,
+        email: googleEmail,
+      });
+      showFlash?.(
+        "error",
+        "An account already exists with this email. Log in with your password to link Google."
+      );
+      return;
+    }
+
+    const backendCode = data?.code || data?.detail?.code || null;
+
+    showFlash?.(
+      "error",
+      backendCode
+        ? `Google login failed (${backendCode}). Please try again.`
+        : "Google login failed. Please try again."
+    );
+  } finally {
+    setGoogleLoading(false);
+  }
+};
 
 return (
     <KeyboardAvoidingView
