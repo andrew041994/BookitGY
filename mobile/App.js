@@ -898,9 +898,17 @@ function LoginScreen({
         return;
       }
 
-      const authCode = result?.params?.code;
-      const idToken = result?.params?.id_token || result?.authentication?.idToken;
-      const payload = authCode ? { code: authCode } : idToken ? { id_token: idToken } : null;
+      const idToken =
+        googleAuthResult?.authentication?.idToken ||
+        googleAuthResult?.params?.id_token ||
+        googleTokenPayload?.idToken ||
+        null;
+
+      console.log("[google] id_token present?", Boolean(idToken), "len=", idToken?.length);
+
+      const payload = {
+        id_token: idToken,
+      };
       googleTokenPayload = payload;
 
       if (!payload) {
@@ -945,7 +953,12 @@ function LoginScreen({
       showFlash?.("success", "Logged in successfully");
     } catch (error) {
       console.log("Google login error:", error?.response?.data || error?.message || error);
-      const errorCode = normalizeErrorCode(error?.response?.data);
+      const data = error?.response?.data;
+
+      const errorCode =
+        data?.code ||
+        data?.detail?.code ||
+        normalizeErrorCode(data);
       const statusCode = error?.response?.status;
 
       if (
