@@ -6468,7 +6468,10 @@ const loadProviderSummary = async () => {
                       >
                         <Text style={styles.bookingCancel}>Cancel</Text>
                       </TouchableOpacity>
-                      <TouchableOpacity onPress={() => setChatBooking(b)}>
+                      <TouchableOpacity
+                        style={styles.bookingMessageButton}
+                        onPress={() => setChatBooking(b)}
+                      >
                         <Text style={styles.bookingEdit}>Message</Text>
                       </TouchableOpacity>
                     </View>
@@ -6551,7 +6554,10 @@ const loadProviderSummary = async () => {
                         >
                           <Text style={styles.bookingCancel}>Cancel</Text>
                         </TouchableOpacity>
-                        <TouchableOpacity onPress={() => setChatBooking(b)}>
+                        <TouchableOpacity
+                          style={styles.bookingMessageButton}
+                          onPress={() => setChatBooking(b)}
+                        >
                           <Text style={styles.bookingEdit}>Message</Text>
                         </TouchableOpacity>
                       </View>
@@ -11054,6 +11060,9 @@ bookingCancel: {
   fontSize: 12,
   color: colors.error,
   marginTop: 4,
+},
+bookingMessageButton: {
+  marginLeft: 12,
 },
 
   bookingNavigate: {

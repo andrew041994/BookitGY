@@ -1,176 +1,174 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
 diff --git a/mobile/App.js b/mobile/App.js
-index c8652e10760d3b06ff34d685349abd88ec5f573a..041f4ff21ee72b52220bd07b12b018bd9e19c927 100644
+index 041f4ff21ee72b52220bd07b12b018bd9e19c927..a5bab2337a4ee798b3d1d34c1d92c34b3c010165 100644
 --- a/mobile/App.js
 +++ b/mobile/App.js
-@@ -3459,50 +3459,51 @@ const getCleanApiErrorMessage = (err, fallbackMessage) => {
-     err?.response?.data?.message ||
-     err?.message;
-   if (!detail) return fallbackMessage;
-   if (typeof detail === "string") return detail;
-   return fallbackMessage;
- };
+@@ -6446,51 +6446,54 @@ const loadProviderSummary = async () => {
+                   const mm = m.toString().padStart(2, "0");
+                   return `${h}:${mm} ${suffix}`;
+                 };
  
- const isBookingCancelledStatus = (status) =>
-   String(status || "").trim().toLowerCase().includes("cancel");
+                 return (
+                   <View key={b.id} style={styles.bookingRow}>
+                     <View style={styles.bookingMain}>
+                       <Text style={styles.bookingTime}>
+                         {formatTime(start)} – {formatTime(end)}
+                       </Text>
+                       <Text style={styles.bookingService}>{b.service_name}</Text>
+                       <Text style={styles.bookingMeta}>
+                         {b.customer_name} · {b.customer_phone}
+                       </Text>
+                     </View>
  
- function BookingChatModal({
-   visible,
-   onClose,
-   booking,
-   currentUserId,
-   showFlash,
- }) {
-   const [messages, setMessages] = useState([]);
-   const [loading, setLoading] = useState(false);
-   const [refreshing, setRefreshing] = useState(false);
-   const [sending, setSending] = useState(false);
-   const [text, setText] = useState("");
-   const [selectedImage, setSelectedImage] = useState(null);
-   const [viewerImage, setViewerImage] = useState(null);
-   const listRef = useRef(null);
-+  const insets = useSafeAreaInsets();
- 
-   const bookingId = booking?.id || booking?.booking_id;
-   const isCancelled = isBookingCancelledStatus(booking?.status);
- 
-   const loadMessages = useCallback(
-     async (useRefresh = false) => {
-       if (!bookingId) return;
-       try {
-         if (useRefresh) setRefreshing(true);
-         else setLoading(true);
- 
-         const res = await apiClient.get(`/bookings/${bookingId}/messages`);
-         const rows = Array.isArray(res?.data?.messages) ? res.data.messages : [];
-         setMessages(rows);
- 
-         await apiClient.post(`/bookings/messages/read`, { booking_id: bookingId });
-       } catch (err) {
-         const msg = getCleanApiErrorMessage(err, "Could not load chat messages.");
-         showFlash && showFlash("error", msg);
-       } finally {
-         setLoading(false);
-         setRefreshing(false);
-       }
-     },
-     [bookingId, showFlash]
-@@ -3669,58 +3670,58 @@ function BookingChatModal({
-   const renderItem = ({ item }) => {
-     const mine = Number(item?.sender_user_id) === Number(currentUserId);
-     const imageUrl = resolveImageUrl(item?.attachment?.file_url);
-     const createdAt = item?.created_at ? new Date(item.created_at) : null;
-     const timeText = createdAt && !Number.isNaN(createdAt.getTime())
-       ? createdAt.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })
-       : "";
- 
-     return (
-       <View style={[styles.chatRow, mine ? styles.chatRowMine : styles.chatRowOther]}>
-         <View style={[styles.chatBubble, mine ? styles.chatBubbleMine : styles.chatBubbleOther]}>
-           {item?.text ? <Text style={styles.chatText}>{item.text}</Text> : null}
-           {imageUrl ? (
-             <TouchableOpacity onPress={() => setViewerImage(imageUrl)} activeOpacity={0.85}>
-               <Image source={{ uri: imageUrl }} style={styles.chatImage} resizeMode="cover" />
-             </TouchableOpacity>
-           ) : null}
-           {timeText ? <Text style={styles.chatTime}>{timeText}</Text> : null}
+                     <View style={styles.bookingActions}>
+                       {/* <TouchableOpacity onPress={() => handleEditBooking(b)}>
+                         <Text style={styles.bookingEdit}>Edit</Text>
+                       </TouchableOpacity> */}
+                       <TouchableOpacity
+                         onPress={() => handleCancelBooking(b.id)}
+                       >
+                         <Text style={styles.bookingCancel}>Cancel</Text>
+                       </TouchableOpacity>
+-                      <TouchableOpacity onPress={() => setChatBooking(b)}>
++                      <TouchableOpacity
++                        style={styles.bookingMessageButton}
++                        onPress={() => setChatBooking(b)}
++                      >
+                         <Text style={styles.bookingEdit}>Message</Text>
+                       </TouchableOpacity>
+                     </View>
+                   </View>
+                 );
+               })}
+             </>
+           )}
          </View>
-       </View>
-     );
-   };
  
-   return (
-     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
--      <SafeAreaView style={styles.chatSafeArea}>
-+      <SafeAreaView style={styles.chatSafeArea} edges={["left", "right", "bottom"]}>
-         <KeyboardAvoidingView
-           style={styles.chatKeyboardWrapper}
-           behavior={Platform.OS === "ios" ? "padding" : undefined}
-           keyboardVerticalOffset={Platform.OS === "ios" ? 86 : 0}
-         >
--          <View style={styles.chatHeader}>
--            <TouchableOpacity onPress={onClose}>
-+          <View style={[styles.chatHeader, { paddingTop: Math.max(insets.top, 8) }]}>
-+            <TouchableOpacity onPress={onClose} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-               <Text style={styles.chatCloseText}>Close</Text>
-             </TouchableOpacity>
-             <Text style={styles.chatHeaderTitle}>Booking Chat</Text>
-             <View style={{ width: 46 }} />
-           </View>
+         {/* Upcoming bookings */}
+         <View style={styles.card}>
+           <Text style={styles.sectionTitle}>Upcoming bookings</Text>
  
-           {isCancelled ? (
-             <View style={styles.chatCancelledBanner}>
-               <Text style={styles.chatCancelledText}>
-                 This chat is unavailable because the booking has been cancelled.
+           {upcomingLoading && (
+             <View style={{ paddingVertical: 10 }}>
+               <ActivityIndicator />
+               <Text style={styles.serviceMeta}>
+                 Loading upcoming bookings…
                </Text>
              </View>
-           ) : null}
+           )}
  
-           {loading ? (
-             <View style={styles.loadingRow}>
-               <ActivityIndicator />
-               <Text style={styles.serviceMeta}>Loading messages…</Text>
-             </View>
-           ) : (
-             <FlatList
-               ref={listRef}
-               data={messages}
-               keyExtractor={(item) => `${item.id}`}
-               renderItem={renderItem}
-@@ -12490,51 +12491,52 @@ signupTextButtonText: {
-     fontWeight: "600",
+           {!upcomingLoading && upcomingError ? (
+             <Text style={styles.errorText}>{upcomingError}</Text>
+@@ -6529,51 +6532,54 @@ const loadProviderSummary = async () => {
+ 
+                   return (
+                     <View key={b.id} style={styles.bookingRow}>
+                       <View style={styles.bookingMain}>
+                         <Text style={styles.bookingTime}>
+                           {formatDate(start)} · {formatTime(start)} –{" "}
+                           {formatTime(end)}
+                         </Text>
+                         <Text style={styles.bookingService}>
+                           {b.service_name}
+                         </Text>
+                         <Text style={styles.bookingMeta}>
+                           {b.customer_name} · {b.customer_phone}
+                         </Text>
+                       </View>
+ 
+                       <View style={styles.bookingActions}>
+                         {/* <TouchableOpacity onPress={() => handleEditBooking(b)}>
+                           <Text style={styles.bookingEdit}>Edit</Text>
+                         </TouchableOpacity> */}
+                         <TouchableOpacity
+                           onPress={() => handleCancelBooking(b.id)}
+                         >
+                           <Text style={styles.bookingCancel}>Cancel</Text>
+                         </TouchableOpacity>
+-                        <TouchableOpacity onPress={() => setChatBooking(b)}>
++                        <TouchableOpacity
++                          style={styles.bookingMessageButton}
++                          onPress={() => setChatBooking(b)}
++                        >
+                           <Text style={styles.bookingEdit}>Message</Text>
+                         </TouchableOpacity>
+                       </View>
+                     </View>
+                   );
+                 })}
+               </>
+             )}
+         </View>
+ 
+         {/* Services */}
+         <View style={styles.card}>
+           <View
+             style={{
+               flexDirection: "row",
+               justifyContent: "space-between",
+               alignItems: "center",
+               marginBottom: 8,
+             }}
+           >
+             <Text style={styles.sectionTitle}>Your services</Text>
+             <TouchableOpacity onPress={() => setAdding((prev) => !prev)}>
+               <Text style={{ color: colors.primary, fontWeight: "600" }}>
+                 {adding ? "Cancel" : "+ Add"}
+               </Text>
+@@ -11033,50 +11039,53 @@ bookingTime: {
+   color: colors.textMuted,
+ },
+ bookingService: {
+   fontSize: 16,
+   fontWeight: "600",
+   color: colors.textPrimary,
+   marginTop: 2,
+ },
+ bookingMeta: {
+   fontSize: 13,
+   color: colors.textSecondary,
+   marginTop: 2,
+ },
+ bookingActions: {
+   alignItems: "flex-end",
+ },
+ bookingEdit: {
+   fontSize: 12,
+   color: colors.primary,
+ },
+ bookingCancel: {
+   fontSize: 12,
+   color: colors.error,
+   marginTop: 4,
+ },
++bookingMessageButton: {
++  marginLeft: 12,
++},
+ 
+   bookingNavigate: {
+     fontSize: 12,
+     color: colors.primary,
+     marginTop: 4,
    },
-   chatHeaderTitle: {
-     color: colors.textPrimary,
-     fontWeight: "700",
-     fontSize: 16,
-   },
-   chatCancelledBanner: {
-     margin: 12,
-     padding: 10,
-     borderRadius: 10,
-     backgroundColor: "rgba(255,77,79,0.16)",
-     borderWidth: 1,
-     borderColor: "rgba(255,77,79,0.35)",
-   },
-   chatCancelledText: {
-     color: colors.error,
-     fontSize: 13,
-     fontWeight: "600",
-   },
-   chatList: {
-     flex: 1,
-     paddingHorizontal: 12,
-   },
-   chatListContent: {
--    paddingVertical: 8,
-+    paddingTop: 12,
-+    paddingBottom: 12,
-     flexGrow: 1,
-     justifyContent: "flex-end",
-   },
-   chatRow: {
-     marginVertical: 4,
-     flexDirection: "row",
-   },
-   chatRowMine: {
-     justifyContent: "flex-end",
-   },
-   chatRowOther: {
-     justifyContent: "flex-start",
-   },
-   chatBubble: {
-     maxWidth: "84%",
-     borderRadius: 12,
-     paddingHorizontal: 10,
-     paddingVertical: 8,
-   },
-   chatBubbleMine: {
-     backgroundColor: colors.primary,
-   },
-   chatBubbleOther: {
-     backgroundColor: colors.surface,
-     borderWidth: 1,
+ 
+ //   navigateButtonText: {
+ //   color: "#007AFF",      // or your theme color
+ //   fontSize: 16,
+ //   fontWeight: "600",
+ //   textDecorationLine: "none",  // remove underline / link style
+ // },
+ 
+ // navigateButton: {
+ //   paddingHorizontal: 14,
+ //   paddingVertical: 8,
+ //   backgroundColor: "#E6F5FF",
+ //   borderRadius: 8,
+ //   alignSelf: "flex-start",
+ // },
+ 
+ navigateButtonContainer: {
+   marginTop: 12,
+   width: "100%",
  
 EOF
 )
