@@ -1,9 +1,529 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
 diff --git a/mobile/App.js b/mobile/App.js
-index cd4acd63a96654b437f3a962d91843390e55f0a9..89ccfb10e98a586e42b5762ac0b0c506cfc07776 100644
+index 89ccfb10e98a586e42b5762ac0b0c506cfc07776..4266b6e51c44c83b07b2393c8935ca6673a2a04c 100644
 --- a/mobile/App.js
 +++ b/mobile/App.js
-@@ -1245,50 +1245,51 @@ return (
+@@ -582,142 +582,128 @@ if (Platform.OS !== "web") {
+ const PROFESSION_OPTIONS = [
+   "Barber",
+   "Hairdresser",
+   "Hairstylist",
+   "Braider",
+   "Loctician (dreadlocks)",
+   "Nail Technician",
+   "Manicurist",
+   "Pedicurist",
+   "Makeup Artist (MUA)",
+   "Lash Technician",
+   "Brow Technician",
+   "Esthetician / Skin Care",
+   "Waxing Specialist",
+   "Sugaring Specialist",
+   "Massage Therapist",
+   "Spa Therapist",
+   "Facialist",
+   "Beard Specialist",
+   "Men's Grooming Specialist",
+ ];
+ 
+ const Tab = createBottomTabNavigator();
+ 
+ // 🔹 New landing/home screen shown BEFORE login
+-function LandingScreen({ goToLogin, goToSignup }) {
++function LandingScreen({ goToLogin, goToSignup, onGooglePress, googleLoading }) {
+   return (
+     <View style={styles.container}>
+      <View style={{ alignItems: "center", marginBottom: 40, marginTop: 60 }}>
+       <Image
+         source={BookitGYLogoTransparent}
+         style={{
+           width: 360,
+           height: 360,
+           resizeMode: "contain",
+           opacity: 0.96,
+         }}
+       />
+       </View>
+         <Text
+           style={styles.subtitle}
+           allowFontScaling={false}
+         >
+           Find and book services in {"\n"}Guyana
+         </Text>
+         
+ 
+           <View style={{ marginTop: 30, width: "100%" }}>
+             <TouchableOpacity
+               style={styles.authPrimaryButton}
+               onPress={goToLogin}
+             >
+               <Text style={styles.authPrimaryButtonText}>LOGIN</Text>
+             </TouchableOpacity>
+ 
++            <View style={{ width: "100%", marginBottom: 12 }}>
++              {googleLoading ? (
++                <ActivityIndicator size="large" color={colors.primary} />
++              ) : (
++                <TouchableOpacity
++                  style={styles.googleButton}
++                  onPress={onGooglePress}
++                  disabled={googleLoading}
++                >
++                  <Ionicons name="logo-google" size={20} color="#4285F4" />
++                  <Text style={styles.googleButtonText}>Continue with Google</Text>
++                </TouchableOpacity>
++              )}
++            </View>
++
+             <TouchableOpacity
+               style={styles.authSecondaryButton}
+               onPress={goToSignup}
+             >
+               <Text style={styles.authSecondaryButtonText}>SIGN UP</Text>
+             </TouchableOpacity>
+           </View>
+         </View>
+       );
+     }
+ 
+ // 🔹 Dedicated login screen component
+ const ENABLE_FACEBOOK_AUTH = process.env.EXPO_PUBLIC_ENABLE_FACEBOOK_AUTH === "true";
+ 
+ function LoginScreen({
+   setToken,
+   setIsAdmin,
+   onFacebookSetupRequired,
+-  onGoogleOnboardingRequired,
+   pendingGoogleLink,
+-  onGoogleLinkRequired,
+   onCancelGoogleLink,
+   clearPendingGoogleLink,
+   onEmailNotVerified,
+   goToSignup,
+   goToForgot,
+   goBack,
+   showFlash,
++  onGooglePress,
++  googleLoading,
+ }) {
+   const [email, setEmail] = useState("");
+   const [password, setPassword] = useState("");
+   const [loading, setLoading] = useState(false);
+   const [facebookLoading, setFacebookLoading] = useState(false);
+-  const [googleLoading, setGoogleLoading] = useState(false);
+-
+-  // Expo Go proxy is a fallback only; OAuth/OpenID testing is expected in development builds or standalone/TestFlight apps.
+-  const isExpoGo = Constants.appOwnership === "expo";
+-  const useProxy = isExpoGo;
+-  const hasLoggedGoogleEnvRef = useRef(false);
+-
+-  useEffect(() => {
+-    if (hasLoggedGoogleEnvRef.current) return;
+-    hasLoggedGoogleEnvRef.current = true;
+-    console.log("[google] appOwnership:", Constants.appOwnership);
+-    console.log("[google] isExpoGo:", isExpoGo);
+-    console.log("[google] useProxy:", useProxy);
+-  }, [isExpoGo, useProxy]);
+-
+-  const discovery = AuthSession.useAutoDiscovery("https://accounts.google.com");
+-
+-  const [request, response, promptAsync] = Google.useAuthRequest(
+-    {
+-      expoClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
+-      iosClientId: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID,
+-      androidClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
+-      webClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
+-      responseType: AuthSession.ResponseType.Code,
+-      usePKCE: true,
+-      scopes: ["openid", "profile", "email"],
+-    },
+-    discovery
+-  );
+ 
+   const pendingGoogleLinkEmailLabel = pendingGoogleLink?.email || "this email";
+ 
+ 
+   const login = async () => {
+     const trimmedEmail = email.trim();
+     const normalizedEmail = trimmedEmail.toLowerCase();
+ 
+     if (!trimmedEmail || !isValidEmail(trimmedEmail)) {
+       if (showFlash) {
+         showFlash("error", "Please enter a valid email address");
+       } else {
+         Alert.alert("Error", "Please enter a valid email address");
+       }
+       return;
+   }
+ 
+   setLoading(true);
+ 
+     try {
+       const body = new URLSearchParams({
+         username: normalizedEmail,
+         password: password,
+       }).toString();
+ 
+@@ -840,355 +826,75 @@ function LoginScreen({
+         return;
+       }
+ 
+       const accessTokenData = await AccessToken.getCurrentAccessToken();
+       const facebookAccessToken = accessTokenData?.accessToken;
+ 
+       if (!facebookAccessToken) {
+         showFlash?.("error", "Could not get Facebook access token. Please try again.");
+         return;
+       }
+ 
+       const payload = {
+         facebook_access_token: facebookAccessToken,
+         phone: "",
+         is_provider: false,
+       };
+ 
+       try {
+         const res = await apiClient.post(`/auth/facebook/complete`, payload);
+         await persistFacebookSession({
+           responseData: res.data,
+           setToken,
+           setIsAdmin,
+         });
+         clearPendingGoogleLink?.();
+-      showFlash?.("success", "Logged in successfully");
++        showFlash?.("success", "Logged in successfully");
+       } catch (requestError) {
+         const errorCode = normalizeErrorCode(requestError?.response?.data);
+         if (errorCode === "EMAIL_REQUIRED" || errorCode === "PHONE_REQUIRED") {
+           onFacebookSetupRequired?.({
+             facebookAccessToken,
+             requiresEmail: errorCode === "EMAIL_REQUIRED",
+             requiresPhone: true,
+             initialPhone: "",
+             initialEmail: "",
+             initialIsProvider: false,
+           });
+           return;
+         }
+ 
+         showFlash?.("error", getFacebookCompleteErrorMessage(errorCode));
+       }
+     } catch (error) {
+       console.log("Facebook login error:", error?.response?.data || error?.message || error);
+       showFlash?.("error", "Facebook login failed. Please try again.");
+     } finally {
+       setFacebookLoading(false);
+     }
+   };
+ 
+-  // DROP-IN replacement for loginWithGoogle
+-// Requires these to exist in your file/scope already:
+-// - request, promptAsync, useProxy, apiClient, saveToken, saveRefreshToken
+-// - setToken, setIsAdmin, setGoogleLoading, showFlash
+-// - onGoogleOnboardingRequired, onGoogleLinkRequired, clearPendingGoogleLink
+-// - normalizeErrorCode, AuthSession (imported), and ideally `discovery` (see note below)
+-//
+-// IMPORTANT: This assumes you changed your Google auth request to ResponseType.Code + usePKCE:true
+-// (otherwise `result.params.code` won't exist).
+-
+-// const DEBUG_GOOGLE_AUTH = true;
+-
+-const decodeBase64UrlToUtf8 = (value) => {
+-  if (typeof value !== "string" || !value) {
+-    return "";
+-  }
+-
+-  const b64 = value
+-    .replace(/-/g, "+")
+-    .replace(/_/g, "/")
+-    .padEnd(Math.ceil(value.length / 4) * 4, "=");
+-
+-  if (typeof Buffer !== "undefined" && Buffer?.from) {
+-    return Buffer.from(b64, "base64").toString("utf8");
+-  }
+-
+-  if (typeof globalThis?.atob === "function") {
+-    const binary = globalThis.atob(b64);
+-    const escaped = Array.from(binary)
+-      .map((char) => `%${char.charCodeAt(0).toString(16).padStart(2, "0")}`)
+-      .join("");
+-    return decodeURIComponent(escaped);
+-  }
+-
+-  throw new Error("No base64 decoder available");
+-};
+-
+-const decodeJwtNoVerify = (token) => {
+-  if (typeof token !== "string") {
+-    throw new Error("id_token is not a string");
+-  }
+-
+-  const parts = token.split(".");
+-  if (parts.length !== 3) {
+-    throw new Error("id_token is not a JWT");
+-  }
+-
+-  const header = JSON.parse(decodeBase64UrlToUtf8(parts[0]));
+-  const payload = JSON.parse(decodeBase64UrlToUtf8(parts[1]));
+-
+-  return { header, payload };
+-};
+-
+-const DEBUG_GOOGLE_AUTH = __DEV__;
+-
+-const loginWithGoogle = async () => {
+-  if (!request) {
+-    showFlash?.("error", "Google Sign-In is not configured yet.");
+-    return;
+-  }
+-
+-  let googleAuthResult = null;
+-  let googleTokenPayload = null;
+-
+-  setGoogleLoading(true);
+-
+-  try {
+-    if (DEBUG_GOOGLE_AUTH) {
+-      console.log("[google] request", {
+-        appOwnership: Constants.appOwnership,
+-        isExpoGo,
+-        useProxy,
+-        responseType: request?.responseType,
+-        redirectUri: request?.redirectUri,
+-        requestUrl: request?.url,
+-        codeVerifierPresent: Boolean(request?.codeVerifier),
+-      });
+-    }
+-
+-    const result = await promptAsync({ useProxy });
+-    googleAuthResult = result;
+-
+-    if (DEBUG_GOOGLE_AUTH) {
+-      console.log("[google] result", {
+-        type: result?.type,
+-        codePresent: Boolean(result?.params?.code),
+-        oauthError: result?.params?.error || null,
+-        oauthErrorDescription: result?.params?.error_description || null,
+-      });
+-    }
+-
+-    if (result?.type !== "success") {
+-      return;
+-    }
+-
+-    const code = typeof result?.params?.code === "string" ? result.params.code.trim() : "";
+-    if (!code) {
+-      showFlash?.(
+-        "error",
+-        "Google did not return an auth code. Please try again."
+-      );
+-      return;
+-    }
+-
+-    const redirectUri = request?.redirectUri;
+-    if (!redirectUri) {
+-      showFlash?.("error", "Google redirect URI missing. Please try again.");
+-      return;
+-    }
+-
+-    if (!request?.codeVerifier) {
+-      showFlash?.("error", "Google PKCE verifier missing. Please try again.");
+-      return;
+-    }
+-
+-    if (!discovery?.tokenEndpoint) {
+-      showFlash?.("error", "Google discovery not ready. Please try again.");
+-      return;
+-    }
+-
+-    const exchangeClientId =
+-      Platform.OS === "ios" && !isExpoGo
+-        ? process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID
+-        : process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID;
+-
+-    if (DEBUG_GOOGLE_AUTH) {
+-      console.log("[google] exchange", {
+-        platform: Platform.OS,
+-        isExpoGo,
+-        exchangeClientId,
+-        redirectUri,
+-      });
+-    }
+-
+-    const tokenRes = await AuthSession.exchangeCodeAsync(
+-      {
+-        clientId: exchangeClientId,
+-        code,
+-        redirectUri,
+-        extraParams: {
+-          code_verifier: request.codeVerifier,
+-        },
+-      },
+-      discovery
+-    );
+-
+-    const idToken = typeof tokenRes?.idToken === "string" ? tokenRes.idToken.trim() : "";
+-
+-    if (DEBUG_GOOGLE_AUTH) {
+-      console.log("[google] tokenExchange", {
+-        idTokenPresent: Boolean(idToken),
+-        idTokenLength: idToken?.length || 0,
+-      });
+-    }
+-
+-    if (!idToken) {
+-      showFlash?.(
+-        "error",
+-        "Google token exchange did not return an ID token."
+-      );
+-      return;
+-    }
+-
+-    let decodedIdToken = null;
+-    if (DEBUG_GOOGLE_AUTH) {
+-      try {
+-        decodedIdToken = decodeJwtNoVerify(idToken);
+-        console.log("[google] id_token_header", {
+-          kid: decodedIdToken?.header?.kid,
+-          alg: decodedIdToken?.header?.alg,
+-        });
+-        console.log("[google] id_token_payload", {
+-          aud: decodedIdToken?.payload?.aud,
+-          iss: decodedIdToken?.payload?.iss,
+-          azp: decodedIdToken?.payload?.azp,
+-          email: decodedIdToken?.payload?.email,
+-          exp: decodedIdToken?.payload?.exp,
+-        });
+-      } catch (jwtDecodeError) {
+-        console.log(
+-          "[google] id_token_decode_skipped",
+-          jwtDecodeError?.message || jwtDecodeError
+-        );
+-      }
+-    }
+-
+-    const payload = { id_token: idToken };
+-    googleTokenPayload = payload;
+-
+-    const res = await apiClient.post(`/auth/google`, payload);
+-    await saveToken(res.data.access_token);
+-    await saveRefreshToken(res.data.refresh_token);
+-
+-    if (res.data?.needs_onboarding) {
+-      onGoogleOnboardingRequired?.({
+-        initialPhone: "",
+-        initialIsProvider: false,
+-      });
+-      return;
+-    }
+-
+-    let meData = null;
+-    try {
+-      const meRes = await apiClient.get(`/users/me`);
+-      meData = meRes.data;
+-    } catch (meError) {
+-      console.log(
+-        "[auth] Failed to fetch /users/me after Google login",
+-        meError?.message || meError
+-      );
+-    }
+-
+-    setToken({
+-      token: res.data.access_token,
+-      userId: meData?.id || meData?.user_id || res.data.user_id,
+-      email: meData?.email || res.data.email,
+-      username: meData?.username,
+-      isProvider:
+-        typeof meData?.is_provider === "boolean"
+-          ? meData?.is_provider
+-          : res.data.is_provider,
+-      isAdmin:
+-        typeof meData?.is_admin === "boolean"
+-          ? meData?.is_admin
+-          : res.data.is_admin,
+-    });
+-
+-    setIsAdmin(
+-      typeof meData?.is_admin === "boolean"
+-        ? meData?.is_admin
+-        : !!res.data.is_admin
+-    );
+-
+-    clearPendingGoogleLink?.();
+-    showFlash?.("success", "Logged in successfully");
+-  } catch (error) {
+-    console.log("[google] login_error", {
+-      status: error?.response?.status,
+-      data: error?.response?.data,
+-      message: error?.message,
+-    });
+-
+-    const data = error?.response?.data;
+-    const errorCode = data?.code || data?.detail?.code || normalizeErrorCode(data);
+-    const statusCode = error?.response?.status;
+-
+-    if (
+-      errorCode === "EMAIL_EXISTS_NOT_LINKED" &&
+-      (statusCode === 400 || statusCode === 409)
+-    ) {
+-      const googleEmail =
+-        googleAuthResult?.params?.email ||
+-        googleAuthResult?.params?.login_hint ||
+-        null;
+-
+-      onGoogleLinkRequired?.({
+-        tokenPayload: googleTokenPayload,
+-        email: googleEmail,
+-      });
+-
+-      showFlash?.(
+-        "error",
+-        "An account already exists with this email. Log in with your password to link Google."
+-      );
+-      return;
+-    }
+-
+-    const backendCode = data?.code || data?.detail?.code || null;
+-
+-    showFlash?.(
+-      "error",
+-      backendCode
+-        ? `Google login failed (${backendCode}). Please try again.`
+-        : "Google login failed. Please try again."
+-    );
+-  } finally {
+-    setGoogleLoading(false);
+-  }
+-};
+-
+ return (
+     <KeyboardAvoidingView
+       style={styles.avoider}
+       behavior={Platform.OS === "ios" ? "padding" : "height"}
+       keyboardVerticalOffset={Platform.OS === "ios" ? 40 : 0} // tweak if needed
+ 
+     >
+       <ScrollView
+         contentContainerStyle={styles.scrollContent}
+         keyboardShouldPersistTaps="handled"
+       >
+         <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+           <View style={styles.container}>
+             <View style={styles.logoWrapper}>
+               <Image
+                 source={BookitGYLogoTransparent}
+                 style={styles.logo}
+               />
+             </View>
+         <Text style={styles.title}>Login</Text>
+ 
+         {pendingGoogleLink?.tokenPayload && (
+           <View style={styles.linkGoogleBanner}>
+             <Text style={styles.linkGoogleBannerText}>
+               {`Log in to link Google: ${pendingGoogleLinkEmailLabel}`}
+@@ -1243,51 +949,52 @@ return (
+               )}
+             </View>
            )}
  
            {ENABLE_FACEBOOK_AUTH && (
@@ -27,9 +547,11 @@ index cd4acd63a96654b437f3a962d91843390e55f0a9..89ccfb10e98a586e42b5762ac0b0c506
              ) : (
                <TouchableOpacity
                  style={styles.googleButton}
-                 onPress={loginWithGoogle}
+-                onPress={loginWithGoogle}
++                onPress={onGooglePress}
++                disabled={googleLoading}
                >
-+                <Ionicons name="logo-google" size={20} color="#4285F4" />
+                 <Ionicons name="logo-google" size={20} color="#4285F4" />
                  <Text style={styles.googleButtonText}>Continue with Google</Text>
                </TouchableOpacity>
              )}
@@ -53,87 +575,451 @@ index cd4acd63a96654b437f3a962d91843390e55f0a9..89ccfb10e98a586e42b5762ac0b0c506
                  <Button
                    title="Need an account? Sign Up"
                    onPress={goToSignup}
-                   color={colors.primary}
-                 />
-@@ -10852,61 +10853,72 @@ authSecondaryButton: {
-   borderColor: colors.primary,
-   shadowColor: "#000",
-   shadowOpacity: 0.15,
-   shadowOffset: { width: 0, height: 2 },
-   shadowRadius: 3,
-   elevation: 3,
- },
+@@ -8777,50 +8484,356 @@ function App() {
  
-   authSecondaryButtonText: {
-   color: colors.primary,
-   fontSize: 16,
-   fontWeight: "600",
- },
- facebookButton: {
-   backgroundColor: "#1877F2",
-   paddingVertical: 12,
-   borderRadius: 8,
-   alignItems: "center",
- },
- facebookButtonText: {
-   color: "#ffffff",
-   fontSize: 16,
-   fontWeight: "600",
- },
- googleButton: {
--  backgroundColor: "#ffffff",
--  paddingVertical: 12,
--  borderRadius: 8,
--  alignItems: "center",
-+  width: "100%",
-+  height: 52,
-+  borderRadius: 12,
-+  backgroundColor: "#FFFFFF",
-   borderWidth: 1,
--  borderColor: colors.border,
-+  borderColor: "#E5E5E5",
-+  flexDirection: "row",
-+  alignItems: "center",
-+  justifyContent: "center",
-+  paddingHorizontal: 16,
-+  marginTop: 12,
-+  shadowColor: "#000",
-+  shadowOpacity: 0.08,
-+  shadowRadius: 6,
-+  shadowOffset: { width: 0, height: 2 },
-+  elevation: 3,
- },
- googleButtonText: {
--  color: colors.textPrimary,
-   fontSize: 16,
-   fontWeight: "600",
-+  color: "#333",
-+  marginLeft: 10,
- },
+     if (Array.isArray(text)) {
+       return text.map(formatErrorItem).filter(Boolean).join("\n");
+     }
  
- linkGoogleBanner: {
-   width: "100%",
-   backgroundColor: "rgba(77, 163, 255, 0.12)",
-   borderRadius: 8,
-   borderWidth: 1,
-   borderColor: "rgba(77, 163, 255, 0.45)",
-   paddingHorizontal: 12,
-   paddingVertical: 10,
-   marginBottom: 12,
-   flexDirection: "row",
-   alignItems: "center",
-   justifyContent: "space-between",
- },
- linkGoogleBannerText: {
-   color: colors.textPrimary,
-   fontSize: 13,
-   flex: 1,
-   marginRight: 8,
- },
- linkGoogleBannerAction: {
-   color: colors.primary,
-   fontWeight: "700",
-   fontSize: 13,
+     if (typeof text === "object") {
+       if (Array.isArray(text.detail)) {
+         return formatFlashText(text.detail);
+       }
+       if (typeof text.detail === "string") return text.detail;
+       if (typeof text.message === "string") return text.message;
+       if (typeof text.msg === "string") return text.msg;
+       return JSON.stringify(text);
+     }
+ 
+     return String(text);
+   }, []);
+ 
+   const showFlash = useCallback((type, text) => {
+     setFlash({ type, text: formatFlashText(text) });
+     setTimeout(() => {
+       setFlash(null);
+     }, 4500);
+   }, [formatFlashText]);
+ 
++  const [googleLoading, setGoogleLoading] = useState(false);
++
++  // Expo Go proxy is a fallback only; OAuth/OpenID testing is expected in development builds or standalone/TestFlight apps.
++  const isExpoGo = Constants.appOwnership === "expo";
++  const useProxy = isExpoGo;
++  const hasLoggedGoogleEnvRef = useRef(false);
++
++  useEffect(() => {
++    if (hasLoggedGoogleEnvRef.current) return;
++    hasLoggedGoogleEnvRef.current = true;
++    console.log("[google] appOwnership:", Constants.appOwnership);
++    console.log("[google] isExpoGo:", isExpoGo);
++    console.log("[google] useProxy:", useProxy);
++  }, [isExpoGo, useProxy]);
++
++  const discovery = AuthSession.useAutoDiscovery("https://accounts.google.com");
++
++  const [request, response, promptAsync] = Google.useAuthRequest(
++    {
++      expoClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
++      iosClientId: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID,
++      androidClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
++      webClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
++      responseType: AuthSession.ResponseType.Code,
++      usePKCE: true,
++      scopes: ["openid", "profile", "email"],
++    },
++    discovery
++  );
++
++  const decodeBase64UrlToUtf8 = useCallback((value) => {
++    if (typeof value !== "string" || !value) {
++      return "";
++    }
++
++    const b64 = value
++      .replace(/-/g, "+")
++      .replace(/_/g, "/")
++      .padEnd(Math.ceil(value.length / 4) * 4, "=");
++
++    if (typeof Buffer !== "undefined" && Buffer?.from) {
++      return Buffer.from(b64, "base64").toString("utf8");
++    }
++
++    if (typeof globalThis?.atob === "function") {
++      const binary = globalThis.atob(b64);
++      const escaped = Array.from(binary)
++        .map((char) => `%${char.charCodeAt(0).toString(16).padStart(2, "0")}`)
++        .join("");
++      return decodeURIComponent(escaped);
++    }
++
++    throw new Error("No base64 decoder available");
++  }, []);
++
++  const decodeJwtNoVerify = useCallback((jwtToken) => {
++    if (typeof jwtToken !== "string") {
++      throw new Error("id_token is not a string");
++    }
++
++    const parts = jwtToken.split(".");
++    if (parts.length !== 3) {
++      throw new Error("id_token is not a JWT");
++    }
++
++    const header = JSON.parse(decodeBase64UrlToUtf8(parts[0]));
++    const payload = JSON.parse(decodeBase64UrlToUtf8(parts[1]));
++
++    return { header, payload };
++  }, [decodeBase64UrlToUtf8]);
++
++  const DEBUG_GOOGLE_AUTH = __DEV__;
++
++  const loginWithGoogle = useCallback(async () => {
++    if (!request) {
++      showFlash?.("error", "Google Sign-In is not configured yet.");
++      return;
++    }
++
++    let googleAuthResult = null;
++    let googleTokenPayload = null;
++
++    setGoogleLoading(true);
++
++    try {
++      if (DEBUG_GOOGLE_AUTH) {
++        console.log("[google] request", {
++          appOwnership: Constants.appOwnership,
++          isExpoGo,
++          useProxy,
++          responseType: request?.responseType,
++          redirectUri: request?.redirectUri,
++          requestUrl: request?.url,
++          codeVerifierPresent: Boolean(request?.codeVerifier),
++        });
++      }
++
++      const result = await promptAsync({ useProxy });
++      googleAuthResult = result;
++
++      if (DEBUG_GOOGLE_AUTH) {
++        console.log("[google] result", {
++          type: result?.type,
++          codePresent: Boolean(result?.params?.code),
++          oauthError: result?.params?.error || null,
++          oauthErrorDescription: result?.params?.error_description || null,
++        });
++      }
++
++      if (result?.type !== "success") {
++        return;
++      }
++
++      const code = typeof result?.params?.code === "string" ? result.params.code.trim() : "";
++      if (!code) {
++        showFlash?.(
++          "error",
++          "Google did not return an auth code. Please try again."
++        );
++        return;
++      }
++
++      const redirectUri = request?.redirectUri;
++      if (!redirectUri) {
++        showFlash?.("error", "Google redirect URI missing. Please try again.");
++        return;
++      }
++
++      if (!request?.codeVerifier) {
++        showFlash?.("error", "Google PKCE verifier missing. Please try again.");
++        return;
++      }
++
++      if (!discovery?.tokenEndpoint) {
++        showFlash?.("error", "Google discovery not ready. Please try again.");
++        return;
++      }
++
++      const exchangeClientId =
++        Platform.OS === "ios" && !isExpoGo
++          ? process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID
++          : process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID;
++
++      if (DEBUG_GOOGLE_AUTH) {
++        console.log("[google] exchange", {
++          platform: Platform.OS,
++          isExpoGo,
++          exchangeClientId,
++          redirectUri,
++        });
++      }
++
++      const tokenRes = await AuthSession.exchangeCodeAsync(
++        {
++          clientId: exchangeClientId,
++          code,
++          redirectUri,
++          extraParams: {
++            code_verifier: request.codeVerifier,
++          },
++        },
++        discovery
++      );
++
++      const idToken = typeof tokenRes?.idToken === "string" ? tokenRes.idToken.trim() : "";
++
++      if (DEBUG_GOOGLE_AUTH) {
++        console.log("[google] tokenExchange", {
++          idTokenPresent: Boolean(idToken),
++          idTokenLength: idToken?.length || 0,
++        });
++      }
++
++      if (!idToken) {
++        showFlash?.(
++          "error",
++          "Google token exchange did not return an ID token."
++        );
++        return;
++      }
++
++      if (DEBUG_GOOGLE_AUTH) {
++        try {
++          const decodedIdToken = decodeJwtNoVerify(idToken);
++          console.log("[google] id_token_header", {
++            kid: decodedIdToken?.header?.kid,
++            alg: decodedIdToken?.header?.alg,
++          });
++          console.log("[google] id_token_payload", {
++            aud: decodedIdToken?.payload?.aud,
++            iss: decodedIdToken?.payload?.iss,
++            azp: decodedIdToken?.payload?.azp,
++            email: decodedIdToken?.payload?.email,
++            exp: decodedIdToken?.payload?.exp,
++          });
++        } catch (jwtDecodeError) {
++          console.log(
++            "[google] id_token_decode_skipped",
++            jwtDecodeError?.message || jwtDecodeError
++          );
++        }
++      }
++
++      const payload = { id_token: idToken };
++      googleTokenPayload = payload;
++
++      const res = await apiClient.post(`/auth/google`, payload);
++      await saveToken(res.data.access_token);
++      await saveRefreshToken(res.data.refresh_token);
++
++      if (res.data?.needs_onboarding) {
++        setSetupContext({ mode: "google", initialPhone: "", initialIsProvider: false });
++        setAuthMode("finishSetup");
++        return;
++      }
++
++      let meData = null;
++      try {
++        const meRes = await apiClient.get(`/users/me`);
++        meData = meRes.data;
++      } catch (meError) {
++        console.log(
++          "[auth] Failed to fetch /users/me after Google login",
++          meError?.message || meError
++        );
++      }
++
++      setToken({
++        token: res.data.access_token,
++        userId: meData?.id || meData?.user_id || res.data.user_id,
++        email: meData?.email || res.data.email,
++        username: meData?.username,
++        isProvider:
++          typeof meData?.is_provider === "boolean"
++            ? meData?.is_provider
++            : res.data.is_provider,
++        isAdmin:
++          typeof meData?.is_admin === "boolean"
++            ? meData?.is_admin
++            : res.data.is_admin,
++      });
++
++      setIsAdmin(
++        typeof meData?.is_admin === "boolean"
++          ? meData?.is_admin
++          : !!res.data.is_admin
++      );
++
++      setPendingGoogleLink(null);
++      showFlash?.("success", "Logged in successfully");
++    } catch (error) {
++      console.log("[google] login_error", {
++        status: error?.response?.status,
++        data: error?.response?.data,
++        message: error?.message,
++      });
++
++      const data = error?.response?.data;
++      const errorCode = data?.code || data?.detail?.code || normalizeErrorCode(data);
++      const statusCode = error?.response?.status;
++
++      if (
++        errorCode === "EMAIL_EXISTS_NOT_LINKED" &&
++        (statusCode === 400 || statusCode === 409)
++      ) {
++        const googleEmail =
++          googleAuthResult?.params?.email ||
++          googleAuthResult?.params?.login_hint ||
++          null;
++
++        setPendingGoogleLink({
++          tokenPayload: googleTokenPayload,
++          email: googleEmail,
++        });
++        setAuthMode("login");
++
++        showFlash?.(
++          "error",
++          "An account already exists with this email. Log in with your password to link Google."
++        );
++        return;
++      }
++
++      const backendCode = data?.code || data?.detail?.code || null;
++
++      showFlash?.(
++        "error",
++        backendCode
++          ? `Google login failed (${backendCode}). Please try again.`
++          : "Google login failed. Please try again."
++      );
++    } finally {
++      setGoogleLoading(false);
++    }
++  }, [
++    DEBUG_GOOGLE_AUTH,
++    decodeJwtNoVerify,
++    discovery,
++    isExpoGo,
++    promptAsync,
++    request,
++    setToken,
++    showFlash,
++    useProxy,
++  ]);
++
+   useEffect(() => {
+     tokenRef.current = token;
+   }, [token]);
+ 
+   useEffect(() => {
+     navReadyRef.current = navReady;
+   }, [navReady]);
+ 
+   useEffect(() => {
+     if (!token) setNavReady(false);
+   }, [token]);
+ 
+   const navigateToClientSearch = useCallback(
+   (username, navRef, nonce) => {
+     if (!navRef?.current) return false;
+ 
+     const params = { incomingUsername: username, deeplinkNonce: nonce };
+ 
+     navRef.current.navigate({
+       name: "Search",
+       params,
+       merge: false,
+     });
+ 
+     return true;
+@@ -9044,83 +9057,79 @@ function App() {
+             <ActivityIndicator size="large" color={colors.primary} />
+             <Text style={styles.loadingText}>Loading BookitGY…</Text>
+ 
+             {/* DEBUG LINES */}
+             {/* <Text style={styles.loadingText}>authLoading=true</Text>
+             <Text style={styles.loadingText}>bootStep={bootStep || "unknown"}</Text>
+             <Text style={styles.loadingText}>mount={mountIdRef.current}</Text> */}
+           </View>
+         </SafeAreaView>
+       </SafeAreaProvider>
+       
+     );
+   }
+ 
+   return (
+     <SafeAreaProvider>
+       <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }} edges={["top", "bottom"]}>
+         <FlashMessage flash={flash} />
+ 
+         {!token ? (
+           <>
+             {authMode === "landing" && (
+               <LandingScreen
+                 goToLogin={() => setAuthMode("login")}
+                 goToSignup={() => setAuthMode("signup")}
++                onGooglePress={loginWithGoogle}
++                googleLoading={googleLoading}
+               />
+             )}
+ 
+             {authMode === "login" && (
+               <LoginScreen
+                 setToken={setToken}
+                 setIsAdmin={setIsAdmin}
+                 onFacebookSetupRequired={(payload) => {
+                   setSetupContext({ mode: "facebook", ...payload });
+                   setAuthMode("finishSetup");
+                 }}
+-                onGoogleOnboardingRequired={(payload) => {
+-                  setSetupContext({ mode: "google", ...payload });
+-                  setAuthMode("finishSetup");
+-                }}
+                 pendingGoogleLink={pendingGoogleLink}
+-                onGoogleLinkRequired={(payload) => {
+-                  setPendingGoogleLink(payload);
+-                  setAuthMode("login");
+-                }}
+                 onCancelGoogleLink={() => {
+                   setPendingGoogleLink(null);
+                   showFlash("info", "Google linking canceled.");
+                 }}
+                 clearPendingGoogleLink={() => setPendingGoogleLink(null)}
+                 onEmailNotVerified={(attemptedEmail) => {
+                   setPendingVerifyEmail((attemptedEmail || "").trim().toLowerCase());
+                   setAuthMode("verifyEmail");
+                 }}
+                 goToSignup={() => setAuthMode("signup")}
+                 goToForgot={() => setAuthMode("forgot")}
+                 goBack={() => setAuthMode("landing")}
+                 showFlash={showFlash}
++                onGooglePress={loginWithGoogle}
++                googleLoading={googleLoading}
+               />
+             )}
+ 
+             {authMode === "signup" && (
+               <SignupScreen
+                 goToLogin={() => setAuthMode("login")}
+                 goBack={() => setAuthMode("landing")}
+                 showFlash={showFlash}
+                 onSignupSuccess={(createdEmail) => {
+                   setPendingVerifyEmail((createdEmail || "").trim().toLowerCase());
+                   setAuthMode("verifyEmail");
+                 }}
+               />
+             )}
+ 
+             {authMode === "verifyEmail" && (
+               <VerifyEmailScreen
+                 email={pendingVerifyEmail}
+                 showFlash={showFlash}
+                 goToLogin={() => {
+                   setPendingVerifyEmail("");
+                   setAuthMode("login");
+                 }}
+               />
+             )}
  
 EOF
 )
