@@ -11063,6 +11063,7 @@ bookingCancel: {
 },
 bookingMessageButton: {
   marginLeft: 12,
+  marginTop: 15,
 },
 
   bookingNavigate: {

@@ -1,123 +1,9 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
 diff --git a/mobile/App.js b/mobile/App.js
-index 041f4ff21ee72b52220bd07b12b018bd9e19c927..a5bab2337a4ee798b3d1d34c1d92c34b3c010165 100644
+index a5bab2337a4ee798b3d1d34c1d92c34b3c010165..64f0bb7cc6d8380e35c6f6647f493c10e7718519 100644
 --- a/mobile/App.js
 +++ b/mobile/App.js
-@@ -6446,51 +6446,54 @@ const loadProviderSummary = async () => {
-                   const mm = m.toString().padStart(2, "0");
-                   return `${h}:${mm} ${suffix}`;
-                 };
- 
-                 return (
-                   <View key={b.id} style={styles.bookingRow}>
-                     <View style={styles.bookingMain}>
-                       <Text style={styles.bookingTime}>
-                         {formatTime(start)} – {formatTime(end)}
-                       </Text>
-                       <Text style={styles.bookingService}>{b.service_name}</Text>
-                       <Text style={styles.bookingMeta}>
-                         {b.customer_name} · {b.customer_phone}
-                       </Text>
-                     </View>
- 
-                     <View style={styles.bookingActions}>
-                       {/* <TouchableOpacity onPress={() => handleEditBooking(b)}>
-                         <Text style={styles.bookingEdit}>Edit</Text>
-                       </TouchableOpacity> */}
-                       <TouchableOpacity
-                         onPress={() => handleCancelBooking(b.id)}
-                       >
-                         <Text style={styles.bookingCancel}>Cancel</Text>
-                       </TouchableOpacity>
--                      <TouchableOpacity onPress={() => setChatBooking(b)}>
-+                      <TouchableOpacity
-+                        style={styles.bookingMessageButton}
-+                        onPress={() => setChatBooking(b)}
-+                      >
-                         <Text style={styles.bookingEdit}>Message</Text>
-                       </TouchableOpacity>
-                     </View>
-                   </View>
-                 );
-               })}
-             </>
-           )}
-         </View>
- 
-         {/* Upcoming bookings */}
-         <View style={styles.card}>
-           <Text style={styles.sectionTitle}>Upcoming bookings</Text>
- 
-           {upcomingLoading && (
-             <View style={{ paddingVertical: 10 }}>
-               <ActivityIndicator />
-               <Text style={styles.serviceMeta}>
-                 Loading upcoming bookings…
-               </Text>
-             </View>
-           )}
- 
-           {!upcomingLoading && upcomingError ? (
-             <Text style={styles.errorText}>{upcomingError}</Text>
-@@ -6529,51 +6532,54 @@ const loadProviderSummary = async () => {
- 
-                   return (
-                     <View key={b.id} style={styles.bookingRow}>
-                       <View style={styles.bookingMain}>
-                         <Text style={styles.bookingTime}>
-                           {formatDate(start)} · {formatTime(start)} –{" "}
-                           {formatTime(end)}
-                         </Text>
-                         <Text style={styles.bookingService}>
-                           {b.service_name}
-                         </Text>
-                         <Text style={styles.bookingMeta}>
-                           {b.customer_name} · {b.customer_phone}
-                         </Text>
-                       </View>
- 
-                       <View style={styles.bookingActions}>
-                         {/* <TouchableOpacity onPress={() => handleEditBooking(b)}>
-                           <Text style={styles.bookingEdit}>Edit</Text>
-                         </TouchableOpacity> */}
-                         <TouchableOpacity
-                           onPress={() => handleCancelBooking(b.id)}
-                         >
-                           <Text style={styles.bookingCancel}>Cancel</Text>
-                         </TouchableOpacity>
--                        <TouchableOpacity onPress={() => setChatBooking(b)}>
-+                        <TouchableOpacity
-+                          style={styles.bookingMessageButton}
-+                          onPress={() => setChatBooking(b)}
-+                        >
-                           <Text style={styles.bookingEdit}>Message</Text>
-                         </TouchableOpacity>
-                       </View>
-                     </View>
-                   );
-                 })}
-               </>
-             )}
-         </View>
- 
-         {/* Services */}
-         <View style={styles.card}>
-           <View
-             style={{
-               flexDirection: "row",
-               justifyContent: "space-between",
-               alignItems: "center",
-               marginBottom: 8,
-             }}
-           >
-             <Text style={styles.sectionTitle}>Your services</Text>
-             <TouchableOpacity onPress={() => setAdding((prev) => !prev)}>
-               <Text style={{ color: colors.primary, fontWeight: "600" }}>
-                 {adding ? "Cancel" : "+ Add"}
-               </Text>
-@@ -11033,50 +11039,53 @@ bookingTime: {
-   color: colors.textMuted,
- },
+@@ -11041,50 +11041,51 @@ bookingTime: {
  bookingService: {
    fontSize: 16,
    fontWeight: "600",
@@ -141,9 +27,10 @@ index 041f4ff21ee72b52220bd07b12b018bd9e19c927..a5bab2337a4ee798b3d1d34c1d92c34b
    color: colors.error,
    marginTop: 4,
  },
-+bookingMessageButton: {
-+  marginLeft: 12,
-+},
+ bookingMessageButton: {
+   marginLeft: 12,
++  marginTop: 10,
+ },
  
    bookingNavigate: {
      fontSize: 12,
@@ -168,7 +55,6 @@ index 041f4ff21ee72b52220bd07b12b018bd9e19c927..a5bab2337a4ee798b3d1d34c1d92c34b
  
  navigateButtonContainer: {
    marginTop: 12,
-   width: "100%",
  
 EOF
 )
