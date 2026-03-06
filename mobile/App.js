@@ -669,7 +669,7 @@ function LoginScreen({
   const [facebookLoading, setFacebookLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
 
-  // Expo Go requires the proxy redirect, while standalone/TestFlight should use app scheme redirects.
+  // Expo Go proxy is a fallback only; OAuth/OpenID testing is expected in development builds or standalone/TestFlight apps.
   const isExpoGo = Constants.appOwnership === "expo";
   const useProxy = isExpoGo;
   const hasLoggedGoogleEnvRef = useRef(false);
@@ -957,13 +957,14 @@ const loginWithGoogle = async () => {
     }
 
     if (DEBUG_GOOGLE_AUTH) {
-      console.log("[google] promptAsync request summary", {
+      console.log("[google] request", {
         appOwnership: Constants.appOwnership,
+        isExpoGo,
         useProxy,
-        responseType: request?.responseType,
-        redirectUri: request?.redirectUri,
-        requestUrl: request?.url,
-        hasCodeVerifier: Boolean(request?.codeVerifier),
+        "request.responseType": request?.responseType,
+        "request.redirectUri": request?.redirectUri,
+        "request.url": request?.url,
+        "request.codeVerifierPresent": Boolean(request?.codeVerifier),
       });
     }
 
@@ -971,13 +972,14 @@ const loginWithGoogle = async () => {
     googleAuthResult = result;
 
     if (DEBUG_GOOGLE_AUTH) {
-      console.log("[google] promptAsync result summary", {
-        type: result?.type,
-        hasCode: Boolean(result?.params?.code),
-        hasError: Boolean(result?.params?.error),
-        error: result?.params?.error,
-        errorDescription: result?.params?.error_description,
-        errorCode: result?.error?.code,
+      console.log("[google] result", {
+        "result.type": result?.type,
+        "result.codePresent": Boolean(result?.params?.code),
+        "result.error":
+          result?.params?.error ||
+          result?.error?.code ||
+          result?.error?.message ||
+          null,
       });
     }
 
@@ -990,9 +992,8 @@ const loginWithGoogle = async () => {
     const code = typeof codeRaw === "string" ? codeRaw.trim() : "";
 
     if (DEBUG_GOOGLE_AUTH) {
-      console.log("[google] authorization code summary", {
-        hasCode: Boolean(code),
-        codeLength: code?.length || 0,
+      console.log("[google] code", {
+        "result.codePresent": Boolean(code),
       });
     }
 
@@ -1022,9 +1023,14 @@ const loginWithGoogle = async () => {
       return;
     }
 
+    const exchangeClientId =
+      Platform.OS === "ios" && !isExpoGo
+        ? process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID
+        : process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID;
+
     const tokenRes = await AuthSession.exchangeCodeAsync(
       {
-        clientId: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID, // TestFlight => iOS client
+        clientId: exchangeClientId,
         code,
         redirectUri,
         extraParams: {
@@ -1039,9 +1045,9 @@ const loginWithGoogle = async () => {
     const idToken = typeof idTokenRaw === "string" ? idTokenRaw.trim() : "";
 
     if (DEBUG_GOOGLE_AUTH) {
-      console.log("[google] token exchange summary", {
-        hasIdToken: Boolean(idToken),
-        idTokenLength: idToken?.length || 0,
+      console.log("[google] tokenExchange", {
+        "tokenExchange.idTokenPresent": Boolean(idToken),
+        "tokenExchange.idTokenLength": idToken?.length || 0,
       });
     }
 

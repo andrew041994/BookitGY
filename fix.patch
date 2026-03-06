@@ -1,298 +1,222 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
-diff --git a/backend/app/routes/auth.py b/backend/app/routes/auth.py
-index 185f2caf19c5b84b257781e29f01b00b40732299..a20591660c933270c20d4072c2d0cefcdc44919b 100644
---- a/backend/app/routes/auth.py
-+++ b/backend/app/routes/auth.py
-@@ -119,104 +119,109 @@ def _verify_google_id_token(id_token: str) -> dict:
-     client_ids = _google_client_ids()
-     if GOOGLE_DEBUG_LOGS:
-         logger.info(
-             "[google-backend] accepted_google_client_ids count=%s values=%s",
-             len(client_ids),
-             [_redact_client_id(client_id) for client_id in client_ids],
-         )
+diff --git a/mobile/App.js b/mobile/App.js
+index 0e7f1a2fccc95dc76139b3ef8f3541c6671934f0..6f24f37d34da6152e45e3c3baa9c3c1715d82cc9 100644
+--- a/mobile/App.js
++++ b/mobile/App.js
+@@ -647,51 +647,51 @@ function LandingScreen({ goToLogin, goToSignup }) {
  
-     try:
-         unverified_claims = _decode_jwt_no_verify(token)
-         unverified_header = _decode_jwt_header_no_verify(token)
-         kid = unverified_header.get("kid")
-         if GOOGLE_DEBUG_LOGS:
-             logger.info(
-                 "[google-backend] unverified_token_fields aud=%s iss=%s azp=%s email=%s exp=%s kid=%s alg=%s",
-                 unverified_claims.get("aud"),
-                 unverified_claims.get("iss"),
-                 unverified_claims.get("azp"),
-                 unverified_claims.get("email"),
-                 unverified_claims.get("exp"),
-                 kid,
-                 unverified_header.get("alg"),
-             )
-     except Exception as exc:
-         if GOOGLE_DEBUG_LOGS:
--            logger.info("[google-backend] verification_failed reason=malformed token detail=%s", str(exc))
-+            logger.info("[google-backend] verification_failed reason=malformed token exception=%s detail=%s", exc.__class__.__name__, str(exc))
-         raise _google_error(status.HTTP_401_UNAUTHORIZED, "GOOGLE_TOKEN_INVALID")
+ // 🔹 Dedicated login screen component
+ const ENABLE_FACEBOOK_AUTH = process.env.EXPO_PUBLIC_ENABLE_FACEBOOK_AUTH === "true";
  
-     if not kid:
-         if GOOGLE_DEBUG_LOGS:
-             logger.info("[google-backend] verification_failed reason=malformed token detail=missing kid")
-         raise _google_error(status.HTTP_401_UNAUTHORIZED, "GOOGLE_TOKEN_INVALID")
+ function LoginScreen({
+   setToken,
+   setIsAdmin,
+   onFacebookSetupRequired,
+   onGoogleOnboardingRequired,
+   pendingGoogleLink,
+   onGoogleLinkRequired,
+   onCancelGoogleLink,
+   clearPendingGoogleLink,
+   onEmailNotVerified,
+   goToSignup,
+   goToForgot,
+   goBack,
+   showFlash,
+ }) {
+   const [email, setEmail] = useState("");
+   const [password, setPassword] = useState("");
+   const [loading, setLoading] = useState(false);
+   const [facebookLoading, setFacebookLoading] = useState(false);
+   const [googleLoading, setGoogleLoading] = useState(false);
  
-     try:
-         jwks_resp = requests.get("https://www.googleapis.com/oauth2/v3/certs", timeout=10)
-         jwks = jwks_resp.json() if jwks_resp.ok else {}
-     except Exception as exc:
-         if GOOGLE_DEBUG_LOGS:
--            logger.info("[google-backend] verification_failed reason=unexpected exception detail=%s", str(exc))
-+            logger.info("[google-backend] verification_failed reason=unexpected exception exception=%s detail=%s", exc.__class__.__name__, str(exc))
-         raise _google_error(status.HTTP_401_UNAUTHORIZED, "GOOGLE_TOKEN_INVALID")
+-  // Expo Go requires the proxy redirect, while standalone/TestFlight should use app scheme redirects.
++  // Expo Go proxy is a fallback only; OAuth/OpenID testing is expected in development builds or standalone/TestFlight apps.
+   const isExpoGo = Constants.appOwnership === "expo";
+   const useProxy = isExpoGo;
+   const hasLoggedGoogleEnvRef = useRef(false);
  
-     key_data = None
-     for key in jwks.get("keys", []):
-         if key.get("kid") == kid:
-             key_data = key
-             break
+   useEffect(() => {
+     if (hasLoggedGoogleEnvRef.current) return;
+     hasLoggedGoogleEnvRef.current = true;
+     console.log("[google] appOwnership:", Constants.appOwnership);
+     console.log("[google] isExpoGo:", isExpoGo);
+     console.log("[google] useProxy:", useProxy);
+   }, [isExpoGo, useProxy]);
  
-     if not key_data:
-         if GOOGLE_DEBUG_LOGS:
-             logger.info("[google-backend] verification_failed reason=signature failure detail=matching kid not found")
-         raise _google_error(status.HTTP_401_UNAUTHORIZED, "GOOGLE_TOKEN_INVALID")
+   const discovery = AuthSession.useAutoDiscovery("https://accounts.google.com");
  
-     try:
-         payload = jwt.decode(
-             token,
-             key_data,
-             algorithms=["RS256"],
-             audience=client_ids,
-             issuer=["https://accounts.google.com", "accounts.google.com"],
-         )
-     except JWTError as exc:
-         detail = str(exc).lower()
-         reason = "signature failure"
-         if "audience" in detail:
-             reason = "invalid audience"
-         elif "issuer" in detail:
-             reason = "invalid issuer"
-         elif "expired" in detail:
-             reason = "expired token"
-         elif "signature" in detail:
-             reason = "signature failure"
-         elif "malformed" in detail or "decode" in detail:
-             reason = "malformed token"
-         if GOOGLE_DEBUG_LOGS:
--            logger.info("[google-backend] verification_failed reason=%s detail=%s", reason, str(exc))
-+            logger.info(
-+                "[google-backend] verification_failed reason=%s exception=%s detail=%s",
-+                reason,
-+                exc.__class__.__name__,
-+                str(exc),
-+            )
-         raise _google_error(status.HTTP_401_UNAUTHORIZED, "GOOGLE_TOKEN_INVALID")
-     except Exception as exc:
-         if GOOGLE_DEBUG_LOGS:
--            logger.info("[google-backend] verification_failed reason=unexpected exception detail=%s", str(exc))
-+            logger.info("[google-backend] verification_failed reason=unexpected exception exception=%s detail=%s", exc.__class__.__name__, str(exc))
-         raise _google_error(status.HTTP_401_UNAUTHORIZED, "GOOGLE_TOKEN_INVALID")
+   const [request, response, promptAsync] = Google.useAuthRequest(
+     {
+       expoClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
+       iosClientId: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID,
+       androidClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
+       webClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
+       responseType: AuthSession.ResponseType.Code,
+       usePKCE: true,
+       scopes: ["openid", "profile", "email"],
+     },
+     discovery
+@@ -935,135 +935,141 @@ const decodeJwtNoVerify = (token) => {
+   }
  
-     if not payload.get("sub"):
-         raise _google_error(status.HTTP_401_UNAUTHORIZED, "GOOGLE_TOKEN_INVALID")
+   const header = JSON.parse(decodeBase64UrlToUtf8(parts[0]));
+   const payload = JSON.parse(decodeBase64UrlToUtf8(parts[1]));
  
-     email = (payload.get("email") or "").strip().lower() or None
-     if not email:
-         raise _google_error(status.HTTP_400_BAD_REQUEST, "GOOGLE_EMAIL_REQUIRED")
+   return { header, payload };
+ };
  
-     return {
-         "sub": str(payload["sub"]),
-         "email": email,
-         "email_verified": bool(payload.get("email_verified")),
-         "name": (payload.get("name") or "").strip() or None,
+ const loginWithGoogle = async () => {
+   if (!request) {
+     showFlash?.("error", "Google Sign-In is not configured yet.");
+     return;
+   }
+ 
+   let googleAuthResult = null;
+   let googleTokenPayload = null;
+ 
+   setGoogleLoading(true);
+   try {
+     if (!request) {
+       showFlash?.("error", "Google not ready yet.");
+       return;
      }
  
+     if (DEBUG_GOOGLE_AUTH) {
+-      console.log("[google] promptAsync request summary", {
++      console.log("[google] request", {
+         appOwnership: Constants.appOwnership,
++        isExpoGo,
+         useProxy,
+-        responseType: request?.responseType,
+-        redirectUri: request?.redirectUri,
+-        requestUrl: request?.url,
+-        hasCodeVerifier: Boolean(request?.codeVerifier),
++        "request.responseType": request?.responseType,
++        "request.redirectUri": request?.redirectUri,
++        "request.url": request?.url,
++        "request.codeVerifierPresent": Boolean(request?.codeVerifier),
+       });
+     }
  
- def _google_needs_onboarding(user: models.User) -> bool:
-     return not bool((user.phone or "").strip())
+     const result = await promptAsync({ useProxy });
+     googleAuthResult = result;
  
+     if (DEBUG_GOOGLE_AUTH) {
+-      console.log("[google] promptAsync result summary", {
+-        type: result?.type,
+-        hasCode: Boolean(result?.params?.code),
+-        hasError: Boolean(result?.params?.error),
+-        error: result?.params?.error,
+-        errorDescription: result?.params?.error_description,
+-        errorCode: result?.error?.code,
++      console.log("[google] result", {
++        "result.type": result?.type,
++        "result.codePresent": Boolean(result?.params?.code),
++        "result.error":
++          result?.params?.error ||
++          result?.error?.code ||
++          result?.error?.message ||
++          null,
+       });
+     }
  
- def _google_auth_response(db: Session, user: models.User) -> dict:
-     access_token = _issue_access_token(user.email, user.token_version, user.id)
-     refresh_token, _ = _create_refresh_token(db, user.id)
-     return {
-@@ -614,114 +619,123 @@ def facebook_complete(
-     except IntegrityError as exc:
-         detail = str(getattr(exc, "orig", exc))
-         if "users_phone" in detail or "phone" in detail:
-             raise _facebook_error(status.HTTP_400_BAD_REQUEST, "PHONE_TAKEN")
-         raise
+     if (result?.type !== "success") {
+       return;
+     }
  
-     if payload.is_provider:
-         crud.get_or_create_provider_for_user(db, user.id)
+     // --- Code Flow (PKCE): get the authorization code ---
+     const codeRaw = result?.params?.code ?? null;
+     const code = typeof codeRaw === "string" ? codeRaw.trim() : "";
  
-     crud.create_oauth_identity(
-         db,
-         user_id=user.id,
-         provider="facebook",
-         provider_user_id=fb_profile["id"],
-         email=fb_email or request_email,
-     )
+     if (DEBUG_GOOGLE_AUTH) {
+-      console.log("[google] authorization code summary", {
+-        hasCode: Boolean(code),
+-        codeLength: code?.length || 0,
++      console.log("[google] code", {
++        "result.codePresent": Boolean(code),
+       });
+     }
  
-     return _facebook_auth_response(db, user)
+     if (!code) {
+       showFlash?.(
+         "error",
+         "Google did not return an auth code. Ensure responseType=Code and usePKCE=true."
+       );
+       return;
+     }
  
+     // --- Exchange code -> tokens (id_token will be returned here) ---
+     const redirectUri = request?.redirectUri;
+     if (!redirectUri) {
+       showFlash?.("error", "Google redirect URI missing. Please try again.");
+       return;
+     }
  
- @router.post("/auth/google", response_model=schemas.GoogleAuthResponse)
- def auth_google(
-     payload: schemas.GoogleAuthRequest,
-     db: Session = Depends(get_db),
- ):
--    id_token = (payload.id_token or "").strip()
--    authorization_code = (payload.authorization_code or "").strip()
--    logger.info("[google-backend] POST /auth/google hit id_token_provided=%s id_token_len=%s", bool(id_token), len(id_token))
--
--    if not id_token:
--        logger.info("[google-backend] POST /auth/google GOOGLE_TOKEN_REQUIRED")
--
--    if not id_token and authorization_code:
--        raise _google_error(
--            status.HTTP_400_BAD_REQUEST,
--            "GOOGLE_AUTH_CODE_NOT_SUPPORTED",
--            "authorization_code flow is not supported yet",
--        )
--
-     try:
-+        id_token = (payload.id_token or "").strip()
-+        authorization_code = (payload.authorization_code or "").strip()
-+        logger.info("[google-backend] /auth/google hit")
-+        logger.info("[google-backend] /auth/google id_token_present=%s", bool(id_token))
-+        logger.info("[google-backend] /auth/google id_token_length=%s", len(id_token))
+     // Use whatever discovery you already have in scope (recommended):
+     // const discovery = AuthSession.useAutoDiscovery("https://accounts.google.com");
+     // If you don't have it, you must define it where hooks are allowed (top-level in component).
+     if (typeof discovery === "undefined" || !discovery?.tokenEndpoint) {
+       showFlash?.(
+         "error",
+         "Google discovery not ready. Ensure you defined: const discovery = AuthSession.useAutoDiscovery('https://accounts.google.com');"
+       );
+       return;
+     }
+ 
++    const exchangeClientId =
++      Platform.OS === "ios" && !isExpoGo
++        ? process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID
++        : process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID;
 +
-+        if not id_token:
-+            logger.info("[google-backend] POST /auth/google GOOGLE_TOKEN_REQUIRED")
-+
-+        if not id_token and authorization_code:
-+            raise _google_error(
-+                status.HTTP_400_BAD_REQUEST,
-+                "GOOGLE_AUTH_CODE_NOT_SUPPORTED",
-+                "authorization_code flow is not supported yet",
-+            )
-+
-         google_profile = _verify_google_id_token(id_token)
--    except Exception as exc:
-+        google_sub = google_profile["sub"]
-+        google_email = google_profile["email"]
-         logger.info(
--            "[google-backend] POST /auth/google verification_failed reason=%s: %s",
--            exc.__class__.__name__,
--            str(exc),
-+            "[google-backend] POST /auth/google verified email=%s sub=%s email_verified=%s",
-+            google_email,
-+            _mask_id(google_sub),
-+            google_profile.get("email_verified", False),
-         )
--        raise
+     const tokenRes = await AuthSession.exchangeCodeAsync(
+       {
+-        clientId: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID, // TestFlight => iOS client
++        clientId: exchangeClientId,
+         code,
+         redirectUri,
+         extraParams: {
+           // PKCE verifier generated by the request
+           code_verifier: request.codeVerifier,
+         },
+       },
+       discovery
+     );
  
--    google_sub = google_profile["sub"]
--    google_email = google_profile["email"]
--    logger.info(
--        "[google-backend] POST /auth/google verified email=%s sub=%s email_verified=%s",
--        google_email,
--        _mask_id(google_sub),
--        google_profile.get("email_verified", False),
--    )
-+        existing_google_user = crud.get_user_by_google_sub(db, google_sub)
-+        if existing_google_user:
-+            logger.info("[google-backend] POST /auth/google existing linked google_sub user found")
-+            return _google_auth_response(db, existing_google_user)
+     const idTokenRaw = tokenRes?.idToken ?? null;
+     const idToken = typeof idTokenRaw === "string" ? idTokenRaw.trim() : "";
  
--    existing_google_user = crud.get_user_by_google_sub(db, google_sub)
--    if existing_google_user:
--        logger.info("[google-backend] POST /auth/google existing linked google_sub user found")
--        return _google_auth_response(db, existing_google_user)
-+        logger.info("[google-backend] POST /auth/google no google_sub match")
+     if (DEBUG_GOOGLE_AUTH) {
+-      console.log("[google] token exchange summary", {
+-        hasIdToken: Boolean(idToken),
+-        idTokenLength: idToken?.length || 0,
++      console.log("[google] tokenExchange", {
++        "tokenExchange.idTokenPresent": Boolean(idToken),
++        "tokenExchange.idTokenLength": idToken?.length || 0,
+       });
+     }
  
--    logger.info("[google-backend] POST /auth/google no google_sub match")
-+        existing_local_user = crud.get_user_by_email(db, google_email)
-+        if existing_local_user:
-+            logger.info("[google-backend] POST /auth/google email collision with local user (not linked)")
-+            raise _google_error(
-+                status.HTTP_409_CONFLICT,
-+                "EMAIL_EXISTS_NOT_LINKED",
-+                "An account already exists with this email. Log in with your password to link Google.",
-+            )
+     if (!idToken) {
+       showFlash?.(
+         "error",
+         "Google token exchange did not return an ID token. Ensure scopes include openid."
+       );
+       return;
+     }
  
--    existing_local_user = crud.get_user_by_email(db, google_email)
--    if existing_local_user:
--        logger.info("[google-backend] POST /auth/google email collision with local user (not linked)")
--        raise _google_error(
--            status.HTTP_409_CONFLICT,
--            "EMAIL_EXISTS_NOT_LINKED",
--            "An account already exists with this email. Log in with your password to link Google.",
--        )
-+        logger.info("[google-backend] POST /auth/google creating new user from google")
-+        try:
-+            user = crud.create_user_for_google(
-+                db,
-+                email=google_email,
-+                google_sub=google_sub,
-+                name=google_profile.get("name"),
-+                email_verified=google_profile.get("email_verified", False),
-+            )
-+        except IntegrityError:
-+            logger.info("[google-backend] POST /auth/google integrity error while creating new user from google")
-+            raise
- 
--    logger.info("[google-backend] POST /auth/google creating new user from google")
--    try:
--        user = crud.create_user_for_google(
--            db,
--            email=google_email,
--            google_sub=google_sub,
--            name=google_profile.get("name"),
--            email_verified=google_profile.get("email_verified", False),
-+        return _google_auth_response(db, user)
-+    except HTTPException as exc:
-+        if exc.status_code == status.HTTP_401_UNAUTHORIZED:
-+            logger.info(
-+                "[google-backend] POST /auth/google returning_401 code=%s detail=%s",
-+                (exc.detail or {}).get("code") if isinstance(exc.detail, dict) else None,
-+                exc.detail,
-+            )
-+        raise
-+    except Exception as exc:
-+        logger.info(
-+            "[google-backend] POST /auth/google verification_failed reason=unexpected exception exception=%s detail=%s",
-+            exc.__class__.__name__,
-+            str(exc),
-         )
--    except IntegrityError:
--        logger.info("[google-backend] POST /auth/google integrity error while creating new user from google")
-         raise
- 
--    return _google_auth_response(db, user)
--
- 
- @router.post("/auth/link-google", response_model=schemas.LinkGoogleResponse)
- def link_google(
-     payload: schemas.LinkGoogleRequest,
-     db: Session = Depends(get_db),
-     current_user: models.User = Depends(get_current_user_from_header),
- ):
-     id_token = (payload.id_token or "").strip()
-     authorization_code = (payload.authorization_code or "").strip()
-     logger.info("POST /auth/link-google id_token_provided=%s", bool(id_token))
- 
-     if not id_token:
-         logger.info("POST /auth/link-google GOOGLE_TOKEN_REQUIRED")
- 
-     if not id_token and authorization_code:
-         raise _google_error(
-             status.HTTP_400_BAD_REQUEST,
-             "GOOGLE_AUTH_CODE_NOT_SUPPORTED",
-             "authorization_code flow is not supported yet",
-         )
- 
-     try:
-         google_profile = _verify_google_id_token(id_token)
-     except Exception as exc:
-         logger.info(
+     if (DEBUG_GOOGLE_AUTH) {
+       try {
+         const decoded = decodeJwtNoVerify(idToken);
+         console.log("[google] id_token header", {
+           kid: decoded?.header?.kid,
+           alg: decoded?.header?.alg,
+         });
+         console.log("[google] id_token payload", {
+           aud: decoded?.payload?.aud,
+           iss: decoded?.payload?.iss,
+           azp: decoded?.payload?.azp,
+           email: decoded?.payload?.email,
+           exp: decoded?.payload?.exp,
+         });
  
 EOF
 )
