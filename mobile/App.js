@@ -57,6 +57,7 @@ import {
   SafeAreaView,
   useSafeAreaInsets,
 } from "react-native-safe-area-context";
+import { KeyboardAwareScrollView } from "react-native-keyboard-aware-scroll-view";
 import { apiClient } from "./src/api";
 // import { AccessToken, LoginManager } from "react-native-fbsdk-next";
 import BookitGYLogoTransparent from "./assets/bookitgy-logo-transparent.png"
@@ -8523,131 +8524,138 @@ function ProviderCalendarScreen({ token, showFlash }) {
           <View style={styles.providerBlockModalBackdrop}>
             <TouchableWithoutFeedback onPress={() => {}}>
               <View style={styles.providerBlockModalCard}>
-                <Text style={styles.providerBlockModalTitle}>Block Time</Text>
+                <KeyboardAwareScrollView
+                  contentContainerStyle={styles.providerBlockModalScrollContent}
+                  keyboardShouldPersistTaps="handled"
+                  enableOnAndroid={true}
+                  extraScrollHeight={20}
+                >
+                  <Text style={styles.providerBlockModalTitle}>Block Time</Text>
 
-                <View style={styles.providerBlockTypeRow}>
-                  <TouchableOpacity
-                    style={[
-                      styles.providerBlockTypeButton,
-                      blockType === "one_time" && styles.providerBlockTypeButtonActive,
-                    ]}
-                    onPress={() => setBlockType("one_time")}
-                    disabled={blockSubmitting}
-                  >
-                    <Text
+                  <View style={styles.providerBlockTypeRow}>
+                    <TouchableOpacity
                       style={[
-                        styles.providerBlockTypeButtonText,
-                        blockType === "one_time" && styles.providerBlockTypeButtonTextActive,
+                        styles.providerBlockTypeButton,
+                        blockType === "one_time" && styles.providerBlockTypeButtonActive,
                       ]}
+                      onPress={() => setBlockType("one_time")}
+                      disabled={blockSubmitting}
                     >
-                      One-Time Block
-                    </Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[
-                      styles.providerBlockTypeButton,
-                      blockType === "all_day" && styles.providerBlockTypeButtonActive,
-                    ]}
-                    onPress={() => setBlockType("all_day")}
-                    disabled={blockSubmitting}
-                  >
-                    <Text
+                      <Text
+                        style={[
+                          styles.providerBlockTypeButtonText,
+                          blockType === "one_time" && styles.providerBlockTypeButtonTextActive,
+                        ]}
+                      >
+                        One-Time Block
+                      </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
                       style={[
-                        styles.providerBlockTypeButtonText,
-                        blockType === "all_day" && styles.providerBlockTypeButtonTextActive,
+                        styles.providerBlockTypeButton,
+                        blockType === "all_day" && styles.providerBlockTypeButtonActive,
                       ]}
+                      onPress={() => setBlockType("all_day")}
+                      disabled={blockSubmitting}
                     >
-                      All-Day Block
-                    </Text>
-                  </TouchableOpacity>
-                </View>
+                      <Text
+                        style={[
+                          styles.providerBlockTypeButtonText,
+                          blockType === "all_day" && styles.providerBlockTypeButtonTextActive,
+                        ]}
+                      >
+                        All-Day Block
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
 
-                <Text style={styles.providerBlockLabel}>Date (YYYY-MM-DD)</Text>
-                <TextInput
-                  value={blockDate}
-                  onChangeText={setBlockDate}
-                  editable={!blockSubmitting}
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                  placeholder="2026-03-06"
-                  placeholderTextColor={colors.textMuted}
-                  style={styles.providerBlockInput}
-                />
+                  <Text style={styles.providerBlockLabel}>Date (YYYY-MM-DD)</Text>
+                  <TextInput
+                    value={blockDate}
+                    onChangeText={setBlockDate}
+                    editable={!blockSubmitting}
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    placeholder="2026-03-06"
+                    placeholderTextColor={colors.textMuted}
+                    style={styles.providerBlockInput}
+                  />
 
-                {blockType === "one_time" ? (
-                  <>
-                    <Text style={styles.providerBlockLabel}>Start Time (HH:MM)</Text>
-                    <TextInput
-                      value={blockStartTime}
-                      onChangeText={setBlockStartTime}
-                      editable={!blockSubmitting}
-                      autoCapitalize="none"
-                      autoCorrect={false}
-                      placeholder="09:00"
-                      placeholderTextColor={colors.textMuted}
-                      style={styles.providerBlockInput}
-                    />
+                  {blockType === "one_time" ? (
+                    <>
+                      <Text style={styles.providerBlockLabel}>Start Time (HH:MM)</Text>
+                      <TextInput
+                        value={blockStartTime}
+                        onChangeText={setBlockStartTime}
+                        editable={!blockSubmitting}
+                        autoCapitalize="none"
+                        autoCorrect={false}
+                        placeholder="09:00"
+                        placeholderTextColor={colors.textMuted}
+                        style={styles.providerBlockInput}
+                      />
 
-                    <View style={styles.providerBlockDurationRow}>
-                      <View style={styles.providerBlockDurationCol}>
-                        <Text style={styles.providerBlockLabel}>Hours</Text>
-                        <TextInput
-                          value={blockDurationHours}
-                          onChangeText={setBlockDurationHours}
-                          editable={!blockSubmitting}
-                          keyboardType="number-pad"
-                          placeholder="1"
-                          placeholderTextColor={colors.textMuted}
-                          style={styles.providerBlockInput}
-                        />
+                      <View style={styles.providerBlockDurationRow}>
+                        <View style={styles.providerBlockDurationCol}>
+                          <Text style={styles.providerBlockLabel}>Hours</Text>
+                          <TextInput
+                            value={blockDurationHours}
+                            onChangeText={setBlockDurationHours}
+                            editable={!blockSubmitting}
+                            keyboardType="number-pad"
+                            placeholder="1"
+                            placeholderTextColor={colors.textMuted}
+                            style={styles.providerBlockInput}
+                          />
+                        </View>
+                        <View style={styles.providerBlockDurationCol}>
+                          <Text style={styles.providerBlockLabel}>Minutes</Text>
+                          <TextInput
+                            value={blockDurationMinutes}
+                            onChangeText={setBlockDurationMinutes}
+                            editable={!blockSubmitting}
+                            keyboardType="number-pad"
+                            placeholder="0"
+                            placeholderTextColor={colors.textMuted}
+                            style={styles.providerBlockInput}
+                          />
+                        </View>
                       </View>
-                      <View style={styles.providerBlockDurationCol}>
-                        <Text style={styles.providerBlockLabel}>Minutes</Text>
-                        <TextInput
-                          value={blockDurationMinutes}
-                          onChangeText={setBlockDurationMinutes}
-                          editable={!blockSubmitting}
-                          keyboardType="number-pad"
-                          placeholder="0"
-                          placeholderTextColor={colors.textMuted}
-                          style={styles.providerBlockInput}
-                        />
-                      </View>
-                    </View>
-                  </>
-                ) : null}
+                    </>
+                  ) : null}
 
-                <Text style={styles.providerBlockLabel}>Reason (optional)</Text>
-                <TextInput
-                  value={blockReason}
-                  onChangeText={setBlockReason}
-                  editable={!blockSubmitting}
-                  placeholder="Optional note"
-                  placeholderTextColor={colors.textMuted}
-                  style={[styles.providerBlockInput, styles.providerBlockReasonInput]}
-                  multiline
-                />
+                  <Text style={styles.providerBlockLabel}>Reason (optional)</Text>
+                  <TextInput
+                    value={blockReason}
+                    onChangeText={setBlockReason}
+                    editable={!blockSubmitting}
+                    placeholder="Optional note"
+                    placeholderTextColor={colors.textMuted}
+                    style={[styles.providerBlockInput, styles.providerBlockReasonInput]}
+                    multiline
+                  />
 
-                <View style={styles.providerBlockActionsRow}>
-                  <TouchableOpacity
-                    style={styles.providerBlockCancelButton}
-                    onPress={() => setBlockModalVisible(false)}
-                    disabled={blockSubmitting}
-                  >
-                    <Text style={styles.providerBlockCancelButtonText}>Close</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.providerBlockSubmitButton, blockSubmitting && styles.providerCalendarCancelButtonDisabled]}
-                    onPress={handleSubmitBlockedTime}
-                    disabled={blockSubmitting}
-                  >
-                    {blockSubmitting ? (
-                      <ActivityIndicator color={colors.textPrimary} size="small" />
-                    ) : (
-                      <Text style={styles.providerBlockSubmitButtonText}>Save Block</Text>
-                    )}
-                  </TouchableOpacity>
-                </View>
+                  <View style={styles.providerBlockActionsRow}>
+                    <TouchableOpacity
+                      style={styles.providerBlockCancelButton}
+                      onPress={() => setBlockModalVisible(false)}
+                      disabled={blockSubmitting}
+                    >
+                      <Text style={styles.providerBlockCancelButtonText}>Close</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.providerBlockSubmitButton, blockSubmitting && styles.providerCalendarCancelButtonDisabled]}
+                      onPress={handleSubmitBlockedTime}
+                      disabled={blockSubmitting}
+                    >
+                      {blockSubmitting ? (
+                        <ActivityIndicator color={colors.textPrimary} size="small" />
+                      ) : (
+                        <Text style={styles.providerBlockSubmitButtonText}>Save Block</Text>
+                      )}
+                    </TouchableOpacity>
+                  </View>
+                </KeyboardAwareScrollView>
               </View>
             </TouchableWithoutFeedback>
           </View>
@@ -11958,6 +11966,10 @@ signupTextButtonText: {
     borderWidth: 1,
     borderColor: colors.border,
     padding: 14,
+    maxHeight: "90%",
+  },
+  providerBlockModalScrollContent: {
+    flexGrow: 1,
   },
   providerBlockModalTitle: {
     color: colors.textPrimary,
