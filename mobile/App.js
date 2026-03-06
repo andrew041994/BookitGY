@@ -3535,6 +3535,8 @@ function BookingChatModal({
   }, [showFlash]);
 
   const handleSend = useCallback(async () => {
+    if (sending) return;
+
     const trimmedText = text.trim();
     if (!trimmedText && !selectedImage) {
       showFlash && showFlash("error", "Message must include text or an image.");
@@ -3554,7 +3556,13 @@ function BookingChatModal({
       if (selectedImage?.uri) {
         const filename = selectedImage.fileName || selectedImage.uri.split("/").pop() || "chat-image.jpg";
         const ext = (filename.split(".").pop() || "jpg").toLowerCase();
-        const mimeType = selectedImage.mimeType || (ext === "png" ? "image/png" : ext === "webp" ? "image/webp" : "image/jpeg");
+        const mimeType =
+          selectedImage.mimeType ||
+          (ext === "png"
+            ? "image/png"
+            : ext === "webp"
+              ? "image/webp"
+              : "image/jpeg");
 
         const formData = new FormData();
         formData.append("file", {
@@ -3563,14 +3571,22 @@ function BookingChatModal({
           type: mimeType,
         });
 
-        const uploadRes = await apiClient.post(`/bookings/messages/attachments?booking_id=${bookingId}`, formData, {
-          headers: {
-            "Content-Type": "multipart/form-data",
-          },
-        });
+        const uploadRes = await apiClient.post(
+          `/bookings/messages/attachments?booking_id=${bookingId}`,
+          formData
+        );
 
-        attachmentPayload = uploadRes?.data || null;
-        if (!attachmentPayload?.file_url) {
+        const rawAttachment = uploadRes?.data?.attachment || uploadRes?.data || null;
+        const fileUrl = rawAttachment?.file_url || rawAttachment?.url || rawAttachment?.secure_url || null;
+        attachmentPayload = fileUrl
+          ? {
+              attachment_type: "image",
+              ...rawAttachment,
+              file_url: fileUrl,
+            }
+          : null;
+
+        if (!attachmentPayload) {
           throw new Error("Image upload failed.");
         }
       }
@@ -3590,7 +3606,7 @@ function BookingChatModal({
     } finally {
       setSending(false);
     }
-  }, [bookingId, isCancelled, loadMessages, selectedImage, showFlash, text]);
+  }, [bookingId, isCancelled, loadMessages, selectedImage, sending, showFlash, text]);
 
   const renderItem = ({ item }) => {
     const mine = Number(item?.sender_user_id) === Number(currentUserId);

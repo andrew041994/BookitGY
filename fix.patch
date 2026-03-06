@@ -1,964 +1,140 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
 diff --git a/mobile/App.js b/mobile/App.js
-index 6ae62ebe4c92f449e0d251c13e21ddcb82912c8e..520c56416dd1a0e9b43bffb341bf9f759b6c7c5b 100644
+index 520c56416dd1a0e9b43bffb341bf9f759b6c7c5b..2bab8d54c8b8f4888b6cd6c79dce4f9f9c6075cb 100644
 --- a/mobile/App.js
 +++ b/mobile/App.js
-@@ -2794,55 +2794,55 @@ function ClientHomeScreen({
-   toggleFavorite,
-   isFavorite,
-   syncFavoritesFromList,
-   refreshFavoriteProviders,
-   }) {
-  const [nearbyProviders, setNearbyProviders] = useState([]);
-   const [currentProvider, setCurrentProvider] = useState(null);
-   const [nearbyLoading, setNearbyLoading] = useState(true);
-   const [nearbyError, setNearbyError] = useState("");
-   const [clientLocation, setClientLocation] = useState(null);
-   const [locationDenied, setLocationDenied] = useState(false);
-   const [refreshing, setRefreshing] = useState(false);
-   const [searchText, setSearchText] = useState("");
-   const insets = useSafeAreaInsets();
-   const headerPaddingVertical = HEADER_VERTICAL_PADDING;
-   // const headerMinHeight =
-   //   insets.top + HEADER_LOGO_HEIGHT + HEADER_VERTICAL_PADDING * 2;
+@@ -3513,106 +3513,122 @@ function BookingChatModal({
+         showFlash && showFlash("error", "Allow photo library access to attach images.");
+         return;
+       }
  
-   const quickCategories = useMemo(
-     () => ["Barber", "Hair", "Nails", "Massage", "Makeup", "Lash", "Tutor"],
-     []
-   );
+       const result = await ImagePicker.launchImageLibraryAsync({
+         mediaTypes: ImagePicker.MediaTypeOptions.Images,
+         allowsEditing: false,
+         quality: 0.7,
+         selectionLimit: 1,
+       });
  
-   // adding console log
-   console.log("[home] token username fields", {
--  tokenUsername: token?.username,
--  tokenEmail: token?.email,
--  tokenKeys: token ? Object.keys(token) : null,
--  tokenUserKeys: token?.user ? Object.keys(token.user) : null,
--});
-+    tokenUsername: token?.username,
-+    tokenEmail: token?.email,
-+    tokenKeys: token ? Object.keys(token) : null,
-+    tokenUserKeys: token?.user ? Object.keys(token.user) : null,
-+  });
-   const greetingName = useMemo(() => {
-     const username = token?.user?.username || token?.username;
-     if (username?.trim()) return username.trim();
-     const emailPrefix = token?.email?.split("@")?.[0];
-     return emailPrefix?.trim() || "";
-   }, [token?.email, token?.user?.username, token?.username]);
+       if (result.canceled) return;
+       const asset = result?.assets?.[0];
+       if (!asset?.uri || (asset?.type && asset.type !== "image")) {
+         showFlash && showFlash("error", "Please select a valid image from your library.");
+         return;
+       }
  
-   const greetingText = greetingName ? `Hi, ${greetingName}` : "Hi";
- 
-   const haversineKm = (lat1, lon1, lat2, lon2) => {
-     if (
-       lat1 == null ||
-       lon1 == null ||
-       lat2 == null ||
-       lon2 == null
-     ) {
-       return null;
+       setSelectedImage(asset);
+     } catch (err) {
+       showFlash && showFlash("error", "Could not open photo library.");
      }
-     const toRad = (v) => (v * Math.PI) / 180;
-     const R = 6371; // km
-     const dLat = toRad(lat2 - lat1);
-     const dLon = toRad(lon2 - lon1);
-     const a =
-       Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-       Math.cos(toRad(lat1)) *
-@@ -3412,55 +3412,341 @@ function ClientHomeScreen({
-             favoriteProviders.length === 0 ? (
-               <Text style={styles.serviceHint}>
-                 We couldn't load your saved providers. Try again soon.
-               </Text>
-             ) : null}
+   }, [showFlash]);
  
-           {favoriteProviders.length > 0 ? (
-             <ScrollView
-               horizontal
-               showsHorizontalScrollIndicator={false}
-               contentContainerStyle={styles.carouselList}
-             >
-               {favoriteCards}
-             </ScrollView>
+   const handleSend = useCallback(async () => {
++    if (sending) return;
++
+     const trimmedText = text.trim();
+     if (!trimmedText && !selectedImage) {
+       showFlash && showFlash("error", "Message must include text or an image.");
+       return;
+     }
+ 
+     if (isCancelled) {
+       showFlash &&
+         showFlash("error", "This chat is unavailable because the booking has been cancelled.");
+       return;
+     }
+ 
+     try {
+       setSending(true);
+       let attachmentPayload = null;
+ 
+       if (selectedImage?.uri) {
+         const filename = selectedImage.fileName || selectedImage.uri.split("/").pop() || "chat-image.jpg";
+         const ext = (filename.split(".").pop() || "jpg").toLowerCase();
+-        const mimeType = selectedImage.mimeType || (ext === "png" ? "image/png" : ext === "webp" ? "image/webp" : "image/jpeg");
++        const mimeType =
++          selectedImage.mimeType ||
++          (ext === "png"
++            ? "image/png"
++            : ext === "webp"
++              ? "image/webp"
++              : "image/jpeg");
+ 
+         const formData = new FormData();
+         formData.append("file", {
+           uri: selectedImage.uri,
+           name: filename,
+           type: mimeType,
+         });
+ 
+-        const uploadRes = await apiClient.post(`/bookings/messages/attachments?booking_id=${bookingId}`, formData, {
+-          headers: {
+-            "Content-Type": "multipart/form-data",
+-          },
+-        });
++        const uploadRes = await apiClient.post(
++          `/bookings/messages/attachments?booking_id=${bookingId}`,
++          formData
++        );
++
++        const rawAttachment = uploadRes?.data?.attachment || uploadRes?.data || null;
++        const fileUrl = rawAttachment?.file_url || rawAttachment?.url || rawAttachment?.secure_url || null;
++        attachmentPayload = fileUrl
++          ? {
++              attachment_type: "image",
++              ...rawAttachment,
++              file_url: fileUrl,
++            }
++          : null;
+ 
+-        attachmentPayload = uploadRes?.data || null;
+-        if (!attachmentPayload?.file_url) {
++        if (!attachmentPayload) {
+           throw new Error("Image upload failed.");
+         }
+       }
+ 
+       await apiClient.post(`/bookings/messages`, {
+         booking_id: bookingId,
+         text: trimmedText || null,
+         attachment: attachmentPayload,
+       });
+ 
+       setText("");
+       setSelectedImage(null);
+       await loadMessages(true);
+     } catch (err) {
+       const msg = getCleanApiErrorMessage(err, "Could not send message.");
+       showFlash && showFlash("error", msg);
+     } finally {
+       setSending(false);
+     }
+-  }, [bookingId, isCancelled, loadMessages, selectedImage, showFlash, text]);
++  }, [bookingId, isCancelled, loadMessages, selectedImage, sending, showFlash, text]);
+ 
+   const renderItem = ({ item }) => {
+     const mine = Number(item?.sender_user_id) === Number(currentUserId);
+     const imageUrl = resolveImageUrl(item?.attachment?.file_url);
+     const createdAt = item?.created_at ? new Date(item.created_at) : null;
+     const timeText = createdAt && !Number.isNaN(createdAt.getTime())
+       ? createdAt.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })
+       : "";
+ 
+     return (
+       <View style={[styles.chatRow, mine ? styles.chatRowMine : styles.chatRowOther]}>
+         <View style={[styles.chatBubble, mine ? styles.chatBubbleMine : styles.chatBubbleOther]}>
+           {item?.text ? <Text style={styles.chatText}>{item.text}</Text> : null}
+           {imageUrl ? (
+             <TouchableOpacity onPress={() => setViewerImage(imageUrl)} activeOpacity={0.85}>
+               <Image source={{ uri: imageUrl }} style={styles.chatImage} resizeMode="cover" />
+             </TouchableOpacity>
            ) : null}
-           </View>
-         </ScrollView>
-         </View>      
-     );
-   }
- 
- 
- 
- 
- 
-+
-+const getCleanApiErrorMessage = (err, fallbackMessage) => {
-+  const detail =
-+    err?.response?.data?.detail ||
-+    err?.response?.data?.message ||
-+    err?.message;
-+  if (!detail) return fallbackMessage;
-+  if (typeof detail === "string") return detail;
-+  return fallbackMessage;
-+};
-+
-+const isBookingCancelledStatus = (status) =>
-+  String(status || "").trim().toLowerCase().includes("cancel");
-+
-+function BookingChatModal({
-+  visible,
-+  onClose,
-+  booking,
-+  currentUserId,
-+  showFlash,
-+}) {
-+  const [messages, setMessages] = useState([]);
-+  const [loading, setLoading] = useState(false);
-+  const [refreshing, setRefreshing] = useState(false);
-+  const [sending, setSending] = useState(false);
-+  const [text, setText] = useState("");
-+  const [selectedImage, setSelectedImage] = useState(null);
-+  const [viewerImage, setViewerImage] = useState(null);
-+  const listRef = useRef(null);
-+
-+  const bookingId = booking?.id || booking?.booking_id;
-+  const isCancelled = isBookingCancelledStatus(booking?.status);
-+
-+  const loadMessages = useCallback(
-+    async (useRefresh = false) => {
-+      if (!bookingId) return;
-+      try {
-+        if (useRefresh) setRefreshing(true);
-+        else setLoading(true);
-+
-+        const res = await apiClient.get(`/bookings/${bookingId}/messages`);
-+        const rows = Array.isArray(res?.data?.messages) ? res.data.messages : [];
-+        setMessages(rows);
-+
-+        await apiClient.post(`/bookings/messages/read`, { booking_id: bookingId });
-+      } catch (err) {
-+        const msg = getCleanApiErrorMessage(err, "Could not load chat messages.");
-+        showFlash && showFlash("error", msg);
-+      } finally {
-+        setLoading(false);
-+        setRefreshing(false);
-+      }
-+    },
-+    [bookingId, showFlash]
-+  );
-+
-+  useEffect(() => {
-+    if (!visible || !bookingId) return;
-+    loadMessages();
-+    const interval = setInterval(() => {
-+      loadMessages(true);
-+    }, 15000);
-+    return () => clearInterval(interval);
-+  }, [visible, bookingId, loadMessages]);
-+
-+  useEffect(() => {
-+    if (!visible || !messages.length) return;
-+    requestAnimationFrame(() => {
-+      listRef.current?.scrollToEnd?.({ animated: true });
-+    });
-+  }, [messages, visible]);
-+
-+  const handlePickImage = useCallback(async () => {
-+    try {
-+      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-+      if (!permission.granted) {
-+        showFlash && showFlash("error", "Allow photo library access to attach images.");
-+        return;
-+      }
-+
-+      const result = await ImagePicker.launchImageLibraryAsync({
-+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
-+        allowsEditing: false,
-+        quality: 0.7,
-+        selectionLimit: 1,
-+      });
-+
-+      if (result.canceled) return;
-+      const asset = result?.assets?.[0];
-+      if (!asset?.uri || (asset?.type && asset.type !== "image")) {
-+        showFlash && showFlash("error", "Please select a valid image from your library.");
-+        return;
-+      }
-+
-+      setSelectedImage(asset);
-+    } catch (err) {
-+      showFlash && showFlash("error", "Could not open photo library.");
-+    }
-+  }, [showFlash]);
-+
-+  const handleSend = useCallback(async () => {
-+    const trimmedText = text.trim();
-+    if (!trimmedText && !selectedImage) {
-+      showFlash && showFlash("error", "Message must include text or an image.");
-+      return;
-+    }
-+
-+    if (isCancelled) {
-+      showFlash &&
-+        showFlash("error", "This chat is unavailable because the booking has been cancelled.");
-+      return;
-+    }
-+
-+    try {
-+      setSending(true);
-+      let attachmentPayload = null;
-+
-+      if (selectedImage?.uri) {
-+        const filename = selectedImage.fileName || selectedImage.uri.split("/").pop() || "chat-image.jpg";
-+        const ext = (filename.split(".").pop() || "jpg").toLowerCase();
-+        const mimeType = selectedImage.mimeType || (ext === "png" ? "image/png" : ext === "webp" ? "image/webp" : "image/jpeg");
-+
-+        const formData = new FormData();
-+        formData.append("file", {
-+          uri: selectedImage.uri,
-+          name: filename,
-+          type: mimeType,
-+        });
-+
-+        const uploadRes = await apiClient.post(`/bookings/messages/attachments?booking_id=${bookingId}`, formData, {
-+          headers: {
-+            "Content-Type": "multipart/form-data",
-+          },
-+        });
-+
-+        attachmentPayload = uploadRes?.data || null;
-+        if (!attachmentPayload?.file_url) {
-+          throw new Error("Image upload failed.");
-+        }
-+      }
-+
-+      await apiClient.post(`/bookings/messages`, {
-+        booking_id: bookingId,
-+        text: trimmedText || null,
-+        attachment: attachmentPayload,
-+      });
-+
-+      setText("");
-+      setSelectedImage(null);
-+      await loadMessages(true);
-+    } catch (err) {
-+      const msg = getCleanApiErrorMessage(err, "Could not send message.");
-+      showFlash && showFlash("error", msg);
-+    } finally {
-+      setSending(false);
-+    }
-+  }, [bookingId, isCancelled, loadMessages, selectedImage, showFlash, text]);
-+
-+  const renderItem = ({ item }) => {
-+    const mine = Number(item?.sender_user_id) === Number(currentUserId);
-+    const imageUrl = resolveImageUrl(item?.attachment?.file_url);
-+    const createdAt = item?.created_at ? new Date(item.created_at) : null;
-+    const timeText = createdAt && !Number.isNaN(createdAt.getTime())
-+      ? createdAt.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })
-+      : "";
-+
-+    return (
-+      <View style={[styles.chatRow, mine ? styles.chatRowMine : styles.chatRowOther]}>
-+        <View style={[styles.chatBubble, mine ? styles.chatBubbleMine : styles.chatBubbleOther]}>
-+          {item?.text ? <Text style={styles.chatText}>{item.text}</Text> : null}
-+          {imageUrl ? (
-+            <TouchableOpacity onPress={() => setViewerImage(imageUrl)} activeOpacity={0.85}>
-+              <Image source={{ uri: imageUrl }} style={styles.chatImage} resizeMode="cover" />
-+            </TouchableOpacity>
-+          ) : null}
-+          {timeText ? <Text style={styles.chatTime}>{timeText}</Text> : null}
-+        </View>
-+      </View>
-+    );
-+  };
-+
-+  return (
-+    <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
-+      <SafeAreaView style={styles.chatSafeArea}>
-+        <KeyboardAvoidingView
-+          style={styles.chatKeyboardWrapper}
-+          behavior={Platform.OS === "ios" ? "padding" : undefined}
-+          keyboardVerticalOffset={Platform.OS === "ios" ? 86 : 0}
-+        >
-+          <View style={styles.chatHeader}>
-+            <TouchableOpacity onPress={onClose}>
-+              <Text style={styles.chatCloseText}>Close</Text>
-+            </TouchableOpacity>
-+            <Text style={styles.chatHeaderTitle}>Booking Chat</Text>
-+            <View style={{ width: 46 }} />
-+          </View>
-+
-+          {isCancelled ? (
-+            <View style={styles.chatCancelledBanner}>
-+              <Text style={styles.chatCancelledText}>
-+                This chat is unavailable because the booking has been cancelled.
-+              </Text>
-+            </View>
-+          ) : null}
-+
-+          {loading ? (
-+            <View style={styles.loadingRow}>
-+              <ActivityIndicator />
-+              <Text style={styles.serviceMeta}>Loading messages…</Text>
-+            </View>
-+          ) : (
-+            <FlatList
-+              ref={listRef}
-+              data={messages}
-+              keyExtractor={(item) => `${item.id}`}
-+              renderItem={renderItem}
-+              style={styles.chatList}
-+              contentContainerStyle={styles.chatListContent}
-+              onRefresh={() => loadMessages(true)}
-+              refreshing={refreshing}
-+              ListEmptyComponent={
-+                <Text style={styles.serviceMeta}>Send a message about this booking</Text>
-+              }
-+            />
-+          )}
-+
-+          <View style={styles.chatComposer}>
-+            {selectedImage?.uri ? (
-+              <View style={styles.chatSelectedImageWrap}>
-+                <Image source={{ uri: selectedImage.uri }} style={styles.chatSelectedImage} />
-+                <TouchableOpacity onPress={() => setSelectedImage(null)}>
-+                  <Text style={styles.chatRemoveImageText}>Remove</Text>
-+                </TouchableOpacity>
-+              </View>
-+            ) : null}
-+
-+            <View style={styles.chatComposerRow}>
-+              <TouchableOpacity
-+                style={styles.chatAttachButton}
-+                onPress={handlePickImage}
-+                disabled={sending || isCancelled}
-+              >
-+                <Ionicons name="image-outline" size={20} color={colors.textPrimary} />
-+              </TouchableOpacity>
-+
-+              <TextInput
-+                value={text}
-+                onChangeText={setText}
-+                placeholder="Type a message"
-+                placeholderTextColor={colors.textMuted}
-+                style={styles.chatInput}
-+                editable={!sending && !isCancelled}
-+              />
-+
-+              <TouchableOpacity
-+                style={[
-+                  styles.chatSendButton,
-+                  (sending || isCancelled || (!text.trim() && !selectedImage)) && styles.chatSendButtonDisabled,
-+                ]}
-+                onPress={handleSend}
-+                disabled={sending || isCancelled || (!text.trim() && !selectedImage)}
-+              >
-+                <Text style={styles.chatSendButtonText}>{sending ? "..." : "Send"}</Text>
-+              </TouchableOpacity>
-+            </View>
-+          </View>
-+        </KeyboardAvoidingView>
-+      </SafeAreaView>
-+
-+      <Modal
-+        visible={!!viewerImage}
-+        transparent={true}
-+        animationType="fade"
-+        onRequestClose={() => setViewerImage(null)}
-+      >
-+        <Pressable style={styles.chatViewerBackdrop} onPress={() => setViewerImage(null)}>
-+          {viewerImage ? (
-+            <Image source={{ uri: viewerImage }} style={styles.chatViewerImage} resizeMode="contain" />
-+          ) : null}
-+        </Pressable>
-+      </Modal>
-+    </Modal>
-+  );
-+}
-+
- function AppointmentsScreen({ token, showFlash }) {
-   const [bookings, setBookings] = useState([]);
-   const [loading, setLoading] = useState(true);
-   const [error, setError] = useState("");
-   const [refreshing, setRefreshing] = useState(false);
-+  const [chatBooking, setChatBooking] = useState(null);
- 
-   const normalizeStart = (booking) => {
-     const iso = booking?.start_time || booking?.start;
-     if (!iso) return null;
-     const d = new Date(iso);
-     return Number.isNaN(d.getTime()) ? null : d;
-   };
- 
-   const formatBookingDate = (iso) => {
-     const d = new Date(iso);
-     if (Number.isNaN(d.getTime())) return "";
-     return d.toLocaleDateString("en-US", {
-       weekday: "short",
-       month: "short",
-       day: "numeric",
-     });
-   };
- 
-   const formatBookingTime = (iso) => {
-     const d = new Date(iso);
-     if (Number.isNaN(d.getTime())) return "";
-     let h = d.getHours();
-     const m = d.getMinutes();
-     const suffix = h >= 12 ? "PM" : "AM";
-     h = h % 12 || 12;
-@@ -3662,67 +3948,74 @@ function AppointmentsScreen({ token, showFlash }) {
-           )}
-           {booking.provider_location ? (
-             <Text style={styles.appointmentMeta}>
-               {booking.provider_location}
-             </Text>
-           ) : null}
-           <View style={styles.appointmentStatusRow}>
-             <View
-               style={[
-                 styles.appointmentStatusBadge,
-                 // tint based on status
-                 { backgroundColor: statusTheme.bgTint, borderColor: statusTheme.accent },
-               ]}
-             >
-               <Text style={[styles.appointmentStatus, { color: statusTheme.accent }]}>Status: {statusLabel}</Text>
-             </View>
- 
-             {isUpcoming && (
-               <TouchableOpacity
-                 style={styles.appointmentCancelButton}
-                 onPress={() => handleCancelBooking(booking)}
-               >
-                 <Text style={styles.appointmentCancelButtonText}>Cancel</Text>
-               </TouchableOpacity>
-             )}
-+            <TouchableOpacity
-+              style={styles.appointmentMessageButton}
-+              onPress={() => setChatBooking(booking)}
-+            >
-+              <Text style={styles.appointmentMessageButtonText}>Message</Text>
-+            </TouchableOpacity>
-           </View>
+           {timeText ? <Text style={styles.chatTime}>{timeText}</Text> : null}
          </View>
- 
-         {isUpcoming &&
-           (booking.provider_lat != null || booking.provider_location) && (
-           <TouchableOpacity
-             style={[styles.navigateButton, styles.appointmentDirectionsButton]}
-             onPress={() => handleNavigateToBooking(booking)}
-           >
-             <Text style={styles.navigateButtonText}>Directions</Text>
-           </TouchableOpacity>
-         )}
        </View>
      );
    };
  
    return (
-+  <>
-   <ScrollView
-     contentContainerStyle={styles.appointmentScroll}
-     refreshControl={
-       <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
-     }
-   >
-     <View style={styles.card}>
-       <View style={styles.appointmentHeader}>
-         <Text style={styles.profileTitle}>Appointments</Text>
-         {/* <TouchableOpacity onPress={fetchBookings}>
-           <Text style={styles.refreshText}>Refresh</Text>
-         </TouchableOpacity> */}
-       </View>
- 
-       {loading && (
-         <View style={styles.loadingRow}>
-           <ActivityIndicator />
-           <Text style={styles.serviceMeta}>Loading your appointments…</Text>
-         </View>
-       )}
- 
-       {!loading && error ? (
-         <Text style={styles.errorText}>{error}</Text>
-       ) : null}
- 
-@@ -3754,50 +4047,59 @@ function AppointmentsScreen({ token, showFlash }) {
-         </View>
- 
-         <View style={styles.card}>
-           <View style={styles.appointmentHeader}>
-             <Text style={styles.sectionTitle}>Finished</Text>
-             <Text style={styles.appointmentCount}>
-               {finishedBookings.length} booking
-               {finishedBookings.length === 1 ? "" : "s"}
-             </Text>
-           </View>
- 
-           {finishedBookings.length === 0 ? (
-             <Text style={styles.serviceMeta}>
-               Nothing here yet. Completed or cancelled bookings will
-               appear once you have them.
-             </Text>
-           ) : (
-             finishedBookings.map((booking) =>
-               renderBooking(booking, false)
-             )
-           )}
-         </View>
-       </>
-     )}
-   </ScrollView>
-+
-+  <BookingChatModal
-+    visible={!!chatBooking}
-+    onClose={() => setChatBooking(null)}
-+    booking={chatBooking}
-+    currentUserId={token?.userId}
-+    showFlash={showFlash}
-+  />
-+  </>
- );
- }
- 
-     
- 
- 
- 
- 
- function SearchScreen({ token, showFlash, navigation, route, toggleFavorite, isFavorite, syncFavoritesFromList}) {
-   const incomingUsername = route?.params?.incomingUsername ?? null;
-   const deeplinkNonce = route?.params?.deeplinkNonce ?? null;
-   const [filteredProviders, setFilteredProviders] = useState([]);
-   const [searchQuery, setSearchQuery] = useState("");
-   const [radiusKm, setRadiusKm] = useState(0); // 0 = any distance
-   const [clientLocation, setClientLocation] = useState(null);
-   const [locationError, setLocationError] = useState("");
-   const [providers, setProviders] = useState([]);
-   const [providersLoading, setProvidersLoading] = useState(true);
-   const [providersError, setProvidersError] = useState("");
-   const [selectedProvider, setSelectedProvider] = useState(null);
-   const [selectedProviderId, setSelectedProviderId] = useState(null);
-   const [services, setServices] = useState([]);
-   const [servicesLoading, setServicesLoading] = useState(false);
-   const [servicesError, setServicesError] = useState("");
-   const [selectedService, setSelectedService] = useState(null);
-@@ -4837,50 +5139,51 @@ function SearchScreen({ token, showFlash, navigation, route, toggleFavorite, isF
- 
- 
- 
- 
- 
- function ProviderDashboardScreen({ token, showFlash }) {
-   // const providerLabel = profile?.full_name || "Provider";
-   const [services, setServices] = useState([]);
-   const [loading, setLoading] = useState(true);
-   const [servicesError, setServicesError] = useState("");
-   const [adding, setAdding] = useState(false);
-   const [newName, setNewName] = useState("");
-   const [newPrice, setNewPrice] = useState("");
-   const [newDuration, setNewDuration] = useState("30");
-   const [newDescription, setNewDescription] = useState("");
-   const [isSavingService, setIsSavingService] = useState(false);
-   const [bookings, setBookings] = useState([]);
-   const [bookingsLoading, setBookingsLoading] = useState(true);
-   const [bookingsError, setBookingsError] = useState("");
-   const [workingHours, setWorkingHours] = useState([]);
-   const [hoursLoading, setHoursLoading] = useState(false);
-   const [hoursError, setHoursError] = useState("");
-   const [showHours, setShowHours] = useState(false);
-   const [hoursFlash, setHoursFlash] = useState(null);
-   const [refreshing, setRefreshing] = useState(false);
-+  const [chatBooking, setChatBooking] = useState(null);
-   const [showProfileEditor, setShowProfileEditor] = useState(false);
-   const [profileLoading, setProfileLoading] = useState(false);
-   const [profileError, setProfileError] = useState("");
-   const [profile, setProfile] = useState({
-     full_name: "",
-     phone: "",
-     whatsapp: "",
-     location: "",
-     bio: "",
-     professions: [],
-     username: "",
-   });
-   const [provider, setProvider] = useState(null);  // 👈 add this
- 
- 
- const providerLabel =
-   (profile?.full_name && profile.full_name.trim()) ||
-   token?.email ||
-   "Provider";
- 
- 
- const [customProfession, setCustomProfession] = useState("");
- const [providerSummary, setProviderSummary] = useState(null);
- const [todayBookings, setTodayBookings] = useState([]);
- const [todayLoading, setTodayLoading] = useState(false);
-@@ -6068,50 +6371,53 @@ const loadProviderSummary = async () => {
-                   const mm = m.toString().padStart(2, "0");
-                   return `${h}:${mm} ${suffix}`;
-                 };
- 
-                 return (
-                   <View key={b.id} style={styles.bookingRow}>
-                     <View style={styles.bookingMain}>
-                       <Text style={styles.bookingTime}>
-                         {formatTime(start)} – {formatTime(end)}
-                       </Text>
-                       <Text style={styles.bookingService}>{b.service_name}</Text>
-                       <Text style={styles.bookingMeta}>
-                         {b.customer_name} · {b.customer_phone}
-                       </Text>
-                     </View>
- 
-                     <View style={styles.bookingActions}>
-                       {/* <TouchableOpacity onPress={() => handleEditBooking(b)}>
-                         <Text style={styles.bookingEdit}>Edit</Text>
-                       </TouchableOpacity> */}
-                       <TouchableOpacity
-                         onPress={() => handleCancelBooking(b.id)}
-                       >
-                         <Text style={styles.bookingCancel}>Cancel</Text>
-                       </TouchableOpacity>
-+                      <TouchableOpacity onPress={() => setChatBooking(b)}>
-+                        <Text style={styles.bookingEdit}>Message</Text>
-+                      </TouchableOpacity>
-                     </View>
-                   </View>
-                 );
-               })}
-             </>
-           )}
-         </View>
- 
-         {/* Upcoming bookings */}
-         <View style={styles.card}>
-           <Text style={styles.sectionTitle}>Upcoming bookings</Text>
- 
-           {upcomingLoading && (
-             <View style={{ paddingVertical: 10 }}>
-               <ActivityIndicator />
-               <Text style={styles.serviceMeta}>
-                 Loading upcoming bookings…
-               </Text>
-             </View>
-           )}
- 
-           {!upcomingLoading && upcomingError ? (
-             <Text style={styles.errorText}>{upcomingError}</Text>
-           ) : null}
- 
-@@ -6148,50 +6454,53 @@ const loadProviderSummary = async () => {
- 
-                   return (
-                     <View key={b.id} style={styles.bookingRow}>
-                       <View style={styles.bookingMain}>
-                         <Text style={styles.bookingTime}>
-                           {formatDate(start)} · {formatTime(start)} –{" "}
-                           {formatTime(end)}
-                         </Text>
-                         <Text style={styles.bookingService}>
-                           {b.service_name}
-                         </Text>
-                         <Text style={styles.bookingMeta}>
-                           {b.customer_name} · {b.customer_phone}
-                         </Text>
-                       </View>
- 
-                       <View style={styles.bookingActions}>
-                         {/* <TouchableOpacity onPress={() => handleEditBooking(b)}>
-                           <Text style={styles.bookingEdit}>Edit</Text>
-                         </TouchableOpacity> */}
-                         <TouchableOpacity
-                           onPress={() => handleCancelBooking(b.id)}
-                         >
-                           <Text style={styles.bookingCancel}>Cancel</Text>
-                         </TouchableOpacity>
-+                        <TouchableOpacity onPress={() => setChatBooking(b)}>
-+                          <Text style={styles.bookingEdit}>Message</Text>
-+                        </TouchableOpacity>
-                       </View>
-                     </View>
-                   );
-                 })}
-               </>
-             )}
-         </View>
- 
-         {/* Services */}
-         <View style={styles.card}>
-           <View
-             style={{
-               flexDirection: "row",
-               justifyContent: "space-between",
-               alignItems: "center",
-               marginBottom: 8,
-             }}
-           >
-             <Text style={styles.sectionTitle}>Your services</Text>
-             <TouchableOpacity onPress={() => setAdding((prev) => !prev)}>
-               <Text style={{ color: colors.primary, fontWeight: "600" }}>
-                 {adding ? "Cancel" : "+ Add"}
-               </Text>
-             </TouchableOpacity>
-           </View>
-@@ -6762,50 +7071,58 @@ const loadProviderSummary = async () => {
- 
-           {providerLocation && (
-             <View style={styles.mapContainer}>
-                 <MapView
-                   style={{ flex: 1 }}
-                   pointerEvents="none"
-                   initialRegion={{
-                     latitude: providerLocation.lat,
-                     longitude: providerLocation.long,
-                     latitudeDelta: 0.01,
-                     longitudeDelta: 0.01,
-                   }}
-                 >
-                   <Marker
-                     coordinate={{
-                       latitude: providerLocation.lat,
-                       longitude: providerLocation.long,
-                     }}
-                     title="Your business location"
-                   />
-                 </MapView>
-             </View>
-           )}
-         </View>
-       </ScrollView>
-+
-+      <BookingChatModal
-+        visible={!!chatBooking}
-+        onClose={() => setChatBooking(null)}
-+        booking={chatBooking}
-+        currentUserId={token?.userId}
-+        showFlash={showFlash}
-+      />
-     </View>
-   );
- }
- 
- function ProviderBillingScreen({ token, showFlash }) {
-   const [billingSummary, setBillingSummary] = useState(null);
-   const [billingCycles, setBillingCycles] = useState([]);
-   const [billingLoading, setBillingLoading] = useState(false);
-   const [billingError, setBillingError] = useState("");
-   const [expandedBills, setExpandedBills] = useState({});
-   const [refreshing, setRefreshing] = useState(false);
- 
-   const toggleBillExpanded = (billId) => {
-     setExpandedBills((prev) => ({
-       ...prev,
-       [billId]: !prev[billId],
-     }));
-   };
- 
-   const formatMoney = (value) => {
-     const amount = Number.isFinite(value) ? value : 0;
-     return `GYD ${Math.round(amount).toLocaleString()}`;
-   };
- 
-   const parseDateOnly = (value) => {
-@@ -12042,28 +12359,198 @@ signupTextButtonText: {
-     borderRadius: 10,
-     borderWidth: 1,
-     borderColor: colors.border,
-   },
-   providerBlockCancelButtonText: {
-     color: colors.textSecondary,
-     fontSize: 13,
-     fontWeight: "700",
-   },
-   providerBlockSubmitButton: {
-     paddingHorizontal: 14,
-     paddingVertical: 9,
-     borderRadius: 10,
-     borderWidth: 1,
-     borderColor: colors.primary,
-     backgroundColor: colors.primary,
-     minWidth: 104,
-     alignItems: "center",
-   },
-   providerBlockSubmitButtonText: {
-     color: colors.textPrimary,
-     fontSize: 13,
-     fontWeight: "800",
-   },
- 
-+  appointmentMessageButton: {
-+    marginLeft: 8,
-+    borderWidth: 1,
-+    borderColor: colors.border,
-+    paddingHorizontal: 10,
-+    paddingVertical: 5,
-+    borderRadius: 8,
-+    backgroundColor: colors.surface,
-+  },
-+  appointmentMessageButtonText: {
-+    color: colors.textPrimary,
-+    fontSize: 12,
-+    fontWeight: "600",
-+  },
-+  chatSafeArea: {
-+    flex: 1,
-+    backgroundColor: colors.background,
-+  },
-+  chatKeyboardWrapper: {
-+    flex: 1,
-+  },
-+  chatHeader: {
-+    flexDirection: "row",
-+    justifyContent: "space-between",
-+    alignItems: "center",
-+    paddingHorizontal: 16,
-+    paddingVertical: 12,
-+    borderBottomWidth: 1,
-+    borderBottomColor: colors.border,
-+  },
-+  chatCloseText: {
-+    color: colors.primary,
-+    fontWeight: "600",
-+  },
-+  chatHeaderTitle: {
-+    color: colors.textPrimary,
-+    fontWeight: "700",
-+    fontSize: 16,
-+  },
-+  chatCancelledBanner: {
-+    margin: 12,
-+    padding: 10,
-+    borderRadius: 10,
-+    backgroundColor: "rgba(255,77,79,0.16)",
-+    borderWidth: 1,
-+    borderColor: "rgba(255,77,79,0.35)",
-+  },
-+  chatCancelledText: {
-+    color: colors.error,
-+    fontSize: 13,
-+    fontWeight: "600",
-+  },
-+  chatList: {
-+    flex: 1,
-+    paddingHorizontal: 12,
-+  },
-+  chatListContent: {
-+    paddingVertical: 8,
-+    flexGrow: 1,
-+    justifyContent: "flex-end",
-+  },
-+  chatRow: {
-+    marginVertical: 4,
-+    flexDirection: "row",
-+  },
-+  chatRowMine: {
-+    justifyContent: "flex-end",
-+  },
-+  chatRowOther: {
-+    justifyContent: "flex-start",
-+  },
-+  chatBubble: {
-+    maxWidth: "84%",
-+    borderRadius: 12,
-+    paddingHorizontal: 10,
-+    paddingVertical: 8,
-+  },
-+  chatBubbleMine: {
-+    backgroundColor: colors.primary,
-+  },
-+  chatBubbleOther: {
-+    backgroundColor: colors.surface,
-+    borderWidth: 1,
-+    borderColor: colors.border,
-+  },
-+  chatText: {
-+    color: colors.textPrimary,
-+    marginBottom: 4,
-+  },
-+  chatTime: {
-+    color: colors.textMuted,
-+    fontSize: 11,
-+    marginTop: 2,
-+    textAlign: "right",
-+  },
-+  chatImage: {
-+    width: 180,
-+    height: 180,
-+    borderRadius: 10,
-+    backgroundColor: colors.background,
-+  },
-+  chatComposer: {
-+    borderTopWidth: 1,
-+    borderTopColor: colors.border,
-+    backgroundColor: colors.surface,
-+    paddingHorizontal: 12,
-+    paddingVertical: 8,
-+  },
-+  chatSelectedImageWrap: {
-+    flexDirection: "row",
-+    alignItems: "center",
-+    marginBottom: 8,
-+    gap: 10,
-+  },
-+  chatSelectedImage: {
-+    width: 56,
-+    height: 56,
-+    borderRadius: 8,
-+  },
-+  chatRemoveImageText: {
-+    color: colors.error,
-+    fontWeight: "600",
-+  },
-+  chatComposerRow: {
-+    flexDirection: "row",
-+    alignItems: "center",
-+  },
-+  chatAttachButton: {
-+    padding: 8,
-+    borderRadius: 8,
-+    borderWidth: 1,
-+    borderColor: colors.border,
-+    marginRight: 8,
-+  },
-+  chatInput: {
-+    flex: 1,
-+    borderWidth: 1,
-+    borderColor: colors.border,
-+    backgroundColor: colors.background,
-+    color: colors.textPrimary,
-+    borderRadius: 10,
-+    paddingHorizontal: 12,
-+    paddingVertical: Platform.OS === "ios" ? 10 : 8,
-+    marginRight: 8,
-+  },
-+  chatSendButton: {
-+    backgroundColor: colors.primary,
-+    paddingHorizontal: 14,
-+    paddingVertical: 10,
-+    borderRadius: 10,
-+  },
-+  chatSendButtonDisabled: {
-+    opacity: 0.45,
-+  },
-+  chatSendButtonText: {
-+    color: colors.textPrimary,
-+    fontWeight: "700",
-+  },
-+  chatViewerBackdrop: {
-+    flex: 1,
-+    backgroundColor: "rgba(0,0,0,0.9)",
-+    justifyContent: "center",
-+    alignItems: "center",
-+    padding: 16,
-+  },
-+  chatViewerImage: {
-+    width: "100%",
-+    height: "100%",
-+  },
-+
- })
- 
- export default App;
  
 EOF
 )
