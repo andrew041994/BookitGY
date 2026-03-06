@@ -207,7 +207,7 @@ def _verify_google_id_token(id_token: str) -> dict:
             algorithms=["RS256"],
             audience=None,
             issuer=["https://accounts.google.com", "accounts.google.com"],
-            options={"verify_aud": False},
+            options={"verify_aud": False, "verify_at_hash": False},
         )
     except JWTError as exc:
         detail = str(exc).lower()

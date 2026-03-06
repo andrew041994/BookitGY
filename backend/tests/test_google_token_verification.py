@@ -83,7 +83,7 @@ def test_verify_google_id_token_disables_builtin_audience_validation(monkeypatch
         assert algorithms == ["RS256"]
         assert audience is None
         assert issuer == ["https://accounts.google.com", "accounts.google.com"]
-        assert options == {"verify_aud": False}
+        assert options == {"verify_aud": False, "verify_at_hash": False}
         return {
             "sub": "google-sub-1",
             "email": "user@example.com",
