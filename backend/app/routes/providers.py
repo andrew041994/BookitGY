@@ -1,4 +1,5 @@
 from typing import List, Optional
+from datetime import date
 import os
 from io import BytesIO
 import cloudinary
@@ -540,6 +541,73 @@ def delete_my_catalog_image(
     ok = crud.delete_catalog_image_for_provider(db, provider.id, image_id)
     if not ok:
         raise HTTPException(status_code=404, detail="Catalog image not found")
+    return {"status": "deleted"}
+
+
+
+
+@router.post(
+    "/providers/me/blocked-times",
+    response_model=schemas.ProviderBlockedTimeOut,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_my_partial_blocked_time(
+    payload: schemas.ProviderBlockedTimeCreate,
+    db: Session = Depends(get_db),
+    provider: models.Provider = Depends(_require_current_provider),
+):
+    try:
+        return crud.create_provider_partial_block(db, provider.id, payload)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+@router.post(
+    "/providers/me/blocked-times/all-day",
+    response_model=schemas.ProviderBlockedTimeOut,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_my_all_day_blocked_time(
+    payload: schemas.ProviderAllDayBlockedTimeCreate,
+    db: Session = Depends(get_db),
+    provider: models.Provider = Depends(_require_current_provider),
+):
+    try:
+        return crud.create_provider_all_day_block(db, provider.id, payload)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+@router.get(
+    "/providers/me/blocked-times",
+    response_model=List[schemas.ProviderBlockedTimeOut],
+)
+def list_my_blocked_times(
+    start_date: date = Query(...),
+    end_date: date = Query(...),
+    db: Session = Depends(get_db),
+    provider: models.Provider = Depends(_require_current_provider),
+):
+    if end_date < start_date:
+        raise HTTPException(status_code=400, detail="end_date must be on or after start_date")
+
+    return crud.list_provider_blocked_times(
+        db,
+        provider_id=provider.id,
+        start_date=start_date,
+        end_date=end_date,
+    )
+
+
+@router.delete("/providers/me/blocked-times/{blocked_time_id}")
+def delete_my_blocked_time(
+    blocked_time_id: int,
+    db: Session = Depends(get_db),
+    provider: models.Provider = Depends(_require_current_provider),
+):
+    ok = crud.delete_provider_blocked_time(db, provider.id, blocked_time_id)
+    if not ok:
+        raise HTTPException(status_code=404, detail="Blocked time not found")
     return {"status": "deleted"}
 
 

@@ -1,0 +1,291 @@
+from datetime import datetime, timedelta, time
+
+from fastapi.testclient import TestClient
+
+
+def _create_provider_graph(session, models, *, suffix: str = "1"):
+    provider_user = models.User(username=f"provider{suffix}@example.com", is_provider=True)
+    customer_user = models.User(username=f"customer{suffix}@example.com")
+    session.add_all([provider_user, customer_user])
+    session.commit()
+
+    provider = models.Provider(user_id=provider_user.id, account_number=f"ACC-{suffix}")
+    session.add(provider)
+    session.commit()
+    session.refresh(provider)
+
+    service = models.Service(
+        provider_id=provider.id,
+        name="Test Service",
+        price_gyd=1000,
+        duration_minutes=60,
+    )
+    session.add(service)
+    session.commit()
+    session.refresh(service)
+
+    return provider, provider_user, customer_user, service
+
+
+def _add_booking(session, models, *, customer, service, start_time, end_time, status="confirmed"):
+    booking = models.Booking(
+        customer_id=customer.id,
+        service_id=service.id,
+        start_time=start_time,
+        end_time=end_time,
+        status=status,
+    )
+    session.add(booking)
+    session.commit()
+    session.refresh(booking)
+    return booking
+
+
+def _build_client(session, current_user):
+    from app.main import app
+    from app.database import get_db
+    from app.security import get_current_user_from_header
+
+    def override_get_db():
+        try:
+            yield session
+        finally:
+            pass
+
+    app.dependency_overrides[get_db] = override_get_db
+    app.dependency_overrides[get_current_user_from_header] = lambda: current_user
+    return app, TestClient(app)
+
+
+def test_create_one_time_block_success(db_session):
+    session, models, crud = db_session
+    provider, _, _, _ = _create_provider_graph(session, models)
+
+    block = crud.create_provider_partial_block(
+        session,
+        provider.id,
+        payload=type("P", (), {
+            "date": datetime(2025, 1, 10).date(),
+            "start_time": time(10, 0),
+            "duration_hours": 1,
+            "duration_minutes": 30,
+            "reason": "Walk-in client",
+        })(),
+    )
+
+    assert block.provider_id == provider.id
+    assert block.start_at == datetime(2025, 1, 10, 10, 0)
+    assert block.end_at == datetime(2025, 1, 10, 11, 30)
+
+
+def test_reject_one_time_block_zero_duration(db_session):
+    session, models, crud = db_session
+    provider, _, _, _ = _create_provider_graph(session, models)
+
+    try:
+        crud.create_provider_partial_block(
+            session,
+            provider.id,
+            payload=type("P", (), {
+                "date": datetime(2025, 1, 10).date(),
+                "start_time": time(10, 0),
+                "duration_hours": 0,
+                "duration_minutes": 0,
+                "reason": None,
+            })(),
+        )
+    except ValueError as exc:
+        assert str(exc) == "Duration must be greater than 0"
+
+
+def test_reject_one_time_block_overlapping_appointment(db_session):
+    session, models, crud = db_session
+    provider, _, customer, service = _create_provider_graph(session, models)
+
+    _add_booking(
+        session,
+        models,
+        customer=customer,
+        service=service,
+        start_time=datetime(2025, 1, 10, 10, 0),
+        end_time=datetime(2025, 1, 10, 11, 0),
+    )
+
+    try:
+        crud.create_provider_partial_block(
+            session,
+            provider.id,
+            payload=type("P", (), {
+                "date": datetime(2025, 1, 10).date(),
+                "start_time": time(10, 30),
+                "duration_hours": 0,
+                "duration_minutes": 30,
+                "reason": None,
+            })(),
+        )
+    except ValueError as exc:
+        assert str(exc) == "This blocked time overlaps an existing appointment."
+
+
+def test_reject_one_time_block_overlapping_block(db_session):
+    session, models, crud = db_session
+    provider, _, _, _ = _create_provider_graph(session, models)
+
+    crud.create_provider_partial_block(
+        session,
+        provider.id,
+        payload=type("P", (), {
+            "date": datetime(2025, 1, 10).date(),
+            "start_time": time(9, 0),
+            "duration_hours": 1,
+            "duration_minutes": 0,
+            "reason": None,
+        })(),
+    )
+
+    try:
+        crud.create_provider_partial_block(
+            session,
+            provider.id,
+            payload=type("P", (), {
+                "date": datetime(2025, 1, 10).date(),
+                "start_time": time(9, 30),
+                "duration_hours": 0,
+                "duration_minutes": 30,
+                "reason": None,
+            })(),
+        )
+    except ValueError as exc:
+        assert str(exc) == "This blocked time overlaps another blocked time."
+
+
+def test_create_all_day_block_success_without_appointments(db_session):
+    session, models, crud = db_session
+    provider, _, _, _ = _create_provider_graph(session, models)
+
+    block = crud.create_provider_all_day_block(
+        session,
+        provider.id,
+        payload=type("P", (), {"date": datetime(2025, 1, 10).date(), "reason": "Vacation"})(),
+    )
+
+    assert block.is_all_day is True
+    assert block.start_at == datetime(2025, 1, 10, 0, 0)
+    assert block.end_at == datetime(2025, 1, 11, 0, 0)
+
+
+def test_reject_all_day_block_when_appointment_exists(db_session):
+    session, models, crud = db_session
+    provider, _, customer, service = _create_provider_graph(session, models)
+
+    _add_booking(
+        session,
+        models,
+        customer=customer,
+        service=service,
+        start_time=datetime(2025, 1, 10, 12, 0),
+        end_time=datetime(2025, 1, 10, 13, 0),
+    )
+
+    try:
+        crud.create_provider_all_day_block(
+            session,
+            provider.id,
+            payload=type("P", (), {"date": datetime(2025, 1, 10).date(), "reason": None})(),
+        )
+    except ValueError as exc:
+        assert str(exc) == (
+            "You already have appointments on this day. Please cancel those appointments before blocking the entire day."
+        )
+
+
+def test_availability_excludes_blocked_time(db_session):
+    session, models, crud = db_session
+    provider, _, _, service = _create_provider_graph(session, models)
+
+    wh = models.ProviderWorkingHours(
+        provider_id=provider.id,
+        weekday=0,
+        is_closed=False,
+        start_time="09:00",
+        end_time="12:00",
+    )
+    session.add(wh)
+    session.commit()
+
+    target_date = datetime(2025, 1, 6)
+    crud.create_provider_partial_block(
+        session,
+        provider.id,
+        payload=type("P", (), {
+            "date": target_date.date(),
+            "start_time": time(10, 0),
+            "duration_hours": 1,
+            "duration_minutes": 0,
+            "reason": None,
+        })(),
+    )
+
+    original_now = crud.now_guyana
+    crud.now_guyana = lambda: datetime(2025, 1, 6, 8, 0)
+    try:
+        availability = crud.get_provider_availability(
+            session,
+            provider_id=provider.id,
+            service_id=service.id,
+            days=1,
+        )
+    finally:
+        crud.now_guyana = original_now
+
+    assert len(availability) == 1
+    slots = availability[0]["slots"]
+    assert datetime(2025, 1, 6, 9, 0) in slots
+    assert datetime(2025, 1, 6, 10, 0) not in slots
+    assert datetime(2025, 1, 6, 11, 0) in slots
+
+
+def test_delete_block_success(db_session):
+    session, models, crud = db_session
+    provider, _, _, _ = _create_provider_graph(session, models)
+
+    block = crud.create_provider_partial_block(
+        session,
+        provider.id,
+        payload=type("P", (), {
+            "date": datetime(2025, 1, 10).date(),
+            "start_time": time(10, 0),
+            "duration_hours": 1,
+            "duration_minutes": 0,
+            "reason": None,
+        })(),
+    )
+
+    deleted = crud.delete_provider_blocked_time(session, provider.id, block.id)
+    assert deleted is True
+
+
+def test_provider_cannot_delete_another_provider_block(db_session):
+    session, models, crud = db_session
+    provider_1, provider_user_1, _, _ = _create_provider_graph(session, models, suffix="1")
+    provider_2, provider_user_2, _, _ = _create_provider_graph(session, models, suffix="2")
+
+    block = crud.create_provider_partial_block(
+        session,
+        provider_1.id,
+        payload=type("P", (), {
+            "date": datetime(2025, 1, 10).date(),
+            "start_time": time(10, 0),
+            "duration_hours": 1,
+            "duration_minutes": 0,
+            "reason": None,
+        })(),
+    )
+
+    app, client = _build_client(session, provider_user_2)
+    try:
+        resp = client.delete(f"/providers/me/blocked-times/{block.id}")
+        assert resp.status_code == 404
+        assert resp.json()["detail"] == "Blocked time not found"
+    finally:
+        app.dependency_overrides = {}

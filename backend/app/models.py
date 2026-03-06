@@ -207,6 +207,19 @@ class ProviderWorkingHours(Base):
     start_time = Column(String, nullable=True)  # "09:00"
     end_time = Column(String, nullable=True)    # "17:00"
 
+
+class ProviderBlockedTime(Base):
+    __tablename__ = "provider_blocked_times"
+
+    id = Column(Integer, primary_key=True, index=True)
+    provider_id = Column(Integer, ForeignKey("providers.id"), nullable=False, index=True)
+    start_at = Column(DateTime, nullable=False, index=True)
+    end_at = Column(DateTime, nullable=False, index=True)
+    is_all_day = Column(Boolean, nullable=False, default=False)
+    reason = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=now_guyana)
+    updated_at = Column(DateTime, default=now_guyana, onupdate=now_guyana)
+
 class ProviderProfession(Base):
     __tablename__ = "provider_professions"
     id = Column(Integer, primary_key=True, index=True)

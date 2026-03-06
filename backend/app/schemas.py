@@ -1,6 +1,7 @@
 from pydantic import BaseModel, EmailStr, Field, validator
 
-from datetime import datetime, date
+
+from datetime import datetime, date, time
 from typing import Optional, List
 import re
 from decimal import Decimal
@@ -642,6 +643,57 @@ class AvailabilitySlot(BaseModel):
 class ProviderAvailabilityDay(BaseModel):
     date: date            # YYYY-MM-DD
     slots: List[datetime]  # list of ISO datetimes (start times)
+
+
+class ProviderBlockedTimeCreate(BaseModel):
+    date: date
+    start_time: time
+    duration_hours: int = 0
+    duration_minutes: int = 0
+    reason: Optional[str] = None
+
+    @validator("duration_hours")
+    def validate_duration_hours(cls, value: int) -> int:
+        if value < 0:
+            raise ValueError("duration_hours cannot be negative")
+        return value
+
+    @validator("duration_minutes")
+    def validate_duration_minutes(cls, value: int) -> int:
+        if value < 0:
+            raise ValueError("duration_minutes cannot be negative")
+        return value
+
+    @validator("reason")
+    def normalize_reason(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return value
+        trimmed = value.strip()
+        return trimmed or None
+
+
+class ProviderAllDayBlockedTimeCreate(BaseModel):
+    date: date
+    reason: Optional[str] = None
+
+    @validator("reason")
+    def normalize_reason(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return value
+        trimmed = value.strip()
+        return trimmed or None
+
+
+class ProviderBlockedTimeOut(BaseModel):
+    id: int
+    provider_id: int
+    start_at: datetime
+    end_at: datetime
+    is_all_day: bool
+    reason: Optional[str] = None
+
+    class Config:
+        from_attributes = True
 
 
 class PublicProviderOut(BaseModel):

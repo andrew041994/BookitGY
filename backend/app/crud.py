@@ -1,5 +1,5 @@
 import os
-from datetime import datetime, timedelta, date
+from datetime import datetime, timedelta, date, time
 import logging
 from decimal import Decimal, ROUND_HALF_UP
 from typing import Optional, List
@@ -1311,6 +1311,18 @@ def create_booking(
 
     if overlap:
         # This slot is taken
+        raise ValueError("Selected slot is no longer available")
+
+    blocked_overlap = (
+        db.query(models.ProviderBlockedTime)
+        .filter(
+            models.ProviderBlockedTime.provider_id == provider.id,
+            models.ProviderBlockedTime.start_at < end_time,
+            models.ProviderBlockedTime.end_at > booking.start_time,
+        )
+        .first()
+    )
+    if blocked_overlap:
         raise ValueError("Selected slot is no longer available")
 
     # Create booking
@@ -3067,6 +3079,152 @@ def set_working_hours_for_provider(db: Session, provider_id: int, hours_list):
     )
     return rows
 
+def _ranges_overlap(new_start: datetime, new_end: datetime, existing_start: datetime, existing_end: datetime) -> bool:
+    return new_start < existing_end and new_end > existing_start
+
+
+def _provider_has_booking_overlap(
+    db: Session,
+    provider_id: int,
+    start_at: datetime,
+    end_at: datetime,
+) -> bool:
+    return (
+        db.query(models.Booking)
+        .join(models.Service, models.Booking.service_id == models.Service.id)
+        .filter(
+            models.Service.provider_id == provider_id,
+            models.Booking.start_time < end_at,
+            models.Booking.end_time > start_at,
+            normalized_booking_status_expr() == "confirmed",
+        )
+        .first()
+        is not None
+    )
+
+
+def _provider_has_block_overlap(
+    db: Session,
+    provider_id: int,
+    start_at: datetime,
+    end_at: datetime,
+) -> bool:
+    return (
+        db.query(models.ProviderBlockedTime)
+        .filter(
+            models.ProviderBlockedTime.provider_id == provider_id,
+            models.ProviderBlockedTime.start_at < end_at,
+            models.ProviderBlockedTime.end_at > start_at,
+        )
+        .first()
+        is not None
+    )
+
+
+def create_provider_partial_block(
+    db: Session,
+    provider_id: int,
+    payload: schemas.ProviderBlockedTimeCreate,
+):
+    total_minutes = (payload.duration_hours * 60) + payload.duration_minutes
+    if total_minutes <= 0:
+        raise ValueError("Duration must be greater than 0")
+
+    start_at = datetime.combine(payload.date, payload.start_time)
+    end_at = start_at + timedelta(minutes=total_minutes)
+
+    if start_at >= end_at:
+        raise ValueError("start_at must be before end_at")
+
+    if _provider_has_booking_overlap(db, provider_id, start_at, end_at):
+        raise ValueError("This blocked time overlaps an existing appointment.")
+
+    if _provider_has_block_overlap(db, provider_id, start_at, end_at):
+        raise ValueError("This blocked time overlaps another blocked time.")
+
+    block = models.ProviderBlockedTime(
+        provider_id=provider_id,
+        start_at=start_at,
+        end_at=end_at,
+        is_all_day=False,
+        reason=payload.reason,
+    )
+    db.add(block)
+    db.commit()
+    db.refresh(block)
+    return block
+
+
+def create_provider_all_day_block(
+    db: Session,
+    provider_id: int,
+    payload: schemas.ProviderAllDayBlockedTimeCreate,
+):
+    day_start = datetime.combine(payload.date, time.min)
+    day_end = day_start + timedelta(days=1)
+
+    if _provider_has_booking_overlap(db, provider_id, day_start, day_end):
+        raise ValueError(
+            "You already have appointments on this day. Please cancel those appointments before blocking the entire day."
+        )
+
+    if _provider_has_block_overlap(db, provider_id, day_start, day_end):
+        raise ValueError("This blocked time overlaps another blocked time.")
+
+    block = models.ProviderBlockedTime(
+        provider_id=provider_id,
+        start_at=day_start,
+        end_at=day_end,
+        is_all_day=True,
+        reason=payload.reason,
+    )
+    db.add(block)
+    db.commit()
+    db.refresh(block)
+    return block
+
+
+def list_provider_blocked_times(
+    db: Session,
+    provider_id: int,
+    start_date: date,
+    end_date: date,
+):
+    range_start = datetime.combine(start_date, time.min)
+    range_end = datetime.combine(end_date, time.min) + timedelta(days=1)
+    return (
+        db.query(models.ProviderBlockedTime)
+        .filter(
+            models.ProviderBlockedTime.provider_id == provider_id,
+            models.ProviderBlockedTime.start_at < range_end,
+            models.ProviderBlockedTime.end_at > range_start,
+        )
+        .order_by(models.ProviderBlockedTime.start_at.asc())
+        .all()
+    )
+
+
+def delete_provider_blocked_time(
+    db: Session,
+    provider_id: int,
+    block_id: int,
+) -> bool:
+    block = (
+        db.query(models.ProviderBlockedTime)
+        .filter(
+            models.ProviderBlockedTime.id == block_id,
+            models.ProviderBlockedTime.provider_id == provider_id,
+        )
+        .first()
+    )
+    if not block:
+        return False
+
+    db.delete(block)
+    db.commit()
+    return True
+
+
 def get_professions_for_provider(db: Session, provider_id: int) -> List[str]:
     rows = (
         db.query(models.ProviderProfession)
@@ -3243,18 +3401,25 @@ def get_provider_availability(
             .join(models.Service, models.Booking.service_id == models.Service.id)
             .filter(
                 models.Service.provider_id == provider_id,
-                models.Booking.start_time >= day_start,
                 models.Booking.start_time < day_end,
+                models.Booking.end_time > day_start,
                 normalized_status == "confirmed",
             )
             .all()
         )
 
-        def overlaps(slot_start, slot_end, booking):
-            # True if times intersect
-            return not (
-                slot_end <= booking.start_time or slot_start >= booking.end_time
+        blocked_times = (
+            db.query(models.ProviderBlockedTime)
+            .filter(
+                models.ProviderBlockedTime.provider_id == provider_id,
+                models.ProviderBlockedTime.start_at < day_end,
+                models.ProviderBlockedTime.end_at > day_start,
             )
+            .all()
+        )
+
+        def overlaps(slot_start, slot_end, item_start, item_end):
+            return _ranges_overlap(slot_start, slot_end, item_start, item_end)
 
         slot_start = day_start
         slots_for_day = []
@@ -3271,9 +3436,15 @@ def get_provider_availability(
             # Check for overlap with any existing booking
             conflict = False
             for b in bookings:
-                if overlaps(slot_start, slot_end, b):
+                if overlaps(slot_start, slot_end, b.start_time, b.end_time):
                     conflict = True
                     break
+
+            if not conflict:
+                for block in blocked_times:
+                    if overlaps(slot_start, slot_end, block.start_at, block.end_at):
+                        conflict = True
+                        break
 
             if not conflict:
                 slots_for_day.append(slot_start)
