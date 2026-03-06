@@ -1,46 +1,9 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
 diff --git a/backend/app/routes/auth.py b/backend/app/routes/auth.py
-index 83ba1de3824be2350c233d40c449b3d2b0243f52..185f2caf19c5b84b257781e29f01b00b40732299 100644
+index 185f2caf19c5b84b257781e29f01b00b40732299..a20591660c933270c20d4072c2d0cefcdc44919b 100644
 --- a/backend/app/routes/auth.py
 +++ b/backend/app/routes/auth.py
-@@ -82,84 +82,85 @@ def _mask_id(value: str | None) -> str:
-     token = (value or "").strip()
-     if not token:
-         return ""
-     if len(token) <= 10:
-         return f"{token[:3]}…{token[-2:]}"
-     return f"{token[:6]}…{token[-4:]}"
- 
- 
- def _redact_client_id(value: str | None) -> str:
-     token = (value or "").strip()
-     if not token:
-         return ""
-     if len(token) <= 16:
-         return f"{token[:4]}...{token[-4:]}"
-     return f"{token[:8]}...{token[-8:]}"
- 
- 
- def _decode_jwt_no_verify(token: str) -> dict:
-     parts = (token or "").split(".")
-     if len(parts) != 3:
-         raise ValueError("token is not a JWT")
-     claims = jwt.get_unverified_claims(token)
-     return claims if isinstance(claims, dict) else {}
- 
- 
-+def _decode_jwt_header_no_verify(token: str) -> dict:
-+    header = jwt.get_unverified_header(token)
-+    return header if isinstance(header, dict) else {}
-+
-+
- def _verify_google_id_token(id_token: str) -> dict:
-     token = (id_token or "").strip()
-     if not token:
-         if GOOGLE_DEBUG_LOGS:
-             logger.info("[google-backend] verification_failed reason=missing token")
-         raise _google_error(status.HTTP_400_BAD_REQUEST, "GOOGLE_TOKEN_REQUIRED")
- 
+@@ -119,104 +119,109 @@ def _verify_google_id_token(id_token: str) -> dict:
      client_ids = _google_client_ids()
      if GOOGLE_DEBUG_LOGS:
          logger.info(
@@ -51,31 +14,23 @@ index 83ba1de3824be2350c233d40c449b3d2b0243f52..185f2caf19c5b84b257781e29f01b00b
  
      try:
          unverified_claims = _decode_jwt_no_verify(token)
-+        unverified_header = _decode_jwt_header_no_verify(token)
-+        kid = unverified_header.get("kid")
+         unverified_header = _decode_jwt_header_no_verify(token)
+         kid = unverified_header.get("kid")
          if GOOGLE_DEBUG_LOGS:
              logger.info(
--                "[google-backend] unverified_claims aud=%s iss=%s azp=%s email=%s exp=%s",
-+                "[google-backend] unverified_token_fields aud=%s iss=%s azp=%s email=%s exp=%s kid=%s alg=%s",
+                 "[google-backend] unverified_token_fields aud=%s iss=%s azp=%s email=%s exp=%s kid=%s alg=%s",
                  unverified_claims.get("aud"),
                  unverified_claims.get("iss"),
                  unverified_claims.get("azp"),
                  unverified_claims.get("email"),
                  unverified_claims.get("exp"),
-+                kid,
-+                unverified_header.get("alg"),
+                 kid,
+                 unverified_header.get("alg"),
              )
--    except Exception as decode_exc:
--        if GOOGLE_DEBUG_LOGS:
--            logger.info("[google-backend] verification_failed reason=malformed token detail=%s", str(decode_exc))
--        raise _google_error(status.HTTP_401_UNAUTHORIZED, "GOOGLE_TOKEN_INVALID")
--
--    try:
--        unverified_header = jwt.get_unverified_header(token)
--        kid = unverified_header.get("kid")
      except Exception as exc:
          if GOOGLE_DEBUG_LOGS:
-             logger.info("[google-backend] verification_failed reason=malformed token detail=%s", str(exc))
+-            logger.info("[google-backend] verification_failed reason=malformed token detail=%s", str(exc))
++            logger.info("[google-backend] verification_failed reason=malformed token exception=%s detail=%s", exc.__class__.__name__, str(exc))
          raise _google_error(status.HTTP_401_UNAUTHORIZED, "GOOGLE_TOKEN_INVALID")
  
      if not kid:
@@ -88,7 +43,8 @@ index 83ba1de3824be2350c233d40c449b3d2b0243f52..185f2caf19c5b84b257781e29f01b00b
          jwks = jwks_resp.json() if jwks_resp.ok else {}
      except Exception as exc:
          if GOOGLE_DEBUG_LOGS:
-             logger.info("[google-backend] verification_failed reason=unexpected exception detail=%s", str(exc))
+-            logger.info("[google-backend] verification_failed reason=unexpected exception detail=%s", str(exc))
++            logger.info("[google-backend] verification_failed reason=unexpected exception exception=%s detail=%s", exc.__class__.__name__, str(exc))
          raise _google_error(status.HTTP_401_UNAUTHORIZED, "GOOGLE_TOKEN_INVALID")
  
      key_data = None
@@ -98,7 +54,75 @@ index 83ba1de3824be2350c233d40c449b3d2b0243f52..185f2caf19c5b84b257781e29f01b00b
              break
  
      if not key_data:
-@@ -618,105 +619,105 @@ def facebook_complete(
+         if GOOGLE_DEBUG_LOGS:
+             logger.info("[google-backend] verification_failed reason=signature failure detail=matching kid not found")
+         raise _google_error(status.HTTP_401_UNAUTHORIZED, "GOOGLE_TOKEN_INVALID")
+ 
+     try:
+         payload = jwt.decode(
+             token,
+             key_data,
+             algorithms=["RS256"],
+             audience=client_ids,
+             issuer=["https://accounts.google.com", "accounts.google.com"],
+         )
+     except JWTError as exc:
+         detail = str(exc).lower()
+         reason = "signature failure"
+         if "audience" in detail:
+             reason = "invalid audience"
+         elif "issuer" in detail:
+             reason = "invalid issuer"
+         elif "expired" in detail:
+             reason = "expired token"
+         elif "signature" in detail:
+             reason = "signature failure"
+         elif "malformed" in detail or "decode" in detail:
+             reason = "malformed token"
+         if GOOGLE_DEBUG_LOGS:
+-            logger.info("[google-backend] verification_failed reason=%s detail=%s", reason, str(exc))
++            logger.info(
++                "[google-backend] verification_failed reason=%s exception=%s detail=%s",
++                reason,
++                exc.__class__.__name__,
++                str(exc),
++            )
+         raise _google_error(status.HTTP_401_UNAUTHORIZED, "GOOGLE_TOKEN_INVALID")
+     except Exception as exc:
+         if GOOGLE_DEBUG_LOGS:
+-            logger.info("[google-backend] verification_failed reason=unexpected exception detail=%s", str(exc))
++            logger.info("[google-backend] verification_failed reason=unexpected exception exception=%s detail=%s", exc.__class__.__name__, str(exc))
+         raise _google_error(status.HTTP_401_UNAUTHORIZED, "GOOGLE_TOKEN_INVALID")
+ 
+     if not payload.get("sub"):
+         raise _google_error(status.HTTP_401_UNAUTHORIZED, "GOOGLE_TOKEN_INVALID")
+ 
+     email = (payload.get("email") or "").strip().lower() or None
+     if not email:
+         raise _google_error(status.HTTP_400_BAD_REQUEST, "GOOGLE_EMAIL_REQUIRED")
+ 
+     return {
+         "sub": str(payload["sub"]),
+         "email": email,
+         "email_verified": bool(payload.get("email_verified")),
+         "name": (payload.get("name") or "").strip() or None,
+     }
+ 
+ 
+ def _google_needs_onboarding(user: models.User) -> bool:
+     return not bool((user.phone or "").strip())
+ 
+ 
+ def _google_auth_response(db: Session, user: models.User) -> dict:
+     access_token = _issue_access_token(user.email, user.token_version, user.id)
+     refresh_token, _ = _create_refresh_token(db, user.id)
+     return {
+@@ -614,114 +619,123 @@ def facebook_complete(
+     except IntegrityError as exc:
+         detail = str(getattr(exc, "orig", exc))
+         if "users_phone" in detail or "phone" in detail:
+             raise _facebook_error(status.HTTP_400_BAD_REQUEST, "PHONE_TAKEN")
+         raise
  
      if payload.is_provider:
          crud.get_or_create_provider_for_user(db, user.id)
@@ -119,78 +143,131 @@ index 83ba1de3824be2350c233d40c449b3d2b0243f52..185f2caf19c5b84b257781e29f01b00b
      payload: schemas.GoogleAuthRequest,
      db: Session = Depends(get_db),
  ):
-     id_token = (payload.id_token or "").strip()
-     authorization_code = (payload.authorization_code or "").strip()
-     logger.info("[google-backend] POST /auth/google hit id_token_provided=%s id_token_len=%s", bool(id_token), len(id_token))
- 
-     if not id_token:
--        logger.info("POST /auth/google GOOGLE_TOKEN_REQUIRED")
-+        logger.info("[google-backend] POST /auth/google GOOGLE_TOKEN_REQUIRED")
- 
-     if not id_token and authorization_code:
-         raise _google_error(
-             status.HTTP_400_BAD_REQUEST,
-             "GOOGLE_AUTH_CODE_NOT_SUPPORTED",
-             "authorization_code flow is not supported yet",
-         )
- 
+-    id_token = (payload.id_token or "").strip()
+-    authorization_code = (payload.authorization_code or "").strip()
+-    logger.info("[google-backend] POST /auth/google hit id_token_provided=%s id_token_len=%s", bool(id_token), len(id_token))
+-
+-    if not id_token:
+-        logger.info("[google-backend] POST /auth/google GOOGLE_TOKEN_REQUIRED")
+-
+-    if not id_token and authorization_code:
+-        raise _google_error(
+-            status.HTTP_400_BAD_REQUEST,
+-            "GOOGLE_AUTH_CODE_NOT_SUPPORTED",
+-            "authorization_code flow is not supported yet",
+-        )
+-
      try:
++        id_token = (payload.id_token or "").strip()
++        authorization_code = (payload.authorization_code or "").strip()
++        logger.info("[google-backend] /auth/google hit")
++        logger.info("[google-backend] /auth/google id_token_present=%s", bool(id_token))
++        logger.info("[google-backend] /auth/google id_token_length=%s", len(id_token))
++
++        if not id_token:
++            logger.info("[google-backend] POST /auth/google GOOGLE_TOKEN_REQUIRED")
++
++        if not id_token and authorization_code:
++            raise _google_error(
++                status.HTTP_400_BAD_REQUEST,
++                "GOOGLE_AUTH_CODE_NOT_SUPPORTED",
++                "authorization_code flow is not supported yet",
++            )
++
          google_profile = _verify_google_id_token(id_token)
-     except Exception as exc:
+-    except Exception as exc:
++        google_sub = google_profile["sub"]
++        google_email = google_profile["email"]
          logger.info(
--            "POST /auth/google verification_failed reason=%s: %s",
-+            "[google-backend] POST /auth/google verification_failed reason=%s: %s",
-             exc.__class__.__name__,
-             str(exc),
+-            "[google-backend] POST /auth/google verification_failed reason=%s: %s",
+-            exc.__class__.__name__,
+-            str(exc),
++            "[google-backend] POST /auth/google verified email=%s sub=%s email_verified=%s",
++            google_email,
++            _mask_id(google_sub),
++            google_profile.get("email_verified", False),
          )
+-        raise
+ 
+-    google_sub = google_profile["sub"]
+-    google_email = google_profile["email"]
+-    logger.info(
+-        "[google-backend] POST /auth/google verified email=%s sub=%s email_verified=%s",
+-        google_email,
+-        _mask_id(google_sub),
+-        google_profile.get("email_verified", False),
+-    )
++        existing_google_user = crud.get_user_by_google_sub(db, google_sub)
++        if existing_google_user:
++            logger.info("[google-backend] POST /auth/google existing linked google_sub user found")
++            return _google_auth_response(db, existing_google_user)
+ 
+-    existing_google_user = crud.get_user_by_google_sub(db, google_sub)
+-    if existing_google_user:
+-        logger.info("[google-backend] POST /auth/google existing linked google_sub user found")
+-        return _google_auth_response(db, existing_google_user)
++        logger.info("[google-backend] POST /auth/google no google_sub match")
+ 
+-    logger.info("[google-backend] POST /auth/google no google_sub match")
++        existing_local_user = crud.get_user_by_email(db, google_email)
++        if existing_local_user:
++            logger.info("[google-backend] POST /auth/google email collision with local user (not linked)")
++            raise _google_error(
++                status.HTTP_409_CONFLICT,
++                "EMAIL_EXISTS_NOT_LINKED",
++                "An account already exists with this email. Log in with your password to link Google.",
++            )
+ 
+-    existing_local_user = crud.get_user_by_email(db, google_email)
+-    if existing_local_user:
+-        logger.info("[google-backend] POST /auth/google email collision with local user (not linked)")
+-        raise _google_error(
+-            status.HTTP_409_CONFLICT,
+-            "EMAIL_EXISTS_NOT_LINKED",
+-            "An account already exists with this email. Log in with your password to link Google.",
+-        )
++        logger.info("[google-backend] POST /auth/google creating new user from google")
++        try:
++            user = crud.create_user_for_google(
++                db,
++                email=google_email,
++                google_sub=google_sub,
++                name=google_profile.get("name"),
++                email_verified=google_profile.get("email_verified", False),
++            )
++        except IntegrityError:
++            logger.info("[google-backend] POST /auth/google integrity error while creating new user from google")
++            raise
+ 
+-    logger.info("[google-backend] POST /auth/google creating new user from google")
+-    try:
+-        user = crud.create_user_for_google(
+-            db,
+-            email=google_email,
+-            google_sub=google_sub,
+-            name=google_profile.get("name"),
+-            email_verified=google_profile.get("email_verified", False),
++        return _google_auth_response(db, user)
++    except HTTPException as exc:
++        if exc.status_code == status.HTTP_401_UNAUTHORIZED:
++            logger.info(
++                "[google-backend] POST /auth/google returning_401 code=%s detail=%s",
++                (exc.detail or {}).get("code") if isinstance(exc.detail, dict) else None,
++                exc.detail,
++            )
++        raise
++    except Exception as exc:
++        logger.info(
++            "[google-backend] POST /auth/google verification_failed reason=unexpected exception exception=%s detail=%s",
++            exc.__class__.__name__,
++            str(exc),
+         )
+-    except IntegrityError:
+-        logger.info("[google-backend] POST /auth/google integrity error while creating new user from google")
          raise
  
-     google_sub = google_profile["sub"]
-     google_email = google_profile["email"]
-     logger.info(
--        "POST /auth/google verified email=%s sub=%s email_verified=%s",
-+        "[google-backend] POST /auth/google verified email=%s sub=%s email_verified=%s",
-         google_email,
-         _mask_id(google_sub),
-         google_profile.get("email_verified", False),
-     )
- 
-     existing_google_user = crud.get_user_by_google_sub(db, google_sub)
-     if existing_google_user:
--        logger.info("POST /auth/google existing linked google_sub user found")
-+        logger.info("[google-backend] POST /auth/google existing linked google_sub user found")
-         return _google_auth_response(db, existing_google_user)
- 
--    logger.info("POST /auth/google no google_sub match")
-+    logger.info("[google-backend] POST /auth/google no google_sub match")
- 
-     existing_local_user = crud.get_user_by_email(db, google_email)
-     if existing_local_user:
--        logger.info("POST /auth/google email collision with local user (not linked)")
-+        logger.info("[google-backend] POST /auth/google email collision with local user (not linked)")
-         raise _google_error(
-             status.HTTP_409_CONFLICT,
-             "EMAIL_EXISTS_NOT_LINKED",
-             "An account already exists with this email. Log in with your password to link Google.",
-         )
- 
--    logger.info("POST /auth/google creating new user from google")
-+    logger.info("[google-backend] POST /auth/google creating new user from google")
-     try:
-         user = crud.create_user_for_google(
-             db,
-             email=google_email,
-             google_sub=google_sub,
-             name=google_profile.get("name"),
-             email_verified=google_profile.get("email_verified", False),
-         )
-     except IntegrityError:
--        logger.info("POST /auth/google integrity error while creating new user from google")
-+        logger.info("[google-backend] POST /auth/google integrity error while creating new user from google")
-         raise
- 
-     return _google_auth_response(db, user)
- 
+-    return _google_auth_response(db, user)
+-
  
  @router.post("/auth/link-google", response_model=schemas.LinkGoogleResponse)
  def link_google(
@@ -212,7 +289,10 @@ index 83ba1de3824be2350c233d40c449b3d2b0243f52..185f2caf19c5b84b257781e29f01b00b
              "authorization_code flow is not supported yet",
          )
  
+     try:
+         google_profile = _verify_google_id_token(id_token)
+     except Exception as exc:
+         logger.info(
  
 EOF
 )
-
