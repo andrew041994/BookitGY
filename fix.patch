@@ -1,9 +1,39 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
 diff --git a/backend/app/routes/auth.py b/backend/app/routes/auth.py
-index c58607af0c9cb750af59937b961614dd96bc9797..b41366b14a55ab85a422ec30e66ef4321dcbc160 100644
+index b41366b14a55ab85a422ec30e66ef4321dcbc160..83ba1de3824be2350c233d40c449b3d2b0243f52 100644
 --- a/backend/app/routes/auth.py
 +++ b/backend/app/routes/auth.py
-@@ -43,108 +43,108 @@ def _new_refresh_token_raw() -> str:
+@@ -14,140 +14,208 @@ from app.config import get_settings
+ from app.auth.jwt import create_access_token
+ from app.auth.jwt_config import get_jwt_algorithm
+ from app.database import get_db
+ from app import crud, schemas, models
+ from app.security import get_current_user_from_header
+ from app.utils.email import send_password_reset_email, send_verification_email
+ from app.utils.passwords import validate_password, PASSWORD_REQUIREMENTS_MESSAGE
+ from app.utils.tokens import (
+     build_reset_token_expiration,
+     constant_time_compare,
+     create_password_reset_token,
+     hash_token,
+     validate_reset_token_expiration,
+     is_reset_token_expired,
+     normalize_utc,
+ )
+ 
+ from app.utils.time import GUYANA_TIMEZONE, now_guyana
+ 
+ router = APIRouter(tags=["auth"])
+ settings = get_settings()
+ logger = logging.getLogger(__name__)
+ 
+ 
+ REFRESH_TOKEN_INACTIVITY_DAYS = 90
++GOOGLE_DEBUG_LOGS = True
+ 
+ 
+ def _new_refresh_token_raw() -> str:
+     return secrets.token_urlsafe(48)
  
  
  def _create_refresh_token(db: Session, user_id: int) -> tuple[str, models.RefreshToken]:
@@ -29,20 +59,16 @@ index c58607af0c9cb750af59937b961614dd96bc9797..b41366b14a55ab85a422ec30e66ef432
      )
  
  
--def _google_client_id() -> str:
--    client_id = (settings.GOOGLE_CLIENT_ID or "").strip()
--    if not client_id:
-+def _google_client_ids() -> list[str]:
-+    client_ids = [client_id.strip() for client_id in (settings.GOOGLE_CLIENT_IDS or []) if client_id.strip()]
-+    if not client_ids:
+ def _google_client_ids() -> list[str]:
+     client_ids = [client_id.strip() for client_id in (settings.GOOGLE_CLIENT_IDS or []) if client_id.strip()]
+     if not client_ids:
          # Required env var for Google Sign-In verification.
          raise _google_error(
              status.HTTP_500_INTERNAL_SERVER_ERROR,
              "GOOGLE_AUTH_NOT_CONFIGURED",
              "Google auth is not configured",
          )
--    return client_id
-+    return client_ids
+     return client_ids
  
  
  def _mask_id(value: str | None) -> str:
@@ -54,27 +80,75 @@ index c58607af0c9cb750af59937b961614dd96bc9797..b41366b14a55ab85a422ec30e66ef432
      return f"{token[:6]}…{token[-4:]}"
  
  
++def _redact_client_id(value: str | None) -> str:
++    token = (value or "").strip()
++    if not token:
++        return ""
++    if len(token) <= 16:
++        return f"{token[:4]}...{token[-4:]}"
++    return f"{token[:8]}...{token[-8:]}"
++
++
++def _decode_jwt_no_verify(token: str) -> dict:
++    parts = (token or "").split(".")
++    if len(parts) != 3:
++        raise ValueError("token is not a JWT")
++    claims = jwt.get_unverified_claims(token)
++    return claims if isinstance(claims, dict) else {}
++
++
  def _verify_google_id_token(id_token: str) -> dict:
      token = (id_token or "").strip()
      if not token:
++        if GOOGLE_DEBUG_LOGS:
++            logger.info("[google-backend] verification_failed reason=missing token")
          raise _google_error(status.HTTP_400_BAD_REQUEST, "GOOGLE_TOKEN_REQUIRED")
  
--    client_id = _google_client_id()
-+    client_ids = _google_client_ids()
+     client_ids = _google_client_ids()
++    if GOOGLE_DEBUG_LOGS:
++        logger.info(
++            "[google-backend] accepted_google_client_ids count=%s values=%s",
++            len(client_ids),
++            [_redact_client_id(client_id) for client_id in client_ids],
++        )
++
++    try:
++        unverified_claims = _decode_jwt_no_verify(token)
++        if GOOGLE_DEBUG_LOGS:
++            logger.info(
++                "[google-backend] unverified_claims aud=%s iss=%s azp=%s email=%s exp=%s",
++                unverified_claims.get("aud"),
++                unverified_claims.get("iss"),
++                unverified_claims.get("azp"),
++                unverified_claims.get("email"),
++                unverified_claims.get("exp"),
++            )
++    except Exception as decode_exc:
++        if GOOGLE_DEBUG_LOGS:
++            logger.info("[google-backend] verification_failed reason=malformed token detail=%s", str(decode_exc))
++        raise _google_error(status.HTTP_401_UNAUTHORIZED, "GOOGLE_TOKEN_INVALID")
  
      try:
          unverified_header = jwt.get_unverified_header(token)
          kid = unverified_header.get("kid")
-     except Exception:
+-    except Exception:
++    except Exception as exc:
++        if GOOGLE_DEBUG_LOGS:
++            logger.info("[google-backend] verification_failed reason=malformed token detail=%s", str(exc))
          raise _google_error(status.HTTP_401_UNAUTHORIZED, "GOOGLE_TOKEN_INVALID")
  
      if not kid:
++        if GOOGLE_DEBUG_LOGS:
++            logger.info("[google-backend] verification_failed reason=malformed token detail=missing kid")
          raise _google_error(status.HTTP_401_UNAUTHORIZED, "GOOGLE_TOKEN_INVALID")
  
      try:
          jwks_resp = requests.get("https://www.googleapis.com/oauth2/v3/certs", timeout=10)
          jwks = jwks_resp.json() if jwks_resp.ok else {}
-     except Exception:
+-    except Exception:
++    except Exception as exc:
++        if GOOGLE_DEBUG_LOGS:
++            logger.info("[google-backend] verification_failed reason=unexpected exception detail=%s", str(exc))
          raise _google_error(status.HTTP_401_UNAUTHORIZED, "GOOGLE_TOKEN_INVALID")
  
      key_data = None
@@ -84,6 +158,8 @@ index c58607af0c9cb750af59937b961614dd96bc9797..b41366b14a55ab85a422ec30e66ef432
              break
  
      if not key_data:
++        if GOOGLE_DEBUG_LOGS:
++            logger.info("[google-backend] verification_failed reason=signature failure detail=matching kid not found")
          raise _google_error(status.HTTP_401_UNAUTHORIZED, "GOOGLE_TOKEN_INVALID")
  
      try:
@@ -91,11 +167,29 @@ index c58607af0c9cb750af59937b961614dd96bc9797..b41366b14a55ab85a422ec30e66ef432
              token,
              key_data,
              algorithms=["RS256"],
--            audience=client_id,
-+            audience=client_ids,
+             audience=client_ids,
              issuer=["https://accounts.google.com", "accounts.google.com"],
          )
-     except Exception:
+-    except Exception:
++    except JWTError as exc:
++        detail = str(exc).lower()
++        reason = "signature failure"
++        if "audience" in detail:
++            reason = "invalid audience"
++        elif "issuer" in detail:
++            reason = "invalid issuer"
++        elif "expired" in detail:
++            reason = "expired token"
++        elif "signature" in detail:
++            reason = "signature failure"
++        elif "malformed" in detail or "decode" in detail:
++            reason = "malformed token"
++        if GOOGLE_DEBUG_LOGS:
++            logger.info("[google-backend] verification_failed reason=%s detail=%s", reason, str(exc))
++        raise _google_error(status.HTTP_401_UNAUTHORIZED, "GOOGLE_TOKEN_INVALID")
++    except Exception as exc:
++        if GOOGLE_DEBUG_LOGS:
++            logger.info("[google-backend] verification_failed reason=unexpected exception detail=%s", str(exc))
          raise _google_error(status.HTTP_401_UNAUTHORIZED, "GOOGLE_TOKEN_INVALID")
  
      if not payload.get("sub"):
@@ -118,6 +212,62 @@ index c58607af0c9cb750af59937b961614dd96bc9797..b41366b14a55ab85a422ec30e66ef432
  
  
  def _google_auth_response(db: Session, user: models.User) -> dict:
+     access_token = _issue_access_token(user.email, user.token_version, user.id)
+     refresh_token, _ = _create_refresh_token(db, user.id)
+     return {
+@@ -547,51 +615,51 @@ def facebook_complete(
+         if "users_phone" in detail or "phone" in detail:
+             raise _facebook_error(status.HTTP_400_BAD_REQUEST, "PHONE_TAKEN")
+         raise
+ 
+     if payload.is_provider:
+         crud.get_or_create_provider_for_user(db, user.id)
+ 
+     crud.create_oauth_identity(
+         db,
+         user_id=user.id,
+         provider="facebook",
+         provider_user_id=fb_profile["id"],
+         email=fb_email or request_email,
+     )
+ 
+     return _facebook_auth_response(db, user)
+ 
+ 
+ @router.post("/auth/google", response_model=schemas.GoogleAuthResponse)
+ def auth_google(
+     payload: schemas.GoogleAuthRequest,
+     db: Session = Depends(get_db),
+ ):
+     id_token = (payload.id_token or "").strip()
+     authorization_code = (payload.authorization_code or "").strip()
+-    logger.info("POST /auth/google id_token_provided=%s", bool(id_token))
++    logger.info("[google-backend] POST /auth/google hit id_token_provided=%s id_token_len=%s", bool(id_token), len(id_token))
+ 
+     if not id_token:
+         logger.info("POST /auth/google GOOGLE_TOKEN_REQUIRED")
+ 
+     if not id_token and authorization_code:
+         raise _google_error(
+             status.HTTP_400_BAD_REQUEST,
+             "GOOGLE_AUTH_CODE_NOT_SUPPORTED",
+             "authorization_code flow is not supported yet",
+         )
+ 
+     try:
+         google_profile = _verify_google_id_token(id_token)
+     except Exception as exc:
+         logger.info(
+             "POST /auth/google verification_failed reason=%s: %s",
+             exc.__class__.__name__,
+             str(exc),
+         )
+         raise
+ 
+     google_sub = google_profile["sub"]
+     google_email = google_profile["email"]
+     logger.info(
+         "POST /auth/google verified email=%s sub=%s email_verified=%s",
  
 EOF
 )
