@@ -1,61 +1,139 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
-diff --git a/backend/tests/test_google_token_verification.py b/backend/tests/test_google_token_verification.py
-index cf5c21e6cf28e4d321101ccfff9769e47602a097..a0a129d6b4e2e8fc0b6746b2634306f030cee9e3 100644
---- a/backend/tests/test_google_token_verification.py
-+++ b/backend/tests/test_google_token_verification.py
-@@ -61,51 +61,51 @@ def test_verify_google_id_token_disables_builtin_audience_validation(monkeypatch
-         lambda _token: {
-             "header": {"kid": "kid-1", "alg": "RS256"},
-             "payload": {
-                 "aud": "allowed-client.apps.googleusercontent.com",
-                 "iss": "https://accounts.google.com",
-                 "email": "user@example.com",
-                 "exp": 9999999999,
-             },
-         },
-     )
+diff --git a/mobile/App.js b/mobile/App.js
+index cd4acd63a96654b437f3a962d91843390e55f0a9..89ccfb10e98a586e42b5762ac0b0c506cfc07776 100644
+--- a/mobile/App.js
++++ b/mobile/App.js
+@@ -1245,50 +1245,51 @@ return (
+           )}
  
-     class _Response:
-         ok = True
+           {ENABLE_FACEBOOK_AUTH && (
+             <View style={{ width: "100%", marginBottom: 12 }}>
+               {facebookLoading ? (
+                 <ActivityIndicator size="large" color={colors.primary} />
+               ) : (
+                 <TouchableOpacity
+                   style={styles.facebookButton}
+                   onPress={loginWithFacebook}
+                 >
+                   <Text style={styles.facebookButtonText}>Continue with Facebook</Text>
+                 </TouchableOpacity>
+               )}
+             </View>
+           )}
  
-         @staticmethod
-         def json():
-             return {"keys": [{"kid": "kid-1", "kty": "RSA", "n": "x", "e": "AQAB"}]}
+           <View style={{ width: "100%", marginBottom: 12 }}>
+             {googleLoading ? (
+               <ActivityIndicator size="large" color={colors.primary} />
+             ) : (
+               <TouchableOpacity
+                 style={styles.googleButton}
+                 onPress={loginWithGoogle}
+               >
++                <Ionicons name="logo-google" size={20} color="#4285F4" />
+                 <Text style={styles.googleButtonText}>Continue with Google</Text>
+               </TouchableOpacity>
+             )}
+           </View>
  
-     monkeypatch.setattr(auth_routes.requests, "get", lambda *_args, **_kwargs: _Response())
+           {goToForgot && (
+             <TouchableOpacity onPress={goToForgot} style={styles.forgotLink}>
+               <Text
+                 style={styles.forgotLinkText}
+                 numberOfLines={1}
+                 adjustsFontSizeToFit
+                 minimumFontScale={0.85}
+               >
+                 Forgot password?
+               </Text>
+             </TouchableOpacity>
+           )}
  
-     def _fake_decode(token, key, algorithms, audience, issuer, options):
-         assert token == "dummy-token"
-         assert algorithms == ["RS256"]
-         assert audience is None
-         assert issuer == ["https://accounts.google.com", "accounts.google.com"]
--        assert options == {"verify_aud": False}
-+        assert options == {"verify_aud": False, "verify_at_hash": False}
-         return {
-             "sub": "google-sub-1",
-             "email": "user@example.com",
-             "aud": "allowed-client.apps.googleusercontent.com",
-             "email_verified": True,
-             "name": "User",
-         }
+             {goToSignup && (
+               <View style={{ width: "100%", marginBottom: 10 }}>
+                 <Button
+                   title="Need an account? Sign Up"
+                   onPress={goToSignup}
+                   color={colors.primary}
+                 />
+@@ -10852,61 +10853,72 @@ authSecondaryButton: {
+   borderColor: colors.primary,
+   shadowColor: "#000",
+   shadowOpacity: 0.15,
+   shadowOffset: { width: 0, height: 2 },
+   shadowRadius: 3,
+   elevation: 3,
+ },
  
-     monkeypatch.setattr(auth_routes.jwt, "decode", _fake_decode)
+   authSecondaryButtonText: {
+   color: colors.primary,
+   fontSize: 16,
+   fontWeight: "600",
+ },
+ facebookButton: {
+   backgroundColor: "#1877F2",
+   paddingVertical: 12,
+   borderRadius: 8,
+   alignItems: "center",
+ },
+ facebookButtonText: {
+   color: "#ffffff",
+   fontSize: 16,
+   fontWeight: "600",
+ },
+ googleButton: {
+-  backgroundColor: "#ffffff",
+-  paddingVertical: 12,
+-  borderRadius: 8,
+-  alignItems: "center",
++  width: "100%",
++  height: 52,
++  borderRadius: 12,
++  backgroundColor: "#FFFFFF",
+   borderWidth: 1,
+-  borderColor: colors.border,
++  borderColor: "#E5E5E5",
++  flexDirection: "row",
++  alignItems: "center",
++  justifyContent: "center",
++  paddingHorizontal: 16,
++  marginTop: 12,
++  shadowColor: "#000",
++  shadowOpacity: 0.08,
++  shadowRadius: 6,
++  shadowOffset: { width: 0, height: 2 },
++  elevation: 3,
+ },
+ googleButtonText: {
+-  color: colors.textPrimary,
+   fontSize: 16,
+   fontWeight: "600",
++  color: "#333",
++  marginLeft: 10,
+ },
  
-     verified = auth_routes._verify_google_id_token("dummy-token")
- 
-     assert verified["sub"] == "google-sub-1"
-     assert verified["email"] == "user@example.com"
- 
- 
- def test_verify_google_id_token_rejects_invalid_manual_audience(monkeypatch):
-     auth_routes = _load_auth_routes(monkeypatch)
- 
-     monkeypatch.setenv("GOOGLE_CLIENT_IDS", "allowed-client.apps.googleusercontent.com")
-     monkeypatch.delenv("GOOGLE_CLIENT_ID", raising=False)
-     monkeypatch.setattr(auth_routes, "settings", SimpleNamespace(GOOGLE_CLIENT_IDS=[]))
- 
-     monkeypatch.setattr(
-         auth_routes,
+ linkGoogleBanner: {
+   width: "100%",
+   backgroundColor: "rgba(77, 163, 255, 0.12)",
+   borderRadius: 8,
+   borderWidth: 1,
+   borderColor: "rgba(77, 163, 255, 0.45)",
+   paddingHorizontal: 12,
+   paddingVertical: 10,
+   marginBottom: 12,
+   flexDirection: "row",
+   alignItems: "center",
+   justifyContent: "space-between",
+ },
+ linkGoogleBannerText: {
+   color: colors.textPrimary,
+   fontSize: 13,
+   flex: 1,
+   marginRight: 8,
+ },
+ linkGoogleBannerAction: {
+   color: colors.primary,
+   fontWeight: "700",
+   fontSize: 13,
  
 EOF
 )

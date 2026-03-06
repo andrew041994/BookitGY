@@ -1267,6 +1267,7 @@ return (
                 style={styles.googleButton}
                 onPress={loginWithGoogle}
               >
+                <Ionicons name="logo-google" size={20} color="#4285F4" />
                 <Text style={styles.googleButtonText}>Continue with Google</Text>
               </TouchableOpacity>
             )}
@@ -10874,17 +10875,28 @@ facebookButtonText: {
   fontWeight: "600",
 },
 googleButton: {
-  backgroundColor: "#ffffff",
-  paddingVertical: 12,
-  borderRadius: 8,
-  alignItems: "center",
+  width: "100%",
+  height: 52,
+  borderRadius: 12,
+  backgroundColor: "#FFFFFF",
   borderWidth: 1,
-  borderColor: colors.border,
+  borderColor: "#E5E5E5",
+  flexDirection: "row",
+  alignItems: "center",
+  justifyContent: "center",
+  paddingHorizontal: 16,
+  marginTop: 12,
+  shadowColor: "#000",
+  shadowOpacity: 0.08,
+  shadowRadius: 6,
+  shadowOffset: { width: 0, height: 2 },
+  elevation: 3,
 },
 googleButtonText: {
-  color: colors.textPrimary,
   fontSize: 16,
   fontWeight: "600",
+  color: "#333",
+  marginLeft: 10,
 },
 
 linkGoogleBanner: {
