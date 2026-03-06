@@ -1,0 +1,148 @@
+from types import SimpleNamespace
+import sys
+
+import pytest
+from fastapi import HTTPException, status
+
+
+def _load_auth_routes(monkeypatch):
+    monkeypatch.setenv("DATABASE_URL", "sqlite:///./test-google-token.db")
+    monkeypatch.setenv("CORS_ALLOW_ORIGINS", "http://localhost")
+    monkeypatch.setenv("JWT_SECRET_KEY", "x" * 32)
+
+    for module_name in ["app.config", "app.database", "app.routes.auth"]:
+        sys.modules.pop(module_name, None)
+
+    import app.config as config
+
+    config.get_settings.cache_clear()
+
+    from app.routes import auth as auth_routes
+
+    return auth_routes
+
+
+def test_google_client_ids_parses_csv_and_trims(monkeypatch):
+    auth_routes = _load_auth_routes(monkeypatch)
+
+    monkeypatch.setenv(
+        "GOOGLE_CLIENT_IDS",
+        "  first-client.apps.googleusercontent.com , , second-client.apps.googleusercontent.com  ",
+    )
+    monkeypatch.delenv("GOOGLE_CLIENT_ID", raising=False)
+    monkeypatch.setattr(auth_routes, "settings", SimpleNamespace(GOOGLE_CLIENT_IDS=[]))
+
+    assert auth_routes._google_client_ids() == [
+        "first-client.apps.googleusercontent.com",
+        "second-client.apps.googleusercontent.com",
+    ]
+
+
+def test_google_client_ids_falls_back_to_legacy_client_id(monkeypatch):
+    auth_routes = _load_auth_routes(monkeypatch)
+
+    monkeypatch.setenv("GOOGLE_CLIENT_IDS", "   ")
+    monkeypatch.setenv("GOOGLE_CLIENT_ID", "legacy-client.apps.googleusercontent.com")
+    monkeypatch.setattr(auth_routes, "settings", SimpleNamespace(GOOGLE_CLIENT_IDS=[]))
+
+    assert auth_routes._google_client_ids() == ["legacy-client.apps.googleusercontent.com"]
+
+
+def test_verify_google_id_token_disables_builtin_audience_validation(monkeypatch):
+    auth_routes = _load_auth_routes(monkeypatch)
+
+    monkeypatch.setenv("GOOGLE_CLIENT_IDS", "allowed-client.apps.googleusercontent.com")
+    monkeypatch.delenv("GOOGLE_CLIENT_ID", raising=False)
+    monkeypatch.setattr(auth_routes, "settings", SimpleNamespace(GOOGLE_CLIENT_IDS=[]))
+
+    monkeypatch.setattr(
+        auth_routes,
+        "decode_jwt_no_verify",
+        lambda _token: {
+            "header": {"kid": "kid-1", "alg": "RS256"},
+            "payload": {
+                "aud": "allowed-client.apps.googleusercontent.com",
+                "iss": "https://accounts.google.com",
+                "email": "user@example.com",
+                "exp": 9999999999,
+            },
+        },
+    )
+
+    class _Response:
+        ok = True
+
+        @staticmethod
+        def json():
+            return {"keys": [{"kid": "kid-1", "kty": "RSA", "n": "x", "e": "AQAB"}]}
+
+    monkeypatch.setattr(auth_routes.requests, "get", lambda *_args, **_kwargs: _Response())
+
+    def _fake_decode(token, key, algorithms, audience, issuer, options):
+        assert token == "dummy-token"
+        assert algorithms == ["RS256"]
+        assert audience is None
+        assert issuer == ["https://accounts.google.com", "accounts.google.com"]
+        assert options == {"verify_aud": False}
+        return {
+            "sub": "google-sub-1",
+            "email": "user@example.com",
+            "aud": "allowed-client.apps.googleusercontent.com",
+            "email_verified": True,
+            "name": "User",
+        }
+
+    monkeypatch.setattr(auth_routes.jwt, "decode", _fake_decode)
+
+    verified = auth_routes._verify_google_id_token("dummy-token")
+
+    assert verified["sub"] == "google-sub-1"
+    assert verified["email"] == "user@example.com"
+
+
+def test_verify_google_id_token_rejects_invalid_manual_audience(monkeypatch):
+    auth_routes = _load_auth_routes(monkeypatch)
+
+    monkeypatch.setenv("GOOGLE_CLIENT_IDS", "allowed-client.apps.googleusercontent.com")
+    monkeypatch.delenv("GOOGLE_CLIENT_ID", raising=False)
+    monkeypatch.setattr(auth_routes, "settings", SimpleNamespace(GOOGLE_CLIENT_IDS=[]))
+
+    monkeypatch.setattr(
+        auth_routes,
+        "decode_jwt_no_verify",
+        lambda _token: {
+            "header": {"kid": "kid-1", "alg": "RS256"},
+            "payload": {
+                "aud": "not-allowed.apps.googleusercontent.com",
+                "iss": "https://accounts.google.com",
+                "email": "user@example.com",
+                "exp": 9999999999,
+            },
+        },
+    )
+
+    class _Response:
+        ok = True
+
+        @staticmethod
+        def json():
+            return {"keys": [{"kid": "kid-1", "kty": "RSA", "n": "x", "e": "AQAB"}]}
+
+    monkeypatch.setattr(auth_routes.requests, "get", lambda *_args, **_kwargs: _Response())
+    monkeypatch.setattr(
+        auth_routes.jwt,
+        "decode",
+        lambda *_args, **_kwargs: {
+            "sub": "google-sub-1",
+            "email": "user@example.com",
+            "aud": "not-allowed.apps.googleusercontent.com",
+            "email_verified": True,
+            "name": "User",
+        },
+    )
+
+    with pytest.raises(HTTPException) as exc_info:
+        auth_routes._verify_google_id_token("dummy-token")
+
+    assert exc_info.value.status_code == status.HTTP_401_UNAUTHORIZED
+    assert exc_info.value.detail["code"] == "GOOGLE_TOKEN_INVALID"

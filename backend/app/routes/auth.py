@@ -70,7 +70,19 @@ def _google_error(status_code: int, code: str, message: str | None = None) -> HT
 
 
 def _google_client_ids() -> list[str]:
-    client_ids = [client_id.strip() for client_id in (settings.GOOGLE_CLIENT_IDS or []) if client_id.strip()]
+    configured_client_ids = [
+        client_id.strip()
+        for client_id in os.getenv("GOOGLE_CLIENT_IDS", "").split(",")
+        if client_id.strip()
+    ]
+    if not configured_client_ids:
+        legacy_client_id = os.getenv("GOOGLE_CLIENT_ID", "").strip()
+        if legacy_client_id:
+            configured_client_ids = [legacy_client_id]
+
+    client_ids = configured_client_ids or [
+        client_id.strip() for client_id in (settings.GOOGLE_CLIENT_IDS or []) if client_id.strip()
+    ]
     if not client_ids:
         # Required env var for Google Sign-In verification.
         raise _google_error(
@@ -193,8 +205,9 @@ def _verify_google_id_token(id_token: str) -> dict:
             token,
             key_data,
             algorithms=["RS256"],
-            audience=client_ids,
+            audience=None,
             issuer=["https://accounts.google.com", "accounts.google.com"],
+            options={"verify_aud": False},
         )
     except JWTError as exc:
         detail = str(exc).lower()
@@ -221,6 +234,15 @@ def _verify_google_id_token(id_token: str) -> dict:
     except Exception as exc:
         if GOOGLE_DEBUG_LOGS:
             logger.info("[google-backend] verification_failed reason=unexpected exception exception=%s detail=%s", exc.__class__.__name__, str(exc))
+        raise _google_error(status.HTTP_401_UNAUTHORIZED, "GOOGLE_TOKEN_INVALID")
+
+    if payload.get("aud") not in client_ids:
+        if GOOGLE_DEBUG_LOGS:
+            logger.info(
+                "[google-backend] verification_failed reason=invalid audience expected=%s actual=%s",
+                [_redact_client_id(client_id) for client_id in client_ids],
+                _redact_client_id(payload.get("aud")),
+            )
         raise _google_error(status.HTTP_401_UNAUTHORIZED, "GOOGLE_TOKEN_INVALID")
 
     if not payload.get("sub"):
