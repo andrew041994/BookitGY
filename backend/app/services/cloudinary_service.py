@@ -31,3 +31,12 @@ def upload_avatar(file_path: str, public_id: Optional[str] = None) -> str:
 
     result = cloudinary.uploader.upload(file_path, **upload_options)
     return result["secure_url"]
+
+
+def upload_booking_message_image(file_path: str) -> dict:
+    """Upload a booking chat image attachment to Cloudinary."""
+    return cloudinary.uploader.upload(
+        file_path,
+        folder="bookitgy/booking_messages",
+        resource_type="image",
+    )

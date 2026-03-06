@@ -2816,11 +2816,11 @@ function ClientHomeScreen({
 
   // adding console log
   console.log("[home] token username fields", {
-  tokenUsername: token?.username,
-  tokenEmail: token?.email,
-  tokenKeys: token ? Object.keys(token) : null,
-  tokenUserKeys: token?.user ? Object.keys(token.user) : null,
-});
+    tokenUsername: token?.username,
+    tokenEmail: token?.email,
+    tokenKeys: token ? Object.keys(token) : null,
+    tokenUserKeys: token?.user ? Object.keys(token.user) : null,
+  });
   const greetingName = useMemo(() => {
     const username = token?.user?.username || token?.username;
     if (username?.trim()) return username.trim();
@@ -3434,11 +3434,297 @@ function ClientHomeScreen({
 
 
 
+
+const getCleanApiErrorMessage = (err, fallbackMessage) => {
+  const detail =
+    err?.response?.data?.detail ||
+    err?.response?.data?.message ||
+    err?.message;
+  if (!detail) return fallbackMessage;
+  if (typeof detail === "string") return detail;
+  return fallbackMessage;
+};
+
+const isBookingCancelledStatus = (status) =>
+  String(status || "").trim().toLowerCase().includes("cancel");
+
+function BookingChatModal({
+  visible,
+  onClose,
+  booking,
+  currentUserId,
+  showFlash,
+}) {
+  const [messages, setMessages] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [sending, setSending] = useState(false);
+  const [text, setText] = useState("");
+  const [selectedImage, setSelectedImage] = useState(null);
+  const [viewerImage, setViewerImage] = useState(null);
+  const listRef = useRef(null);
+
+  const bookingId = booking?.id || booking?.booking_id;
+  const isCancelled = isBookingCancelledStatus(booking?.status);
+
+  const loadMessages = useCallback(
+    async (useRefresh = false) => {
+      if (!bookingId) return;
+      try {
+        if (useRefresh) setRefreshing(true);
+        else setLoading(true);
+
+        const res = await apiClient.get(`/bookings/${bookingId}/messages`);
+        const rows = Array.isArray(res?.data?.messages) ? res.data.messages : [];
+        setMessages(rows);
+
+        await apiClient.post(`/bookings/messages/read`, { booking_id: bookingId });
+      } catch (err) {
+        const msg = getCleanApiErrorMessage(err, "Could not load chat messages.");
+        showFlash && showFlash("error", msg);
+      } finally {
+        setLoading(false);
+        setRefreshing(false);
+      }
+    },
+    [bookingId, showFlash]
+  );
+
+  useEffect(() => {
+    if (!visible || !bookingId) return;
+    loadMessages();
+    const interval = setInterval(() => {
+      loadMessages(true);
+    }, 15000);
+    return () => clearInterval(interval);
+  }, [visible, bookingId, loadMessages]);
+
+  useEffect(() => {
+    if (!visible || !messages.length) return;
+    requestAnimationFrame(() => {
+      listRef.current?.scrollToEnd?.({ animated: true });
+    });
+  }, [messages, visible]);
+
+  const handlePickImage = useCallback(async () => {
+    try {
+      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!permission.granted) {
+        showFlash && showFlash("error", "Allow photo library access to attach images.");
+        return;
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: false,
+        quality: 0.7,
+        selectionLimit: 1,
+      });
+
+      if (result.canceled) return;
+      const asset = result?.assets?.[0];
+      if (!asset?.uri || (asset?.type && asset.type !== "image")) {
+        showFlash && showFlash("error", "Please select a valid image from your library.");
+        return;
+      }
+
+      setSelectedImage(asset);
+    } catch (err) {
+      showFlash && showFlash("error", "Could not open photo library.");
+    }
+  }, [showFlash]);
+
+  const handleSend = useCallback(async () => {
+    const trimmedText = text.trim();
+    if (!trimmedText && !selectedImage) {
+      showFlash && showFlash("error", "Message must include text or an image.");
+      return;
+    }
+
+    if (isCancelled) {
+      showFlash &&
+        showFlash("error", "This chat is unavailable because the booking has been cancelled.");
+      return;
+    }
+
+    try {
+      setSending(true);
+      let attachmentPayload = null;
+
+      if (selectedImage?.uri) {
+        const filename = selectedImage.fileName || selectedImage.uri.split("/").pop() || "chat-image.jpg";
+        const ext = (filename.split(".").pop() || "jpg").toLowerCase();
+        const mimeType = selectedImage.mimeType || (ext === "png" ? "image/png" : ext === "webp" ? "image/webp" : "image/jpeg");
+
+        const formData = new FormData();
+        formData.append("file", {
+          uri: selectedImage.uri,
+          name: filename,
+          type: mimeType,
+        });
+
+        const uploadRes = await apiClient.post(`/bookings/messages/attachments?booking_id=${bookingId}`, formData, {
+          headers: {
+            "Content-Type": "multipart/form-data",
+          },
+        });
+
+        attachmentPayload = uploadRes?.data || null;
+        if (!attachmentPayload?.file_url) {
+          throw new Error("Image upload failed.");
+        }
+      }
+
+      await apiClient.post(`/bookings/messages`, {
+        booking_id: bookingId,
+        text: trimmedText || null,
+        attachment: attachmentPayload,
+      });
+
+      setText("");
+      setSelectedImage(null);
+      await loadMessages(true);
+    } catch (err) {
+      const msg = getCleanApiErrorMessage(err, "Could not send message.");
+      showFlash && showFlash("error", msg);
+    } finally {
+      setSending(false);
+    }
+  }, [bookingId, isCancelled, loadMessages, selectedImage, showFlash, text]);
+
+  const renderItem = ({ item }) => {
+    const mine = Number(item?.sender_user_id) === Number(currentUserId);
+    const imageUrl = resolveImageUrl(item?.attachment?.file_url);
+    const createdAt = item?.created_at ? new Date(item.created_at) : null;
+    const timeText = createdAt && !Number.isNaN(createdAt.getTime())
+      ? createdAt.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })
+      : "";
+
+    return (
+      <View style={[styles.chatRow, mine ? styles.chatRowMine : styles.chatRowOther]}>
+        <View style={[styles.chatBubble, mine ? styles.chatBubbleMine : styles.chatBubbleOther]}>
+          {item?.text ? <Text style={styles.chatText}>{item.text}</Text> : null}
+          {imageUrl ? (
+            <TouchableOpacity onPress={() => setViewerImage(imageUrl)} activeOpacity={0.85}>
+              <Image source={{ uri: imageUrl }} style={styles.chatImage} resizeMode="cover" />
+            </TouchableOpacity>
+          ) : null}
+          {timeText ? <Text style={styles.chatTime}>{timeText}</Text> : null}
+        </View>
+      </View>
+    );
+  };
+
+  return (
+    <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
+      <SafeAreaView style={styles.chatSafeArea}>
+        <KeyboardAvoidingView
+          style={styles.chatKeyboardWrapper}
+          behavior={Platform.OS === "ios" ? "padding" : undefined}
+          keyboardVerticalOffset={Platform.OS === "ios" ? 86 : 0}
+        >
+          <View style={styles.chatHeader}>
+            <TouchableOpacity onPress={onClose}>
+              <Text style={styles.chatCloseText}>Close</Text>
+            </TouchableOpacity>
+            <Text style={styles.chatHeaderTitle}>Booking Chat</Text>
+            <View style={{ width: 46 }} />
+          </View>
+
+          {isCancelled ? (
+            <View style={styles.chatCancelledBanner}>
+              <Text style={styles.chatCancelledText}>
+                This chat is unavailable because the booking has been cancelled.
+              </Text>
+            </View>
+          ) : null}
+
+          {loading ? (
+            <View style={styles.loadingRow}>
+              <ActivityIndicator />
+              <Text style={styles.serviceMeta}>Loading messages…</Text>
+            </View>
+          ) : (
+            <FlatList
+              ref={listRef}
+              data={messages}
+              keyExtractor={(item) => `${item.id}`}
+              renderItem={renderItem}
+              style={styles.chatList}
+              contentContainerStyle={styles.chatListContent}
+              onRefresh={() => loadMessages(true)}
+              refreshing={refreshing}
+              ListEmptyComponent={
+                <Text style={styles.serviceMeta}>Send a message about this booking</Text>
+              }
+            />
+          )}
+
+          <View style={styles.chatComposer}>
+            {selectedImage?.uri ? (
+              <View style={styles.chatSelectedImageWrap}>
+                <Image source={{ uri: selectedImage.uri }} style={styles.chatSelectedImage} />
+                <TouchableOpacity onPress={() => setSelectedImage(null)}>
+                  <Text style={styles.chatRemoveImageText}>Remove</Text>
+                </TouchableOpacity>
+              </View>
+            ) : null}
+
+            <View style={styles.chatComposerRow}>
+              <TouchableOpacity
+                style={styles.chatAttachButton}
+                onPress={handlePickImage}
+                disabled={sending || isCancelled}
+              >
+                <Ionicons name="image-outline" size={20} color={colors.textPrimary} />
+              </TouchableOpacity>
+
+              <TextInput
+                value={text}
+                onChangeText={setText}
+                placeholder="Type a message"
+                placeholderTextColor={colors.textMuted}
+                style={styles.chatInput}
+                editable={!sending && !isCancelled}
+              />
+
+              <TouchableOpacity
+                style={[
+                  styles.chatSendButton,
+                  (sending || isCancelled || (!text.trim() && !selectedImage)) && styles.chatSendButtonDisabled,
+                ]}
+                onPress={handleSend}
+                disabled={sending || isCancelled || (!text.trim() && !selectedImage)}
+              >
+                <Text style={styles.chatSendButtonText}>{sending ? "..." : "Send"}</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </SafeAreaView>
+
+      <Modal
+        visible={!!viewerImage}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setViewerImage(null)}
+      >
+        <Pressable style={styles.chatViewerBackdrop} onPress={() => setViewerImage(null)}>
+          {viewerImage ? (
+            <Image source={{ uri: viewerImage }} style={styles.chatViewerImage} resizeMode="contain" />
+          ) : null}
+        </Pressable>
+      </Modal>
+    </Modal>
+  );
+}
+
 function AppointmentsScreen({ token, showFlash }) {
   const [bookings, setBookings] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [refreshing, setRefreshing] = useState(false);
+  const [chatBooking, setChatBooking] = useState(null);
 
   const normalizeStart = (booking) => {
     const iso = booking?.start_time || booking?.start;
@@ -3684,6 +3970,12 @@ function AppointmentsScreen({ token, showFlash }) {
                 <Text style={styles.appointmentCancelButtonText}>Cancel</Text>
               </TouchableOpacity>
             )}
+            <TouchableOpacity
+              style={styles.appointmentMessageButton}
+              onPress={() => setChatBooking(booking)}
+            >
+              <Text style={styles.appointmentMessageButtonText}>Message</Text>
+            </TouchableOpacity>
           </View>
         </View>
 
@@ -3701,6 +3993,7 @@ function AppointmentsScreen({ token, showFlash }) {
   };
 
   return (
+  <>
   <ScrollView
     contentContainerStyle={styles.appointmentScroll}
     refreshControl={
@@ -3776,6 +4069,15 @@ function AppointmentsScreen({ token, showFlash }) {
       </>
     )}
   </ScrollView>
+
+  <BookingChatModal
+    visible={!!chatBooking}
+    onClose={() => setChatBooking(null)}
+    booking={chatBooking}
+    currentUserId={token?.userId}
+    showFlash={showFlash}
+  />
+  </>
 );
 }
 
@@ -4859,6 +5161,7 @@ function ProviderDashboardScreen({ token, showFlash }) {
   const [showHours, setShowHours] = useState(false);
   const [hoursFlash, setHoursFlash] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [chatBooking, setChatBooking] = useState(null);
   const [showProfileEditor, setShowProfileEditor] = useState(false);
   const [profileLoading, setProfileLoading] = useState(false);
   const [profileError, setProfileError] = useState("");
@@ -6090,6 +6393,9 @@ const loadProviderSummary = async () => {
                       >
                         <Text style={styles.bookingCancel}>Cancel</Text>
                       </TouchableOpacity>
+                      <TouchableOpacity onPress={() => setChatBooking(b)}>
+                        <Text style={styles.bookingEdit}>Message</Text>
+                      </TouchableOpacity>
                     </View>
                   </View>
                 );
@@ -6169,6 +6475,9 @@ const loadProviderSummary = async () => {
                           onPress={() => handleCancelBooking(b.id)}
                         >
                           <Text style={styles.bookingCancel}>Cancel</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity onPress={() => setChatBooking(b)}>
+                          <Text style={styles.bookingEdit}>Message</Text>
                         </TouchableOpacity>
                       </View>
                     </View>
@@ -6784,6 +7093,14 @@ const loadProviderSummary = async () => {
           )}
         </View>
       </ScrollView>
+
+      <BookingChatModal
+        visible={!!chatBooking}
+        onClose={() => setChatBooking(null)}
+        booking={chatBooking}
+        currentUserId={token?.userId}
+        showFlash={showFlash}
+      />
     </View>
   );
 }
@@ -12062,6 +12379,176 @@ signupTextButtonText: {
     color: colors.textPrimary,
     fontSize: 13,
     fontWeight: "800",
+  },
+
+  appointmentMessageButton: {
+    marginLeft: 8,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 8,
+    backgroundColor: colors.surface,
+  },
+  appointmentMessageButtonText: {
+    color: colors.textPrimary,
+    fontSize: 12,
+    fontWeight: "600",
+  },
+  chatSafeArea: {
+    flex: 1,
+    backgroundColor: colors.background,
+  },
+  chatKeyboardWrapper: {
+    flex: 1,
+  },
+  chatHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  chatCloseText: {
+    color: colors.primary,
+    fontWeight: "600",
+  },
+  chatHeaderTitle: {
+    color: colors.textPrimary,
+    fontWeight: "700",
+    fontSize: 16,
+  },
+  chatCancelledBanner: {
+    margin: 12,
+    padding: 10,
+    borderRadius: 10,
+    backgroundColor: "rgba(255,77,79,0.16)",
+    borderWidth: 1,
+    borderColor: "rgba(255,77,79,0.35)",
+  },
+  chatCancelledText: {
+    color: colors.error,
+    fontSize: 13,
+    fontWeight: "600",
+  },
+  chatList: {
+    flex: 1,
+    paddingHorizontal: 12,
+  },
+  chatListContent: {
+    paddingVertical: 8,
+    flexGrow: 1,
+    justifyContent: "flex-end",
+  },
+  chatRow: {
+    marginVertical: 4,
+    flexDirection: "row",
+  },
+  chatRowMine: {
+    justifyContent: "flex-end",
+  },
+  chatRowOther: {
+    justifyContent: "flex-start",
+  },
+  chatBubble: {
+    maxWidth: "84%",
+    borderRadius: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+  },
+  chatBubbleMine: {
+    backgroundColor: colors.primary,
+  },
+  chatBubbleOther: {
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  chatText: {
+    color: colors.textPrimary,
+    marginBottom: 4,
+  },
+  chatTime: {
+    color: colors.textMuted,
+    fontSize: 11,
+    marginTop: 2,
+    textAlign: "right",
+  },
+  chatImage: {
+    width: 180,
+    height: 180,
+    borderRadius: 10,
+    backgroundColor: colors.background,
+  },
+  chatComposer: {
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+    backgroundColor: colors.surface,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  chatSelectedImageWrap: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 8,
+    gap: 10,
+  },
+  chatSelectedImage: {
+    width: 56,
+    height: 56,
+    borderRadius: 8,
+  },
+  chatRemoveImageText: {
+    color: colors.error,
+    fontWeight: "600",
+  },
+  chatComposerRow: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  chatAttachButton: {
+    padding: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.border,
+    marginRight: 8,
+  },
+  chatInput: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.background,
+    color: colors.textPrimary,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: Platform.OS === "ios" ? 10 : 8,
+    marginRight: 8,
+  },
+  chatSendButton: {
+    backgroundColor: colors.primary,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 10,
+  },
+  chatSendButtonDisabled: {
+    opacity: 0.45,
+  },
+  chatSendButtonText: {
+    color: colors.textPrimary,
+    fontWeight: "700",
+  },
+  chatViewerBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.9)",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 16,
+  },
+  chatViewerImage: {
+    width: "100%",
+    height: "100%",
   },
 
 })

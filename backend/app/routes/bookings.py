@@ -1,18 +1,66 @@
 from typing import Optional, List
 from datetime import datetime, time
 
-from fastapi import APIRouter, Depends, HTTPException, Header
+from fastapi import APIRouter, Depends, HTTPException, Header, UploadFile, File, status
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app import crud, schemas, models
 from app.security import get_current_user_from_header
+from app.services.cloudinary_service import upload_booking_message_image
+from PIL import Image, UnidentifiedImageError
+from io import BytesIO
+from tempfile import NamedTemporaryFile
+import os
 
 
 
 
 
 router = APIRouter(tags=["bookings"])
+
+
+
+ALLOWED_BOOKING_MESSAGE_IMAGE_CONTENT_TYPES = {
+    "image/jpeg",
+    "image/png",
+    "image/webp",
+}
+ALLOWED_BOOKING_MESSAGE_IMAGE_FORMATS = {"JPEG", "PNG", "WEBP"}
+MAX_BOOKING_MESSAGE_IMAGE_SIZE = 8 * 1024 * 1024
+MAX_BOOKING_MESSAGE_IMAGE_DIMENSION = 4096
+
+
+def _validate_booking_message_image(contents: bytes) -> tuple[int, int]:
+    try:
+        with Image.open(BytesIO(contents)) as img:
+            img_format = (img.format or "").upper()
+            width, height = img.size
+            img.verify()
+    except UnidentifiedImageError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Uploaded file is not a valid image.",
+        )
+    except Exception:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Could not read uploaded image.",
+        )
+
+    if img_format not in ALLOWED_BOOKING_MESSAGE_IMAGE_FORMATS:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid image format. Allowed: JPEG, PNG, WEBP.",
+        )
+
+    if width > MAX_BOOKING_MESSAGE_IMAGE_DIMENSION or height > MAX_BOOKING_MESSAGE_IMAGE_DIMENSION:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Image dimensions are too large.",
+        )
+
+    return int(width), int(height)
 
 
 def _require_current_provider(
@@ -209,6 +257,81 @@ def list_my_upcoming_bookings(
     provider: models.Provider = Depends(_require_current_provider),
 ):
     return crud.list_upcoming_bookings_for_provider(db, provider.id)
+
+
+@router.post("/bookings/messages/attachments")
+async def upload_booking_message_attachment(
+    booking_id: int,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user_from_header),
+):
+    try:
+        context = crud.get_booking_chat_context(
+            db,
+            booking_id=booking_id,
+            user_id=current_user.id,
+        )
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc))
+
+    if context is None:
+        raise HTTPException(status_code=404, detail="Booking not found")
+
+    if file.content_type not in ALLOWED_BOOKING_MESSAGE_IMAGE_CONTENT_TYPES:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Only image attachments are allowed.",
+        )
+
+    contents = await file.read()
+    if len(contents) > MAX_BOOKING_MESSAGE_IMAGE_SIZE:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Image file is too large. Maximum size is 8 MB.",
+        )
+
+    width, height = _validate_booking_message_image(contents)
+
+    try:
+        with NamedTemporaryFile(delete=False) as tmp:
+            tmp.write(contents)
+            tmp_path = tmp.name
+    except Exception:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to buffer uploaded file",
+        )
+
+    try:
+        upload_result = upload_booking_message_image(tmp_path)
+    except Exception:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to upload image",
+        )
+    finally:
+        try:
+            os.remove(tmp_path)
+        except Exception:
+            pass
+
+    image_url = upload_result.get("secure_url") if isinstance(upload_result, dict) else str(upload_result)
+
+    if not image_url:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Image upload did not return a valid URL",
+        )
+
+    return {
+        "attachment_type": "image",
+        "file_url": image_url,
+        "mime_type": file.content_type,
+        "file_size_bytes": len(contents),
+        "width": width,
+        "height": height,
+    }
 
 
 @router.get(
