@@ -119,6 +119,13 @@ const APPOINTMENT_STATUS_THEME = {
   },
 };
 
+const PROVIDER_BLOCKED_STATUS_THEME = {
+  accent: "#C0392B",
+  bgTint: "rgba(192,57,43,0.10)",
+  border: "rgba(192,57,43,0.35)",
+};
+
+
 const withTimeout = (promise, ms, label) => {
   let timeoutId;
   const timeout = new Promise((_, reject) => {
@@ -7214,6 +7221,7 @@ function WeeklyStrip({
   selectedDate,
   onSelectDate,
   bookingsByDate,
+  blockedTimesByDate,
   isBookingCompleted,
   colors,
   getWeekDays,
@@ -7230,8 +7238,10 @@ function WeeklyStrip({
       <View style={styles.providerWeeklyRow}>
         {weekDays.map((day) => {
           const bookings = bookingsByDate?.[day.key] || [];
+          const dayBlockedTimes = blockedTimesByDate?.[day.key] || [];
           const activeBookings = bookings.filter(isBookingVisible);
           const hasBookings = activeBookings.length > 0;
+          const hasBlocks = dayBlockedTimes.length > 0;
           const allCompleted = hasBookings && activeBookings.every((booking) => isBookingCompleted(booking));
           const isSelected = day.key === selectedDate;
 
@@ -7260,12 +7270,16 @@ function WeeklyStrip({
                   {day.dayNumber}
                 </Text>
               </View>
-              {hasBookings ? (
+              {hasBookings || hasBlocks ? (
                 <View
                   style={[
                     styles.providerWeeklyDot,
                     {
-                      backgroundColor: allCompleted ? colors.textMuted : colors.primary,
+                      backgroundColor: hasBlocks
+                        ? colors.error
+                        : allCompleted
+                          ? colors.textMuted
+                          : colors.primary,
                     },
                   ]}
                 />
@@ -7365,6 +7379,16 @@ function ProviderCalendarScreen({ token, showFlash }) {
   });
   const [weekPagerWidth, setWeekPagerWidth] = useState(0);
   const [bookings, setBookings] = useState([]);
+  const [blockedTimes, setBlockedTimes] = useState([]);
+  const [blockModalVisible, setBlockModalVisible] = useState(false);
+  const [blockType, setBlockType] = useState("one_time");
+  const [blockDate, setBlockDate] = useState(() => normalizeDateKey(new Date()) || "");
+  const [blockStartTime, setBlockStartTime] = useState("09:00");
+  const [blockDurationHours, setBlockDurationHours] = useState("1");
+  const [blockDurationMinutes, setBlockDurationMinutes] = useState("0");
+  const [blockReason, setBlockReason] = useState("");
+  const [blockSubmitting, setBlockSubmitting] = useState(false);
+  const [deletingBlockedId, setDeletingBlockedId] = useState(null);
   const [cancellingByBookingId, setCancellingByBookingId] = useState({});
   const [cancelAllLoading, setCancelAllLoading] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -7383,6 +7407,38 @@ function ProviderCalendarScreen({ token, showFlash }) {
   }, [normalizeDateKey, selectedDate]);
 
   const formatDayKey = useCallback((bookingStartTime) => normalizeDateKey(bookingStartTime), [normalizeDateKey]);
+
+  const parseTimeInput = useCallback((value) => {
+    const raw = String(value || "").trim();
+    const match = /^(\d{1,2}):(\d{2})$/.exec(raw);
+    if (!match) return null;
+    const hours = Number(match[1]);
+    const minutes = Number(match[2]);
+    if (!Number.isInteger(hours) || !Number.isInteger(minutes)) return null;
+    if (hours < 0 || hours > 23 || minutes < 0 || minutes > 59) return null;
+    return { hours, minutes };
+  }, []);
+
+  const getBlockedTimeId = useCallback((blockedTime) => String(blockedTime?.id || blockedTime?.blocked_time_id || ""), []);
+
+  const normalizeBlockedErrorMessage = useCallback((err, fallback) => {
+    const detail = String(err?.response?.data?.detail || err?.response?.data?.message || "").trim();
+    const lower = detail.toLowerCase();
+    if (!detail) return fallback;
+    if (detail === "You already have appointments on this day. Please cancel those appointments before blocking the entire day.") {
+      return detail;
+    }
+    if (lower.includes("already have appointments") && lower.includes("blocking the entire day")) {
+      return "You already have appointments on this day. Please cancel those appointments before blocking the entire day.";
+    }
+    if (lower.includes("overlaps") && lower.includes("appointment")) {
+      return "This blocked time overlaps an existing appointment.";
+    }
+    if (lower.includes("overlaps") && lower.includes("blocked")) {
+      return "This blocked time overlaps another blocked time.";
+    }
+    return detail || fallback;
+  }, []);
 
   useEffect(() => {
     const nextWeekStart = startOfWeekKey(selectedDate);
@@ -7490,18 +7546,31 @@ function ProviderCalendarScreen({ token, showFlash }) {
         return;
       }
 
-      const res = await apiClient.get(`/providers/me/bookings`, {
-        params: {
-          start: dateRange.start,
-          end: dateRange.end,
-        },
-      });
+      const [bookingsRes, blockedTimesRes] = await Promise.all([
+        apiClient.get(`/providers/me/bookings`, {
+          params: {
+            start: dateRange.start,
+            end: dateRange.end,
+          },
+        }),
+        apiClient.get(`/providers/me/blocked-times`, {
+          params: {
+            start_date: dateRange.start,
+            end_date: dateRange.end,
+          },
+        }),
+      ]);
 
-      const rows = Array.isArray(res.data)
-        ? res.data
-        : res.data?.bookings || res.data?.results || [];
+      const rows = Array.isArray(bookingsRes.data)
+        ? bookingsRes.data
+        : bookingsRes.data?.bookings || bookingsRes.data?.results || [];
+
+      const blockedRows = Array.isArray(blockedTimesRes.data)
+        ? blockedTimesRes.data
+        : blockedTimesRes.data?.blocked_times || blockedTimesRes.data?.results || [];
 
       setBookings(dedupeById(rows));
+      setBlockedTimes(dedupeById(blockedRows));
     } catch (err) {
       console.log("Error loading provider calendar bookings", err?.response?.data || err?.message || err);
       setError("Could not load calendar bookings.");
@@ -7515,6 +7584,130 @@ function ProviderCalendarScreen({ token, showFlash }) {
   }, [dateRange.end, dateRange.start, formatDayKey, showFlash, token]);
 
   const handleRefresh = useCallback(() => loadBookingsForRange(true), [loadBookingsForRange]);
+
+  const resetBlockForm = useCallback((nextDate) => {
+    setBlockType("one_time");
+    setBlockDate(nextDate || selectedDate);
+    setBlockStartTime("09:00");
+    setBlockDurationHours("1");
+    setBlockDurationMinutes("0");
+    setBlockReason("");
+  }, [selectedDate]);
+
+  const openBlockModal = useCallback(() => {
+    resetBlockForm(selectedDate);
+    setBlockModalVisible(true);
+  }, [resetBlockForm, selectedDate]);
+
+  const handleSubmitBlockedTime = useCallback(async () => {
+    const normalizedDate = normalizeDateKey(blockDate);
+    if (!normalizedDate) {
+      if (showFlash) showFlash("error", "Please select a valid date.");
+      return;
+    }
+
+    const trimmedReason = String(blockReason || "").trim();
+
+    if (blockType === "one_time") {
+      const parsedTime = parseTimeInput(blockStartTime);
+      if (!parsedTime) {
+        if (showFlash) showFlash("error", "Please enter a valid start time (HH:MM).");
+        return;
+      }
+
+      const hours = Number.parseInt(String(blockDurationHours || "0"), 10);
+      const minutes = Number.parseInt(String(blockDurationMinutes || "0"), 10);
+      const safeHours = Number.isFinite(hours) ? Math.max(0, hours) : 0;
+      const safeMinutes = Number.isFinite(minutes) ? Math.max(0, minutes) : 0;
+
+      if (safeHours === 0 && safeMinutes === 0) {
+        if (showFlash) showFlash("error", "Duration must be greater than zero.");
+        return;
+      }
+
+      setBlockSubmitting(true);
+      try {
+        await apiClient.post(`/providers/me/blocked-times`, {
+          date: normalizedDate,
+          start_time: `${String(parsedTime.hours).padStart(2, "0")}:${String(parsedTime.minutes).padStart(2, "0")}:00`,
+          duration_hours: safeHours,
+          duration_minutes: safeMinutes,
+          reason: trimmedReason || null,
+        });
+        if (showFlash) showFlash("success", "Blocked time created.");
+        setBlockModalVisible(false);
+        await loadBookingsForRange();
+      } catch (err) {
+        const message = normalizeBlockedErrorMessage(err, "Could not create blocked time.");
+        if (showFlash) showFlash("error", message);
+      } finally {
+        setBlockSubmitting(false);
+      }
+      return;
+    }
+
+    setBlockSubmitting(true);
+    try {
+      await apiClient.post(`/providers/me/blocked-times/all-day`, {
+        date: normalizedDate,
+        reason: trimmedReason || null,
+      });
+      if (showFlash) showFlash("success", "All-day block created.");
+      setBlockModalVisible(false);
+      await loadBookingsForRange();
+    } catch (err) {
+      const message = normalizeBlockedErrorMessage(err, "Could not create all-day block.");
+      if (showFlash) showFlash("error", message);
+    } finally {
+      setBlockSubmitting(false);
+    }
+  }, [
+    blockDate,
+    blockDurationHours,
+    blockDurationMinutes,
+    blockReason,
+    blockStartTime,
+    blockType,
+    loadBookingsForRange,
+    normalizeBlockedErrorMessage,
+    normalizeDateKey,
+    parseTimeInput,
+    showFlash,
+  ]);
+
+  const handleDeleteBlockedTime = useCallback((blockedTime) => {
+    const blockedId = getBlockedTimeId(blockedTime);
+    if (!blockedId || deletingBlockedId) return;
+
+    const timeLabel = blockedTime?.is_all_day
+      ? "All day"
+      : formatTimeRange(new Date(blockedTime?.start_at), new Date(blockedTime?.end_at));
+
+    Alert.alert(
+      "Delete blocked time?",
+      `Remove this block (${timeLabel})?`,
+      [
+        { text: "Keep", style: "cancel" },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: async () => {
+            setDeletingBlockedId(blockedId);
+            try {
+              await apiClient.delete(`/providers/me/blocked-times/${blockedId}`);
+              if (showFlash) showFlash("success", "Blocked time deleted.");
+              await loadBookingsForRange();
+            } catch (err) {
+              const message = normalizeBlockedErrorMessage(err, "Could not delete blocked time.");
+              if (showFlash) showFlash("error", message);
+            } finally {
+              setDeletingBlockedId(null);
+            }
+          },
+        },
+      ]
+    );
+  }, [deletingBlockedId, formatTimeRange, getBlockedTimeId, loadBookingsForRange, normalizeBlockedErrorMessage, showFlash]);
 
   const cancelBookingById = useCallback(
     async (bookingId, authTokenOverride) => {
@@ -7592,6 +7785,29 @@ function ProviderCalendarScreen({ token, showFlash }) {
       return acc;
     }, {});
   }, [bookings, formatDayKey]);
+
+  const blockedTimesByDate = useMemo(() => {
+    return blockedTimes.reduce((acc, blockedTime) => {
+      const key = formatDayKey(blockedTime?.start_at);
+      if (!key) return acc;
+      if (!acc[key]) acc[key] = [];
+      acc[key].push(blockedTime);
+      return acc;
+    }, {});
+  }, [blockedTimes, formatDayKey]);
+
+  const selectedBlockedTimes = useMemo(() => {
+    const day = selectedDate;
+    return blockedTimes.filter((blockedTime) => formatDayKey(blockedTime?.start_at) === day);
+  }, [blockedTimes, formatDayKey, selectedDate]);
+
+  const sortedSelectedBlockedTimes = useMemo(
+    () =>
+      selectedBlockedTimes
+        .slice()
+        .sort((a, b) => new Date(a?.start_at) - new Date(b?.start_at)),
+    [selectedBlockedTimes]
+  );
 
   const selectedBookings = useMemo(() => {
     const day = selectedDate;
@@ -7714,6 +7930,16 @@ function ProviderCalendarScreen({ token, showFlash }) {
       };
     });
 
+    Object.keys(blockedTimesByDate).forEach((day) => {
+      const hasBlocks = (blockedTimesByDate[day] || []).length > 0;
+      if (!hasBlocks) return;
+      marked[day] = {
+        ...(marked[day] || {}),
+        marked: true,
+        dotColor: colors.error,
+      };
+    });
+
     marked[selectedDate] = {
       ...(marked[selectedDate] || {}),
       selected: true,
@@ -7722,12 +7948,12 @@ function ProviderCalendarScreen({ token, showFlash }) {
     };
 
     return marked;
-  }, [bookingsByDate, isActiveBooking, isBookingCompleted, selectedDate]);
+  }, [blockedTimesByDate, bookingsByDate, isActiveBooking, isBookingCompleted, selectedDate]);
 
   const timelineEvents = useMemo(
-    () =>
-      selectedBookings
-      .map((booking) => {
+    () => [
+      ...selectedBookings
+        .map((booking) => {
           const startIso = booking?.start_time || booking?.start;
           if (!startIso) return null;
           const startDate = new Date(startIso);
@@ -7744,7 +7970,8 @@ function ProviderCalendarScreen({ token, showFlash }) {
           const accentColor = getEventAccentColor(booking);
 
           return {
-            id: String(booking?.id || booking?.booking_id || `${startIso}-${booking?.service_name || "service"}`),
+            id: `booking-${String(booking?.id || booking?.booking_id || `${startIso}-${booking?.service_name || "service"}`)}`,
+            eventType: "booking",
             start: startDate.toISOString(),
             end: endDate.toISOString(),
             booking,
@@ -7758,7 +7985,39 @@ function ProviderCalendarScreen({ token, showFlash }) {
           };
         })
         .filter(Boolean),
-    [formatTimelineTime, getBookingStatusLabel, getEventAccentColor, selectedBookings]
+      ...sortedSelectedBlockedTimes
+        .map((blockedTime) => {
+          const startDate = new Date(blockedTime?.start_at);
+          const endDate = new Date(blockedTime?.end_at);
+          if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) return null;
+
+          return {
+            id: `blocked-${getBlockedTimeId(blockedTime) || `${startDate.toISOString()}-${endDate.toISOString()}`}`,
+            eventType: "blocked",
+            blockedTime,
+            start: startDate.toISOString(),
+            end: endDate.toISOString(),
+            title: blockedTime?.is_all_day ? "All-day block" : "Blocked time",
+            summary: blockedTime?.reason || (blockedTime?.is_all_day ? "Unavailable all day" : "Unavailable"),
+            color: PROVIDER_BLOCKED_STATUS_THEME.accent,
+            accentColor: PROVIDER_BLOCKED_STATUS_THEME.accent,
+            completed: false,
+            status: { type: "blocked", label: "Blocked" },
+            startLabel: blockedTime?.is_all_day
+              ? "All day"
+              : `${formatTimelineTime(startDate)} - ${formatTimelineTime(endDate)}`,
+          };
+        })
+        .filter(Boolean),
+    ].sort((a, b) => new Date(a.start) - new Date(b.start)),
+    [
+      formatTimelineTime,
+      getBlockedTimeId,
+      getBookingStatusLabel,
+      getEventAccentColor,
+      selectedBookings,
+      sortedSelectedBlockedTimes,
+    ]
   );
 
   const calendarTheme = useMemo(
@@ -7823,12 +8082,30 @@ function ProviderCalendarScreen({ token, showFlash }) {
     [timelineEvents]
   );
 
-  const appointmentListData = viewMode === "day" ? [] : sortedSelectedBookings;
+  const appointmentListData = useMemo(() => {
+    if (viewMode === "day") return [];
+
+    const bookingRows = sortedSelectedBookings.map((booking) => ({
+      rowType: "booking",
+      rowId: `booking-${getBookingId(booking) || `${booking?.start_time || booking?.start || ""}-${booking?.service_name || "service"}`}`,
+      booking,
+    }));
+
+    const blockedRows = sortedSelectedBlockedTimes.map((blockedTime) => ({
+      rowType: "blocked",
+      rowId: `blocked-${getBlockedTimeId(blockedTime) || `${blockedTime?.start_at || ""}-${blockedTime?.end_at || ""}`}`,
+      blockedTime,
+    }));
+
+    return [...bookingRows, ...blockedRows].sort((a, b) => {
+      const aStart = new Date(a.booking?.start_time || a.booking?.start || a.blockedTime?.start_at || 0).getTime();
+      const bStart = new Date(b.booking?.start_time || b.booking?.start || b.blockedTime?.start_at || 0).getTime();
+      return aStart - bStart;
+    });
+  }, [getBlockedTimeId, getBookingId, sortedSelectedBlockedTimes, sortedSelectedBookings, viewMode]);
+
   const showAppointmentsEmptyState = viewMode !== "day";
-  const getBookingCardKey = useCallback((booking) => {
-    if (booking?.id != null) return String(booking.id);
-    return `${booking?.booking_id || booking?.id || ""}-${booking?.start_time || booking?.start || ""}`;
-  }, []);
+  const getCalendarRowKey = useCallback((item) => String(item?.rowId || ""), []);
 
   const ProviderBookingCard = useCallback(
     ({ booking, startDate: propsStartDate, endDate: propsEndDate, compact = false, token: _token, showFlash: _showFlash }) => {
@@ -7839,14 +8116,13 @@ function ProviderCalendarScreen({ token, showFlash }) {
       const completed = status.type === "completed";
       const isCancelling = !!(bookingId && cancellingByBookingId[bookingId]);
       const canCancel = isBookingCancellable(booking);
+
       const parsedStart = propsStartDate instanceof Date
         ? propsStartDate
         : (booking?.start_time
           ? new Date(booking.start_time)
           : (booking?.start ? new Date(booking.start) : null));
-      const start = parsedStart instanceof Date && !Number.isNaN(parsedStart.getTime())
-        ? parsedStart
-        : null;
+      const start = parsedStart instanceof Date && !Number.isNaN(parsedStart.getTime()) ? parsedStart : null;
 
       let parsedEnd = propsEndDate instanceof Date
         ? propsEndDate
@@ -7854,19 +8130,13 @@ function ProviderCalendarScreen({ token, showFlash }) {
           ? new Date(booking.end_time)
           : (booking?.end ? new Date(booking.end) : null));
 
-      if (
-        (!parsedEnd || Number.isNaN(parsedEnd.getTime())) &&
-        start &&
-        booking?.duration_minutes
-      ) {
+      if ((!parsedEnd || Number.isNaN(parsedEnd.getTime())) && start && booking?.duration_minutes) {
         parsedEnd = new Date(start.getTime() + Number(booking.duration_minutes) * 60000);
       }
 
-      const end = parsedEnd instanceof Date && !Number.isNaN(parsedEnd.getTime())
-        ? parsedEnd
-        : null;
-
+      const end = parsedEnd instanceof Date && !Number.isNaN(parsedEnd.getTime()) ? parsedEnd : null;
       const timeLabel = start ? formatTimeRange(start, end) : "--:--";
+
       return (
         <View
           style={[
@@ -7904,13 +8174,7 @@ function ProviderCalendarScreen({ token, showFlash }) {
                 { borderColor: statusTheme.accent, backgroundColor: statusTheme.bgTint },
               ]}
             >
-              <Text
-                style={[
-                  styles.providerCalendarStatusText,
-                  { color: statusTheme.accent },
-                ]}
-                numberOfLines={1}
-              >
+              <Text style={[styles.providerCalendarStatusText, { color: statusTheme.accent }]} numberOfLines={1}>
                 {status.label}
               </Text>
             </View>
@@ -7937,13 +8201,71 @@ function ProviderCalendarScreen({ token, showFlash }) {
         </View>
       );
     },
-    [
-      cancellingByBookingId,
-      getBookingId,
-      getBookingStatusLabel,
-      handleCancelAppointment,
-      isBookingCancellable,
-    ]
+    [cancellingByBookingId, getBookingId, getBookingStatusLabel, handleCancelAppointment, isBookingCancellable]
+  );
+
+  const ProviderBlockedCard = useCallback(
+    ({ blockedTime, startDate: propsStartDate, endDate: propsEndDate, compact = false }) => {
+      const blockedId = getBlockedTimeId(blockedTime);
+      const isDeleting = deletingBlockedId === blockedId;
+      const start = propsStartDate instanceof Date ? propsStartDate : new Date(blockedTime?.start_at);
+      const end = propsEndDate instanceof Date ? propsEndDate : new Date(blockedTime?.end_at);
+      const timeLabel = blockedTime?.is_all_day ? "All day" : formatTimeRange(start, end);
+
+      return (
+        <View
+          style={[
+            styles.providerCalendarRow,
+            { borderColor: PROVIDER_BLOCKED_STATUS_THEME.border, backgroundColor: PROVIDER_BLOCKED_STATUS_THEME.bgTint },
+          ]}
+        >
+          <View style={[styles.providerCalendarLeftAccentBar, { backgroundColor: PROVIDER_BLOCKED_STATUS_THEME.accent }]} />
+          <View style={{ flex: 1 }}>
+            <Text style={styles.providerCalendarTime}>{timeLabel}</Text>
+            <Text style={styles.providerCalendarService}>
+              {blockedTime?.is_all_day ? "All-day block" : "Blocked time"}
+            </Text>
+            {!compact ? (
+              <Text style={styles.providerCalendarCustomer}>
+                {blockedTime?.reason ? `Reason: ${blockedTime.reason}` : "Provider unavailable"}
+              </Text>
+            ) : null}
+          </View>
+          <View style={styles.providerCalendarRightActions}>
+            <View
+              style={[
+                styles.providerCalendarStatusBadge,
+                { borderColor: PROVIDER_BLOCKED_STATUS_THEME.accent, backgroundColor: PROVIDER_BLOCKED_STATUS_THEME.bgTint },
+              ]}
+            >
+              <Text style={[styles.providerCalendarStatusText, { color: PROVIDER_BLOCKED_STATUS_THEME.accent }]} numberOfLines={1}>
+                Blocked
+              </Text>
+            </View>
+            {!compact ? (
+              <TouchableOpacity
+                style={[
+                  styles.providerCalendarDeleteBlockButton,
+                  isDeleting && styles.providerCalendarCancelButtonDisabled,
+                ]}
+                onPress={() => handleDeleteBlockedTime(blockedTime)}
+                disabled={isDeleting}
+              >
+                {isDeleting ? (
+                  <View style={styles.providerCalendarCancelButtonLoadingRow}>
+                    <ActivityIndicator size="small" color={colors.error} />
+                    <Text style={styles.providerCalendarDeleteBlockButtonText}>Deleting…</Text>
+                  </View>
+                ) : (
+                  <Text style={styles.providerCalendarDeleteBlockButtonText}>Delete</Text>
+                )}
+              </TouchableOpacity>
+            ) : null}
+          </View>
+        </View>
+      );
+    },
+    [deletingBlockedId, getBlockedTimeId, handleDeleteBlockedTime]
   );
 
   return (
@@ -7951,13 +8273,17 @@ function ProviderCalendarScreen({ token, showFlash }) {
       <View style={styles.providerCalendarContentContainer}>
         <FlatList
           data={appointmentListData}
-          keyExtractor={getBookingCardKey}
-          renderItem={({ item: booking }) => (
-            <ProviderBookingCard
-              booking={booking}
-              token={token}
-              showFlash={showFlash}
-            />
+          keyExtractor={getCalendarRowKey}
+          renderItem={({ item }) => (
+            item?.rowType === "blocked" ? (
+              <ProviderBlockedCard blockedTime={item.blockedTime} />
+            ) : (
+              <ProviderBookingCard
+                booking={item.booking}
+                token={token}
+                showFlash={showFlash}
+              />
+            )
           )}
           ListHeaderComponent={
             <View style={{ backgroundColor: colors.background }}>
@@ -7990,9 +8316,15 @@ function ProviderCalendarScreen({ token, showFlash }) {
                 })}
               </View>
 
-              {viewMode === "day" && cancellableDayBookings.length > 0 ? (
-                <View style={styles.providerCalendarTopActionsRow}>
-                  <View style={{ flex: 1 }} />
+              <View style={styles.providerCalendarTopActionsRow}>
+                <TouchableOpacity
+                  style={styles.providerCalendarBlockTimeButton}
+                  onPress={openBlockModal}
+                  disabled={blockSubmitting}
+                >
+                  <Text style={styles.providerCalendarBlockTimeButtonText}>Block Time</Text>
+                </TouchableOpacity>
+                {viewMode === "day" && cancellableDayBookings.length > 0 ? (
                   <TouchableOpacity
                     style={[
                       styles.providerCalendarCancelAllButton,
@@ -8010,8 +8342,8 @@ function ProviderCalendarScreen({ token, showFlash }) {
                       <Text style={styles.providerCalendarCancelAllButtonText}>Cancel All</Text>
                     )}
                   </TouchableOpacity>
-                </View>
-              ) : null}
+                ) : null}
+              </View>
 
               <CalendarProvider date={selectedDate} onDateChanged={onSelectDate}>
                 <View style={styles.providerCalendarCard}>
@@ -8063,6 +8395,7 @@ function ProviderCalendarScreen({ token, showFlash }) {
                               selectedDate={selectedDate}
                               onSelectDate={(dayKey) => setSelectedDate(dayKey)}
                               bookingsByDate={bookingsByDate}
+                              blockedTimesByDate={blockedTimesByDate}
                               isBookingCompleted={isBookingCompleted}
                               colors={colors}
                               getWeekDays={getWeekDays}
@@ -8109,6 +8442,7 @@ function ProviderCalendarScreen({ token, showFlash }) {
                                 selectedDate={selectedDate}
                                 onSelectDate={(dayKey) => setSelectedDate(dayKey)}
                                 bookingsByDate={bookingsByDate}
+                                blockedTimesByDate={blockedTimesByDate}
                                 isBookingCompleted={isBookingCompleted}
                                 colors={colors}
                                 getWeekDays={getWeekDays}
@@ -8126,14 +8460,23 @@ function ProviderCalendarScreen({ token, showFlash }) {
                         startHour={0}
                         endHour={24}
                         renderEvent={(event) => (
-                          <ProviderBookingCard
-                            booking={event.booking}
-                            startDate={event.startDate}
-                            endDate={event.endDate}
-                            compact={event.height < 60}
-                            token={token}
-                            showFlash={showFlash}
-                          />
+                          event?.eventType === "blocked" ? (
+                            <ProviderBlockedCard
+                              blockedTime={event.blockedTime}
+                              startDate={event.startDate}
+                              endDate={event.endDate}
+                              compact={event.height < 60}
+                            />
+                          ) : (
+                            <ProviderBookingCard
+                              booking={event.booking}
+                              startDate={event.startDate}
+                              endDate={event.endDate}
+                              compact={event.height < 60}
+                              token={token}
+                              showFlash={showFlash}
+                            />
+                          )
                         )}
                       />
                     </View>
@@ -8167,6 +8510,149 @@ function ProviderCalendarScreen({ token, showFlash }) {
           }
         />
       </View>
+
+      <Modal
+        visible={blockModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => {
+          if (!blockSubmitting) setBlockModalVisible(false);
+        }}
+      >
+        <TouchableWithoutFeedback onPress={() => { if (!blockSubmitting) setBlockModalVisible(false); }}>
+          <View style={styles.providerBlockModalBackdrop}>
+            <TouchableWithoutFeedback onPress={() => {}}>
+              <View style={styles.providerBlockModalCard}>
+                <Text style={styles.providerBlockModalTitle}>Block Time</Text>
+
+                <View style={styles.providerBlockTypeRow}>
+                  <TouchableOpacity
+                    style={[
+                      styles.providerBlockTypeButton,
+                      blockType === "one_time" && styles.providerBlockTypeButtonActive,
+                    ]}
+                    onPress={() => setBlockType("one_time")}
+                    disabled={blockSubmitting}
+                  >
+                    <Text
+                      style={[
+                        styles.providerBlockTypeButtonText,
+                        blockType === "one_time" && styles.providerBlockTypeButtonTextActive,
+                      ]}
+                    >
+                      One-Time Block
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[
+                      styles.providerBlockTypeButton,
+                      blockType === "all_day" && styles.providerBlockTypeButtonActive,
+                    ]}
+                    onPress={() => setBlockType("all_day")}
+                    disabled={blockSubmitting}
+                  >
+                    <Text
+                      style={[
+                        styles.providerBlockTypeButtonText,
+                        blockType === "all_day" && styles.providerBlockTypeButtonTextActive,
+                      ]}
+                    >
+                      All-Day Block
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+
+                <Text style={styles.providerBlockLabel}>Date (YYYY-MM-DD)</Text>
+                <TextInput
+                  value={blockDate}
+                  onChangeText={setBlockDate}
+                  editable={!blockSubmitting}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  placeholder="2026-03-06"
+                  placeholderTextColor={colors.textMuted}
+                  style={styles.providerBlockInput}
+                />
+
+                {blockType === "one_time" ? (
+                  <>
+                    <Text style={styles.providerBlockLabel}>Start Time (HH:MM)</Text>
+                    <TextInput
+                      value={blockStartTime}
+                      onChangeText={setBlockStartTime}
+                      editable={!blockSubmitting}
+                      autoCapitalize="none"
+                      autoCorrect={false}
+                      placeholder="09:00"
+                      placeholderTextColor={colors.textMuted}
+                      style={styles.providerBlockInput}
+                    />
+
+                    <View style={styles.providerBlockDurationRow}>
+                      <View style={styles.providerBlockDurationCol}>
+                        <Text style={styles.providerBlockLabel}>Hours</Text>
+                        <TextInput
+                          value={blockDurationHours}
+                          onChangeText={setBlockDurationHours}
+                          editable={!blockSubmitting}
+                          keyboardType="number-pad"
+                          placeholder="1"
+                          placeholderTextColor={colors.textMuted}
+                          style={styles.providerBlockInput}
+                        />
+                      </View>
+                      <View style={styles.providerBlockDurationCol}>
+                        <Text style={styles.providerBlockLabel}>Minutes</Text>
+                        <TextInput
+                          value={blockDurationMinutes}
+                          onChangeText={setBlockDurationMinutes}
+                          editable={!blockSubmitting}
+                          keyboardType="number-pad"
+                          placeholder="0"
+                          placeholderTextColor={colors.textMuted}
+                          style={styles.providerBlockInput}
+                        />
+                      </View>
+                    </View>
+                  </>
+                ) : null}
+
+                <Text style={styles.providerBlockLabel}>Reason (optional)</Text>
+                <TextInput
+                  value={blockReason}
+                  onChangeText={setBlockReason}
+                  editable={!blockSubmitting}
+                  placeholder="Optional note"
+                  placeholderTextColor={colors.textMuted}
+                  style={[styles.providerBlockInput, styles.providerBlockReasonInput]}
+                  multiline
+                />
+
+                <View style={styles.providerBlockActionsRow}>
+                  <TouchableOpacity
+                    style={styles.providerBlockCancelButton}
+                    onPress={() => setBlockModalVisible(false)}
+                    disabled={blockSubmitting}
+                  >
+                    <Text style={styles.providerBlockCancelButtonText}>Close</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.providerBlockSubmitButton, blockSubmitting && styles.providerCalendarCancelButtonDisabled]}
+                    onPress={handleSubmitBlockedTime}
+                    disabled={blockSubmitting}
+                  >
+                    {blockSubmitting ? (
+                      <ActivityIndicator color={colors.textPrimary} size="small" />
+                    ) : (
+                      <Text style={styles.providerBlockSubmitButtonText}>Save Block</Text>
+                    )}
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </TouchableWithoutFeedback>
+          </View>
+        </TouchableWithoutFeedback>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -11431,6 +11917,138 @@ signupTextButtonText: {
   providerCalendarCancelAllButtonText: {
     color: colors.error,
     fontSize: 12,
+    fontWeight: "800",
+  },
+  providerCalendarBlockTimeButton: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: colors.primary,
+    backgroundColor: "rgba(77,163,255,0.14)",
+  },
+  providerCalendarBlockTimeButtonText: {
+    color: colors.primary,
+    fontSize: 12,
+    fontWeight: "800",
+  },
+  providerCalendarDeleteBlockButton: {
+    marginTop: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: colors.error,
+    backgroundColor: "rgba(255,107,107,0.10)",
+  },
+  providerCalendarDeleteBlockButtonText: {
+    color: colors.error,
+    fontSize: 11,
+    fontWeight: "700",
+  },
+  providerBlockModalBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.45)",
+    padding: 20,
+    justifyContent: "center",
+  },
+  providerBlockModalCard: {
+    backgroundColor: colors.surface,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: 14,
+  },
+  providerBlockModalTitle: {
+    color: colors.textPrimary,
+    fontSize: 18,
+    fontWeight: "800",
+    marginBottom: 12,
+  },
+  providerBlockTypeRow: {
+    flexDirection: "row",
+    gap: 8,
+    marginBottom: 12,
+  },
+  providerBlockTypeButton: {
+    flex: 1,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingVertical: 8,
+    alignItems: "center",
+    backgroundColor: colors.surfaceElevated,
+  },
+  providerBlockTypeButtonActive: {
+    borderColor: colors.primary,
+    backgroundColor: colors.primarySoft,
+  },
+  providerBlockTypeButtonText: {
+    color: colors.textSecondary,
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  providerBlockTypeButtonTextActive: {
+    color: colors.textPrimary,
+  },
+  providerBlockLabel: {
+    color: colors.textSecondary,
+    fontSize: 12,
+    fontWeight: "600",
+    marginBottom: 6,
+    marginTop: 4,
+  },
+  providerBlockInput: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    color: colors.textPrimary,
+    backgroundColor: colors.surfaceElevated,
+  },
+  providerBlockDurationRow: {
+    flexDirection: "row",
+    gap: 10,
+  },
+  providerBlockDurationCol: {
+    flex: 1,
+  },
+  providerBlockReasonInput: {
+    minHeight: 64,
+    textAlignVertical: "top",
+  },
+  providerBlockActionsRow: {
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    gap: 10,
+    marginTop: 14,
+  },
+  providerBlockCancelButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  providerBlockCancelButtonText: {
+    color: colors.textSecondary,
+    fontSize: 13,
+    fontWeight: "700",
+  },
+  providerBlockSubmitButton: {
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: colors.primary,
+    backgroundColor: colors.primary,
+    minWidth: 104,
+    alignItems: "center",
+  },
+  providerBlockSubmitButtonText: {
+    color: colors.textPrimary,
+    fontSize: 13,
     fontWeight: "800",
   },
 
