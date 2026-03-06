@@ -897,7 +897,7 @@ function LoginScreen({
 // IMPORTANT: This assumes you changed your Google auth request to ResponseType.Code + usePKCE:true
 // (otherwise `result.params.code` won't exist).
 
-const DEBUG_GOOGLE_IDTOKEN = __DEV__;
+const DEBUG_GOOGLE_AUTH = true;
 
 const decodeBase64UrlToUtf8 = (value) => {
   if (typeof value !== "string" || !value) {
@@ -956,13 +956,30 @@ const loginWithGoogle = async () => {
       return;
     }
 
-    console.log("[google] request.url:", request?.url);
-    console.log("[google] request.redirectUri:", request?.redirectUri);
-    console.log("[google] request.responseType:", request?.responseType);
-    console.log("[google] codeVerifier present?", Boolean(request?.codeVerifier));
+    if (DEBUG_GOOGLE_AUTH) {
+      console.log("[google] promptAsync request summary", {
+        appOwnership: Constants.appOwnership,
+        useProxy,
+        responseType: request?.responseType,
+        redirectUri: request?.redirectUri,
+        requestUrl: request?.url,
+        hasCodeVerifier: Boolean(request?.codeVerifier),
+      });
+    }
 
     const result = await promptAsync({ useProxy });
     googleAuthResult = result;
+
+    if (DEBUG_GOOGLE_AUTH) {
+      console.log("[google] promptAsync result summary", {
+        type: result?.type,
+        hasCode: Boolean(result?.params?.code),
+        hasError: Boolean(result?.params?.error),
+        error: result?.params?.error,
+        errorDescription: result?.params?.error_description,
+        errorCode: result?.error?.code,
+      });
+    }
 
     if (result?.type !== "success") {
       return;
@@ -972,7 +989,12 @@ const loginWithGoogle = async () => {
     const codeRaw = result?.params?.code ?? null;
     const code = typeof codeRaw === "string" ? codeRaw.trim() : "";
 
-    console.log("[google] code present?", Boolean(code), "len=", code?.length);
+    if (DEBUG_GOOGLE_AUTH) {
+      console.log("[google] authorization code summary", {
+        hasCode: Boolean(code),
+        codeLength: code?.length || 0,
+      });
+    }
 
     if (!code) {
       showFlash?.(
@@ -1016,7 +1038,12 @@ const loginWithGoogle = async () => {
     const idTokenRaw = tokenRes?.idToken ?? null;
     const idToken = typeof idTokenRaw === "string" ? idTokenRaw.trim() : "";
 
-    console.log("[google] id_token present?", Boolean(idToken), "len=", idToken?.length);
+    if (DEBUG_GOOGLE_AUTH) {
+      console.log("[google] token exchange summary", {
+        hasIdToken: Boolean(idToken),
+        idTokenLength: idToken?.length || 0,
+      });
+    }
 
     if (!idToken) {
       showFlash?.(
@@ -1026,19 +1053,19 @@ const loginWithGoogle = async () => {
       return;
     }
 
-    if (DEBUG_GOOGLE_IDTOKEN) {
+    if (DEBUG_GOOGLE_AUTH) {
       try {
         const decoded = decodeJwtNoVerify(idToken);
+        console.log("[google] id_token header", {
+          kid: decoded?.header?.kid,
+          alg: decoded?.header?.alg,
+        });
         console.log("[google] id_token payload", {
           aud: decoded?.payload?.aud,
           iss: decoded?.payload?.iss,
           azp: decoded?.payload?.azp,
           email: decoded?.payload?.email,
           exp: decoded?.payload?.exp,
-        });
-        console.log("[google] id_token header", {
-          kid: decoded?.header?.kid,
-          alg: decoded?.header?.alg,
         });
       } catch (jwtDecodeError) {
         console.log("[google] id_token decode skipped:", jwtDecodeError?.message || jwtDecodeError);
