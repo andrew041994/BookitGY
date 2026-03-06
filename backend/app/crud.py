@@ -757,6 +757,242 @@ def create_user_for_google(
     return user
 
 
+
+
+CHAT_BLOCKED_BOOKING_STATUSES = {"cancelled"}
+
+
+def _is_booking_chat_send_allowed(booking: models.Booking) -> bool:
+    status = normalized_booking_status_value(getattr(booking, "status", None))
+    return status not in CHAT_BLOCKED_BOOKING_STATUSES
+
+
+def _get_booking_with_participants(db: Session, booking_id: int):
+    return (
+        db.query(models.Booking, models.Service.provider_id, models.Provider.user_id)
+        .join(models.Service, models.Booking.service_id == models.Service.id)
+        .join(models.Provider, models.Service.provider_id == models.Provider.id)
+        .filter(models.Booking.id == booking_id)
+        .first()
+    )
+
+
+def get_booking_chat_context(
+    db: Session,
+    *,
+    booking_id: int,
+    user_id: int,
+):
+    booking_row = _get_booking_with_participants(db, booking_id)
+    if not booking_row:
+        return None
+
+    booking, _provider_id, provider_user_id = booking_row
+    client_user_id = booking.customer_id
+
+    if user_id not in {client_user_id, provider_user_id}:
+        raise PermissionError("You are not allowed to access this conversation.")
+
+    return {
+        "booking": booking,
+        "client_user_id": client_user_id,
+        "provider_user_id": provider_user_id,
+        "sender_role": "client" if user_id == client_user_id else "provider",
+    }
+
+
+def _get_or_create_conversation(
+    db: Session,
+    *,
+    booking_id: int,
+    client_user_id: int,
+    provider_user_id: int,
+) -> models.Conversation:
+    conversation = (
+        db.query(models.Conversation)
+        .filter(models.Conversation.booking_id == booking_id)
+        .first()
+    )
+    if conversation:
+        return conversation
+
+    conversation = models.Conversation(
+        booking_id=booking_id,
+        client_user_id=client_user_id,
+        provider_user_id=provider_user_id,
+    )
+    db.add(conversation)
+    try:
+        db.flush()
+    except IntegrityError:
+        db.rollback()
+        conversation = (
+            db.query(models.Conversation)
+            .filter(models.Conversation.booking_id == booking_id)
+            .first()
+        )
+        if conversation:
+            return conversation
+        raise
+
+    return conversation
+
+
+def send_booking_message(
+    db: Session,
+    *,
+    booking_id: int,
+    sender_user_id: int,
+    text: Optional[str],
+    attachment: Optional[schemas.MessageAttachmentPayload],
+):
+    context = get_booking_chat_context(db, booking_id=booking_id, user_id=sender_user_id)
+    if not context:
+        return None
+
+    booking = context["booking"]
+    if not _is_booking_chat_send_allowed(booking):
+        raise ValueError("This chat is unavailable because the booking has been cancelled.")
+
+    conversation = _get_or_create_conversation(
+        db,
+        booking_id=booking.id,
+        client_user_id=context["client_user_id"],
+        provider_user_id=context["provider_user_id"],
+    )
+
+    normalized_text = (text or "").strip() or None
+    message_type = "image" if attachment and not normalized_text else "text"
+    if attachment and normalized_text:
+        message_type = "text_image"
+
+    message = models.Message(
+        conversation_id=conversation.id,
+        sender_user_id=sender_user_id,
+        text=normalized_text,
+        message_type=message_type,
+    )
+    db.add(message)
+    db.flush()
+
+    if attachment:
+        message_attachment = models.MessageAttachment(
+            message_id=message.id,
+            attachment_type="image",
+            file_url=attachment.file_url,
+            thumbnail_url=attachment.thumbnail_url,
+            original_filename=attachment.original_filename,
+            mime_type=attachment.mime_type,
+            file_size_bytes=attachment.file_size_bytes,
+            width=attachment.width,
+            height=attachment.height,
+        )
+        db.add(message_attachment)
+
+    db.commit()
+    db.refresh(message)
+
+    recipient_id = (
+        context["provider_user_id"]
+        if sender_user_id == context["client_user_id"]
+        else context["client_user_id"]
+    )
+    recipient = get_user_by_id(db, recipient_id)
+    sender = get_user_by_id(db, sender_user_id)
+
+    if recipient:
+        preview_text = "Sent an image" if not normalized_text else normalized_text
+        send_push(
+            recipient.expo_push_token,
+            "New booking message",
+            f"{get_display_name(sender)}: {preview_text[:120]}",
+        )
+
+    return message
+
+
+def list_booking_messages(
+    db: Session,
+    *,
+    booking_id: int,
+    user_id: int,
+):
+    context = get_booking_chat_context(db, booking_id=booking_id, user_id=user_id)
+    if not context:
+        return None
+
+    conversation = (
+        db.query(models.Conversation)
+        .filter(models.Conversation.booking_id == booking_id)
+        .first()
+    )
+    if not conversation:
+        return {
+            "booking_id": booking_id,
+            "conversation_id": None,
+            "messages": [],
+        }
+
+    rows = (
+        db.query(models.Message)
+        .options(joinedload(models.Message.attachment))
+        .filter(models.Message.conversation_id == conversation.id)
+        .order_by(models.Message.created_at.asc(), models.Message.id.asc())
+        .all()
+    )
+
+    messages = []
+    for row in rows:
+        sender_role = "client" if row.sender_user_id == context["client_user_id"] else "provider"
+        messages.append(
+            {
+                "id": row.id,
+                "sender_user_id": row.sender_user_id,
+                "sender_role": sender_role,
+                "text": row.text,
+                "created_at": row.created_at,
+                "read_at": row.read_at,
+                "attachment": row.attachment,
+            }
+        )
+
+    return {
+        "booking_id": booking_id,
+        "conversation_id": conversation.id,
+        "messages": messages,
+    }
+
+
+def mark_booking_messages_read(
+    db: Session,
+    *,
+    booking_id: int,
+    user_id: int,
+) -> Optional[int]:
+    context = get_booking_chat_context(db, booking_id=booking_id, user_id=user_id)
+    if not context:
+        return None
+
+    conversation = (
+        db.query(models.Conversation)
+        .filter(models.Conversation.booking_id == booking_id)
+        .first()
+    )
+    if not conversation:
+        return 0
+
+    now = now_guyana()
+    updated_count = (
+        db.query(models.Message)
+        .filter(
+            models.Message.conversation_id == conversation.id,
+            models.Message.sender_user_id != user_id,
+            models.Message.read_at.is_(None),
+        )
+        .update({models.Message.read_at: now}, synchronize_session=False)
+    )
+    db.commit()
+    return int(updated_count or 0)
 def create_user_for_oauth(
     db: Session,
     *,

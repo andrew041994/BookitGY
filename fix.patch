@@ -1,410 +1,221 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
-diff --git a/mobile/App.js b/mobile/App.js
-index 4626ece5d706e33f71d0da224c73469895cba9d6..6ae62ebe4c92f449e0d251c13e21ddcb82912c8e 100644
---- a/mobile/App.js
-+++ b/mobile/App.js
-@@ -35,50 +35,51 @@ import {
-   useIsFocused,
- } from "@react-navigation/native";
- import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
- import { enableScreens } from "react-native-screens";
- import AsyncStorage from "@react-native-async-storage/async-storage";
- import {
-   clearAllAuthTokens,
-   loadToken,
-   saveRefreshToken,
-   saveToken,
- } from "./src/components/tokenStorage";
- import ProviderCard from "./src/components/ProviderCard";
- import * as Location from "expo-location";
- import Constants from "expo-constants";
- import * as ImagePicker from "expo-image-picker";
- import { Ionicons } from "@expo/vector-icons";
- import {
-   CalendarProvider,
-   Calendar,
- } from "react-native-calendars";
- import {
-   SafeAreaProvider,
-   SafeAreaView,
-   useSafeAreaInsets,
- } from "react-native-safe-area-context";
-+import { KeyboardAwareScrollView } from "react-native-keyboard-aware-scroll-view";
- import { apiClient } from "./src/api";
- // import { AccessToken, LoginManager } from "react-native-fbsdk-next";
- import BookitGYLogoTransparent from "./assets/bookitgy-logo-transparent.png"
- import { theme } from "./src/theme";
- // import * as Sentry from "sentry-expo";
- 
- let Clipboard = null;
- try {
-   Clipboard = require("expo-clipboard");
- } catch (e) {}
- 
- enableScreens(false);
- WebBrowser.maybeCompleteAuthSession();
- 
- 
- 
- 
- // import { API } from "./App"; // wherever you define your base URL
- 
- 
- 
- 
- 
- const API =
-   Constants.expoConfig?.extra?.API_URL ||
-@@ -8501,175 +8502,182 @@ function ProviderCalendarScreen({ token, showFlash }) {
-             showAppointmentsEmptyState ? (
-               <Text style={styles.providerCalendarEmpty}>No appointments for this date.</Text>
-             ) : null
-           }
-           contentContainerStyle={styles.providerCalendarListContent}
-           showsVerticalScrollIndicator={false}
-           keyboardShouldPersistTaps="handled"
-           refreshControl={
-             <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
-           }
-         />
-       </View>
- 
-       <Modal
-         visible={blockModalVisible}
-         transparent
-         animationType="fade"
-         onRequestClose={() => {
-           if (!blockSubmitting) setBlockModalVisible(false);
-         }}
-       >
-         <TouchableWithoutFeedback onPress={() => { if (!blockSubmitting) setBlockModalVisible(false); }}>
-           <View style={styles.providerBlockModalBackdrop}>
-             <TouchableWithoutFeedback onPress={() => {}}>
-               <View style={styles.providerBlockModalCard}>
--                <Text style={styles.providerBlockModalTitle}>Block Time</Text>
-+                <KeyboardAwareScrollView
-+                  contentContainerStyle={styles.providerBlockModalScrollContent}
-+                  keyboardShouldPersistTaps="handled"
-+                  enableOnAndroid={true}
-+                  extraScrollHeight={20}
-+                >
-+                  <Text style={styles.providerBlockModalTitle}>Block Time</Text>
- 
--                <View style={styles.providerBlockTypeRow}>
--                  <TouchableOpacity
--                    style={[
--                      styles.providerBlockTypeButton,
--                      blockType === "one_time" && styles.providerBlockTypeButtonActive,
--                    ]}
--                    onPress={() => setBlockType("one_time")}
--                    disabled={blockSubmitting}
--                  >
--                    <Text
-+                  <View style={styles.providerBlockTypeRow}>
-+                    <TouchableOpacity
-                       style={[
--                        styles.providerBlockTypeButtonText,
--                        blockType === "one_time" && styles.providerBlockTypeButtonTextActive,
-+                        styles.providerBlockTypeButton,
-+                        blockType === "one_time" && styles.providerBlockTypeButtonActive,
-                       ]}
-+                      onPress={() => setBlockType("one_time")}
-+                      disabled={blockSubmitting}
-                     >
--                      One-Time Block
--                    </Text>
--                  </TouchableOpacity>
--                  <TouchableOpacity
--                    style={[
--                      styles.providerBlockTypeButton,
--                      blockType === "all_day" && styles.providerBlockTypeButtonActive,
--                    ]}
--                    onPress={() => setBlockType("all_day")}
--                    disabled={blockSubmitting}
--                  >
--                    <Text
-+                      <Text
-+                        style={[
-+                          styles.providerBlockTypeButtonText,
-+                          blockType === "one_time" && styles.providerBlockTypeButtonTextActive,
-+                        ]}
-+                      >
-+                        One-Time Block
-+                      </Text>
-+                    </TouchableOpacity>
-+                    <TouchableOpacity
-                       style={[
--                        styles.providerBlockTypeButtonText,
--                        blockType === "all_day" && styles.providerBlockTypeButtonTextActive,
-+                        styles.providerBlockTypeButton,
-+                        blockType === "all_day" && styles.providerBlockTypeButtonActive,
-                       ]}
-+                      onPress={() => setBlockType("all_day")}
-+                      disabled={blockSubmitting}
-                     >
--                      All-Day Block
--                    </Text>
--                  </TouchableOpacity>
--                </View>
-+                      <Text
-+                        style={[
-+                          styles.providerBlockTypeButtonText,
-+                          blockType === "all_day" && styles.providerBlockTypeButtonTextActive,
-+                        ]}
-+                      >
-+                        All-Day Block
-+                      </Text>
-+                    </TouchableOpacity>
-+                  </View>
- 
--                <Text style={styles.providerBlockLabel}>Date (YYYY-MM-DD)</Text>
--                <TextInput
--                  value={blockDate}
--                  onChangeText={setBlockDate}
--                  editable={!blockSubmitting}
--                  autoCapitalize="none"
--                  autoCorrect={false}
--                  placeholder="2026-03-06"
--                  placeholderTextColor={colors.textMuted}
--                  style={styles.providerBlockInput}
--                />
-+                  <Text style={styles.providerBlockLabel}>Date (YYYY-MM-DD)</Text>
-+                  <TextInput
-+                    value={blockDate}
-+                    onChangeText={setBlockDate}
-+                    editable={!blockSubmitting}
-+                    autoCapitalize="none"
-+                    autoCorrect={false}
-+                    placeholder="2026-03-06"
-+                    placeholderTextColor={colors.textMuted}
-+                    style={styles.providerBlockInput}
-+                  />
- 
--                {blockType === "one_time" ? (
--                  <>
--                    <Text style={styles.providerBlockLabel}>Start Time (HH:MM)</Text>
--                    <TextInput
--                      value={blockStartTime}
--                      onChangeText={setBlockStartTime}
--                      editable={!blockSubmitting}
--                      autoCapitalize="none"
--                      autoCorrect={false}
--                      placeholder="09:00"
--                      placeholderTextColor={colors.textMuted}
--                      style={styles.providerBlockInput}
--                    />
-+                  {blockType === "one_time" ? (
-+                    <>
-+                      <Text style={styles.providerBlockLabel}>Start Time (HH:MM)</Text>
-+                      <TextInput
-+                        value={blockStartTime}
-+                        onChangeText={setBlockStartTime}
-+                        editable={!blockSubmitting}
-+                        autoCapitalize="none"
-+                        autoCorrect={false}
-+                        placeholder="09:00"
-+                        placeholderTextColor={colors.textMuted}
-+                        style={styles.providerBlockInput}
-+                      />
- 
--                    <View style={styles.providerBlockDurationRow}>
--                      <View style={styles.providerBlockDurationCol}>
--                        <Text style={styles.providerBlockLabel}>Hours</Text>
--                        <TextInput
--                          value={blockDurationHours}
--                          onChangeText={setBlockDurationHours}
--                          editable={!blockSubmitting}
--                          keyboardType="number-pad"
--                          placeholder="1"
--                          placeholderTextColor={colors.textMuted}
--                          style={styles.providerBlockInput}
--                        />
--                      </View>
--                      <View style={styles.providerBlockDurationCol}>
--                        <Text style={styles.providerBlockLabel}>Minutes</Text>
--                        <TextInput
--                          value={blockDurationMinutes}
--                          onChangeText={setBlockDurationMinutes}
--                          editable={!blockSubmitting}
--                          keyboardType="number-pad"
--                          placeholder="0"
--                          placeholderTextColor={colors.textMuted}
--                          style={styles.providerBlockInput}
--                        />
-+                      <View style={styles.providerBlockDurationRow}>
-+                        <View style={styles.providerBlockDurationCol}>
-+                          <Text style={styles.providerBlockLabel}>Hours</Text>
-+                          <TextInput
-+                            value={blockDurationHours}
-+                            onChangeText={setBlockDurationHours}
-+                            editable={!blockSubmitting}
-+                            keyboardType="number-pad"
-+                            placeholder="1"
-+                            placeholderTextColor={colors.textMuted}
-+                            style={styles.providerBlockInput}
-+                          />
-+                        </View>
-+                        <View style={styles.providerBlockDurationCol}>
-+                          <Text style={styles.providerBlockLabel}>Minutes</Text>
-+                          <TextInput
-+                            value={blockDurationMinutes}
-+                            onChangeText={setBlockDurationMinutes}
-+                            editable={!blockSubmitting}
-+                            keyboardType="number-pad"
-+                            placeholder="0"
-+                            placeholderTextColor={colors.textMuted}
-+                            style={styles.providerBlockInput}
-+                          />
-+                        </View>
-                       </View>
--                    </View>
--                  </>
--                ) : null}
-+                    </>
-+                  ) : null}
- 
--                <Text style={styles.providerBlockLabel}>Reason (optional)</Text>
--                <TextInput
--                  value={blockReason}
--                  onChangeText={setBlockReason}
--                  editable={!blockSubmitting}
--                  placeholder="Optional note"
--                  placeholderTextColor={colors.textMuted}
--                  style={[styles.providerBlockInput, styles.providerBlockReasonInput]}
--                  multiline
--                />
-+                  <Text style={styles.providerBlockLabel}>Reason (optional)</Text>
-+                  <TextInput
-+                    value={blockReason}
-+                    onChangeText={setBlockReason}
-+                    editable={!blockSubmitting}
-+                    placeholder="Optional note"
-+                    placeholderTextColor={colors.textMuted}
-+                    style={[styles.providerBlockInput, styles.providerBlockReasonInput]}
-+                    multiline
-+                  />
- 
--                <View style={styles.providerBlockActionsRow}>
--                  <TouchableOpacity
--                    style={styles.providerBlockCancelButton}
--                    onPress={() => setBlockModalVisible(false)}
--                    disabled={blockSubmitting}
--                  >
--                    <Text style={styles.providerBlockCancelButtonText}>Close</Text>
--                  </TouchableOpacity>
--                  <TouchableOpacity
--                    style={[styles.providerBlockSubmitButton, blockSubmitting && styles.providerCalendarCancelButtonDisabled]}
--                    onPress={handleSubmitBlockedTime}
--                    disabled={blockSubmitting}
--                  >
--                    {blockSubmitting ? (
--                      <ActivityIndicator color={colors.textPrimary} size="small" />
--                    ) : (
--                      <Text style={styles.providerBlockSubmitButtonText}>Save Block</Text>
--                    )}
--                  </TouchableOpacity>
--                </View>
-+                  <View style={styles.providerBlockActionsRow}>
-+                    <TouchableOpacity
-+                      style={styles.providerBlockCancelButton}
-+                      onPress={() => setBlockModalVisible(false)}
-+                      disabled={blockSubmitting}
-+                    >
-+                      <Text style={styles.providerBlockCancelButtonText}>Close</Text>
-+                    </TouchableOpacity>
-+                    <TouchableOpacity
-+                      style={[styles.providerBlockSubmitButton, blockSubmitting && styles.providerCalendarCancelButtonDisabled]}
-+                      onPress={handleSubmitBlockedTime}
-+                      disabled={blockSubmitting}
-+                    >
-+                      {blockSubmitting ? (
-+                        <ActivityIndicator color={colors.textPrimary} size="small" />
-+                      ) : (
-+                        <Text style={styles.providerBlockSubmitButtonText}>Save Block</Text>
-+                      )}
-+                    </TouchableOpacity>
-+                  </View>
-+                </KeyboardAwareScrollView>
-               </View>
-             </TouchableWithoutFeedback>
-           </View>
-         </TouchableWithoutFeedback>
-       </Modal>
-     </SafeAreaView>
-   );
- }
- 
- // Tabs after login
- function MainApp({
-   authLoading,
-   token,
-   setToken,
-   showFlash,
-   navigationRef,
-   setNavReady,
- }) {
-   const {
-     favoriteIds,
-     favoriteProviders,
-     favoritesLoading,
-     toggleFavorite,
-     isFavorite,
-     syncFavoritesFromList,
-@@ -11936,50 +11944,54 @@ signupTextButtonText: {
-     marginTop: 6,
-     paddingHorizontal: 10,
-     paddingVertical: 6,
-     borderRadius: 999,
-     borderWidth: 1,
-     borderColor: colors.error,
-     backgroundColor: "rgba(255,107,107,0.10)",
-   },
-   providerCalendarDeleteBlockButtonText: {
-     color: colors.error,
-     fontSize: 11,
-     fontWeight: "700",
-   },
-   providerBlockModalBackdrop: {
-     flex: 1,
-     backgroundColor: "rgba(0,0,0,0.45)",
-     padding: 20,
-     justifyContent: "center",
-   },
-   providerBlockModalCard: {
-     backgroundColor: colors.surface,
-     borderRadius: 14,
-     borderWidth: 1,
-     borderColor: colors.border,
-     padding: 14,
-+    maxHeight: "90%",
-+  },
-+  providerBlockModalScrollContent: {
-+    flexGrow: 1,
-   },
-   providerBlockModalTitle: {
-     color: colors.textPrimary,
-     fontSize: 18,
-     fontWeight: "800",
-     marginBottom: 12,
-   },
-   providerBlockTypeRow: {
-     flexDirection: "row",
-     gap: 8,
-     marginBottom: 12,
-   },
-   providerBlockTypeButton: {
-     flex: 1,
-     borderRadius: 10,
-     borderWidth: 1,
-     borderColor: colors.border,
-     paddingVertical: 8,
-     alignItems: "center",
-     backgroundColor: colors.surfaceElevated,
-   },
-   providerBlockTypeButtonActive: {
-     borderColor: colors.primary,
-     backgroundColor: colors.primarySoft,
-   },
+diff --git a/backend/tests/test_booking_messaging.py b/backend/tests/test_booking_messaging.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..bf3407a37c4f1a4a620d54a0645e76501d2eaa94
+--- /dev/null
++++ b/backend/tests/test_booking_messaging.py
+@@ -0,0 +1,211 @@
++from datetime import datetime, timedelta
++
++from fastapi.testclient import TestClient
++
++
++def _create_booking_graph(session, models):
++    provider_user = models.User(username="provider_chat@example.com", is_provider=True)
++    client_user = models.User(username="client_chat@example.com")
++    outsider_user = models.User(username="outsider_chat@example.com")
++    session.add_all([provider_user, client_user, outsider_user])
++    session.commit()
++
++    provider = models.Provider(user_id=provider_user.id, account_number="ACC-CHAT")
++    session.add(provider)
++    session.commit()
++    session.refresh(provider)
++
++    service = models.Service(
++        provider_id=provider.id,
++        name="Chat Service",
++        price_gyd=1000,
++        duration_minutes=60,
++    )
++    session.add(service)
++    session.commit()
++    session.refresh(service)
++
++    booking = models.Booking(
++        customer_id=client_user.id,
++        service_id=service.id,
++        start_time=datetime.utcnow() + timedelta(hours=4),
++        end_time=datetime.utcnow() + timedelta(hours=5),
++        status="confirmed",
++    )
++    session.add(booking)
++    session.commit()
++    session.refresh(booking)
++
++    other_booking = models.Booking(
++        customer_id=client_user.id,
++        service_id=service.id,
++        start_time=datetime.utcnow() + timedelta(days=1),
++        end_time=datetime.utcnow() + timedelta(days=1, hours=1),
++        status="confirmed",
++    )
++    session.add(other_booking)
++    session.commit()
++    session.refresh(other_booking)
++
++    return provider_user, client_user, outsider_user, booking, other_booking
++
++
++def _build_client(session):
++    from app.main import app
++    from app.database import get_db
++    from app.security import get_current_user_from_header
++
++    current = {"user": None}
++
++    def override_get_db():
++        try:
++            yield session
++        finally:
++            pass
++
++    def override_user():
++        return current["user"]
++
++    app.dependency_overrides[get_db] = override_get_db
++    app.dependency_overrides[get_current_user_from_header] = override_user
++
++    return app, TestClient(app), current
++
++
++def _send(client, actor, booking_id, text=None, attachment=None):
++    payload = {"booking_id": booking_id}
++    if text is not None:
++        payload["text"] = text
++    if attachment is not None:
++        payload["attachment"] = attachment
++    return client.post("/bookings/messages", json=payload)
++
++
++def test_booking_messaging_flow(db_session):
++    session, models, _crud = db_session
++    provider_user, client_user, outsider_user, booking, other_booking = _create_booking_graph(session, models)
++    app, client, current = _build_client(session)
++
++    # 1) client can send text-only
++    current["user"] = client_user
++    r = _send(client, client_user, booking.id, text=" Hello provider ")
++    assert r.status_code == 200
++    m1 = r.json()
++    assert m1["text"] == "Hello provider"
++    assert m1["sender_role"] == "client"
++
++    # 2) provider can send text-only
++    current["user"] = provider_user
++    r = _send(client, provider_user, booking.id, text="Hi client")
++    assert r.status_code == 200
++    assert r.json()["sender_role"] == "provider"
++
++    # 3) image-only
++    current["user"] = client_user
++    r = _send(
++        client,
++        client_user,
++        booking.id,
++        attachment={
++            "attachment_type": "image",
++            "file_url": "https://cdn.example.com/image.jpg",
++            "mime_type": "image/jpeg",
++            "width": 800,
++            "height": 600,
++        },
++    )
++    assert r.status_code == 200
++    assert r.json()["attachment"]["file_url"] == "https://cdn.example.com/image.jpg"
++
++    # 4) text + image
++    current["user"] = provider_user
++    r = _send(
++        client,
++        provider_user,
++        booking.id,
++        text="Looks great",
++        attachment={
++            "attachment_type": "image",
++            "file_url": "https://cdn.example.com/another.png",
++            "mime_type": "image/png",
++        },
++    )
++    assert r.status_code == 200
++
++    # 8 + 9) conversation auto-create and reuse
++    conversations = session.query(models.Conversation).filter(models.Conversation.booking_id == booking.id).all()
++    assert len(conversations) == 1
++    assert session.query(models.Message).filter(models.Message.conversation_id == conversations[0].id).count() == 4
++
++    # 10) list ordering oldest -> newest
++    current["user"] = client_user
++    r = client.get(f"/bookings/{booking.id}/messages")
++    assert r.status_code == 200
++    payload = r.json()
++    ids = [m["id"] for m in payload["messages"]]
++    assert ids == sorted(ids)
++
++    # 12) one booking does not expose another booking's chat
++    r_other = client.get(f"/bookings/{other_booking.id}/messages")
++    assert r_other.status_code == 200
++    assert r_other.json()["messages"] == []
++
++    # mark read compatibility
++    current["user"] = provider_user
++    mark_resp = client.post("/bookings/messages/read", json={"booking_id": booking.id})
++    assert mark_resp.status_code == 200
++    assert mark_resp.json()["updated"] >= 1
++
++    app.dependency_overrides.clear()
++
++
++def test_booking_messaging_rejections(db_session):
++    session, models, _crud = db_session
++    provider_user, client_user, outsider_user, booking, _other_booking = _create_booking_graph(session, models)
++    app, client, current = _build_client(session)
++
++    # 5) reject empty message
++    current["user"] = client_user
++    r = _send(client, client_user, booking.id)
++    assert r.status_code == 422
++
++    # 6) reject non-participant access
++    current["user"] = outsider_user
++    r = _send(client, outsider_user, booking.id, text="intrude")
++    assert r.status_code == 403
++    assert r.json()["detail"] == "You are not allowed to access this conversation."
++
++    # 11) reject non-image attachment
++    current["user"] = client_user
++    r = _send(
++        client,
++        client_user,
++        booking.id,
++        attachment={
++            "attachment_type": "file",
++            "file_url": "https://cdn.example.com/doc.pdf",
++        },
++    )
++    assert r.status_code == 422
++
++    r = _send(
++        client,
++        client_user,
++        booking.id,
++        attachment={
++            "attachment_type": "image",
++            "file_url": "https://cdn.example.com/doc.pdf",
++            "mime_type": "application/pdf",
++        },
++    )
++    assert r.status_code == 422
++
++    # 7) reject sending on cancelled booking
++    booking.status = "cancelled"
++    session.commit()
++
++    r = _send(client, client_user, booking.id, text="still there?")
++    assert r.status_code == 400
++    assert r.json()["detail"] == "This chat is unavailable because the booking has been cancelled."
++
++    app.dependency_overrides.clear()
  
 EOF
 )

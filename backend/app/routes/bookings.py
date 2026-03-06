@@ -209,3 +209,90 @@ def list_my_upcoming_bookings(
     provider: models.Provider = Depends(_require_current_provider),
 ):
     return crud.list_upcoming_bookings_for_provider(db, provider.id)
+
+
+@router.get(
+    "/bookings/{booking_id}/messages",
+    response_model=schemas.BookingMessagesResponse,
+)
+def get_booking_messages(
+    booking_id: int,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user_from_header),
+):
+    try:
+        payload = crud.list_booking_messages(
+            db,
+            booking_id=booking_id,
+            user_id=current_user.id,
+        )
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc))
+
+    if payload is None:
+        raise HTTPException(status_code=404, detail="Booking not found")
+
+    return payload
+
+
+@router.post(
+    "/bookings/messages",
+    response_model=schemas.BookingMessageOut,
+)
+def send_booking_message(
+    payload: schemas.MessageSendRequest,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user_from_header),
+):
+    try:
+        message = crud.send_booking_message(
+            db,
+            booking_id=payload.booking_id,
+            sender_user_id=current_user.id,
+            text=payload.text,
+            attachment=payload.attachment,
+        )
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+    if message is None:
+        raise HTTPException(status_code=404, detail="Booking not found")
+
+    context = crud.get_booking_chat_context(
+        db,
+        booking_id=payload.booking_id,
+        user_id=current_user.id,
+    )
+
+    return {
+        "id": message.id,
+        "sender_user_id": message.sender_user_id,
+        "sender_role": context["sender_role"],
+        "text": message.text,
+        "created_at": message.created_at,
+        "read_at": message.read_at,
+        "attachment": message.attachment,
+    }
+
+
+@router.post("/bookings/messages/read")
+def mark_booking_messages_read(
+    payload: schemas.MarkMessagesReadRequest,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user_from_header),
+):
+    try:
+        updated = crud.mark_booking_messages_read(
+            db,
+            booking_id=payload.booking_id,
+            user_id=current_user.id,
+        )
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc))
+
+    if updated is None:
+        raise HTTPException(status_code=404, detail="Booking not found")
+
+    return {"updated": updated}

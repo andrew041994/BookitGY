@@ -144,6 +144,52 @@ class Booking(Base):
     canceled_by_role = Column(String, nullable=True)
 
 
+class Conversation(Base):
+    __tablename__ = "conversations"
+
+    id = Column(Integer, primary_key=True, index=True)
+    booking_id = Column(Integer, ForeignKey("bookings.id"), nullable=False, unique=True, index=True)
+    client_user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    provider_user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    created_at = Column(DateTime, default=now_guyana, nullable=False)
+    updated_at = Column(DateTime, default=now_guyana, onupdate=now_guyana, nullable=False)
+
+    messages = relationship("Message", back_populates="conversation", cascade="all, delete-orphan")
+
+
+class Message(Base):
+    __tablename__ = "messages"
+
+    id = Column(Integer, primary_key=True, index=True)
+    conversation_id = Column(Integer, ForeignKey("conversations.id"), nullable=False, index=True)
+    sender_user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    text = Column(Text, nullable=True)
+    message_type = Column(String, nullable=False, default="text")
+    created_at = Column(DateTime, default=now_guyana, nullable=False, index=True)
+    read_at = Column(DateTime, nullable=True)
+
+    conversation = relationship("Conversation", back_populates="messages")
+    attachment = relationship("MessageAttachment", back_populates="message", uselist=False, cascade="all, delete-orphan")
+
+
+class MessageAttachment(Base):
+    __tablename__ = "message_attachments"
+
+    id = Column(Integer, primary_key=True, index=True)
+    message_id = Column(Integer, ForeignKey("messages.id"), nullable=False, unique=True, index=True)
+    attachment_type = Column(String, nullable=False, default="image")
+    file_url = Column(String, nullable=False)
+    thumbnail_url = Column(String, nullable=True)
+    original_filename = Column(String, nullable=True)
+    mime_type = Column(String, nullable=True)
+    file_size_bytes = Column(Integer, nullable=True)
+    width = Column(Integer, nullable=True)
+    height = Column(Integer, nullable=True)
+    created_at = Column(DateTime, default=now_guyana, nullable=False)
+
+    message = relationship("Message", back_populates="attachment")
+
+
 
 
 

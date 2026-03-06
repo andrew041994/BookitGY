@@ -620,6 +620,98 @@ class BookingWithDetails(BaseModel):
 
 
 
+class MessageAttachmentPayload(BaseModel):
+    attachment_type: str = "image"
+    file_url: str
+    thumbnail_url: Optional[str] = None
+    original_filename: Optional[str] = None
+    mime_type: Optional[str] = None
+    file_size_bytes: Optional[int] = None
+    width: Optional[int] = None
+    height: Optional[int] = None
+
+    @validator("attachment_type")
+    def validate_attachment_type(cls, value: str) -> str:
+        normalized = (value or "").strip().lower()
+        if normalized != "image":
+            raise ValueError("Only image attachments are allowed.")
+        return normalized
+
+    @validator("file_url")
+    def validate_file_url(cls, value: str) -> str:
+        trimmed = (value or "").strip()
+        if not trimmed:
+            raise ValueError("file_url is required for image attachments")
+        return trimmed
+
+    @validator("mime_type")
+    def validate_mime_type(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return value
+        normalized = value.strip().lower()
+        if not normalized:
+            return None
+        if not normalized.startswith("image/"):
+            raise ValueError("Only image attachments are allowed.")
+        return normalized
+
+
+class MessageSendRequest(BaseModel):
+    booking_id: int
+    text: Optional[str] = None
+    attachment: Optional[MessageAttachmentPayload] = None
+
+    @validator("text")
+    def normalize_text(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return value
+        trimmed = value.strip()
+        return trimmed or None
+
+    @validator("attachment", always=True)
+    def validate_non_empty_message(
+        cls,
+        value: Optional[MessageAttachmentPayload],
+        values,
+    ) -> Optional[MessageAttachmentPayload]:
+        if not (values.get("text") or value):
+            raise ValueError("Message must include text or an image.")
+        return value
+
+
+class MessageAttachmentOut(BaseModel):
+    attachment_type: str
+    file_url: str
+    thumbnail_url: Optional[str] = None
+    original_filename: Optional[str] = None
+    mime_type: Optional[str] = None
+    file_size_bytes: Optional[int] = None
+    width: Optional[int] = None
+    height: Optional[int] = None
+
+    class Config:
+        from_attributes = True
+
+
+class BookingMessageOut(BaseModel):
+    id: int
+    sender_user_id: int
+    sender_role: str
+    text: Optional[str] = None
+    created_at: datetime
+    read_at: Optional[datetime] = None
+    attachment: Optional[MessageAttachmentOut] = None
+
+
+class BookingMessagesResponse(BaseModel):
+    booking_id: int
+    conversation_id: Optional[int] = None
+    messages: List[BookingMessageOut] = []
+
+
+class MarkMessagesReadRequest(BaseModel):
+    booking_id: int
+
 class BookingUpdate(BaseModel):
     start_time: Optional[datetime] = None
     end_time: Optional[datetime] = None
