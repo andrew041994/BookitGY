@@ -86,6 +86,24 @@ const API =
   Constants.manifest?.extra?.API_URL ||
   "https://bookitgy.onrender.com";
 
+const CLOUDINARY_CLOUD_NAME =
+  process.env.EXPO_PUBLIC_CLOUDINARY_CLOUD_NAME ||
+  Constants.expoConfig?.extra?.CLOUDINARY_CLOUD_NAME ||
+  Constants.manifest?.extra?.CLOUDINARY_CLOUD_NAME ||
+  "";
+
+const CLOUDINARY_UPLOAD_PRESET =
+  process.env.EXPO_PUBLIC_CLOUDINARY_UPLOAD_PRESET ||
+  Constants.expoConfig?.extra?.CLOUDINARY_UPLOAD_PRESET ||
+  Constants.manifest?.extra?.CLOUDINARY_UPLOAD_PRESET ||
+  "";
+
+const CLOUDINARY_BOOKING_MESSAGES_FOLDER =
+  process.env.EXPO_PUBLIC_CLOUDINARY_BOOKING_MESSAGES_FOLDER ||
+  Constants.expoConfig?.extra?.CLOUDINARY_BOOKING_MESSAGES_FOLDER ||
+  Constants.manifest?.extra?.CLOUDINARY_BOOKING_MESSAGES_FOLDER ||
+  "bookitgy/booking_messages";
+
 console.log("### API base URL =", API);
 
 
@@ -3534,6 +3552,52 @@ function BookingChatModal({
     }
   }, [showFlash]);
 
+  const uploadChatImageToCloudinary = useCallback(async (asset) => {
+    const filename = asset.fileName || asset.uri.split("/").pop() || "chat-image.jpg";
+    const ext = (filename.split(".").pop() || "jpg").toLowerCase();
+    const mimeType =
+      asset.mimeType ||
+      (ext === "png"
+        ? "image/png"
+        : ext === "webp"
+          ? "image/webp"
+          : "image/jpeg");
+
+    if (!CLOUDINARY_CLOUD_NAME || !CLOUDINARY_UPLOAD_PRESET) {
+      throw new Error("Chat image upload is not configured.");
+    }
+
+    const formData = new FormData();
+    formData.append("file", {
+      uri: asset.uri,
+      name: filename,
+      type: mimeType,
+    });
+    formData.append("upload_preset", CLOUDINARY_UPLOAD_PRESET);
+    formData.append("folder", CLOUDINARY_BOOKING_MESSAGES_FOLDER);
+
+    const uploadUrl = `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/image/upload`;
+    const uploadRes = await fetch(uploadUrl, {
+      method: "POST",
+      body: formData,
+    });
+
+    const uploadData = await uploadRes.json();
+    if (!uploadRes.ok || !uploadData?.secure_url) {
+      throw new Error(uploadData?.error?.message || "Image upload failed.");
+    }
+
+    return {
+      attachment_type: "image",
+      file_url: uploadData.secure_url,
+      mime_type: uploadData.resource_type === "image" ? mimeType : null,
+      file_size_bytes: Number.isFinite(uploadData.bytes) ? uploadData.bytes : null,
+      width: Number.isFinite(uploadData.width) ? uploadData.width : null,
+      height: Number.isFinite(uploadData.height) ? uploadData.height : null,
+      original_filename: uploadData.original_filename || filename,
+    };
+  }, []);
+
   const handleSend = useCallback(async () => {
     if (sending) return;
 
@@ -3554,59 +3618,50 @@ function BookingChatModal({
       let attachmentPayload = null;
 
       if (selectedImage?.uri) {
-        const filename = selectedImage.fileName || selectedImage.uri.split("/").pop() || "chat-image.jpg";
-        const ext = (filename.split(".").pop() || "jpg").toLowerCase();
-        const mimeType =
-          selectedImage.mimeType ||
-          (ext === "png"
-            ? "image/png"
-            : ext === "webp"
-              ? "image/webp"
-              : "image/jpeg");
-
-        const formData = new FormData();
-        formData.append("file", {
-          uri: selectedImage.uri,
-          name: filename,
-          type: mimeType,
+        console.log("[chat-image-send] selected image", { uri: selectedImage.uri });
+        console.log("[chat-image-send] upload start", { booking_id: bookingId });
+        attachmentPayload = await uploadChatImageToCloudinary(selectedImage);
+        console.log("[chat-image-send] upload success", {
+          file_url: attachmentPayload?.file_url,
+          width: attachmentPayload?.width,
+          height: attachmentPayload?.height,
         });
-
-        const uploadRes = await apiClient.post(
-          `/bookings/messages/attachments?booking_id=${bookingId}`,
-          formData
-        );
-
-        const rawAttachment = uploadRes?.data?.attachment || uploadRes?.data || null;
-        const fileUrl = rawAttachment?.file_url || rawAttachment?.url || rawAttachment?.secure_url || null;
-        attachmentPayload = fileUrl
-          ? {
-              attachment_type: "image",
-              ...rawAttachment,
-              file_url: fileUrl,
-            }
-          : null;
-
-        if (!attachmentPayload) {
-          throw new Error("Image upload failed.");
-        }
       }
 
-      await apiClient.post(`/bookings/messages`, {
+      const payload = {
         booking_id: bookingId,
         text: trimmedText || null,
         attachment: attachmentPayload,
+      };
+      console.log("[chat-image-send] payload ready", {
+        booking_id: payload.booking_id,
+        has_text: Boolean(payload.text),
+        has_attachment: Boolean(payload.attachment),
       });
 
+      await apiClient.post(`/bookings/messages`, payload);
+
+      console.log("[chat-image-send] send success", { booking_id: bookingId });
       setText("");
       setSelectedImage(null);
       await loadMessages(true);
     } catch (err) {
+      console.log("[chat-image-send] send failure", err?.response?.data || err?.message || err);
       const msg = getCleanApiErrorMessage(err, "Could not send message.");
       showFlash && showFlash("error", msg);
     } finally {
       setSending(false);
     }
-  }, [bookingId, isCancelled, loadMessages, selectedImage, sending, showFlash, text]);
+  }, [
+    bookingId,
+    isCancelled,
+    loadMessages,
+    selectedImage,
+    sending,
+    showFlash,
+    text,
+    uploadChatImageToCloudinary,
+  ]);
 
   const renderItem = ({ item }) => {
     const mine = Number(item?.sender_user_id) === Number(currentUserId);
