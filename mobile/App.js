@@ -3481,6 +3481,7 @@ function BookingChatModal({
   const [selectedImage, setSelectedImage] = useState(null);
   const [viewerImage, setViewerImage] = useState(null);
   const listRef = useRef(null);
+  const insets = useSafeAreaInsets();
 
   const bookingId = booking?.id || booking?.booking_id;
   const isCancelled = isBookingCancelledStatus(booking?.status);
@@ -3691,14 +3692,14 @@ function BookingChatModal({
 
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
-      <SafeAreaView style={styles.chatSafeArea}>
+      <SafeAreaView style={styles.chatSafeArea} edges={["left", "right", "bottom"]}>
         <KeyboardAvoidingView
           style={styles.chatKeyboardWrapper}
           behavior={Platform.OS === "ios" ? "padding" : undefined}
           keyboardVerticalOffset={Platform.OS === "ios" ? 86 : 0}
         >
-          <View style={styles.chatHeader}>
-            <TouchableOpacity onPress={onClose}>
+          <View style={[styles.chatHeader, { paddingTop: Math.max(insets.top, 8) }]}>
+            <TouchableOpacity onPress={onClose} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
               <Text style={styles.chatCloseText}>Close</Text>
             </TouchableOpacity>
             <Text style={styles.chatHeaderTitle}>Booking Chat</Text>
@@ -12512,7 +12513,8 @@ signupTextButtonText: {
     paddingHorizontal: 12,
   },
   chatListContent: {
-    paddingVertical: 8,
+    paddingTop: 12,
+    paddingBottom: 12,
     flexGrow: 1,
     justifyContent: "flex-end",
   },

@@ -1,236 +1,61 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
 diff --git a/mobile/App.js b/mobile/App.js
-index 58d52ac6c300f4b2feb1bb14c7741e4a4a340918..c8652e10760d3b06ff34d685349abd88ec5f573a 100644
+index c8652e10760d3b06ff34d685349abd88ec5f573a..041f4ff21ee72b52220bd07b12b018bd9e19c927 100644
 --- a/mobile/App.js
 +++ b/mobile/App.js
-@@ -64,50 +64,68 @@ import BookitGYLogoTransparent from "./assets/bookitgy-logo-transparent.png"
- import { theme } from "./src/theme";
- // import * as Sentry from "sentry-expo";
- 
- let Clipboard = null;
- try {
-   Clipboard = require("expo-clipboard");
- } catch (e) {}
- 
- enableScreens(false);
- WebBrowser.maybeCompleteAuthSession();
- 
- 
- 
- 
- // import { API } from "./App"; // wherever you define your base URL
- 
- 
- 
- 
- 
- const API =
-   Constants.expoConfig?.extra?.API_URL ||
-   Constants.manifest?.extra?.API_URL ||
-   "https://bookitgy.onrender.com";
- 
-+const CLOUDINARY_CLOUD_NAME =
-+  process.env.EXPO_PUBLIC_CLOUDINARY_CLOUD_NAME ||
-+  Constants.expoConfig?.extra?.CLOUDINARY_CLOUD_NAME ||
-+  Constants.manifest?.extra?.CLOUDINARY_CLOUD_NAME ||
-+  "";
-+
-+const CLOUDINARY_UPLOAD_PRESET =
-+  process.env.EXPO_PUBLIC_CLOUDINARY_UPLOAD_PRESET ||
-+  Constants.expoConfig?.extra?.CLOUDINARY_UPLOAD_PRESET ||
-+  Constants.manifest?.extra?.CLOUDINARY_UPLOAD_PRESET ||
-+  "";
-+
-+const CLOUDINARY_BOOKING_MESSAGES_FOLDER =
-+  process.env.EXPO_PUBLIC_CLOUDINARY_BOOKING_MESSAGES_FOLDER ||
-+  Constants.expoConfig?.extra?.CLOUDINARY_BOOKING_MESSAGES_FOLDER ||
-+  Constants.manifest?.extra?.CLOUDINARY_BOOKING_MESSAGES_FOLDER ||
-+  "bookitgy/booking_messages";
-+
- console.log("### API base URL =", API);
- 
- 
- const colors = theme.colors;
- const HEADER_LOGO_WIDTH = 120;
- const HEADER_LOGO_HEIGHT = 120;
- const HEADER_VERTICAL_PADDING = 0;
- 
- // status color mapping
- const getAppointmentStatusThemeKey = (statusValue) => {
-   const normalized = `${statusValue || ""}`.trim().toLowerCase();
-   if (normalized.includes("cancel")) return "cancelled";
-   if (normalized.includes("complete")) return "completed";
-   return "scheduled";
+@@ -3459,50 +3459,51 @@ const getCleanApiErrorMessage = (err, fallbackMessage) => {
+     err?.response?.data?.message ||
+     err?.message;
+   if (!detail) return fallbackMessage;
+   if (typeof detail === "string") return detail;
+   return fallbackMessage;
  };
  
- const APPOINTMENT_STATUS_THEME = {
-   scheduled: {
-     accent: "#4DA3FF",
-     bgTint: "rgba(77,163,255,0.10)",
-     border: "rgba(77,163,255,0.35)",
-   },
-   completed: {
-     accent: "#2ECC71",
-     bgTint: "rgba(46,204,113,0.10)",
-@@ -3512,156 +3530,162 @@ function BookingChatModal({
-       if (!permission.granted) {
-         showFlash && showFlash("error", "Allow photo library access to attach images.");
-         return;
+ const isBookingCancelledStatus = (status) =>
+   String(status || "").trim().toLowerCase().includes("cancel");
+ 
+ function BookingChatModal({
+   visible,
+   onClose,
+   booking,
+   currentUserId,
+   showFlash,
+ }) {
+   const [messages, setMessages] = useState([]);
+   const [loading, setLoading] = useState(false);
+   const [refreshing, setRefreshing] = useState(false);
+   const [sending, setSending] = useState(false);
+   const [text, setText] = useState("");
+   const [selectedImage, setSelectedImage] = useState(null);
+   const [viewerImage, setViewerImage] = useState(null);
+   const listRef = useRef(null);
++  const insets = useSafeAreaInsets();
+ 
+   const bookingId = booking?.id || booking?.booking_id;
+   const isCancelled = isBookingCancelledStatus(booking?.status);
+ 
+   const loadMessages = useCallback(
+     async (useRefresh = false) => {
+       if (!bookingId) return;
+       try {
+         if (useRefresh) setRefreshing(true);
+         else setLoading(true);
+ 
+         const res = await apiClient.get(`/bookings/${bookingId}/messages`);
+         const rows = Array.isArray(res?.data?.messages) ? res.data.messages : [];
+         setMessages(rows);
+ 
+         await apiClient.post(`/bookings/messages/read`, { booking_id: bookingId });
+       } catch (err) {
+         const msg = getCleanApiErrorMessage(err, "Could not load chat messages.");
+         showFlash && showFlash("error", msg);
+       } finally {
+         setLoading(false);
+         setRefreshing(false);
        }
- 
-       const result = await ImagePicker.launchImageLibraryAsync({
-         mediaTypes: ImagePicker.MediaTypeOptions.Images,
-         allowsEditing: false,
-         quality: 0.7,
-         selectionLimit: 1,
-       });
- 
-       if (result.canceled) return;
-       const asset = result?.assets?.[0];
-       if (!asset?.uri || (asset?.type && asset.type !== "image")) {
-         showFlash && showFlash("error", "Please select a valid image from your library.");
-         return;
-       }
- 
-       setSelectedImage(asset);
-     } catch (err) {
-       showFlash && showFlash("error", "Could not open photo library.");
-     }
-   }, [showFlash]);
- 
--  const uploadChatImageToAttachmentEndpoint = useCallback(async (asset) => {
-+  const uploadChatImageToCloudinary = useCallback(async (asset) => {
-     const filename = asset.fileName || asset.uri.split("/").pop() || "chat-image.jpg";
-     const ext = (filename.split(".").pop() || "jpg").toLowerCase();
-     const mimeType =
-       asset.mimeType ||
-       (ext === "png"
-         ? "image/png"
-         : ext === "webp"
-           ? "image/webp"
-           : "image/jpeg");
- 
-+    if (!CLOUDINARY_CLOUD_NAME || !CLOUDINARY_UPLOAD_PRESET) {
-+      throw new Error("Chat image upload is not configured.");
-+    }
-+
-     const formData = new FormData();
-     formData.append("file", {
-       uri: asset.uri,
-       name: filename,
-       type: mimeType,
-     });
--    formData.append("booking_id", String(bookingId));
-+    formData.append("upload_preset", CLOUDINARY_UPLOAD_PRESET);
-+    formData.append("folder", CLOUDINARY_BOOKING_MESSAGES_FOLDER);
- 
--    const uploadRes = await apiClient.post(`/bookings/messages/attachments`, formData, {
--      headers: {
--        "Content-Type": "multipart/form-data",
--      },
-+    const uploadUrl = `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/image/upload`;
-+    const uploadRes = await fetch(uploadUrl, {
-+      method: "POST",
-+      body: formData,
-     });
- 
--    const uploadData = uploadRes?.data;
--    if (!uploadData?.file_url) {
--      throw new Error("Image upload failed.");
-+    const uploadData = await uploadRes.json();
-+    if (!uploadRes.ok || !uploadData?.secure_url) {
-+      throw new Error(uploadData?.error?.message || "Image upload failed.");
-     }
- 
-     return {
-       attachment_type: "image",
--      file_url: uploadData.file_url,
--      mime_type: uploadData?.mime_type || mimeType,
--      file_size_bytes: Number.isFinite(uploadData?.file_size_bytes)
--        ? uploadData.file_size_bytes
-+      file_url: uploadData.secure_url,
-+      mime_type: uploadData.resource_type === "image" ? mimeType : null,
-+      file_size_bytes: Number.isFinite(uploadData.bytes)
-+        ? uploadData.bytes
-         : null,
--      width: Number.isFinite(uploadData?.width) ? uploadData.width : null,
--      height: Number.isFinite(uploadData?.height) ? uploadData.height : null,
--      original_filename: uploadData?.original_filename || filename,
-+      width: Number.isFinite(uploadData.width) ? uploadData.width : null,
-+      height: Number.isFinite(uploadData.height) ? uploadData.height : null,
-+      original_filename: uploadData.original_filename || filename,
-     };
--  }, [bookingId]);
-+  }, []);
- 
-   const handleSend = useCallback(async () => {
-     if (sending) return;
- 
-     const trimmedText = text.trim();
-     if (!trimmedText && !selectedImage) {
-       showFlash && showFlash("error", "Message must include text or an image.");
-       return;
-     }
- 
-     if (isCancelled) {
-       showFlash &&
-         showFlash("error", "This chat is unavailable because the booking has been cancelled.");
-       return;
-     }
- 
-     try {
-       setSending(true);
-       let attachmentPayload = null;
- 
-       if (selectedImage?.uri) {
-         console.log("[chat-image-send] selected image", { uri: selectedImage.uri });
-         console.log("[chat-image-send] upload start", { booking_id: bookingId });
--        attachmentPayload = await uploadChatImageToAttachmentEndpoint(selectedImage);
-+        attachmentPayload = await uploadChatImageToCloudinary(selectedImage);
-         console.log("[chat-image-send] upload success", {
-           file_url: attachmentPayload?.file_url,
-           width: attachmentPayload?.width,
-           height: attachmentPayload?.height,
-         });
-       }
- 
-       const payload = {
-         booking_id: bookingId,
-         text: trimmedText || null,
-         attachment: attachmentPayload,
-       };
-       console.log("[chat-image-send] payload ready", {
-         booking_id: payload.booking_id,
-         has_text: Boolean(payload.text),
-         has_attachment: Boolean(payload.attachment),
-       });
-+      console.log("[chat-image-send] send route", { method: "POST", route: "/bookings/messages" });
- 
-       await apiClient.post(`/bookings/messages`, payload);
- 
-       console.log("[chat-image-send] send success", { booking_id: bookingId });
-       setText("");
-       setSelectedImage(null);
-       await loadMessages(true);
-     } catch (err) {
-       console.log("[chat-image-send] send failure", err?.response?.data || err?.message || err);
-       const msg = getCleanApiErrorMessage(err, "Could not send message.");
-       showFlash && showFlash("error", msg);
-     } finally {
-       setSending(false);
-     }
-   }, [
-     bookingId,
-     isCancelled,
-     loadMessages,
-     selectedImage,
-     sending,
-     showFlash,
-     text,
--    uploadChatImageToAttachmentEndpoint,
-+    uploadChatImageToCloudinary,
-   ]);
- 
+     },
+     [bookingId, showFlash]
+@@ -3669,58 +3670,58 @@ function BookingChatModal({
    const renderItem = ({ item }) => {
      const mine = Number(item?.sender_user_id) === Number(currentUserId);
      const imageUrl = resolveImageUrl(item?.attachment?.file_url);
@@ -254,6 +79,98 @@ index 58d52ac6c300f4b2feb1bb14c7741e4a4a340918..c8652e10760d3b06ff34d685349abd88
      );
    };
  
+   return (
+     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
+-      <SafeAreaView style={styles.chatSafeArea}>
++      <SafeAreaView style={styles.chatSafeArea} edges={["left", "right", "bottom"]}>
+         <KeyboardAvoidingView
+           style={styles.chatKeyboardWrapper}
+           behavior={Platform.OS === "ios" ? "padding" : undefined}
+           keyboardVerticalOffset={Platform.OS === "ios" ? 86 : 0}
+         >
+-          <View style={styles.chatHeader}>
+-            <TouchableOpacity onPress={onClose}>
++          <View style={[styles.chatHeader, { paddingTop: Math.max(insets.top, 8) }]}>
++            <TouchableOpacity onPress={onClose} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+               <Text style={styles.chatCloseText}>Close</Text>
+             </TouchableOpacity>
+             <Text style={styles.chatHeaderTitle}>Booking Chat</Text>
+             <View style={{ width: 46 }} />
+           </View>
+ 
+           {isCancelled ? (
+             <View style={styles.chatCancelledBanner}>
+               <Text style={styles.chatCancelledText}>
+                 This chat is unavailable because the booking has been cancelled.
+               </Text>
+             </View>
+           ) : null}
+ 
+           {loading ? (
+             <View style={styles.loadingRow}>
+               <ActivityIndicator />
+               <Text style={styles.serviceMeta}>Loading messages…</Text>
+             </View>
+           ) : (
+             <FlatList
+               ref={listRef}
+               data={messages}
+               keyExtractor={(item) => `${item.id}`}
+               renderItem={renderItem}
+@@ -12490,51 +12491,52 @@ signupTextButtonText: {
+     fontWeight: "600",
+   },
+   chatHeaderTitle: {
+     color: colors.textPrimary,
+     fontWeight: "700",
+     fontSize: 16,
+   },
+   chatCancelledBanner: {
+     margin: 12,
+     padding: 10,
+     borderRadius: 10,
+     backgroundColor: "rgba(255,77,79,0.16)",
+     borderWidth: 1,
+     borderColor: "rgba(255,77,79,0.35)",
+   },
+   chatCancelledText: {
+     color: colors.error,
+     fontSize: 13,
+     fontWeight: "600",
+   },
+   chatList: {
+     flex: 1,
+     paddingHorizontal: 12,
+   },
+   chatListContent: {
+-    paddingVertical: 8,
++    paddingTop: 12,
++    paddingBottom: 12,
+     flexGrow: 1,
+     justifyContent: "flex-end",
+   },
+   chatRow: {
+     marginVertical: 4,
+     flexDirection: "row",
+   },
+   chatRowMine: {
+     justifyContent: "flex-end",
+   },
+   chatRowOther: {
+     justifyContent: "flex-start",
+   },
+   chatBubble: {
+     maxWidth: "84%",
+     borderRadius: 12,
+     paddingHorizontal: 10,
+     paddingVertical: 8,
+   },
+   chatBubbleMine: {
+     backgroundColor: colors.primary,
+   },
+   chatBubbleOther: {
+     backgroundColor: colors.surface,
+     borderWidth: 1,
  
 EOF
 )
