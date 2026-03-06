@@ -86,24 +86,6 @@ const API =
   Constants.manifest?.extra?.API_URL ||
   "https://bookitgy.onrender.com";
 
-const CLOUDINARY_CLOUD_NAME =
-  process.env.EXPO_PUBLIC_CLOUDINARY_CLOUD_NAME ||
-  Constants.expoConfig?.extra?.CLOUDINARY_CLOUD_NAME ||
-  Constants.manifest?.extra?.CLOUDINARY_CLOUD_NAME ||
-  "";
-
-const CLOUDINARY_UPLOAD_PRESET =
-  process.env.EXPO_PUBLIC_CLOUDINARY_UPLOAD_PRESET ||
-  Constants.expoConfig?.extra?.CLOUDINARY_UPLOAD_PRESET ||
-  Constants.manifest?.extra?.CLOUDINARY_UPLOAD_PRESET ||
-  "";
-
-const CLOUDINARY_BOOKING_MESSAGES_FOLDER =
-  process.env.EXPO_PUBLIC_CLOUDINARY_BOOKING_MESSAGES_FOLDER ||
-  Constants.expoConfig?.extra?.CLOUDINARY_BOOKING_MESSAGES_FOLDER ||
-  Constants.manifest?.extra?.CLOUDINARY_BOOKING_MESSAGES_FOLDER ||
-  "bookitgy/booking_messages";
-
 console.log("### API base URL =", API);
 
 
@@ -3552,7 +3534,7 @@ function BookingChatModal({
     }
   }, [showFlash]);
 
-  const uploadChatImageToCloudinary = useCallback(async (asset) => {
+  const uploadChatImageToAttachmentEndpoint = useCallback(async (asset) => {
     const filename = asset.fileName || asset.uri.split("/").pop() || "chat-image.jpg";
     const ext = (filename.split(".").pop() || "jpg").toLowerCase();
     const mimeType =
@@ -3563,40 +3545,37 @@ function BookingChatModal({
           ? "image/webp"
           : "image/jpeg");
 
-    if (!CLOUDINARY_CLOUD_NAME || !CLOUDINARY_UPLOAD_PRESET) {
-      throw new Error("Chat image upload is not configured.");
-    }
-
     const formData = new FormData();
     formData.append("file", {
       uri: asset.uri,
       name: filename,
       type: mimeType,
     });
-    formData.append("upload_preset", CLOUDINARY_UPLOAD_PRESET);
-    formData.append("folder", CLOUDINARY_BOOKING_MESSAGES_FOLDER);
+    formData.append("booking_id", String(bookingId));
 
-    const uploadUrl = `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/image/upload`;
-    const uploadRes = await fetch(uploadUrl, {
-      method: "POST",
-      body: formData,
+    const uploadRes = await apiClient.post(`/bookings/messages/attachments`, formData, {
+      headers: {
+        "Content-Type": "multipart/form-data",
+      },
     });
 
-    const uploadData = await uploadRes.json();
-    if (!uploadRes.ok || !uploadData?.secure_url) {
-      throw new Error(uploadData?.error?.message || "Image upload failed.");
+    const uploadData = uploadRes?.data;
+    if (!uploadData?.file_url) {
+      throw new Error("Image upload failed.");
     }
 
     return {
       attachment_type: "image",
-      file_url: uploadData.secure_url,
-      mime_type: uploadData.resource_type === "image" ? mimeType : null,
-      file_size_bytes: Number.isFinite(uploadData.bytes) ? uploadData.bytes : null,
-      width: Number.isFinite(uploadData.width) ? uploadData.width : null,
-      height: Number.isFinite(uploadData.height) ? uploadData.height : null,
-      original_filename: uploadData.original_filename || filename,
+      file_url: uploadData.file_url,
+      mime_type: uploadData?.mime_type || mimeType,
+      file_size_bytes: Number.isFinite(uploadData?.file_size_bytes)
+        ? uploadData.file_size_bytes
+        : null,
+      width: Number.isFinite(uploadData?.width) ? uploadData.width : null,
+      height: Number.isFinite(uploadData?.height) ? uploadData.height : null,
+      original_filename: uploadData?.original_filename || filename,
     };
-  }, []);
+  }, [bookingId]);
 
   const handleSend = useCallback(async () => {
     if (sending) return;
@@ -3620,7 +3599,7 @@ function BookingChatModal({
       if (selectedImage?.uri) {
         console.log("[chat-image-send] selected image", { uri: selectedImage.uri });
         console.log("[chat-image-send] upload start", { booking_id: bookingId });
-        attachmentPayload = await uploadChatImageToCloudinary(selectedImage);
+        attachmentPayload = await uploadChatImageToAttachmentEndpoint(selectedImage);
         console.log("[chat-image-send] upload success", {
           file_url: attachmentPayload?.file_url,
           width: attachmentPayload?.width,
@@ -3660,7 +3639,7 @@ function BookingChatModal({
     sending,
     showFlash,
     text,
-    uploadChatImageToCloudinary,
+    uploadChatImageToAttachmentEndpoint,
   ]);
 
   const renderItem = ({ item }) => {
