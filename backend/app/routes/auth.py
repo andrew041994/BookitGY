@@ -1,5 +1,8 @@
 from datetime import datetime, timedelta, timezone
+import base64
+import json
 import logging
+import os
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import RedirectResponse
@@ -96,12 +99,27 @@ def _redact_client_id(value: str | None) -> str:
     return f"{token[:8]}...{token[-8:]}"
 
 
-def _decode_jwt_no_verify(token: str) -> dict:
-    parts = (token or "").split(".")
+_configured_google_client_ids = [x.strip() for x in os.getenv("GOOGLE_CLIENT_IDS", "").split(",") if x.strip()]
+logger.warning(
+    "[google-backend] accepted_client_ids_count=%s accepted_client_ids=%s",
+    len(_configured_google_client_ids),
+    [f"{c[:8]}...{c[-8:]}" for c in _configured_google_client_ids],
+)
+
+
+def _b64url_decode(data: str) -> bytes:
+    data = data.replace("-", "+").replace("_", "/")
+    padding = "=" * (-len(data) % 4)
+    return base64.b64decode(data + padding)
+
+
+def decode_jwt_no_verify(token: str) -> dict:
+    parts = token.split(".")
     if len(parts) != 3:
-        raise ValueError("token is not a JWT")
-    claims = jwt.get_unverified_claims(token)
-    return claims if isinstance(claims, dict) else {}
+        raise ValueError("JWT must have 3 parts")
+    header = json.loads(_b64url_decode(parts[0]).decode("utf-8"))
+    payload = json.loads(_b64url_decode(parts[1]).decode("utf-8"))
+    return {"header": header, "payload": payload}
 
 
 def _decode_jwt_header_no_verify(token: str) -> dict:
@@ -125,8 +143,9 @@ def _verify_google_id_token(id_token: str) -> dict:
         )
 
     try:
-        unverified_claims = _decode_jwt_no_verify(token)
-        unverified_header = _decode_jwt_header_no_verify(token)
+        unverified = decode_jwt_no_verify(token)
+        unverified_claims = unverified.get("payload", {})
+        unverified_header = unverified.get("header", {})
         kid = unverified_header.get("kid")
         if GOOGLE_DEBUG_LOGS:
             logger.info(
@@ -154,6 +173,7 @@ def _verify_google_id_token(id_token: str) -> dict:
         jwks = jwks_resp.json() if jwks_resp.ok else {}
     except Exception as exc:
         if GOOGLE_DEBUG_LOGS:
+            logger.exception("[google-backend] verification_failed error=%s", str(exc))
             logger.info("[google-backend] verification_failed reason=unexpected exception exception=%s detail=%s", exc.__class__.__name__, str(exc))
         raise _google_error(status.HTTP_401_UNAUTHORIZED, "GOOGLE_TOKEN_INVALID")
 
@@ -190,6 +210,7 @@ def _verify_google_id_token(id_token: str) -> dict:
         elif "malformed" in detail or "decode" in detail:
             reason = "malformed token"
         if GOOGLE_DEBUG_LOGS:
+            logger.exception("[google-backend] verification_failed error=%s", str(exc))
             logger.info(
                 "[google-backend] verification_failed reason=%s exception=%s detail=%s",
                 reason,
@@ -644,9 +665,28 @@ def auth_google(
     try:
         id_token = (payload.id_token or "").strip()
         authorization_code = (payload.authorization_code or "").strip()
-        logger.info("[google-backend] /auth/google hit")
-        logger.info("[google-backend] /auth/google id_token_present=%s", bool(id_token))
-        logger.info("[google-backend] /auth/google id_token_length=%s", len(id_token))
+        logger.warning("[google-backend] /auth/google called")
+        logger.warning(
+            "[google-backend] id_token_present=%s id_token_length=%s",
+            bool(id_token),
+            len(id_token) if id_token else 0,
+        )
+
+        if id_token:
+            try:
+                decoded = decode_jwt_no_verify(id_token)
+                logger.warning(
+                    "[google-backend] decoded aud=%s iss=%s azp=%s email=%s exp=%s kid=%s alg=%s",
+                    decoded["payload"].get("aud"),
+                    decoded["payload"].get("iss"),
+                    decoded["payload"].get("azp"),
+                    decoded["payload"].get("email"),
+                    decoded["payload"].get("exp"),
+                    decoded["header"].get("kid"),
+                    decoded["header"].get("alg"),
+                )
+            except Exception as e:
+                logger.warning("[google-backend] decode_failed error=%s", str(e))
 
         if not id_token:
             logger.info("[google-backend] POST /auth/google GOOGLE_TOKEN_REQUIRED")
