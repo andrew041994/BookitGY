@@ -1,0 +1,53 @@
+from datetime import datetime
+
+
+def test_run_billing_job_targets_previous_month(db_session, monkeypatch):
+    from app.workers import cron
+
+    captured = {}
+
+    class _DummyDb:
+        def close(self):
+            return None
+
+    monkeypatch.setattr(cron, "_ensure_tables_initialized", lambda: None)
+    monkeypatch.setattr(cron, "SessionLocal", lambda: _DummyDb())
+    monkeypatch.setattr(cron, "now_guyana", lambda: datetime(2026, 3, 6, 9, 30, 0))
+
+    def _fake_generate_monthly_bills(db, **kwargs):
+        captured.update(kwargs)
+
+    monkeypatch.setattr(cron, "generate_monthly_bills", _fake_generate_monthly_bills)
+
+    cron.run_billing_job()
+
+    assert captured["month"].isoformat() == "2026-02-01"
+    assert captured["target_month"].isoformat() == "2026-02-01"
+
+
+def test_register_cron_jobs_schedules_billing_monthly(db_session):
+    from app.workers import cron
+
+    class _DummyScheduler:
+        def __init__(self):
+            self.jobs = []
+
+        def add_job(self, func, trigger, **kwargs):
+            self.jobs.append((func, trigger, kwargs))
+
+    scheduler = _DummyScheduler()
+
+    cron.registerCronJobs(scheduler)
+
+    billing_jobs = [
+        (trigger, kwargs)
+        for func, trigger, kwargs in scheduler.jobs
+        if func == cron.run_billing_job
+    ]
+
+    assert billing_jobs == [
+        (
+            "cron",
+            {"day": 1, "hour": 0, "minute": 10},
+        )
+    ]

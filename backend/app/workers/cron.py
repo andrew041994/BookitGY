@@ -49,20 +49,20 @@ def run_billing_job(
     resend_email: bool = False,
 ):
     """
-    Recalculate monthly bills for all providers based on completed bookings.
+    Generate monthly statements for the *previous* billing month.
 
-    This uses today's date to determine the current month and will:
-    - Only count bookings that have already ended.
-    - Update or create a Bill row for this month per provider.
+    This is intentionally closed-month only so restarts/redeploys during a
+    month cannot produce or email in-progress statements.
     """
     _ensure_tables_initialized()
     db: Session = SessionLocal()
     try:
         today = now_guyana().date()
+        previous_month = (today.replace(day=1) - timedelta(days=1)).replace(day=1)
         generate_monthly_bills(
             db,
-            month=today,
-            target_month=target_month,
+            month=previous_month,
+            target_month=target_month or previous_month,
             force_regen=force_regen,
             resend_email=resend_email,
         )
@@ -110,8 +110,8 @@ def registerCronJobs(scheduler):
     # 1-hour reminders: run every minute
     scheduler.add_job(send_upcoming_reminders, "interval", minutes=1)
 
-    # Billing snapshot: update fees every 1 minutes
-    scheduler.add_job(run_billing_job, "interval", minutes=1)
+    # Monthly statements: run on the 1st for the previous month's activity
+    scheduler.add_job(run_billing_job, "cron", day=1, hour=0, minute=10)
 
     # Auto-complete finished bookings: run frequently to keep statuses current
     scheduler.add_job(auto_complete_finished_bookings_job, "interval", minutes=1)

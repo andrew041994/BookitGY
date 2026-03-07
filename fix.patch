@@ -1,60 +1,63 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
-diff --git a/mobile/App.js b/mobile/App.js
-index a5bab2337a4ee798b3d1d34c1d92c34b3c010165..64f0bb7cc6d8380e35c6f6647f493c10e7718519 100644
---- a/mobile/App.js
-+++ b/mobile/App.js
-@@ -11041,50 +11041,51 @@ bookingTime: {
- bookingService: {
-   fontSize: 16,
-   fontWeight: "600",
-   color: colors.textPrimary,
-   marginTop: 2,
- },
- bookingMeta: {
-   fontSize: 13,
-   color: colors.textSecondary,
-   marginTop: 2,
- },
- bookingActions: {
-   alignItems: "flex-end",
- },
- bookingEdit: {
-   fontSize: 12,
-   color: colors.primary,
- },
- bookingCancel: {
-   fontSize: 12,
-   color: colors.error,
-   marginTop: 4,
- },
- bookingMessageButton: {
-   marginLeft: 12,
-+  marginTop: 10,
- },
- 
-   bookingNavigate: {
-     fontSize: 12,
-     color: colors.primary,
-     marginTop: 4,
-   },
- 
- //   navigateButtonText: {
- //   color: "#007AFF",      // or your theme color
- //   fontSize: 16,
- //   fontWeight: "600",
- //   textDecorationLine: "none",  // remove underline / link style
- // },
- 
- // navigateButton: {
- //   paddingHorizontal: 14,
- //   paddingVertical: 8,
- //   backgroundColor: "#E6F5FF",
- //   borderRadius: 8,
- //   alignSelf: "flex-start",
- // },
- 
- navigateButtonContainer: {
-   marginTop: 12,
+diff --git a/backend/tests/test_billing_cron.py b/backend/tests/test_billing_cron.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..9f18a95ffa7ba1bed979029d43a4f6215d91808f
+--- /dev/null
++++ b/backend/tests/test_billing_cron.py
+@@ -0,0 +1,53 @@
++from datetime import datetime
++
++
++def test_run_billing_job_targets_previous_month(db_session, monkeypatch):
++    from app.workers import cron
++
++    captured = {}
++
++    class _DummyDb:
++        def close(self):
++            return None
++
++    monkeypatch.setattr(cron, "_ensure_tables_initialized", lambda: None)
++    monkeypatch.setattr(cron, "SessionLocal", lambda: _DummyDb())
++    monkeypatch.setattr(cron, "now_guyana", lambda: datetime(2026, 3, 6, 9, 30, 0))
++
++    def _fake_generate_monthly_bills(db, **kwargs):
++        captured.update(kwargs)
++
++    monkeypatch.setattr(cron, "generate_monthly_bills", _fake_generate_monthly_bills)
++
++    cron.run_billing_job()
++
++    assert captured["month"].isoformat() == "2026-02-01"
++    assert captured["target_month"].isoformat() == "2026-02-01"
++
++
++def test_register_cron_jobs_schedules_billing_monthly(db_session):
++    from app.workers import cron
++
++    class _DummyScheduler:
++        def __init__(self):
++            self.jobs = []
++
++        def add_job(self, func, trigger, **kwargs):
++            self.jobs.append((func, trigger, kwargs))
++
++    scheduler = _DummyScheduler()
++
++    cron.registerCronJobs(scheduler)
++
++    billing_jobs = [
++        (trigger, kwargs)
++        for func, trigger, kwargs in scheduler.jobs
++        if func == cron.run_billing_job
++    ]
++
++    assert billing_jobs == [
++        (
++            "cron",
++            {"day": 1, "hour": 0, "minute": 10},
++        )
++    ]
  
 EOF
 )
