@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import React, { useState, useEffect, useCallback, useMemo, useRef, useLayoutEffect } from "react";
 
 import {
   Text,
@@ -2816,6 +2816,8 @@ function ProfileScreen({ authLoading, setToken, showFlash, token }) {
 function ClientHomeScreen({
   navigation,
   token,
+  unreadNotificationCount = 0,
+  onPressNotifications,
   favoriteProviders,
   favoriteIds,
   favoritesLoading,
@@ -2841,6 +2843,17 @@ function ClientHomeScreen({
     () => ["Barber", "Hair", "Nails", "Massage", "Makeup", "Lash", "Tutor"],
     []
   );
+
+  useLayoutEffect(() => {
+    navigation.setOptions({
+      headerRight: () => (
+        <NotificationBell
+          unreadCount={unreadNotificationCount}
+          onPress={onPressNotifications || (() => navigation.navigate('Notifications'))}
+        />
+      ),
+    });
+  }, [navigation, onPressNotifications, unreadNotificationCount]);
 
   // adding console log
   console.log("[home] token username fields", {
@@ -5235,7 +5248,15 @@ function SearchScreen({ token, showFlash, navigation, route, toggleFavorite, isF
 
 
 
-function ProviderDashboardScreen({ token, showFlash, pendingChatConversationId, clearPendingChatConversationId }) {
+function ProviderDashboardScreen({
+  navigation,
+  token,
+  showFlash,
+  unreadNotificationCount = 0,
+  onPressNotifications,
+  pendingChatConversationId,
+  clearPendingChatConversationId,
+}) {
   // const providerLabel = profile?.full_name || "Provider";
   const [services, setServices] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -5300,6 +5321,17 @@ const providerUsername =
   token?.user?.username ||
   token?.username;
 const providerProfileLink = buildProviderPublicLink(providerUsername);
+
+useLayoutEffect(() => {
+  navigation.setOptions({
+    headerRight: () => (
+      <NotificationBell
+        unreadCount={unreadNotificationCount}
+        onPress={onPressNotifications || (() => navigation.navigate('Notifications'))}
+      />
+    ),
+  });
+}, [navigation, onPressNotifications, unreadNotificationCount]);
 
 const parseServiceNumber = useCallback((value) => {
   const normalized = String(value || "").replace(/[,\s]/g, "");
@@ -9352,12 +9384,6 @@ function MainApp({
                 {route.name}
               </Text>
             ),
-            headerRight: route.name === 'Dashboard' ? () => (
-              <NotificationBell
-                unreadCount={unreadNotificationCount}
-                onPress={() => navigationRef?.current?.navigate('Notifications')}
-              />
-            ) : undefined,
             tabBarIcon: ({ color, focused }) => {
               let iconName = "home-outline";
 
@@ -9401,6 +9427,8 @@ function MainApp({
                 {...props}
                 token={token}
                 showFlash={showFlash}
+                unreadNotificationCount={unreadNotificationCount}
+                onPressNotifications={() => navigationRef?.current?.navigate('Notifications')}
                 pendingChatConversationId={pendingChatConversationId}
                 clearPendingChatConversationId={() => setPendingChatConversationId(null)}
               />
@@ -9493,12 +9521,6 @@ function MainApp({
                   {route.name}
                 </Text>
               ),
-              headerRight: route.name === 'Home' ? () => (
-              <NotificationBell
-                unreadCount={unreadNotificationCount}
-                onPress={() => navigationRef?.current?.navigate('Notifications')}
-              />
-            ) : undefined,
             tabBarIcon: ({ color, focused }) => {
                 let iconName;
 
@@ -9542,6 +9564,8 @@ function MainApp({
                 <ClientHomeScreen
                   navigation={navigation}
                   token={token}
+                  unreadNotificationCount={unreadNotificationCount}
+                  onPressNotifications={() => navigationRef?.current?.navigate('Notifications')}
                   favoriteProviders={favoriteProviders}
                   favoriteIds={favoriteIds}
                   favoritesLoading={favoritesLoading}
