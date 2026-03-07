@@ -9276,6 +9276,7 @@ function MainApp({
   setPendingChatConversationId,
 }) {
   const [unreadNotificationCount, setUnreadNotificationCount] = useState(0);
+  const unreadRefreshDebounceRef = useRef(null);
 
   const refreshUnreadCount = useCallback(async () => {
     if (!token?.token) {
@@ -9292,35 +9293,86 @@ function MainApp({
     }
   }, [token?.token]);
 
-  useEffect(() => {
-    refreshUnreadCount();
+
+  const triggerUnreadRefresh = useCallback((reason = 'unknown') => {
+    if (unreadRefreshDebounceRef.current) {
+      clearTimeout(unreadRefreshDebounceRef.current);
+    }
+
+    unreadRefreshDebounceRef.current = setTimeout(() => {
+      console.log(`[notifications] refreshUnreadCount triggered (${reason})`);
+      refreshUnreadCount();
+    }, 250);
   }, [refreshUnreadCount]);
+
+  useEffect(() => {
+    triggerUnreadRefresh('initial-load');
+  }, [triggerUnreadRefresh]);
+
+  useEffect(() => {
+    return () => {
+      if (unreadRefreshDebounceRef.current) {
+        clearTimeout(unreadRefreshDebounceRef.current);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    console.log('[notifications] unreadNotificationCount changed:', unreadNotificationCount);
+  }, [unreadNotificationCount]);
 
   useEffect(() => {
     if (!token?.token) return;
 
-    const receivedSubscription = Notifications.addNotificationReceivedListener(() => {
-      refreshUnreadCount();
+    console.log('[notifications] Registering foreground notification listeners in MainApp');
+
+    const receivedSubscription = Notifications.addNotificationReceivedListener((notification) => {
+      const data = notification?.request?.content?.data || {};
+      console.log('[notifications] Foreground push received:', data);
+      triggerUnreadRefresh('foreground-received');
+    });
+
+    const responseSubscription = Notifications.addNotificationResponseReceivedListener((response) => {
+      const data = response?.notification?.request?.content?.data || {};
+      console.log('[notifications] Notification response received:', data);
+      triggerUnreadRefresh('notification-response');
     });
 
     return () => {
       receivedSubscription?.remove?.();
+      responseSubscription?.remove?.();
     };
-  }, [refreshUnreadCount, token?.token]);
+  }, [token?.token, triggerUnreadRefresh]);
 
   useEffect(() => {
     if (!token?.token) return;
 
     const appStateSubscription = AppState.addEventListener('change', (nextAppState) => {
       if (nextAppState === 'active') {
-        refreshUnreadCount();
+        triggerUnreadRefresh('app-state-active');
       }
     });
 
     return () => {
       appStateSubscription?.remove?.();
     };
-  }, [refreshUnreadCount, token?.token]);
+  }, [token?.token, triggerUnreadRefresh]);
+
+  useEffect(() => {
+    if (!token?.token) return;
+
+    const interval = setInterval(() => {
+      if (AppState.currentState !== 'active') return;
+
+      const currentRouteName = navigationRef?.current?.getCurrentRoute?.()?.name;
+      const isHomeDashboard = currentRouteName === 'Home' || currentRouteName === 'Dashboard';
+      if (!isHomeDashboard) return;
+
+      triggerUnreadRefresh(`active-${currentRouteName}-poll`);
+    }, 20000);
+
+    return () => clearInterval(interval);
+  }, [navigationRef, token?.token, triggerUnreadRefresh]);
 
   const {
     favoriteIds,

@@ -1,453 +1,163 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
 diff --git a/mobile/App.js b/mobile/App.js
-index 9b149d113085b9f15d3177744378756f321d0350..ba67095ee42850b59a6494db3adf6fa8a4fd400e 100644
+index ba67095ee42850b59a6494db3adf6fa8a4fd400e..9005f356548e02e6f7a798fded351e3c2cf800f2 100644
 --- a/mobile/App.js
 +++ b/mobile/App.js
-@@ -1,26 +1,26 @@
--import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
-+import React, { useState, useEffect, useCallback, useMemo, useRef, useLayoutEffect } from "react";
- 
- import {
-   Text,
-   View,
-   StyleSheet,
-   TextInput,
-   Button,
-   Alert,
-   ActivityIndicator,
-   ScrollView,
-   TouchableOpacity,
-   Switch,
-   Linking,
-   Platform,
-   Image,
-   KeyboardAvoidingView,
-   TouchableWithoutFeedback,
-   Keyboard,
-   Pressable,
-   RefreshControl,
-   Share,
-   Modal,
-   FlatList,
-   AppState,
- } from "react-native";
-@@ -2794,76 +2794,89 @@ function ProfileScreen({ authLoading, setToken, showFlash, token }) {
-                   >
-                     {deleteLoading ? (
-                       <ActivityIndicator color={colors.error} />
-                     ) : (
-                       <Text style={styles.modalDeleteButtonText}>Delete</Text>
-                     )}
-                   </TouchableOpacity>
+@@ -9254,95 +9254,147 @@ function NotificationsScreen({
+                   <Text style={styles.notificationText}>{item.body}</Text>
+                   <Text style={styles.serviceMeta}>{formatTimeAgo(item.created_at)}</Text>
                  </View>
-               </KeyboardAvoidingView>
-             </TouchableWithoutFeedback>
-           </View>
-         </TouchableWithoutFeedback>
-       </Modal>
- 
-     </ScrollView>
-     
+                 {!item.is_read ? <View style={styles.notificationUnreadDot} /> : null}
+               </TouchableOpacity>
+             )}
+           />
+         )}
+       </View>
+     </SafeAreaView>
    );
-   
  }
  
- 
- 
- function ClientHomeScreen({
-   navigation,
+ // Tabs after login
+ function MainApp({
+   authLoading,
    token,
-+  unreadNotificationCount = 0,
-+  onPressNotifications,
-   favoriteProviders,
-   favoriteIds,
-   favoritesLoading,
-   toggleFavorite,
-   isFavorite,
-   syncFavoritesFromList,
-   refreshFavoriteProviders,
-   }) {
-  const [nearbyProviders, setNearbyProviders] = useState([]);
-   const [currentProvider, setCurrentProvider] = useState(null);
-   const [nearbyLoading, setNearbyLoading] = useState(true);
-   const [nearbyError, setNearbyError] = useState("");
-   const [clientLocation, setClientLocation] = useState(null);
-   const [locationDenied, setLocationDenied] = useState(false);
-   const [refreshing, setRefreshing] = useState(false);
-   const [searchText, setSearchText] = useState("");
-   const insets = useSafeAreaInsets();
-   const headerPaddingVertical = HEADER_VERTICAL_PADDING;
-   // const headerMinHeight =
-   //   insets.top + HEADER_LOGO_HEIGHT + HEADER_VERTICAL_PADDING * 2;
+   setToken,
+   showFlash,
+   navigationRef,
+   setNavReady,
+   pendingChatConversationId,
+   setPendingChatConversationId,
+ }) {
+   const [unreadNotificationCount, setUnreadNotificationCount] = useState(0);
++  const unreadRefreshDebounceRef = useRef(null);
  
-   const quickCategories = useMemo(
-     () => ["Barber", "Hair", "Nails", "Massage", "Makeup", "Lash", "Tutor"],
-     []
-   );
- 
-+  useLayoutEffect(() => {
-+    navigation.setOptions({
-+      headerRight: () => (
-+        <NotificationBell
-+          unreadCount={unreadNotificationCount}
-+          onPress={onPressNotifications || (() => navigation.navigate('Notifications'))}
-+        />
-+      ),
-+    });
-+  }, [navigation, onPressNotifications, unreadNotificationCount]);
-+
-   // adding console log
-   console.log("[home] token username fields", {
-     tokenUsername: token?.username,
-     tokenEmail: token?.email,
-     tokenKeys: token ? Object.keys(token) : null,
-     tokenUserKeys: token?.user ? Object.keys(token.user) : null,
-   });
-   const greetingName = useMemo(() => {
-     const username = token?.user?.username || token?.username;
-     if (username?.trim()) return username.trim();
-     const emailPrefix = token?.email?.split("@")?.[0];
-     return emailPrefix?.trim() || "";
-   }, [token?.email, token?.user?.username, token?.username]);
- 
-   const greetingText = greetingName ? `Hi, ${greetingName}` : "Hi";
- 
-   const haversineKm = (lat1, lon1, lat2, lon2) => {
-     if (
-       lat1 == null ||
-       lon1 == null ||
-       lat2 == null ||
-       lon2 == null
-     ) {
-       return null;
+   const refreshUnreadCount = useCallback(async () => {
+     if (!token?.token) {
+       setUnreadNotificationCount(0);
+       return;
      }
-@@ -5213,51 +5226,59 @@ function SearchScreen({ token, showFlash, navigation, route, toggleFavorite, isF
-                   <View style={{ marginTop: 12, marginBottom: 20 }}>
-                     <TouchableOpacity
-                       style={[
-                         styles.bookButton,
-                         (!selectedSlot || bookingLoading) && styles.bookButtonDisabled,
-                       ]}
-                       disabled={!selectedSlot || bookingLoading}
-                       onPress={handleBookAppointment}
-                     >
-                       <Text style={styles.bookButtonLabel}>
-                         {bookingLoading ? "Booking..." : "Book Appointment"}
-                       </Text>
-                     </TouchableOpacity>
-                   </View>
-                 )}
-               </ScrollView>
-               </SafeAreaView>
-          );
-       }
  
+     try {
+       const res = await apiClient.get('/notifications/me/unread-count');
+       const count = Number(res?.data?.unread_count || 0);
+       setUnreadNotificationCount(Number.isFinite(count) ? count : 0);
+     } catch (err) {
+       console.log('Error loading unread notification count', err?.response?.data || err?.message || err);
+     }
+   }, [token?.token]);
  
- 
- 
- 
- 
--function ProviderDashboardScreen({ token, showFlash, pendingChatConversationId, clearPendingChatConversationId }) {
-+function ProviderDashboardScreen({
-+  navigation,
-+  token,
-+  showFlash,
-+  unreadNotificationCount = 0,
-+  onPressNotifications,
-+  pendingChatConversationId,
-+  clearPendingChatConversationId,
-+}) {
-   // const providerLabel = profile?.full_name || "Provider";
-   const [services, setServices] = useState([]);
-   const [loading, setLoading] = useState(true);
-   const [servicesError, setServicesError] = useState("");
-   const [adding, setAdding] = useState(false);
-   const [newName, setNewName] = useState("");
-   const [newPrice, setNewPrice] = useState("");
-   const [newDuration, setNewDuration] = useState("30");
-   const [newDescription, setNewDescription] = useState("");
-   const [isSavingService, setIsSavingService] = useState(false);
-   const [bookings, setBookings] = useState([]);
-   const [bookingsLoading, setBookingsLoading] = useState(true);
-   const [bookingsError, setBookingsError] = useState("");
-   const [workingHours, setWorkingHours] = useState([]);
-   const [hoursLoading, setHoursLoading] = useState(false);
-   const [hoursError, setHoursError] = useState("");
-   const [showHours, setShowHours] = useState(false);
-   const [hoursFlash, setHoursFlash] = useState(null);
-   const [refreshing, setRefreshing] = useState(false);
-   const [chatBooking, setChatBooking] = useState(null);
-   const [showProfileEditor, setShowProfileEditor] = useState(false);
-   const [profileLoading, setProfileLoading] = useState(false);
-   const [profileError, setProfileError] = useState("");
-   const [profile, setProfile] = useState({
-     full_name: "",
-@@ -5279,50 +5300,61 @@ const providerLabel =
- 
- const [customProfession, setCustomProfession] = useState("");
- const [providerSummary, setProviderSummary] = useState(null);
- const [todayBookings, setTodayBookings] = useState([]);
- const [todayLoading, setTodayLoading] = useState(false);
- const [todayError, setTodayError] = useState("");
- const [upcomingBookings, setUpcomingBookings] = useState([]);
- const [upcomingLoading, setUpcomingLoading] = useState(false);
- const [upcomingError, setUpcomingError] = useState("");
- const [providerLocation, setProviderLocation] = useState(null);
- const [focusedHoursField, setFocusedHoursField] = useState(null);
- const [avatarUrl, setAvatarUrl] = useState(null);
- // Catalog (portfolio images)
- const [catalog, setCatalog] = useState([]);
- const [catalogLoading, setCatalogLoading] = useState(false);
- const [catalogError, setCatalogError] = useState("");
- const [catalogUploading, setCatalogUploading] = useState(false);
- const isProviderUser = token?.isProvider || token?.is_provider;
- const providerUsername =
-   provider?.user?.username ||
-   profile?.username ||
-   token?.user?.username ||
-   token?.username;
- const providerProfileLink = buildProviderPublicLink(providerUsername);
- 
-+useLayoutEffect(() => {
-+  navigation.setOptions({
-+    headerRight: () => (
-+      <NotificationBell
-+        unreadCount={unreadNotificationCount}
-+        onPress={onPressNotifications || (() => navigation.navigate('Notifications'))}
-+      />
-+    ),
-+  });
-+}, [navigation, onPressNotifications, unreadNotificationCount]);
+-  useEffect(() => {
+-    refreshUnreadCount();
 +
- const parseServiceNumber = useCallback((value) => {
-   const normalized = String(value || "").replace(/[,\s]/g, "");
-   const numberValue = Number(normalized);
-   return Number.isFinite(numberValue) ? numberValue : null;
- }, []);
++  const triggerUnreadRefresh = useCallback((reason = 'unknown') => {
++    if (unreadRefreshDebounceRef.current) {
++      clearTimeout(unreadRefreshDebounceRef.current);
++    }
++
++    unreadRefreshDebounceRef.current = setTimeout(() => {
++      console.log(`[notifications] refreshUnreadCount triggered (${reason})`);
++      refreshUnreadCount();
++    }, 250);
+   }, [refreshUnreadCount]);
  
- const validateServiceFields = useCallback((name, price, duration) => {
-   const errors = { name: "", price: "", duration: "" };
-   const trimmedName = String(name || "").trim();
-   const priceNumber = parseServiceNumber(price);
-   const durationNumber = parseServiceNumber(duration);
++  useEffect(() => {
++    triggerUnreadRefresh('initial-load');
++  }, [triggerUnreadRefresh]);
++
++  useEffect(() => {
++    return () => {
++      if (unreadRefreshDebounceRef.current) {
++        clearTimeout(unreadRefreshDebounceRef.current);
++      }
++    };
++  }, []);
++
++  useEffect(() => {
++    console.log('[notifications] unreadNotificationCount changed:', unreadNotificationCount);
++  }, [unreadNotificationCount]);
++
+   useEffect(() => {
+     if (!token?.token) return;
  
-   if (!trimmedName) {
-     errors.name = "Service name is required.";
-   }
+-    const receivedSubscription = Notifications.addNotificationReceivedListener(() => {
+-      refreshUnreadCount();
++    console.log('[notifications] Registering foreground notification listeners in MainApp');
++
++    const receivedSubscription = Notifications.addNotificationReceivedListener((notification) => {
++      const data = notification?.request?.content?.data || {};
++      console.log('[notifications] Foreground push received:', data);
++      triggerUnreadRefresh('foreground-received');
++    });
++
++    const responseSubscription = Notifications.addNotificationResponseReceivedListener((response) => {
++      const data = response?.notification?.request?.content?.data || {};
++      console.log('[notifications] Notification response received:', data);
++      triggerUnreadRefresh('notification-response');
+     });
  
-   if (!priceNumber || priceNumber <= 0) {
-     errors.price = "Enter a price greater than 0.";
-   }
+     return () => {
+       receivedSubscription?.remove?.();
++      responseSubscription?.remove?.();
+     };
+-  }, [refreshUnreadCount, token?.token]);
++  }, [token?.token, triggerUnreadRefresh]);
  
-   if (!durationNumber || durationNumber <= 0) {
-     errors.duration = "Enter a duration greater than 0.";
-   }
+   useEffect(() => {
+     if (!token?.token) return;
  
-   return errors;
-@@ -9330,99 +9362,95 @@ function MainApp({
-             headerShadowVisible: false,
-             tabBarStyle: {
-               backgroundColor: colors.surface,
-               height: 76,
-               paddingBottom: Platform.OS === "ios" ? 24 : 12,
-               paddingTop: 8,
-               borderTopWidth: 1,
-               borderTopColor: colors.border,
-               shadowColor: "#000",
-               shadowOpacity: 0.08,
-               shadowRadius: 12,
-               shadowOffset: { width: 0, height: -2 },
-               elevation: 8,
-             },
-             tabBarLabel: ({ focused, color }) => (
-               <Text
-                 style={{
-                   color,
-                   fontSize: 12,
-                   fontWeight: focused ? "700" : "500",
-                 }}
-               >
-                 {route.name}
-               </Text>
-             ),
--            headerRight: route.name === 'Dashboard' ? () => (
--              <NotificationBell
--                unreadCount={unreadNotificationCount}
--                onPress={() => navigationRef?.current?.navigate('Notifications')}
--              />
--            ) : undefined,
-             tabBarIcon: ({ color, focused }) => {
-               let iconName = "home-outline";
+     const appStateSubscription = AppState.addEventListener('change', (nextAppState) => {
+       if (nextAppState === 'active') {
+-        refreshUnreadCount();
++        triggerUnreadRefresh('app-state-active');
+       }
+     });
  
-               if (route.name === "Dashboard") iconName = "speedometer-outline";
-               else if (route.name === "Calendar") iconName = "calendar-outline";
-               else if (route.name === "Billing") iconName = "card-outline";
-               else if (route.name === "Profile") iconName = "person-outline";
+     return () => {
+       appStateSubscription?.remove?.();
+     };
+-  }, [refreshUnreadCount, token?.token]);
++  }, [token?.token, triggerUnreadRefresh]);
++
++  useEffect(() => {
++    if (!token?.token) return;
++
++    const interval = setInterval(() => {
++      if (AppState.currentState !== 'active') return;
++
++      const currentRouteName = navigationRef?.current?.getCurrentRoute?.()?.name;
++      const isHomeDashboard = currentRouteName === 'Home' || currentRouteName === 'Dashboard';
++      if (!isHomeDashboard) return;
++
++      triggerUnreadRefresh(`active-${currentRouteName}-poll`);
++    }, 20000);
++
++    return () => clearInterval(interval);
++  }, [navigationRef, token?.token, triggerUnreadRefresh]);
  
-               if (focused) {
-                 iconName = iconName.replace("-outline", "");
-               }
+   const {
+     favoriteIds,
+     favoriteProviders,
+     favoritesLoading,
+     toggleFavorite,
+     isFavorite,
+     syncFavoritesFromList,
+     refreshFavoriteProviders,
+   } = useFavoriteProviders(token?.email || token?.userId);
+   return (
  
-               return (
-                 <View
-                   style={{
-                     padding: 6,
-                     borderRadius: 16,
-                     backgroundColor: focused ? colors.primarySoft : "transparent",
-                   }}
-                 >
-                   <Ionicons
-                     name={iconName}
-                     size={focused ? 26 : 22}
-                     color={color}
-                   />
-                 </View>
-               );
-             },
-           })}
-         >
-           <Tab.Screen
-             name="Dashboard"
-             listeners={{
-               focus: () => {
-                 refreshUnreadCount();
-               },
-             }}
-           >
-             {(props) => (
-               <ProviderDashboardScreen
-                 {...props}
-                 token={token}
-                 showFlash={showFlash}
-+                unreadNotificationCount={unreadNotificationCount}
-+                onPressNotifications={() => navigationRef?.current?.navigate('Notifications')}
-                 pendingChatConversationId={pendingChatConversationId}
-                 clearPendingChatConversationId={() => setPendingChatConversationId(null)}
-               />
-             )}
-           </Tab.Screen>
- 
-           <Tab.Screen name="Calendar">
-             {(props) => (
-               <ProviderCalendarScreen {...props} token={token} showFlash={showFlash} />
-             )}
-           </Tab.Screen>
- 
-           <Tab.Screen name="Billing">
-             {(props) => (
-               <ProviderBillingScreen {...props} token={token} showFlash={showFlash} />
-             )}
-           </Tab.Screen>
- 
- 
-           <Tab.Screen
-             name="Notifications"
-             options={{
-               headerShown: false,
-               tabBarButton: () => null,
-             }}
-@@ -9471,99 +9499,95 @@ function MainApp({
-               headerShadowVisible: false,
-               tabBarStyle: {
-                 backgroundColor: colors.surface,
-                 height: 76,
-                 paddingBottom: Platform.OS === "ios" ? 24 : 12,
-                 paddingTop: 8,
-                 borderTopWidth: 1,
-                 borderTopColor: colors.border,
-                 shadowColor: "#000",
-                 shadowOpacity: 0.08,
-                 shadowRadius: 12,
-                 shadowOffset: { width: 0, height: -2 },
-                 elevation: 8,
-               },
-               tabBarLabel: ({ focused, color }) => (
-                 <Text
-                   style={{
-                     color,
-                     fontSize: 12,
-                     fontWeight: focused ? "700" : "500",
-                   }}
-                 >
-                   {route.name}
-                 </Text>
-               ),
--              headerRight: route.name === 'Home' ? () => (
--              <NotificationBell
--                unreadCount={unreadNotificationCount}
--                onPress={() => navigationRef?.current?.navigate('Notifications')}
--              />
--            ) : undefined,
-             tabBarIcon: ({ color, focused }) => {
-                 let iconName;
- 
-                 if (route.name === "Home") iconName = "home-outline";
-                 else if (route.name === "Search") iconName = "search-outline";
-                 else if (route.name === "Appointments") iconName = "calendar-outline";
-                 else if (route.name === "Profile") iconName = "person-outline";
- 
-                 if (focused) {
-                   iconName = iconName.replace("-outline", "");
-                 }
- 
-                 return (
-                   <View
-                     style={{
-                       padding: 6,
-                       borderRadius: 16,
-                       backgroundColor: focused ? colors.primarySoft : "transparent",
-                     }}
-                   >
-                     <Ionicons
-                       name={iconName}
-                       size={focused ? 26 : 22}
-                       color={color}
-                     />
-                   </View>
-                 );
-               },
-             })}
-             initialRouteName="Home"
-           >
-             <Tab.Screen
-               name="Home"
-               listeners={{
-                 focus: () => {
-                   refreshUnreadCount();
-                 },
-               }}
-             >
-               {({ navigation }) => (
-                 <ClientHomeScreen
-                   navigation={navigation}
-                   token={token}
-+                  unreadNotificationCount={unreadNotificationCount}
-+                  onPressNotifications={() => navigationRef?.current?.navigate('Notifications')}
-                   favoriteProviders={favoriteProviders}
-                   favoriteIds={favoriteIds}
-                   favoritesLoading={favoritesLoading}
-                   toggleFavorite={toggleFavorite}
-                   isFavorite={isFavorite}
-                   syncFavoritesFromList={syncFavoritesFromList}
-                   refreshFavoriteProviders={refreshFavoriteProviders}
-                 />
-               )}
-             </Tab.Screen>
-             <Tab.Screen name="Search">
-               {({ navigation, route }) => (
-                 <SearchScreen
-                   token={token}
-                   showFlash={showFlash}
-                   navigation={navigation}
-                   route={route}
-                   toggleFavorite={toggleFavorite}
-                   isFavorite={isFavorite}
-                   syncFavoritesFromList={syncFavoritesFromList}
-                 />
-               )}
-             </Tab.Screen>
-             <Tab.Screen
-               name="Notifications"
+     <NavigationContainer
+       ref={navigationRef}
+       onReady={() => {
+         console.log("[nav] ready");
+         setNavReady(true);
+       }}
+     >
+       {token.isProvider ? (
+         // 👇 Provider view: Dashboard + Billing + Profile
+         <Tab.Navigator
+           initialRouteName="Dashboard"
+           screenOptions={({ route }) => ({
+             headerShown: route.name === 'Dashboard',
  
 EOF
 )
