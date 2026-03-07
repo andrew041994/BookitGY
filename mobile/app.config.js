@@ -18,6 +18,7 @@ export default {
   assetBundlePatterns: ["**/*"],
   newArchEnabled: false,
   plugins: [
+    "expo-notifications",
     "expo-web-browser",
     "./plugins/remove-ad-id-permission",
     [
@@ -82,7 +83,7 @@ export default {
     "android.permission.ACCESS_ADSERVICES_CUSTOM_AUDIENCE",
     "android.permission.ACCESS_ADSERVICES_TOPICS",
   ],
-    
+    "useNextNotificationsApi": true,
     intentFilters: [
       {
         action: "VIEW",
