@@ -1,9 +1,10 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
 diff --git a/mobile/App.js b/mobile/App.js
-index ab38fa1cec160ede93625245173776acc93cac26..5df9b240833522ca1abe3ca737a7b0134a9ccddf 100644
+index 5df9b240833522ca1abe3ca737a7b0134a9ccddf..9b149d113085b9f15d3177744378756f321d0350 100644
 --- a/mobile/App.js
 +++ b/mobile/App.js
-@@ -9367,99 +9367,101 @@ function MainApp({
+@@ -9366,65 +9366,67 @@ function MainApp({
+               else if (route.name === "Billing") iconName = "card-outline";
                else if (route.name === "Profile") iconName = "person-outline";
  
                if (focused) {
@@ -28,37 +29,40 @@ index ab38fa1cec160ede93625245173776acc93cac26..5df9b240833522ca1abe3ca737a7b013
              },
            })}
          >
-           <Tab.Screen name="Dashboard">
--            {() => (
-+            {(props) => (
+-          <Tab.Screen name="Dashboard">
++          <Tab.Screen
++            name="Dashboard"
++            listeners={{
++              focus: () => {
++                refreshUnreadCount();
++              },
++            }}
++          >
+             {(props) => (
                <ProviderDashboardScreen
-+                {...props}
+                 {...props}
                  token={token}
                  showFlash={showFlash}
                  pendingChatConversationId={pendingChatConversationId}
                  clearPendingChatConversationId={() => setPendingChatConversationId(null)}
                />
              )}
-             listeners={{
-               focus: () => {
-                 refreshUnreadCount();
-               },
-             }}
+-            listeners={{
+-              focus: () => {
+-                refreshUnreadCount();
+-              },
+-            }}
            </Tab.Screen>
  
            <Tab.Screen name="Calendar">
--            {() => (
--              <ProviderCalendarScreen token={token} showFlash={showFlash} />
-+            {(props) => (
-+              <ProviderCalendarScreen {...props} token={token} showFlash={showFlash} />
+             {(props) => (
+               <ProviderCalendarScreen {...props} token={token} showFlash={showFlash} />
              )}
            </Tab.Screen>
  
            <Tab.Screen name="Billing">
--            {() => (
--              <ProviderBillingScreen token={token} showFlash={showFlash} />
-+            {(props) => (
-+              <ProviderBillingScreen {...props} token={token} showFlash={showFlash} />
+             {(props) => (
+               <ProviderBillingScreen {...props} token={token} showFlash={showFlash} />
              )}
            </Tab.Screen>
  
@@ -73,45 +77,76 @@ index ab38fa1cec160ede93625245173776acc93cac26..5df9b240833522ca1abe3ca737a7b013
              {({ navigation }) => (
                <NotificationsScreen
                  navigation={navigation}
-                 refreshUnreadCount={refreshUnreadCount}
-                 setPendingChatConversationId={setPendingChatConversationId}
-                 isProvider={true}
-               />
-             )}
-           </Tab.Screen>
+@@ -9506,69 +9508,71 @@ function MainApp({
+                 else if (route.name === "Profile") iconName = "person-outline";
  
+                 if (focused) {
+                   iconName = iconName.replace("-outline", "");
+                 }
  
-           <Tab.Screen name="Profile">
--            {() => (
-+            {(props) => (
-               <ProfileScreen
-+                {...props}
-                 authLoading={authLoading}
-                 token={token}
-                 setToken={setToken}
-                 showFlash={showFlash}
-               />
-             )}
-           </Tab.Screen>
-         </Tab.Navigator>
-       ) : (
-         // 👇 Client view: Profile + Search
-             <Tab.Navigator
-             screenOptions={({ route }) => ({
-               headerShown: route.name === "Home",
-               sceneContainerStyle: {
-                 backgroundColor: colors.background,
+                 return (
+                   <View
+                     style={{
+                       padding: 6,
+                       borderRadius: 16,
+                       backgroundColor: focused ? colors.primarySoft : "transparent",
+                     }}
+                   >
+                     <Ionicons
+                       name={iconName}
+                       size={focused ? 26 : 22}
+                       color={color}
+                     />
+                   </View>
+                 );
                },
-               tabBarShowLabel: true,
-               tabBarActiveTintColor: colors.primary,
-               tabBarInactiveTintColor: colors.textSecondary,
-               headerStyle: {
-                 backgroundColor: colors.background,
-               },
-               headerTintColor: colors.textPrimary,
-               headerTitleStyle: {
-                 color: colors.textPrimary,
-@@ -9565,52 +9567,53 @@ function MainApp({
+             })}
+             initialRouteName="Home"
+           >
+-            <Tab.Screen name="Home">
++            <Tab.Screen
++              name="Home"
++              listeners={{
++                focus: () => {
++                  refreshUnreadCount();
++                },
++              }}
++            >
+               {({ navigation }) => (
+                 <ClientHomeScreen
+                   navigation={navigation}
+                   token={token}
+                   favoriteProviders={favoriteProviders}
+                   favoriteIds={favoriteIds}
+                   favoritesLoading={favoritesLoading}
+                   toggleFavorite={toggleFavorite}
+                   isFavorite={isFavorite}
+                   syncFavoritesFromList={syncFavoritesFromList}
+                   refreshFavoriteProviders={refreshFavoriteProviders}
+                 />
+               )}
+-              listeners={{
+-                focus: () => {
+-                  refreshUnreadCount();
+-                },
+-              }}
+             </Tab.Screen>
+             <Tab.Screen name="Search">
+               {({ navigation, route }) => (
+                 <SearchScreen
+                   token={token}
+                   showFlash={showFlash}
+                   navigation={navigation}
+                   route={route}
+                   toggleFavorite={toggleFavorite}
+                   isFavorite={isFavorite}
+                   syncFavoritesFromList={syncFavoritesFromList}
+                 />
+               )}
+             </Tab.Screen>
+             <Tab.Screen
+               name="Notifications"
+               options={{
                  headerShown: false,
                  tabBarButton: () => null,
                }}
@@ -120,52 +155,6 @@ index ab38fa1cec160ede93625245173776acc93cac26..5df9b240833522ca1abe3ca737a7b013
                  <NotificationsScreen
                    navigation={navigation}
                    refreshUnreadCount={refreshUnreadCount}
-                   setPendingChatConversationId={setPendingChatConversationId}
-                   isProvider={false}
-                 />
-               )}
-             </Tab.Screen>
-             <Tab.Screen name="Appointments">
-               {({ route }) => (
-                 <AppointmentsScreen
-                   token={token}
-                   showFlash={showFlash}
-                   route={route}
-                   pendingChatConversationId={pendingChatConversationId}
-                   clearPendingChatConversationId={() => setPendingChatConversationId(null)}
-                 />
-               )}
-             </Tab.Screen>
-             <Tab.Screen name="Profile">
--              {() => (
-+              {(props) => (
-                 <ProfileScreen
-+                  {...props}
-                   authLoading={authLoading}
-                   token={token}
-                   setToken={setToken}
-                   showFlash={showFlash}
-                 />
-               )}
-             </Tab.Screen>
-           </Tab.Navigator>
- 
- 
-       )}
-     </NavigationContainer>
-   );
- }
- 
- 
- 
- 
- //Flash message component
- 
- function FlashMessage({ flash }) {
-   if (!flash || !flash.text) return null;
- 
-   const isError = flash.type === "error";
- 
  
 EOF
 )

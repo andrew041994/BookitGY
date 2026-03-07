@@ -9388,7 +9388,14 @@ function MainApp({
             },
           })}
         >
-          <Tab.Screen name="Dashboard">
+          <Tab.Screen
+            name="Dashboard"
+            listeners={{
+              focus: () => {
+                refreshUnreadCount();
+              },
+            }}
+          >
             {(props) => (
               <ProviderDashboardScreen
                 {...props}
@@ -9398,11 +9405,6 @@ function MainApp({
                 clearPendingChatConversationId={() => setPendingChatConversationId(null)}
               />
             )}
-            listeners={{
-              focus: () => {
-                refreshUnreadCount();
-              },
-            }}
           </Tab.Screen>
 
           <Tab.Screen name="Calendar">
@@ -9528,7 +9530,14 @@ function MainApp({
             })}
             initialRouteName="Home"
           >
-            <Tab.Screen name="Home">
+            <Tab.Screen
+              name="Home"
+              listeners={{
+                focus: () => {
+                  refreshUnreadCount();
+                },
+              }}
+            >
               {({ navigation }) => (
                 <ClientHomeScreen
                   navigation={navigation}
@@ -9542,11 +9551,6 @@ function MainApp({
                   refreshFavoriteProviders={refreshFavoriteProviders}
                 />
               )}
-              listeners={{
-                focus: () => {
-                  refreshUnreadCount();
-                },
-              }}
             </Tab.Screen>
             <Tab.Screen name="Search">
               {({ navigation, route }) => (
