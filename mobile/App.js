@@ -3831,6 +3831,39 @@ function AppointmentsScreen({ token, showFlash, pendingChatConversationId, clear
     return Number.isNaN(d.getTime()) ? null : d;
   };
 
+  const normalizeStatus = (statusValue) =>
+    String(statusValue || "").trim().toLowerCase();
+
+  const isCancelledBooking = (booking) => {
+    const status = normalizeStatus(booking?.status || booking?.state);
+    return status.includes("cancel");
+  };
+
+  const isCompletedBooking = (booking) => {
+    const status = normalizeStatus(booking?.status || booking?.state);
+    return status.includes("complete");
+  };
+
+  const bookingHasEnded = (booking, nowTs) => {
+    const endIso = booking?.end_time || booking?.end;
+    const endDate = endIso ? new Date(endIso) : null;
+    if (endDate && !Number.isNaN(endDate.getTime())) {
+      return endDate.getTime() <= nowTs;
+    }
+
+    const startDate = normalizeStart(booking);
+    if (!startDate) return false;
+    return startDate.getTime() < nowTs;
+  };
+
+  const isUpcomingBooking = (booking, nowTs) => {
+    const startDate = booking?._start || normalizeStart(booking);
+    if (!startDate) return false;
+    if (isCancelledBooking(booking) || isCompletedBooking(booking)) return false;
+    if (bookingHasEnded(booking, nowTs)) return false;
+    return true;
+  };
+
   const formatBookingDate = (iso) => {
     const d = new Date(iso);
     if (Number.isNaN(d.getTime())) return "";
@@ -3989,12 +4022,13 @@ function AppointmentsScreen({ token, showFlash, pendingChatConversationId, clear
   }));
 
   const now = new Date();
+  const nowTs = now.getTime();
   const upcomingBookings = datedBookings
-    .filter((b) => b._start && b.status !== "cancelled" && b._start >= now)
+    .filter((b) => isUpcomingBooking(b, nowTs))
     .sort((a, b) => a._start - b._start);
 
   const finishedBookings = datedBookings
-    .filter((b) => !b._start || b.status === "cancelled" || b._start < now)
+    .filter((b) => !isUpcomingBooking(b, nowTs))
     .sort((a, b) => {
       const aTime = a?._start?.getTime?.() ?? 0;
       const bTime = b?._start?.getTime?.() ?? 0;

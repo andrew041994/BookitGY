@@ -1,163 +1,152 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
 diff --git a/mobile/App.js b/mobile/App.js
-index ba67095ee42850b59a6494db3adf6fa8a4fd400e..9005f356548e02e6f7a798fded351e3c2cf800f2 100644
+index 9005f356548e02e6f7a798fded351e3c2cf800f2..9e1537007f16b184d4610cf276231f764f17ba9f 100644
 --- a/mobile/App.js
 +++ b/mobile/App.js
-@@ -9254,95 +9254,147 @@ function NotificationsScreen({
-                   <Text style={styles.notificationText}>{item.body}</Text>
-                   <Text style={styles.serviceMeta}>{formatTimeAgo(item.created_at)}</Text>
-                 </View>
-                 {!item.is_read ? <View style={styles.notificationUnreadDot} /> : null}
-               </TouchableOpacity>
-             )}
-           />
-         )}
-       </View>
-     </SafeAreaView>
+@@ -3809,50 +3809,83 @@ function BookingChatModal({
+       >
+         <Pressable style={styles.chatViewerBackdrop} onPress={() => setViewerImage(null)}>
+           {viewerImage ? (
+             <Image source={{ uri: viewerImage }} style={styles.chatViewerImage} resizeMode="contain" />
+           ) : null}
+         </Pressable>
+       </Modal>
+     </Modal>
    );
  }
  
- // Tabs after login
- function MainApp({
-   authLoading,
-   token,
-   setToken,
-   showFlash,
-   navigationRef,
-   setNavReady,
-   pendingChatConversationId,
-   setPendingChatConversationId,
- }) {
-   const [unreadNotificationCount, setUnreadNotificationCount] = useState(0);
-+  const unreadRefreshDebounceRef = useRef(null);
+ function AppointmentsScreen({ token, showFlash, pendingChatConversationId, clearPendingChatConversationId }) {
+   const [bookings, setBookings] = useState([]);
+   const [loading, setLoading] = useState(true);
+   const [error, setError] = useState("");
+   const [refreshing, setRefreshing] = useState(false);
+   const [chatBooking, setChatBooking] = useState(null);
  
-   const refreshUnreadCount = useCallback(async () => {
-     if (!token?.token) {
-       setUnreadNotificationCount(0);
-       return;
-     }
+   const normalizeStart = (booking) => {
+     const iso = booking?.start_time || booking?.start;
+     if (!iso) return null;
+     const d = new Date(iso);
+     return Number.isNaN(d.getTime()) ? null : d;
+   };
  
-     try {
-       const res = await apiClient.get('/notifications/me/unread-count');
-       const count = Number(res?.data?.unread_count || 0);
-       setUnreadNotificationCount(Number.isFinite(count) ? count : 0);
-     } catch (err) {
-       console.log('Error loading unread notification count', err?.response?.data || err?.message || err);
-     }
-   }, [token?.token]);
- 
--  useEffect(() => {
--    refreshUnreadCount();
++  const normalizeStatus = (statusValue) =>
++    String(statusValue || "").trim().toLowerCase();
 +
-+  const triggerUnreadRefresh = useCallback((reason = 'unknown') => {
-+    if (unreadRefreshDebounceRef.current) {
-+      clearTimeout(unreadRefreshDebounceRef.current);
++  const isCancelledBooking = (booking) => {
++    const status = normalizeStatus(booking?.status || booking?.state);
++    return status.includes("cancel");
++  };
++
++  const isCompletedBooking = (booking) => {
++    const status = normalizeStatus(booking?.status || booking?.state);
++    return status.includes("complete");
++  };
++
++  const bookingHasEnded = (booking, nowTs) => {
++    const endIso = booking?.end_time || booking?.end;
++    const endDate = endIso ? new Date(endIso) : null;
++    if (endDate && !Number.isNaN(endDate.getTime())) {
++      return endDate.getTime() <= nowTs;
 +    }
 +
-+    unreadRefreshDebounceRef.current = setTimeout(() => {
-+      console.log(`[notifications] refreshUnreadCount triggered (${reason})`);
-+      refreshUnreadCount();
-+    }, 250);
-   }, [refreshUnreadCount]);
++    const startDate = normalizeStart(booking);
++    if (!startDate) return false;
++    return startDate.getTime() < nowTs;
++  };
++
++  const isUpcomingBooking = (booking, nowTs) => {
++    const startDate = booking?._start || normalizeStart(booking);
++    if (!startDate) return false;
++    if (isCancelledBooking(booking) || isCompletedBooking(booking)) return false;
++    if (bookingHasEnded(booking, nowTs)) return false;
++    return true;
++  };
++
+   const formatBookingDate = (iso) => {
+     const d = new Date(iso);
+     if (Number.isNaN(d.getTime())) return "";
+     return d.toLocaleDateString("en-US", {
+       weekday: "short",
+       month: "short",
+       day: "numeric",
+     });
+   };
  
-+  useEffect(() => {
-+    triggerUnreadRefresh('initial-load');
-+  }, [triggerUnreadRefresh]);
-+
-+  useEffect(() => {
-+    return () => {
-+      if (unreadRefreshDebounceRef.current) {
-+        clearTimeout(unreadRefreshDebounceRef.current);
-+      }
-+    };
-+  }, []);
-+
-+  useEffect(() => {
-+    console.log('[notifications] unreadNotificationCount changed:', unreadNotificationCount);
-+  }, [unreadNotificationCount]);
-+
+   const formatBookingTime = (iso) => {
+     const d = new Date(iso);
+     if (Number.isNaN(d.getTime())) return "";
+     let h = d.getHours();
+     const m = d.getMinutes();
+     const suffix = h >= 12 ? "PM" : "AM";
+     h = h % 12 || 12;
+     return `${h}:${m.toString().padStart(2, "0")} ${suffix}`;
+   };
+ 
+   const fetchBookings = useCallback(
+     async (useRefresh = false) => {
+       try {
+         if (useRefresh) setRefreshing(true);
+         setLoading(true);
+@@ -3967,56 +4000,57 @@ function AppointmentsScreen({ token, showFlash, pendingChatConversationId, clear
+                 err.response?.data || err.message
+               );
+               showFlash && showFlash("error", "Could not cancel booking.");
+             }
+           },
+         },
+       ]
+     );
+   };
+ 
+ 
    useEffect(() => {
-     if (!token?.token) return;
+     if (!pendingChatConversationId || !bookings?.length) return;
+     const match = bookings.find((b) => Number(b?.conversation_id) === Number(pendingChatConversationId));
+     if (match) {
+       setChatBooking(match);
+       clearPendingChatConversationId?.();
+     }
+   }, [bookings, clearPendingChatConversationId, pendingChatConversationId]);
+   const datedBookings = bookings.map((b) => ({
+     ...b,
+     _start: normalizeStart(b),
+   }));
  
--    const receivedSubscription = Notifications.addNotificationReceivedListener(() => {
--      refreshUnreadCount();
-+    console.log('[notifications] Registering foreground notification listeners in MainApp');
-+
-+    const receivedSubscription = Notifications.addNotificationReceivedListener((notification) => {
-+      const data = notification?.request?.content?.data || {};
-+      console.log('[notifications] Foreground push received:', data);
-+      triggerUnreadRefresh('foreground-received');
-+    });
-+
-+    const responseSubscription = Notifications.addNotificationResponseReceivedListener((response) => {
-+      const data = response?.notification?.request?.content?.data || {};
-+      console.log('[notifications] Notification response received:', data);
-+      triggerUnreadRefresh('notification-response');
+   const now = new Date();
++  const nowTs = now.getTime();
+   const upcomingBookings = datedBookings
+-    .filter((b) => b._start && b.status !== "cancelled" && b._start >= now)
++    .filter((b) => isUpcomingBooking(b, nowTs))
+     .sort((a, b) => a._start - b._start);
+ 
+   const finishedBookings = datedBookings
+-    .filter((b) => !b._start || b.status === "cancelled" || b._start < now)
++    .filter((b) => !isUpcomingBooking(b, nowTs))
+     .sort((a, b) => {
+       const aTime = a?._start?.getTime?.() ?? 0;
+       const bTime = b?._start?.getTime?.() ?? 0;
+       return bTime - aTime;
      });
  
-     return () => {
-       receivedSubscription?.remove?.();
-+      responseSubscription?.remove?.();
-     };
--  }, [refreshUnreadCount, token?.token]);
-+  }, [token?.token, triggerUnreadRefresh]);
+   const deriveStatus = (booking) => {
+     const startIso = booking.start_time || booking.start;
+     const endIso = booking.end_time || booking.end;
+     const startDate = startIso ? new Date(startIso) : null;
+     const endDate = endIso ? new Date(endIso) : null;
+     const nowTs = Date.now();
  
-   useEffect(() => {
-     if (!token?.token) return;
+     const normalizedStart =
+       startDate && !Number.isNaN(startDate.getTime()) ? startDate.getTime() : null;
+     const normalizedEnd =
+       endDate && !Number.isNaN(endDate.getTime()) ? endDate.getTime() : null;
  
-     const appStateSubscription = AppState.addEventListener('change', (nextAppState) => {
-       if (nextAppState === 'active') {
--        refreshUnreadCount();
-+        triggerUnreadRefresh('app-state-active');
-       }
-     });
+     if (booking.status === "cancelled") return "cancelled";
  
-     return () => {
-       appStateSubscription?.remove?.();
-     };
--  }, [refreshUnreadCount, token?.token]);
-+  }, [token?.token, triggerUnreadRefresh]);
-+
-+  useEffect(() => {
-+    if (!token?.token) return;
-+
-+    const interval = setInterval(() => {
-+      if (AppState.currentState !== 'active') return;
-+
-+      const currentRouteName = navigationRef?.current?.getCurrentRoute?.()?.name;
-+      const isHomeDashboard = currentRouteName === 'Home' || currentRouteName === 'Dashboard';
-+      if (!isHomeDashboard) return;
-+
-+      triggerUnreadRefresh(`active-${currentRouteName}-poll`);
-+    }, 20000);
-+
-+    return () => clearInterval(interval);
-+  }, [navigationRef, token?.token, triggerUnreadRefresh]);
+     if (normalizedEnd != null) {
+       if (nowTs >= normalizedEnd) return "completed";
+       if (normalizedStart != null && nowTs >= normalizedStart) return "in progress";
+     }
  
-   const {
-     favoriteIds,
-     favoriteProviders,
-     favoritesLoading,
-     toggleFavorite,
-     isFavorite,
-     syncFavoritesFromList,
-     refreshFavoriteProviders,
-   } = useFavoriteProviders(token?.email || token?.userId);
-   return (
- 
-     <NavigationContainer
-       ref={navigationRef}
-       onReady={() => {
-         console.log("[nav] ready");
-         setNavReady(true);
-       }}
-     >
-       {token.isProvider ? (
-         // 👇 Provider view: Dashboard + Billing + Profile
-         <Tab.Navigator
-           initialRouteName="Dashboard"
-           screenOptions={({ route }) => ({
-             headerShown: route.name === 'Dashboard',
  
 EOF
 )
