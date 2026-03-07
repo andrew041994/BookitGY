@@ -1,9 +1,316 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
 diff --git a/mobile/App.js b/mobile/App.js
-index 9e1537007f16b184d4610cf276231f764f17ba9f..846b0129ab9164052d2ce51792a87a8c09bc6906 100644
+index 846b0129ab9164052d2ce51792a87a8c09bc6906..c85b4ec1628d5a531072a7b000a6fe51b8edcb44 100644
 --- a/mobile/App.js
 +++ b/mobile/App.js
-@@ -3802,108 +3802,154 @@ function BookingChatModal({
+@@ -3464,72 +3464,102 @@ function ClientHomeScreen({
+             >
+               {favoriteCards}
+             </ScrollView>
+           ) : null}
+           </View>
+         </ScrollView>
+         </View>      
+     );
+   }
+ 
+ 
+ 
+ 
+ 
+ 
+ const getCleanApiErrorMessage = (err, fallbackMessage) => {
+   const detail =
+     err?.response?.data?.detail ||
+     err?.response?.data?.message ||
+     err?.message;
+   if (!detail) return fallbackMessage;
+   if (typeof detail === "string") return detail;
+   return fallbackMessage;
+ };
+ 
+-const isBookingCancelledStatus = (status) =>
+-  String(status || "").trim().toLowerCase().includes("cancel");
++const getBookingChatReadOnlyReason = (booking) => {
++  if (!booking) return null;
++
++  const normalizedStatus = String(booking?.status || booking?.state || "")
++    .trim()
++    .toLowerCase();
++
++  const isCancelled =
++    normalizedStatus === "cancelled" ||
++    normalizedStatus === "canceled" ||
++    Boolean(
++      booking?.cancelled_at ||
++      booking?.canceled_at ||
++      booking?.is_cancelled ||
++      booking?.isCanceled
++    );
++
++  if (isCancelled) {
++    return "Messaging is unavailable because this appointment has been cancelled.";
++  }
++
++  const isCompleted =
++    normalizedStatus === "completed" ||
++    Boolean(booking?.completed_at || booking?.is_completed);
++
++  if (isCompleted) {
++    return "Messaging is unavailable because this appointment is completed.";
++  }
++
++  return null;
++};
+ 
+ function BookingChatModal({
+   visible,
+   onClose,
+   booking,
+   currentUserId,
+   showFlash,
+ }) {
+   const [messages, setMessages] = useState([]);
+   const [loading, setLoading] = useState(false);
+   const [refreshing, setRefreshing] = useState(false);
+   const [sending, setSending] = useState(false);
+   const [text, setText] = useState("");
+   const [selectedImage, setSelectedImage] = useState(null);
+   const [viewerImage, setViewerImage] = useState(null);
+   const listRef = useRef(null);
+   const insets = useSafeAreaInsets();
+ 
+   const bookingId = booking?.id || booking?.booking_id;
+-  const isCancelled = isBookingCancelledStatus(booking?.status);
++  const chatReadOnlyReason = getBookingChatReadOnlyReason(booking);
++  const isChatReadOnly = Boolean(chatReadOnlyReason);
+ 
+   const loadMessages = useCallback(
+     async (useRefresh = false) => {
+       if (!bookingId) return;
+       try {
+         if (useRefresh) setRefreshing(true);
+         else setLoading(true);
+ 
+         const res = await apiClient.get(`/bookings/${bookingId}/messages`);
+         const rows = Array.isArray(res?.data?.messages) ? res.data.messages : [];
+         setMessages(rows);
+ 
+         await apiClient.post(`/bookings/messages/read`, { booking_id: bookingId });
+       } catch (err) {
+         const msg = getCleanApiErrorMessage(err, "Could not load chat messages.");
+         showFlash && showFlash("error", msg);
+       } finally {
+         setLoading(false);
+         setRefreshing(false);
+       }
+     },
+     [bookingId, showFlash]
+   );
+ 
+   useEffect(() => {
+@@ -3611,210 +3641,210 @@ function BookingChatModal({
+       throw new Error(uploadData?.error?.message || "Image upload failed.");
+     }
+ 
+     return {
+       attachment_type: "image",
+       file_url: uploadData.secure_url,
+       mime_type: uploadData.resource_type === "image" ? mimeType : null,
+       file_size_bytes: Number.isFinite(uploadData.bytes)
+         ? uploadData.bytes
+         : null,
+       width: Number.isFinite(uploadData.width) ? uploadData.width : null,
+       height: Number.isFinite(uploadData.height) ? uploadData.height : null,
+       original_filename: uploadData.original_filename || filename,
+     };
+   }, []);
+ 
+   const handleSend = useCallback(async () => {
+     if (sending) return;
+ 
+     const trimmedText = text.trim();
+     if (!trimmedText && !selectedImage) {
+       showFlash && showFlash("error", "Message must include text or an image.");
+       return;
+     }
+ 
+-    if (isCancelled) {
+-      showFlash &&
+-        showFlash("error", "This chat is unavailable because the booking has been cancelled.");
++    if (isChatReadOnly) {
++      showFlash && showFlash("error", chatReadOnlyReason);
+       return;
+     }
+ 
+     try {
+       setSending(true);
+       let attachmentPayload = null;
+ 
+       if (selectedImage?.uri) {
+         console.log("[chat-image-send] selected image", { uri: selectedImage.uri });
+         console.log("[chat-image-send] upload start", { booking_id: bookingId });
+         attachmentPayload = await uploadChatImageToCloudinary(selectedImage);
+         console.log("[chat-image-send] upload success", {
+           file_url: attachmentPayload?.file_url,
+           width: attachmentPayload?.width,
+           height: attachmentPayload?.height,
+         });
+       }
+ 
+       const payload = {
+         booking_id: bookingId,
+         text: trimmedText || null,
+         attachment: attachmentPayload,
+       };
+       console.log("[chat-image-send] payload ready", {
+         booking_id: payload.booking_id,
+         has_text: Boolean(payload.text),
+         has_attachment: Boolean(payload.attachment),
+       });
+       console.log("[chat-image-send] send route", { method: "POST", route: "/bookings/messages" });
+ 
+       await apiClient.post(`/bookings/messages`, payload);
+ 
+       console.log("[chat-image-send] send success", { booking_id: bookingId });
+       setText("");
+       setSelectedImage(null);
+       await loadMessages(true);
+     } catch (err) {
+       console.log("[chat-image-send] send failure", err?.response?.data || err?.message || err);
+       const msg = getCleanApiErrorMessage(err, "Could not send message.");
+       showFlash && showFlash("error", msg);
+     } finally {
+       setSending(false);
+     }
+   }, [
+     bookingId,
+-    isCancelled,
++    chatReadOnlyReason,
++    isChatReadOnly,
+     loadMessages,
+     selectedImage,
+     sending,
+     showFlash,
+     text,
+     uploadChatImageToCloudinary,
+   ]);
+ 
+   const renderItem = ({ item }) => {
+     const mine = Number(item?.sender_user_id) === Number(currentUserId);
+     const imageUrl = resolveImageUrl(item?.attachment?.file_url);
+     const createdAt = item?.created_at ? new Date(item.created_at) : null;
+     const timeText = createdAt && !Number.isNaN(createdAt.getTime())
+       ? createdAt.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })
+       : "";
+ 
+     return (
+       <View style={[styles.chatRow, mine ? styles.chatRowMine : styles.chatRowOther]}>
+         <View style={[styles.chatBubble, mine ? styles.chatBubbleMine : styles.chatBubbleOther]}>
+           {item?.text ? <Text style={styles.chatText}>{item.text}</Text> : null}
+           {imageUrl ? (
+             <TouchableOpacity onPress={() => setViewerImage(imageUrl)} activeOpacity={0.85}>
+               <Image source={{ uri: imageUrl }} style={styles.chatImage} resizeMode="cover" />
+             </TouchableOpacity>
+           ) : null}
+           {timeText ? <Text style={styles.chatTime}>{timeText}</Text> : null}
+         </View>
+       </View>
+     );
+   };
+ 
+   return (
+     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
+       <SafeAreaView style={styles.chatSafeArea} edges={["left", "right", "bottom"]}>
+         <KeyboardAvoidingView
+           style={styles.chatKeyboardWrapper}
+           behavior={Platform.OS === "ios" ? "padding" : undefined}
+           keyboardVerticalOffset={Platform.OS === "ios" ? 86 : 0}
+         >
+           <View style={[styles.chatHeader, { paddingTop: Math.max(insets.top, 8) }]}>
+             <TouchableOpacity onPress={onClose} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+               <Text style={styles.chatCloseText}>Close</Text>
+             </TouchableOpacity>
+             <Text style={styles.chatHeaderTitle}>Booking Chat</Text>
+             <View style={{ width: 46 }} />
+           </View>
+ 
+-          {isCancelled ? (
++          {isChatReadOnly ? (
+             <View style={styles.chatCancelledBanner}>
+               <Text style={styles.chatCancelledText}>
+-                This chat is unavailable because the booking has been cancelled.
++                {chatReadOnlyReason}
+               </Text>
+             </View>
+           ) : null}
+ 
+           {loading ? (
+             <View style={styles.loadingRow}>
+               <ActivityIndicator />
+               <Text style={styles.serviceMeta}>Loading messages…</Text>
+             </View>
+           ) : (
+             <FlatList
+               ref={listRef}
+               data={messages}
+               keyExtractor={(item) => `${item.id}`}
+               renderItem={renderItem}
+               style={styles.chatList}
+               contentContainerStyle={styles.chatListContent}
+               onRefresh={() => loadMessages(true)}
+               refreshing={refreshing}
+               ListEmptyComponent={
+                 <Text style={styles.serviceMeta}>Send a message about this booking</Text>
+               }
+             />
+           )}
+ 
+           <View style={styles.chatComposer}>
+             {selectedImage?.uri ? (
+               <View style={styles.chatSelectedImageWrap}>
+                 <Image source={{ uri: selectedImage.uri }} style={styles.chatSelectedImage} />
+                 <TouchableOpacity onPress={() => setSelectedImage(null)}>
+                   <Text style={styles.chatRemoveImageText}>Remove</Text>
+                 </TouchableOpacity>
+               </View>
+             ) : null}
+ 
+             <View style={styles.chatComposerRow}>
+               <TouchableOpacity
+                 style={styles.chatAttachButton}
+                 onPress={handlePickImage}
+-                disabled={sending || isCancelled}
++                disabled={sending || isChatReadOnly}
+               >
+                 <Ionicons name="image-outline" size={20} color={colors.textPrimary} />
+               </TouchableOpacity>
+ 
+               <TextInput
+                 value={text}
+                 onChangeText={setText}
+                 placeholder="Type a message"
+                 placeholderTextColor={colors.textMuted}
+                 style={styles.chatInput}
+-                editable={!sending && !isCancelled}
++                editable={!sending && !isChatReadOnly}
+               />
+ 
+               <TouchableOpacity
+                 style={[
+                   styles.chatSendButton,
+-                  (sending || isCancelled || (!text.trim() && !selectedImage)) && styles.chatSendButtonDisabled,
++                  (sending || isChatReadOnly || (!text.trim() && !selectedImage)) && styles.chatSendButtonDisabled,
+                 ]}
+                 onPress={handleSend}
+-                disabled={sending || isCancelled || (!text.trim() && !selectedImage)}
++                disabled={sending || isChatReadOnly || (!text.trim() && !selectedImage)}
+               >
+                 <Text style={styles.chatSendButtonText}>{sending ? "..." : "Send"}</Text>
+               </TouchableOpacity>
+             </View>
+           </View>
+         </KeyboardAvoidingView>
        </SafeAreaView>
  
        <Modal
@@ -23,250 +330,6 @@ index 9e1537007f16b184d4610cf276231f764f17ba9f..846b0129ab9164052d2ce51792a87a8c
  }
  
  function AppointmentsScreen({ token, showFlash, pendingChatConversationId, clearPendingChatConversationId }) {
-   const [bookings, setBookings] = useState([]);
-   const [loading, setLoading] = useState(true);
-   const [error, setError] = useState("");
-   const [refreshing, setRefreshing] = useState(false);
-   const [chatBooking, setChatBooking] = useState(null);
- 
-+  // Booking datetimes are stored/served as Guyana-local wall time (UTC-4, no DST).
-+  // Parse naive strings explicitly as Guyana so device timezone does not affect logic.
-+  const GUYANA_UTC_OFFSET_HOURS = 4;
-+  const parseGuyanaDateMs = (value) => {
-+    if (!value) return null;
-+    if (value instanceof Date) {
-+      const t = value.getTime();
-+      return Number.isNaN(t) ? null : t;
-+    }
-+
-+    const raw = String(value).trim();
-+    if (!raw) return null;
-+
-+    // Respect explicit timezone payloads (Z / +/-HH:MM) as absolute instants.
-+    if (/z$|[+-]\d{2}:?\d{2}$/i.test(raw)) {
-+      const ts = Date.parse(raw);
-+      return Number.isNaN(ts) ? null : ts;
-+    }
-+
-+    // Treat naive payload as Guyana local time.
-+    const m = raw.match(
-+      /^(\d{4})-(\d{2})-(\d{2})(?:[T\s](\d{2})(?::(\d{2})(?::(\d{2})(?:\.(\d{1,3}))?)?)?)?$/
-+    );
-+    if (!m) {
-+      const ts = Date.parse(raw);
-+      return Number.isNaN(ts) ? null : ts;
-+    }
-+
-+    const [, y, mo, d, h = "0", mi = "0", s = "0", ms = "0"] = m;
-+    const msNorm = ms.padEnd(3, "0").slice(0, 3);
-+    return Date.UTC(
-+      Number(y),
-+      Number(mo) - 1,
-+      Number(d),
-+      Number(h) + GUYANA_UTC_OFFSET_HOURS,
-+      Number(mi),
-+      Number(s),
-+      Number(msNorm)
-+    );
-+  };
-+
-+  const getNowGuyanaMs = () => Date.now();
-+
-   const normalizeStart = (booking) => {
-     const iso = booking?.start_time || booking?.start;
--    if (!iso) return null;
--    const d = new Date(iso);
--    return Number.isNaN(d.getTime()) ? null : d;
-+    const ts = parseGuyanaDateMs(iso);
-+    return ts == null ? null : new Date(ts);
-   };
- 
-   const normalizeStatus = (statusValue) =>
-     String(statusValue || "").trim().toLowerCase();
- 
-   const isCancelledBooking = (booking) => {
-     const status = normalizeStatus(booking?.status || booking?.state);
-     return status.includes("cancel");
-   };
- 
-   const isCompletedBooking = (booking) => {
-     const status = normalizeStatus(booking?.status || booking?.state);
-     return status.includes("complete");
-   };
- 
-   const bookingHasEnded = (booking, nowTs) => {
-     const endIso = booking?.end_time || booking?.end;
--    const endDate = endIso ? new Date(endIso) : null;
--    if (endDate && !Number.isNaN(endDate.getTime())) {
--      return endDate.getTime() <= nowTs;
-+    const endTs = parseGuyanaDateMs(endIso);
-+    if (endTs != null) {
-+      return endTs <= nowTs;
-     }
- 
-     const startDate = normalizeStart(booking);
-     if (!startDate) return false;
-     return startDate.getTime() < nowTs;
-   };
- 
-   const isUpcomingBooking = (booking, nowTs) => {
-     const startDate = booking?._start || normalizeStart(booking);
-     if (!startDate) return false;
-     if (isCancelledBooking(booking) || isCompletedBooking(booking)) return false;
-     if (bookingHasEnded(booking, nowTs)) return false;
-     return true;
-   };
- 
-   const formatBookingDate = (iso) => {
--    const d = new Date(iso);
--    if (Number.isNaN(d.getTime())) return "";
-+    const ts = parseGuyanaDateMs(iso);
-+    const d = ts == null ? null : new Date(ts);
-+    if (!d || Number.isNaN(d.getTime())) return "";
-     return d.toLocaleDateString("en-US", {
-       weekday: "short",
-       month: "short",
-       day: "numeric",
-+      timeZone: "America/Guyana",
-     });
-   };
- 
-   const formatBookingTime = (iso) => {
--    const d = new Date(iso);
--    if (Number.isNaN(d.getTime())) return "";
--    let h = d.getHours();
--    const m = d.getMinutes();
--    const suffix = h >= 12 ? "PM" : "AM";
--    h = h % 12 || 12;
--    return `${h}:${m.toString().padStart(2, "0")} ${suffix}`;
-+    const ts = parseGuyanaDateMs(iso);
-+    const d = ts == null ? null : new Date(ts);
-+    if (!d || Number.isNaN(d.getTime())) return "";
-+    return d.toLocaleTimeString("en-US", {
-+      hour: "numeric",
-+      minute: "2-digit",
-+      hour12: true,
-+      timeZone: "America/Guyana",
-+    });
-   };
- 
-   const fetchBookings = useCallback(
-     async (useRefresh = false) => {
-       try {
-         if (useRefresh) setRefreshing(true);
-         setLoading(true);
-         setError("");
- 
-         const authToken = await getAuthToken(token);
- 
-         if (!authToken) {
-           setError("Please log in to view your appointments.");
-           setBookings([]);
-           return;
-         }
- 
-         const res = await apiClient.get(`/bookings/me`);
- 
-         const raw = res.data;
-         const list = Array.isArray(raw)
-           ? raw
-           : raw?.bookings || raw?.results || [];
- 
-         setBookings(list);
-@@ -3999,84 +4045,81 @@ function AppointmentsScreen({ token, showFlash, pendingChatConversationId, clear
-                 "Error cancelling booking (appointments)",
-                 err.response?.data || err.message
-               );
-               showFlash && showFlash("error", "Could not cancel booking.");
-             }
-           },
-         },
-       ]
-     );
-   };
- 
- 
-   useEffect(() => {
-     if (!pendingChatConversationId || !bookings?.length) return;
-     const match = bookings.find((b) => Number(b?.conversation_id) === Number(pendingChatConversationId));
-     if (match) {
-       setChatBooking(match);
-       clearPendingChatConversationId?.();
-     }
-   }, [bookings, clearPendingChatConversationId, pendingChatConversationId]);
-   const datedBookings = bookings.map((b) => ({
-     ...b,
-     _start: normalizeStart(b),
-   }));
- 
--  const now = new Date();
--  const nowTs = now.getTime();
-+  const nowTs = getNowGuyanaMs();
-   const upcomingBookings = datedBookings
-     .filter((b) => isUpcomingBooking(b, nowTs))
-     .sort((a, b) => a._start - b._start);
- 
-   const finishedBookings = datedBookings
-     .filter((b) => !isUpcomingBooking(b, nowTs))
-     .sort((a, b) => {
-       const aTime = a?._start?.getTime?.() ?? 0;
-       const bTime = b?._start?.getTime?.() ?? 0;
-       return bTime - aTime;
-     });
- 
-   const deriveStatus = (booking) => {
-     const startIso = booking.start_time || booking.start;
-     const endIso = booking.end_time || booking.end;
--    const startDate = startIso ? new Date(startIso) : null;
--    const endDate = endIso ? new Date(endIso) : null;
--    const nowTs = Date.now();
--
--    const normalizedStart =
--      startDate && !Number.isNaN(startDate.getTime()) ? startDate.getTime() : null;
--    const normalizedEnd =
--      endDate && !Number.isNaN(endDate.getTime()) ? endDate.getTime() : null;
-+    const normalizedStart = parseGuyanaDateMs(startIso);
-+    const normalizedEnd = parseGuyanaDateMs(endIso);
-+    const nowTs = getNowGuyanaMs();
- 
--    if (booking.status === "cancelled") return "cancelled";
-+    if (isCancelledBooking(booking)) return "cancelled";
-+    if (isCompletedBooking(booking) || booking?.completed_at || booking?.is_completed) {
-+      return "completed";
-+    }
- 
-     if (normalizedEnd != null) {
-       if (nowTs >= normalizedEnd) return "completed";
-       if (normalizedStart != null && nowTs >= normalizedStart) return "in progress";
-     }
- 
--    return booking.status || "pending";
-+    return booking.status || booking.state || "pending";
-   };
- 
-   const renderBooking = (booking, isUpcoming = false) => {
-     const startIso = booking.start_time || booking.start;
-     const dateLabel = formatBookingDate(startIso);
-     const timeLabel = formatBookingTime(startIso);
-     const statusLabel = deriveStatus(booking);
-     // status color mapping
-     const statusThemeKey = getAppointmentStatusThemeKey(statusLabel);
-     const statusTheme = APPOINTMENT_STATUS_THEME[statusThemeKey];
- 
-     return (
-       <View
-         key={booking.id || booking.booking_id || `${startIso}-${booking.service_name}`}
-         style={[
-           styles.appointmentItem,
-           // tint based on status
-           { backgroundColor: statusTheme.bgTint, borderColor: statusTheme.border },
-         ]}
-       >
-         {/* left accent bar */}
-         <View style={[styles.appointmentLeftAccentBar, { backgroundColor: statusTheme.accent }]} />
-         <View style={{ flex: 1 }}>
-           <Text style={styles.appointmentTitle}>{booking.service_name}</Text>
-           <Text style={styles.appointmentMeta}>
  
 EOF
 )

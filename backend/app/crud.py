@@ -756,12 +756,25 @@ def create_user_for_google(
 
 
 
-CHAT_BLOCKED_BOOKING_STATUSES = {"cancelled"}
-
 
 def _is_booking_chat_send_allowed(booking: models.Booking) -> bool:
     status = normalized_booking_status_value(getattr(booking, "status", None))
-    return status not in CHAT_BLOCKED_BOOKING_STATUSES
+    is_cancelled = status == "cancelled" or bool(
+        getattr(booking, "canceled_at", None)
+    )
+    is_completed = status == "completed" or bool(
+        getattr(booking, "completed_at", None)
+    )
+    return not is_cancelled and not is_completed
+
+
+def _get_booking_chat_read_only_message(booking: models.Booking) -> str:
+    status = normalized_booking_status_value(getattr(booking, "status", None))
+    if status == "cancelled" or getattr(booking, "canceled_at", None):
+        return "Messaging is unavailable because this appointment has been cancelled."
+    if status == "completed" or getattr(booking, "completed_at", None):
+        return "Messaging is unavailable because this appointment is completed."
+    return "Messaging is unavailable because this appointment is no longer active."
 
 
 def _get_booking_with_participants(db: Session, booking_id: int):
@@ -849,7 +862,7 @@ def send_booking_message(
 
     booking = context["booking"]
     if not _is_booking_chat_send_allowed(booking):
-        raise ValueError("This chat is unavailable because the booking has been cancelled.")
+        raise ValueError(_get_booking_chat_read_only_message(booking))
 
     conversation = _get_or_create_conversation(
         db,

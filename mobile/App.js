@@ -3486,8 +3486,37 @@ const getCleanApiErrorMessage = (err, fallbackMessage) => {
   return fallbackMessage;
 };
 
-const isBookingCancelledStatus = (status) =>
-  String(status || "").trim().toLowerCase().includes("cancel");
+const getBookingChatReadOnlyReason = (booking) => {
+  if (!booking) return null;
+
+  const normalizedStatus = String(booking?.status || booking?.state || "")
+    .trim()
+    .toLowerCase();
+
+  const isCancelled =
+    normalizedStatus === "cancelled" ||
+    normalizedStatus === "canceled" ||
+    Boolean(
+      booking?.cancelled_at ||
+      booking?.canceled_at ||
+      booking?.is_cancelled ||
+      booking?.isCanceled
+    );
+
+  if (isCancelled) {
+    return "Messaging is unavailable because this appointment has been cancelled.";
+  }
+
+  const isCompleted =
+    normalizedStatus === "completed" ||
+    Boolean(booking?.completed_at || booking?.is_completed);
+
+  if (isCompleted) {
+    return "Messaging is unavailable because this appointment is completed.";
+  }
+
+  return null;
+};
 
 function BookingChatModal({
   visible,
@@ -3507,7 +3536,8 @@ function BookingChatModal({
   const insets = useSafeAreaInsets();
 
   const bookingId = booking?.id || booking?.booking_id;
-  const isCancelled = isBookingCancelledStatus(booking?.status);
+  const chatReadOnlyReason = getBookingChatReadOnlyReason(booking);
+  const isChatReadOnly = Boolean(chatReadOnlyReason);
 
   const loadMessages = useCallback(
     async (useRefresh = false) => {
@@ -3633,9 +3663,8 @@ function BookingChatModal({
       return;
     }
 
-    if (isCancelled) {
-      showFlash &&
-        showFlash("error", "This chat is unavailable because the booking has been cancelled.");
+    if (isChatReadOnly) {
+      showFlash && showFlash("error", chatReadOnlyReason);
       return;
     }
 
@@ -3681,7 +3710,8 @@ function BookingChatModal({
     }
   }, [
     bookingId,
-    isCancelled,
+    chatReadOnlyReason,
+    isChatReadOnly,
     loadMessages,
     selectedImage,
     sending,
@@ -3729,10 +3759,10 @@ function BookingChatModal({
             <View style={{ width: 46 }} />
           </View>
 
-          {isCancelled ? (
+          {isChatReadOnly ? (
             <View style={styles.chatCancelledBanner}>
               <Text style={styles.chatCancelledText}>
-                This chat is unavailable because the booking has been cancelled.
+                {chatReadOnlyReason}
               </Text>
             </View>
           ) : null}
@@ -3772,7 +3802,7 @@ function BookingChatModal({
               <TouchableOpacity
                 style={styles.chatAttachButton}
                 onPress={handlePickImage}
-                disabled={sending || isCancelled}
+                disabled={sending || isChatReadOnly}
               >
                 <Ionicons name="image-outline" size={20} color={colors.textPrimary} />
               </TouchableOpacity>
@@ -3783,16 +3813,16 @@ function BookingChatModal({
                 placeholder="Type a message"
                 placeholderTextColor={colors.textMuted}
                 style={styles.chatInput}
-                editable={!sending && !isCancelled}
+                editable={!sending && !isChatReadOnly}
               />
 
               <TouchableOpacity
                 style={[
                   styles.chatSendButton,
-                  (sending || isCancelled || (!text.trim() && !selectedImage)) && styles.chatSendButtonDisabled,
+                  (sending || isChatReadOnly || (!text.trim() && !selectedImage)) && styles.chatSendButtonDisabled,
                 ]}
                 onPress={handleSend}
-                disabled={sending || isCancelled || (!text.trim() && !selectedImage)}
+                disabled={sending || isChatReadOnly || (!text.trim() && !selectedImage)}
               >
                 <Text style={styles.chatSendButtonText}>{sending ? "..." : "Send"}</Text>
               </TouchableOpacity>

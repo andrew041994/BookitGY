@@ -206,6 +206,15 @@ def test_booking_messaging_rejections(db_session):
 
     r = _send(client, client_user, booking.id, text="still there?")
     assert r.status_code == 400
-    assert r.json()["detail"] == "This chat is unavailable because the booking has been cancelled."
+    assert r.json()["detail"] == "Messaging is unavailable because this appointment has been cancelled."
+
+    # 13) reject sending on completed booking
+    booking.status = "completed"
+    booking.canceled_at = None
+    session.commit()
+
+    r = _send(client, client_user, booking.id, text="after complete?")
+    assert r.status_code == 400
+    assert r.json()["detail"] == "Messaging is unavailable because this appointment is completed."
 
     app.dependency_overrides.clear()
