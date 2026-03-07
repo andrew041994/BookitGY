@@ -1,85 +1,304 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
-diff --git a/mobile/src/components/ProviderCard.js b/mobile/src/components/ProviderCard.js
-index e50ab331184949730161cc27a4b3d75f767e04fc..feb7dcfb3a961e44a2de4bf436397d79077e77c0 100644
---- a/mobile/src/components/ProviderCard.js
-+++ b/mobile/src/components/ProviderCard.js
-@@ -204,73 +204,76 @@ const styles = StyleSheet.create({
-   },
-   avatarImage: {
-     width: "100%",
-     height: "100%",
-   },
-   avatarFallback: {
-     flex: 1,
-     alignItems: "center",
-     justifyContent: "center",
-     backgroundColor: colors.primary,
-   },
-   avatarInitials: {
-     color: colors.textPrimary,
-     fontSize: 18,
-     fontWeight: "700",
-   },
-   middleColumn: {
-     flex: 1,
-     paddingRight: 8,
-   },
-   nameRow: {
-     flexDirection: "row",
-     alignItems: "center",
-     justifyContent: "space-between",
-     gap: 8,
-+    paddingRight: 24,
-   },
-   name: {
-     fontSize: 16,
-     fontWeight: "700",
-     color: colors.textPrimary,
-     flex: 1,
-     minWidth: 0,
-   },
-   profession: {
-     fontSize: 13,
-     color: colors.textSecondary,
-     marginTop: 2,
-   },
-   distance: {
-     fontSize: 12,
-     color: colors.textMuted,
-     marginTop: 2,
-   },
-   ratingTextInline: {
-     fontSize: 12,
-     fontWeight: "700",
-     color: colors.primary,
-     maxWidth: 110,
-+    marginRight: 8,
-+    flexShrink: 0,
-     textAlign: "right",
-   },
-   ratingTextMuted: {
-     color: colors.textMuted,
-     fontWeight: "600",
-   },
-   bottomRow: {
-     marginTop: 12,
-     flexDirection: "row",
-     justifyContent: "flex-start",
-   },
-   ctaButton: {
-     paddingHorizontal: 14,
-     paddingVertical: 8,
-     borderRadius: 10,
-     backgroundColor: colors.primary,
-   },
-   ctaText: {
-     fontSize: 13,
-     fontWeight: "700",
-     color: colors.textPrimary,
-   },
- });
+diff --git a/mobile/App.js b/mobile/App.js
+index 313c534d75edcc84b3fc02990b9834ce5f68622a..903e384396fee3ac380aa9a3efd5c329b5f13fed 100644
+--- a/mobile/App.js
++++ b/mobile/App.js
+@@ -3519,138 +3519,174 @@ const getBookingChatReadOnlyReason = (booking) => {
  
- export default ProviderCard;
+   return null;
+ };
+ 
+ function BookingChatModal({
+   visible,
+   onClose,
+   booking,
+   currentUserId,
+   showFlash,
+ }) {
+   const [messages, setMessages] = useState([]);
+   const [loading, setLoading] = useState(false);
+   const [refreshing, setRefreshing] = useState(false);
+   const [sending, setSending] = useState(false);
+   const [text, setText] = useState("");
+   const [selectedImage, setSelectedImage] = useState(null);
+   const [viewerImage, setViewerImage] = useState(null);
+   const listRef = useRef(null);
+   const insets = useSafeAreaInsets();
+ 
+   const bookingId = booking?.id || booking?.booking_id;
+   const chatReadOnlyReason = getBookingChatReadOnlyReason(booking);
+   const isChatReadOnly = Boolean(chatReadOnlyReason);
+ 
++  const logImageMessageShapeSummary = useCallback((context, details) => {
++    console.log("[chat-image-debug] shape-summary", {
++      context,
++      ...details,
++    });
++  }, []);
++
+   const loadMessages = useCallback(
+     async (useRefresh = false) => {
+       if (!bookingId) return;
+       try {
+         if (useRefresh) setRefreshing(true);
+         else setLoading(true);
+ 
+         const res = await apiClient.get(`/bookings/${bookingId}/messages`);
+         const rows = Array.isArray(res?.data?.messages) ? res.data.messages : [];
++        const imageRows = rows.filter(
++          (row) => row?.attachment?.attachment_type === "image" || Boolean(row?.attachment?.file_url)
++        );
++
++        if (imageRows.length) {
++          console.log("[chat-image-debug] GET /bookings/{booking_id}/messages image-only response", {
++            booking_id: bookingId,
++            status: res?.status,
++            image_message_count: imageRows.length,
++            image_messages: imageRows.map((row) => {
++              const attachment = row?.attachment || null;
++              const resolvedImageUrl = resolveImageUrl(attachment?.file_url);
++              return {
++                id: row?.id,
++                text: row?.text,
++                attachment,
++                renderer_inputs: {
++                  attachment_file_url: attachment?.file_url ?? null,
++                  resolved_image_url: resolvedImageUrl,
++                  will_render_image: Boolean(resolvedImageUrl),
++                },
++              };
++            }),
++          });
++        }
++
+         setMessages(rows);
+ 
+         await apiClient.post(`/bookings/messages/read`, { booking_id: bookingId });
+       } catch (err) {
+         const msg = getCleanApiErrorMessage(err, "Could not load chat messages.");
+         showFlash && showFlash("error", msg);
+       } finally {
+         setLoading(false);
+         setRefreshing(false);
+       }
+     },
+     [bookingId, showFlash]
+   );
+ 
+   useEffect(() => {
+     if (!visible || !bookingId) return;
+     loadMessages();
+     const interval = setInterval(() => {
+       loadMessages(true);
+     }, 15000);
+     return () => clearInterval(interval);
+   }, [visible, bookingId, loadMessages]);
+ 
+   useEffect(() => {
+     if (!visible || !messages.length) return;
+     requestAnimationFrame(() => {
+       listRef.current?.scrollToEnd?.({ animated: true });
+     });
+   }, [messages, visible]);
+ 
+   const handlePickImage = useCallback(async () => {
+     try {
+       const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+       if (!permission.granted) {
+         showFlash && showFlash("error", "Allow photo library access to attach images.");
+         return;
+       }
+ 
+       const result = await ImagePicker.launchImageLibraryAsync({
+         mediaTypes: ImagePicker.MediaTypeOptions.Images,
+         allowsEditing: false,
+         quality: 0.7,
+         selectionLimit: 1,
+       });
+ 
+       if (result.canceled) return;
+       const asset = result?.assets?.[0];
++      console.log("[chat-image-debug] selected image asset", asset || null);
+       if (!asset?.uri || (asset?.type && asset.type !== "image")) {
+         showFlash && showFlash("error", "Please select a valid image from your library.");
+         return;
+       }
+ 
+       setSelectedImage(asset);
+     } catch (err) {
+       showFlash && showFlash("error", "Could not open photo library.");
+     }
+   }, [showFlash]);
+ 
+   const uploadChatImageToCloudinary = useCallback(async (asset) => {
+     const filename = asset.fileName || asset.uri.split("/").pop() || "chat-image.jpg";
+     const ext = (filename.split(".").pop() || "jpg").toLowerCase();
+     const mimeType =
+       asset.mimeType ||
+       (ext === "png"
+         ? "image/png"
+         : ext === "webp"
+           ? "image/webp"
+           : "image/jpeg");
+ 
+     if (!CLOUDINARY_CLOUD_NAME || !CLOUDINARY_UPLOAD_PRESET) {
+       throw new Error("Chat image upload is not configured.");
+     }
+ 
+     const formData = new FormData();
+-    formData.append("file", {
++    const normalizedFile = {
+       uri: asset.uri,
+       name: filename,
+       type: mimeType,
+-    });
++    };
++    console.log("[chat-image-debug] normalized upload file object", normalizedFile);
++    formData.append("file", normalizedFile);
+     formData.append("upload_preset", CLOUDINARY_UPLOAD_PRESET);
+     formData.append("folder", CLOUDINARY_BOOKING_MESSAGES_FOLDER);
+ 
+     const uploadUrl = `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/image/upload`;
+     const uploadRes = await fetch(uploadUrl, {
+       method: "POST",
+       body: formData,
+     });
+ 
+     const uploadData = await uploadRes.json();
+     if (!uploadRes.ok || !uploadData?.secure_url) {
+       throw new Error(uploadData?.error?.message || "Image upload failed.");
+     }
+ 
+     return {
+       attachment_type: "image",
+       file_url: uploadData.secure_url,
+       mime_type: uploadData.resource_type === "image" ? mimeType : null,
+       file_size_bytes: Number.isFinite(uploadData.bytes)
+         ? uploadData.bytes
+         : null,
+       width: Number.isFinite(uploadData.width) ? uploadData.width : null,
+       height: Number.isFinite(uploadData.height) ? uploadData.height : null,
+       original_filename: uploadData.original_filename || filename,
+     };
+@@ -3668,85 +3704,112 @@ function BookingChatModal({
+     if (isChatReadOnly) {
+       showFlash && showFlash("error", chatReadOnlyReason);
+       return;
+     }
+ 
+     try {
+       setSending(true);
+       let attachmentPayload = null;
+ 
+       if (selectedImage?.uri) {
+         console.log("[chat-image-send] selected image", { uri: selectedImage.uri });
+         console.log("[chat-image-send] upload start", { booking_id: bookingId });
+         attachmentPayload = await uploadChatImageToCloudinary(selectedImage);
+         console.log("[chat-image-send] upload success", {
+           file_url: attachmentPayload?.file_url,
+           width: attachmentPayload?.width,
+           height: attachmentPayload?.height,
+         });
+       }
+ 
+       const payload = {
+         booking_id: bookingId,
+         text: trimmedText || null,
+         attachment: attachmentPayload,
+       };
+-      console.log("[chat-image-send] payload ready", {
+-        booking_id: payload.booking_id,
+-        has_text: Boolean(payload.text),
+-        has_attachment: Boolean(payload.attachment),
+-      });
++      const isImageMessage = Boolean(payload?.attachment?.attachment_type === "image");
++      if (isImageMessage) {
++        console.log("[chat-image-debug] final outgoing /bookings/messages payload", payload);
++      }
+       console.log("[chat-image-send] send route", { method: "POST", route: "/bookings/messages" });
+ 
+-      await apiClient.post(`/bookings/messages`, payload);
++      const postRes = await apiClient.post(`/bookings/messages`, payload);
++
++      if (isImageMessage) {
++        console.log("[chat-image-debug] /bookings/messages response", {
++          status: postRes?.status,
++          data: postRes?.data,
++        });
++
++        const outgoingAttachmentKeys = Object.keys(payload?.attachment || {}).sort();
++        const responseAttachment = postRes?.data?.message?.attachment || postRes?.data?.attachment || null;
++        const responseAttachmentKeys = Object.keys(responseAttachment || {}).sort();
++        const onlyInOutgoing = outgoingAttachmentKeys.filter((key) => !responseAttachmentKeys.includes(key));
++        const onlyInResponse = responseAttachmentKeys.filter((key) => !outgoingAttachmentKeys.includes(key));
++        logImageMessageShapeSummary("post-send", {
++          outgoing_attachment_keys: outgoingAttachmentKeys,
++          response_attachment_keys: responseAttachmentKeys,
++          only_in_outgoing_attachment: onlyInOutgoing,
++          only_in_response_attachment: onlyInResponse,
++        });
++      }
+ 
+       console.log("[chat-image-send] send success", { booking_id: bookingId });
+       setText("");
+       setSelectedImage(null);
+       await loadMessages(true);
+     } catch (err) {
+       console.log("[chat-image-send] send failure", err?.response?.data || err?.message || err);
+       const msg = getCleanApiErrorMessage(err, "Could not send message.");
+       showFlash && showFlash("error", msg);
+     } finally {
+       setSending(false);
+     }
+   }, [
+     bookingId,
+     chatReadOnlyReason,
+     isChatReadOnly,
+     loadMessages,
+     selectedImage,
+     sending,
+     showFlash,
+     text,
+     uploadChatImageToCloudinary,
+   ]);
+ 
+   const renderItem = ({ item }) => {
+     const mine = Number(item?.sender_user_id) === Number(currentUserId);
+     const imageUrl = resolveImageUrl(item?.attachment?.file_url);
++    if (item?.attachment?.attachment_type === "image" || item?.attachment?.file_url) {
++      console.log("[chat-image-debug] renderer image decision fields", {
++        id: item?.id,
++        attachment_type: item?.attachment?.attachment_type ?? null,
++        attachment_file_url: item?.attachment?.file_url ?? null,
++        resolved_image_url: imageUrl,
++        will_render_image: Boolean(imageUrl),
++      });
++    }
+     const createdAt = item?.created_at ? new Date(item.created_at) : null;
+     const timeText = createdAt && !Number.isNaN(createdAt.getTime())
+       ? createdAt.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })
+       : "";
+ 
+     return (
+       <View style={[styles.chatRow, mine ? styles.chatRowMine : styles.chatRowOther]}>
+         <View style={[styles.chatBubble, mine ? styles.chatBubbleMine : styles.chatBubbleOther]}>
+           {item?.text ? <Text style={styles.chatText}>{item.text}</Text> : null}
+           {imageUrl ? (
+             <TouchableOpacity onPress={() => setViewerImage(imageUrl)} activeOpacity={0.85}>
+               <Image source={{ uri: imageUrl }} style={styles.chatImage} resizeMode="cover" />
+             </TouchableOpacity>
+           ) : null}
+           {timeText ? <Text style={styles.chatTime}>{timeText}</Text> : null}
+         </View>
+       </View>
+     );
+   };
+ 
+   return (
+     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
+       <SafeAreaView style={styles.chatSafeArea} edges={["left", "right", "bottom"]}>
+         <KeyboardAvoidingView
+           style={styles.chatKeyboardWrapper}
  
 EOF
 )

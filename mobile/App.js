@@ -3541,6 +3541,13 @@ function BookingChatModal({
   const chatReadOnlyReason = getBookingChatReadOnlyReason(booking);
   const isChatReadOnly = Boolean(chatReadOnlyReason);
 
+  const logImageMessageShapeSummary = useCallback((context, details) => {
+    console.log("[chat-image-debug] shape-summary", {
+      context,
+      ...details,
+    });
+  }, []);
+
   const loadMessages = useCallback(
     async (useRefresh = false) => {
       if (!bookingId) return;
@@ -3550,6 +3557,32 @@ function BookingChatModal({
 
         const res = await apiClient.get(`/bookings/${bookingId}/messages`);
         const rows = Array.isArray(res?.data?.messages) ? res.data.messages : [];
+        const imageRows = rows.filter(
+          (row) => row?.attachment?.attachment_type === "image" || Boolean(row?.attachment?.file_url)
+        );
+
+        if (imageRows.length) {
+          console.log("[chat-image-debug] GET /bookings/{booking_id}/messages image-only response", {
+            booking_id: bookingId,
+            status: res?.status,
+            image_message_count: imageRows.length,
+            image_messages: imageRows.map((row) => {
+              const attachment = row?.attachment || null;
+              const resolvedImageUrl = resolveImageUrl(attachment?.file_url);
+              return {
+                id: row?.id,
+                text: row?.text,
+                attachment,
+                renderer_inputs: {
+                  attachment_file_url: attachment?.file_url ?? null,
+                  resolved_image_url: resolvedImageUrl,
+                  will_render_image: Boolean(resolvedImageUrl),
+                },
+              };
+            }),
+          });
+        }
+
         setMessages(rows);
 
         await apiClient.post(`/bookings/messages/read`, { booking_id: bookingId });
@@ -3597,6 +3630,7 @@ function BookingChatModal({
 
       if (result.canceled) return;
       const asset = result?.assets?.[0];
+      console.log("[chat-image-debug] selected image asset", asset || null);
       if (!asset?.uri || (asset?.type && asset.type !== "image")) {
         showFlash && showFlash("error", "Please select a valid image from your library.");
         return;
@@ -3624,11 +3658,13 @@ function BookingChatModal({
     }
 
     const formData = new FormData();
-    formData.append("file", {
+    const normalizedFile = {
       uri: asset.uri,
       name: filename,
       type: mimeType,
-    });
+    };
+    console.log("[chat-image-debug] normalized upload file object", normalizedFile);
+    formData.append("file", normalizedFile);
     formData.append("upload_preset", CLOUDINARY_UPLOAD_PRESET);
     formData.append("folder", CLOUDINARY_BOOKING_MESSAGES_FOLDER);
 
@@ -3690,14 +3726,32 @@ function BookingChatModal({
         text: trimmedText || null,
         attachment: attachmentPayload,
       };
-      console.log("[chat-image-send] payload ready", {
-        booking_id: payload.booking_id,
-        has_text: Boolean(payload.text),
-        has_attachment: Boolean(payload.attachment),
-      });
+      const isImageMessage = Boolean(payload?.attachment?.attachment_type === "image");
+      if (isImageMessage) {
+        console.log("[chat-image-debug] final outgoing /bookings/messages payload", payload);
+      }
       console.log("[chat-image-send] send route", { method: "POST", route: "/bookings/messages" });
 
-      await apiClient.post(`/bookings/messages`, payload);
+      const postRes = await apiClient.post(`/bookings/messages`, payload);
+
+      if (isImageMessage) {
+        console.log("[chat-image-debug] /bookings/messages response", {
+          status: postRes?.status,
+          data: postRes?.data,
+        });
+
+        const outgoingAttachmentKeys = Object.keys(payload?.attachment || {}).sort();
+        const responseAttachment = postRes?.data?.message?.attachment || postRes?.data?.attachment || null;
+        const responseAttachmentKeys = Object.keys(responseAttachment || {}).sort();
+        const onlyInOutgoing = outgoingAttachmentKeys.filter((key) => !responseAttachmentKeys.includes(key));
+        const onlyInResponse = responseAttachmentKeys.filter((key) => !outgoingAttachmentKeys.includes(key));
+        logImageMessageShapeSummary("post-send", {
+          outgoing_attachment_keys: outgoingAttachmentKeys,
+          response_attachment_keys: responseAttachmentKeys,
+          only_in_outgoing_attachment: onlyInOutgoing,
+          only_in_response_attachment: onlyInResponse,
+        });
+      }
 
       console.log("[chat-image-send] send success", { booking_id: bookingId });
       setText("");
@@ -3725,6 +3779,15 @@ function BookingChatModal({
   const renderItem = ({ item }) => {
     const mine = Number(item?.sender_user_id) === Number(currentUserId);
     const imageUrl = resolveImageUrl(item?.attachment?.file_url);
+    if (item?.attachment?.attachment_type === "image" || item?.attachment?.file_url) {
+      console.log("[chat-image-debug] renderer image decision fields", {
+        id: item?.id,
+        attachment_type: item?.attachment?.attachment_type ?? null,
+        attachment_file_url: item?.attachment?.file_url ?? null,
+        resolved_image_url: imageUrl,
+        will_render_image: Boolean(imageUrl),
+      });
+    }
     const createdAt = item?.created_at ? new Date(item.created_at) : null;
     const timeText = createdAt && !Number.isNaN(createdAt.getTime())
       ? createdAt.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })
@@ -5964,6 +6027,7 @@ const saveWorkingHours = async () => {
     // if (showFlash) showFlash("success", "Working hours saved");
     setHoursFlash({ type: "success", message: "Working hours saved" });
     setTimeout(() => setHoursFlash(null), 4000);
+    setShowHours(false);
   } catch (err) {
     console.log(
       "Error saving working hours",
@@ -6450,6 +6514,7 @@ const saveProviderProfile = async () => {
     // ✅ Show success flash in the green bar
     setHoursFlash({ type: "success", message: "Provider profile saved" });
     setTimeout(() => setHoursFlash(null), 4000);
+    setShowProfileEditor(false);
   } catch (err) {
     console.log("Error saving provider profile", err.response?.data || err.message);
 
