@@ -9115,7 +9115,12 @@ function NotificationBell({ unreadCount = 0, onPress }) {
   );
 }
 
-function NotificationsScreen({ navigation, refreshUnreadCount, setPendingChatConversationId }) {
+function NotificationsScreen({
+  navigation,
+  refreshUnreadCount,
+  setPendingChatConversationId,
+  isProvider = false,
+}) {
   const [loading, setLoading] = useState(true);
   const [notifications, setNotifications] = useState([]);
 
@@ -9163,14 +9168,42 @@ function NotificationsScreen({ navigation, refreshUnreadCount, setPendingChatCon
     await loadNotifications();
   }, [loadNotifications, navigation, setPendingChatConversationId]);
 
+  const handleClose = useCallback(() => {
+    if (navigation?.canGoBack?.()) {
+      navigation.goBack();
+      return;
+    }
+
+    const fallbackRoute = isProvider ? "Dashboard" : "Home";
+    const routeNames = navigation?.getState?.()?.routeNames || [];
+    if (routeNames.includes(fallbackRoute)) {
+      navigation.navigate(fallbackRoute);
+      return;
+    }
+
+    const parentNavigation = navigation?.getParent?.();
+    const parentRouteNames = parentNavigation?.getState?.()?.routeNames || [];
+    if (parentRouteNames.includes(fallbackRoute)) {
+      parentNavigation.navigate(fallbackRoute);
+      return;
+    }
+
+    navigation.dispatch(CommonActions.navigate({ name: fallbackRoute }));
+  }, [isProvider, navigation]);
+
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.card}>
         <View style={styles.notificationsHeaderRow}>
           <Text style={styles.profileTitle}>Notifications</Text>
-          <TouchableOpacity onPress={async () => { await apiClient.patch('/notifications/read-all'); await loadNotifications(); }}>
-            <Text style={styles.bookingEdit}>Mark all read</Text>
-          </TouchableOpacity>
+          <View style={styles.notificationsHeaderActions}>
+            <TouchableOpacity onPress={async () => { await apiClient.patch('/notifications/read-all'); await loadNotifications(); }}>
+              <Text style={styles.bookingEdit}>Mark all read</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={handleClose}>
+              <Text style={styles.bookingEdit}>Close</Text>
+            </TouchableOpacity>
+          </View>
         </View>
 
         {loading ? (
@@ -9249,9 +9282,20 @@ function MainApp({
           initialRouteName="Dashboard"
           screenOptions={({ route }) => ({
             headerShown: route.name === 'Dashboard',
+            sceneContainerStyle: {
+              backgroundColor: colors.background,
+            },
             tabBarShowLabel: true,
             tabBarActiveTintColor: colors.primary,
             tabBarInactiveTintColor: colors.textSecondary,
+            headerStyle: {
+              backgroundColor: colors.background,
+            },
+            headerTintColor: colors.textPrimary,
+            headerTitleStyle: {
+              color: colors.textPrimary,
+            },
+            headerShadowVisible: false,
             tabBarStyle: {
               backgroundColor: colors.surface,
               height: 76,
@@ -9288,7 +9332,6 @@ function MainApp({
               if (route.name === "Dashboard") iconName = "speedometer-outline";
               else if (route.name === "Calendar") iconName = "calendar-outline";
               else if (route.name === "Billing") iconName = "card-outline";
-              else if (route.name === "Notifications") iconName = "notifications-outline";
               else if (route.name === "Profile") iconName = "person-outline";
 
               if (focused) {
@@ -9337,15 +9380,22 @@ function MainApp({
           </Tab.Screen>
 
 
-          <Tab.Screen name="Notifications">
-              {({ navigation }) => (
-                <NotificationsScreen
-                  navigation={navigation}
-                  refreshUnreadCount={refreshUnreadCount}
-                  setPendingChatConversationId={setPendingChatConversationId}
-                />
-              )}
-            </Tab.Screen>
+          <Tab.Screen
+            name="Notifications"
+            options={{
+              headerShown: false,
+              tabBarButton: () => null,
+            }}
+          >
+            {({ navigation }) => (
+              <NotificationsScreen
+                navigation={navigation}
+                refreshUnreadCount={refreshUnreadCount}
+                setPendingChatConversationId={setPendingChatConversationId}
+                isProvider={true}
+              />
+            )}
+          </Tab.Screen>
 
 
           <Tab.Screen name="Profile">
@@ -9364,9 +9414,20 @@ function MainApp({
             <Tab.Navigator
             screenOptions={({ route }) => ({
               headerShown: route.name === "Home",
+              sceneContainerStyle: {
+                backgroundColor: colors.background,
+              },
               tabBarShowLabel: true,
               tabBarActiveTintColor: colors.primary,
               tabBarInactiveTintColor: colors.textSecondary,
+              headerStyle: {
+                backgroundColor: colors.background,
+              },
+              headerTintColor: colors.textPrimary,
+              headerTitleStyle: {
+                color: colors.textPrimary,
+              },
+              headerShadowVisible: false,
               tabBarStyle: {
                 backgroundColor: colors.surface,
                 height: 76,
@@ -9403,7 +9464,6 @@ function MainApp({
                 if (route.name === "Home") iconName = "home-outline";
                 else if (route.name === "Search") iconName = "search-outline";
                 else if (route.name === "Appointments") iconName = "calendar-outline";
-                else if (route.name === "Notifications") iconName = "notifications-outline";
                 else if (route.name === "Profile") iconName = "person-outline";
 
                 if (focused) {
@@ -9457,12 +9517,19 @@ function MainApp({
                 />
               )}
             </Tab.Screen>
-            <Tab.Screen name="Notifications">
+            <Tab.Screen
+              name="Notifications"
+              options={{
+                headerShown: false,
+                tabBarButton: () => null,
+              }}
+            >
               {({ navigation }) => (
                 <NotificationsScreen
                   navigation={navigation}
                   refreshUnreadCount={refreshUnreadCount}
                   setPendingChatConversationId={setPendingChatConversationId}
+                  isProvider={false}
                 />
               )}
             </Tab.Screen>
@@ -12959,6 +13026,11 @@ signupTextButtonText: {
     justifyContent: "space-between",
     alignItems: "center",
     marginBottom: 12,
+  },
+  notificationsHeaderActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 14,
   },
   notificationItem: {
     width: "100%",
