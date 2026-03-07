@@ -1,9 +1,16 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
 diff --git a/mobile/App.js b/mobile/App.js
-index 9005f356548e02e6f7a798fded351e3c2cf800f2..9e1537007f16b184d4610cf276231f764f17ba9f 100644
+index 9e1537007f16b184d4610cf276231f764f17ba9f..846b0129ab9164052d2ce51792a87a8c09bc6906 100644
 --- a/mobile/App.js
 +++ b/mobile/App.js
-@@ -3809,50 +3809,83 @@ function BookingChatModal({
+@@ -3802,108 +3802,154 @@ function BookingChatModal({
+       </SafeAreaView>
+ 
+       <Modal
+         visible={!!viewerImage}
+         transparent={true}
+         animationType="fade"
+         onRequestClose={() => setViewerImage(null)}
        >
          <Pressable style={styles.chatViewerBackdrop} onPress={() => setViewerImage(null)}>
            {viewerImage ? (
@@ -22,64 +29,125 @@ index 9005f356548e02e6f7a798fded351e3c2cf800f2..9e1537007f16b184d4610cf276231f76
    const [refreshing, setRefreshing] = useState(false);
    const [chatBooking, setChatBooking] = useState(null);
  
-   const normalizeStart = (booking) => {
-     const iso = booking?.start_time || booking?.start;
-     if (!iso) return null;
-     const d = new Date(iso);
-     return Number.isNaN(d.getTime()) ? null : d;
-   };
- 
-+  const normalizeStatus = (statusValue) =>
-+    String(statusValue || "").trim().toLowerCase();
-+
-+  const isCancelledBooking = (booking) => {
-+    const status = normalizeStatus(booking?.status || booking?.state);
-+    return status.includes("cancel");
-+  };
-+
-+  const isCompletedBooking = (booking) => {
-+    const status = normalizeStatus(booking?.status || booking?.state);
-+    return status.includes("complete");
-+  };
-+
-+  const bookingHasEnded = (booking, nowTs) => {
-+    const endIso = booking?.end_time || booking?.end;
-+    const endDate = endIso ? new Date(endIso) : null;
-+    if (endDate && !Number.isNaN(endDate.getTime())) {
-+      return endDate.getTime() <= nowTs;
++  // Booking datetimes are stored/served as Guyana-local wall time (UTC-4, no DST).
++  // Parse naive strings explicitly as Guyana so device timezone does not affect logic.
++  const GUYANA_UTC_OFFSET_HOURS = 4;
++  const parseGuyanaDateMs = (value) => {
++    if (!value) return null;
++    if (value instanceof Date) {
++      const t = value.getTime();
++      return Number.isNaN(t) ? null : t;
 +    }
 +
-+    const startDate = normalizeStart(booking);
-+    if (!startDate) return false;
-+    return startDate.getTime() < nowTs;
++    const raw = String(value).trim();
++    if (!raw) return null;
++
++    // Respect explicit timezone payloads (Z / +/-HH:MM) as absolute instants.
++    if (/z$|[+-]\d{2}:?\d{2}$/i.test(raw)) {
++      const ts = Date.parse(raw);
++      return Number.isNaN(ts) ? null : ts;
++    }
++
++    // Treat naive payload as Guyana local time.
++    const m = raw.match(
++      /^(\d{4})-(\d{2})-(\d{2})(?:[T\s](\d{2})(?::(\d{2})(?::(\d{2})(?:\.(\d{1,3}))?)?)?)?$/
++    );
++    if (!m) {
++      const ts = Date.parse(raw);
++      return Number.isNaN(ts) ? null : ts;
++    }
++
++    const [, y, mo, d, h = "0", mi = "0", s = "0", ms = "0"] = m;
++    const msNorm = ms.padEnd(3, "0").slice(0, 3);
++    return Date.UTC(
++      Number(y),
++      Number(mo) - 1,
++      Number(d),
++      Number(h) + GUYANA_UTC_OFFSET_HOURS,
++      Number(mi),
++      Number(s),
++      Number(msNorm)
++    );
 +  };
 +
-+  const isUpcomingBooking = (booking, nowTs) => {
-+    const startDate = booking?._start || normalizeStart(booking);
-+    if (!startDate) return false;
-+    if (isCancelledBooking(booking) || isCompletedBooking(booking)) return false;
-+    if (bookingHasEnded(booking, nowTs)) return false;
-+    return true;
-+  };
++  const getNowGuyanaMs = () => Date.now();
 +
+   const normalizeStart = (booking) => {
+     const iso = booking?.start_time || booking?.start;
+-    if (!iso) return null;
+-    const d = new Date(iso);
+-    return Number.isNaN(d.getTime()) ? null : d;
++    const ts = parseGuyanaDateMs(iso);
++    return ts == null ? null : new Date(ts);
+   };
+ 
+   const normalizeStatus = (statusValue) =>
+     String(statusValue || "").trim().toLowerCase();
+ 
+   const isCancelledBooking = (booking) => {
+     const status = normalizeStatus(booking?.status || booking?.state);
+     return status.includes("cancel");
+   };
+ 
+   const isCompletedBooking = (booking) => {
+     const status = normalizeStatus(booking?.status || booking?.state);
+     return status.includes("complete");
+   };
+ 
+   const bookingHasEnded = (booking, nowTs) => {
+     const endIso = booking?.end_time || booking?.end;
+-    const endDate = endIso ? new Date(endIso) : null;
+-    if (endDate && !Number.isNaN(endDate.getTime())) {
+-      return endDate.getTime() <= nowTs;
++    const endTs = parseGuyanaDateMs(endIso);
++    if (endTs != null) {
++      return endTs <= nowTs;
+     }
+ 
+     const startDate = normalizeStart(booking);
+     if (!startDate) return false;
+     return startDate.getTime() < nowTs;
+   };
+ 
+   const isUpcomingBooking = (booking, nowTs) => {
+     const startDate = booking?._start || normalizeStart(booking);
+     if (!startDate) return false;
+     if (isCancelledBooking(booking) || isCompletedBooking(booking)) return false;
+     if (bookingHasEnded(booking, nowTs)) return false;
+     return true;
+   };
+ 
    const formatBookingDate = (iso) => {
-     const d = new Date(iso);
-     if (Number.isNaN(d.getTime())) return "";
+-    const d = new Date(iso);
+-    if (Number.isNaN(d.getTime())) return "";
++    const ts = parseGuyanaDateMs(iso);
++    const d = ts == null ? null : new Date(ts);
++    if (!d || Number.isNaN(d.getTime())) return "";
      return d.toLocaleDateString("en-US", {
        weekday: "short",
        month: "short",
        day: "numeric",
++      timeZone: "America/Guyana",
      });
    };
  
    const formatBookingTime = (iso) => {
-     const d = new Date(iso);
-     if (Number.isNaN(d.getTime())) return "";
-     let h = d.getHours();
-     const m = d.getMinutes();
-     const suffix = h >= 12 ? "PM" : "AM";
-     h = h % 12 || 12;
-     return `${h}:${m.toString().padStart(2, "0")} ${suffix}`;
+-    const d = new Date(iso);
+-    if (Number.isNaN(d.getTime())) return "";
+-    let h = d.getHours();
+-    const m = d.getMinutes();
+-    const suffix = h >= 12 ? "PM" : "AM";
+-    h = h % 12 || 12;
+-    return `${h}:${m.toString().padStart(2, "0")} ${suffix}`;
++    const ts = parseGuyanaDateMs(iso);
++    const d = ts == null ? null : new Date(ts);
++    if (!d || Number.isNaN(d.getTime())) return "";
++    return d.toLocaleTimeString("en-US", {
++      hour: "numeric",
++      minute: "2-digit",
++      hour12: true,
++      timeZone: "America/Guyana",
++    });
    };
  
    const fetchBookings = useCallback(
@@ -87,7 +155,26 @@ index 9005f356548e02e6f7a798fded351e3c2cf800f2..9e1537007f16b184d4610cf276231f76
        try {
          if (useRefresh) setRefreshing(true);
          setLoading(true);
-@@ -3967,56 +4000,57 @@ function AppointmentsScreen({ token, showFlash, pendingChatConversationId, clear
+         setError("");
+ 
+         const authToken = await getAuthToken(token);
+ 
+         if (!authToken) {
+           setError("Please log in to view your appointments.");
+           setBookings([]);
+           return;
+         }
+ 
+         const res = await apiClient.get(`/bookings/me`);
+ 
+         const raw = res.data;
+         const list = Array.isArray(raw)
+           ? raw
+           : raw?.bookings || raw?.results || [];
+ 
+         setBookings(list);
+@@ -3999,84 +4045,81 @@ function AppointmentsScreen({ token, showFlash, pendingChatConversationId, clear
+                 "Error cancelling booking (appointments)",
                  err.response?.data || err.message
                );
                showFlash && showFlash("error", "Could not cancel booking.");
@@ -112,16 +199,15 @@ index 9005f356548e02e6f7a798fded351e3c2cf800f2..9e1537007f16b184d4610cf276231f76
      _start: normalizeStart(b),
    }));
  
-   const now = new Date();
-+  const nowTs = now.getTime();
+-  const now = new Date();
+-  const nowTs = now.getTime();
++  const nowTs = getNowGuyanaMs();
    const upcomingBookings = datedBookings
--    .filter((b) => b._start && b.status !== "cancelled" && b._start >= now)
-+    .filter((b) => isUpcomingBooking(b, nowTs))
+     .filter((b) => isUpcomingBooking(b, nowTs))
      .sort((a, b) => a._start - b._start);
  
    const finishedBookings = datedBookings
--    .filter((b) => !b._start || b.status === "cancelled" || b._start < now)
-+    .filter((b) => !isUpcomingBooking(b, nowTs))
+     .filter((b) => !isUpcomingBooking(b, nowTs))
      .sort((a, b) => {
        const aTime = a?._start?.getTime?.() ?? 0;
        const bTime = b?._start?.getTime?.() ?? 0;
@@ -131,22 +217,56 @@ index 9005f356548e02e6f7a798fded351e3c2cf800f2..9e1537007f16b184d4610cf276231f76
    const deriveStatus = (booking) => {
      const startIso = booking.start_time || booking.start;
      const endIso = booking.end_time || booking.end;
-     const startDate = startIso ? new Date(startIso) : null;
-     const endDate = endIso ? new Date(endIso) : null;
-     const nowTs = Date.now();
+-    const startDate = startIso ? new Date(startIso) : null;
+-    const endDate = endIso ? new Date(endIso) : null;
+-    const nowTs = Date.now();
+-
+-    const normalizedStart =
+-      startDate && !Number.isNaN(startDate.getTime()) ? startDate.getTime() : null;
+-    const normalizedEnd =
+-      endDate && !Number.isNaN(endDate.getTime()) ? endDate.getTime() : null;
++    const normalizedStart = parseGuyanaDateMs(startIso);
++    const normalizedEnd = parseGuyanaDateMs(endIso);
++    const nowTs = getNowGuyanaMs();
  
-     const normalizedStart =
-       startDate && !Number.isNaN(startDate.getTime()) ? startDate.getTime() : null;
-     const normalizedEnd =
-       endDate && !Number.isNaN(endDate.getTime()) ? endDate.getTime() : null;
- 
-     if (booking.status === "cancelled") return "cancelled";
+-    if (booking.status === "cancelled") return "cancelled";
++    if (isCancelledBooking(booking)) return "cancelled";
++    if (isCompletedBooking(booking) || booking?.completed_at || booking?.is_completed) {
++      return "completed";
++    }
  
      if (normalizedEnd != null) {
        if (nowTs >= normalizedEnd) return "completed";
        if (normalizedStart != null && nowTs >= normalizedStart) return "in progress";
      }
  
+-    return booking.status || "pending";
++    return booking.status || booking.state || "pending";
+   };
+ 
+   const renderBooking = (booking, isUpcoming = false) => {
+     const startIso = booking.start_time || booking.start;
+     const dateLabel = formatBookingDate(startIso);
+     const timeLabel = formatBookingTime(startIso);
+     const statusLabel = deriveStatus(booking);
+     // status color mapping
+     const statusThemeKey = getAppointmentStatusThemeKey(statusLabel);
+     const statusTheme = APPOINTMENT_STATUS_THEME[statusThemeKey];
+ 
+     return (
+       <View
+         key={booking.id || booking.booking_id || `${startIso}-${booking.service_name}`}
+         style={[
+           styles.appointmentItem,
+           // tint based on status
+           { backgroundColor: statusTheme.bgTint, borderColor: statusTheme.border },
+         ]}
+       >
+         {/* left accent bar */}
+         <View style={[styles.appointmentLeftAccentBar, { backgroundColor: statusTheme.accent }]} />
+         <View style={{ flex: 1 }}>
+           <Text style={styles.appointmentTitle}>{booking.service_name}</Text>
+           <Text style={styles.appointmentMeta}>
  
 EOF
 )

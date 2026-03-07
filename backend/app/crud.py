@@ -2989,6 +2989,9 @@ def list_bookings_for_customer(db: Session, customer_id: int):
     if not user:
         return []
 
+    # Keep customer-facing booking statuses in sync with backend completion rules.
+    _auto_complete_finished_bookings(db, as_of=now_guyana())
+
     rows = (
         db.query(models.Booking, models.Service)
         .join(models.Service, models.Booking.service_id == models.Service.id)
@@ -3035,8 +3038,8 @@ def list_bookings_for_customer(db: Session, customer_id: int):
                 start_time=booking.start_time,
                 end_time=booking.end_time,
                 status=normalized_booking_status_value(booking.status),
-                canceled_at=None,
-                completed_at=None,
+                canceled_at=getattr(booking, "canceled_at", None),
+                completed_at=getattr(booking, "completed_at", None),
                 service_name=service.name if service else "",
                 service_duration_minutes=service.duration_minutes if service else 0,
                 service_price_gyd=(
