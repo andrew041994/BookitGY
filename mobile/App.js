@@ -9192,7 +9192,7 @@ function NotificationsScreen({
   }, [isProvider, navigation]);
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.notificationsScreenContainer}>
       <View style={styles.card}>
         <View style={styles.notificationsHeaderRow}>
           <Text style={styles.profileTitle}>Notifications</Text>
@@ -13019,6 +13019,10 @@ signupTextButtonText: {
     color: colors.textPrimary,
     fontSize: 10,
     fontWeight: "700",
+  },
+  notificationsScreenContainer: {
+    flex: 1,
+    backgroundColor: "#0F223A",
   },
   notificationsHeaderRow: {
     width: "100%",
