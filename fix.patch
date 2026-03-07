@@ -1,62 +1,60 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
-diff --git a/backend/app/utils/email.py b/backend/app/utils/email.py
-index 25908aaf30422e3702f433c76598c4a5ae0f6022..240c648dd687699305a49e1a42d6443430fcdf34 100644
---- a/backend/app/utils/email.py
-+++ b/backend/app/utils/email.py
-@@ -142,52 +142,48 @@ def send_provider_suspension_email(
-         subject = "Your BookitGY account has been reactivated"
-         content = (
-             "Your provider account has been restored and can now accept bookings again.\n\n"
-             f"{provider_line}"
-             f"Account: {account_number}"
-         )
- 
-     message = Mail(
-         from_email=settings.SENDGRID_FROM_EMAIL,
-         to_emails=to_email,
-         subject=subject,
-         plain_text_content=content,
-     )
- 
-     _send_email(message, "Failed to send provider suspension email.")
- 
- 
- def send_monthly_statement_email(
-     to_email: str,
-     *,
-     month_label: str,
-     fees_due_gyd: str,
-     credits_applied_gyd: str,
-     remaining_balance_gyd: str,
-     due_date_label: str | None = None,
--    billing_page_url: str | None = None,
- ) -> None:
-     _ensure_email_configured()
- 
-     subject = f"BookitGY — Monthly statement for {month_label}"
-     due_date_line = f"Due date: {due_date_label}\n" if due_date_label else ""
--    billing_page_line = (
--        f"View your billing page: {billing_page_url}\n" if billing_page_url else ""
--    )
-     content = (
-         f"Your BookitGY monthly statement for {month_label} is ready.\n\n"
-         f"Fees due: GYD {fees_due_gyd}\n"
-         f"Credits applied: GYD {credits_applied_gyd}\n"
-         f"Remaining balance due: GYD {remaining_balance_gyd}\n"
-         f"{due_date_line}"
--        f"{billing_page_line}\n"
-+        "\n"
-         "If you have any questions, contact bookitgy.service@gmail.com."
-     )
- 
-     message = Mail(
-         from_email=settings.SENDGRID_FROM_EMAIL,
-         to_emails=to_email,
-         subject=subject,
-         plain_text_content=content,
-     )
- 
-     _send_email(message, "Failed to send monthly billing statement email.")
+diff --git a/mobile/package.json b/mobile/package.json
+index b419e9d1529f8fc43c0da5a4598c212eb397784c..b0d1bd7c308345b65b2b1359535633199aa3303a 100644
+--- a/mobile/package.json
++++ b/mobile/package.json
+@@ -5,50 +5,51 @@
+   "scripts": {
+     "start": "expo start",
+     "android": "expo run:android",
+     "ios": "expo run:ios",
+     "version:bump": "node ./scripts/bump-version.mjs --patch",
+     "version:bump:minor": "node ./scripts/bump-version.mjs --minor",
+     "version:bump:major": "node ./scripts/bump-version.mjs --major",
+     "version:set": "node ./scripts/bump-version.mjs --set",
+     "ios:release": "npm run version:bump && eas build -p ios --profile production",
+     "android:release": "npm run version:bump && eas build -p android --profile production"
+   },
+   "dependencies": {
+     "@react-native-async-storage/async-storage": "2.2.0",
+     "@react-native-community/datetimepicker": "8.4.4",
+     "@react-navigation/bottom-tabs": "^6.6.1",
+     "@react-navigation/native": "^6.1.18",
+     "axios": "^1.13.2",
+     "babel-preset-expo": "~54.0.10",
+     "expo": "^54.0.33",
+     "expo-auth-session": "~6.1.0",
+     "expo-build-properties": "~1.0.10",
+     "expo-constants": "^18.0.13",
+     "expo-image-picker": "~17.0.10",
+     "expo-linking": "^8.0.11",
+     "expo-location": "~19.0.8",
++    "expo-notifications": "~0.32.12",
+     "expo-secure-store": "~15.0.8",
+     "expo-web-browser": "~15.0.10",
+     "react": "19.1.0",
+     "react-dom": "19.1.0",
+     "react-native": "0.81.5",
+     "react-native-calendars": "^1.1314.0",
+     "react-native-dotenv": "^3.4.11",
+     "react-native-gesture-handler": "~2.28.0",
+     "react-native-keyboard-aware-scroll-view": "^0.9.5",
+     "react-native-maps": "1.20.1",
+     "react-native-safe-area-context": "~5.6.0",
+     "react-native-screens": "~4.16.0",
+     "react-native-web": "^0.21.0",
+     "sentry-expo": "~7.0.0",
+     "tslib": "^2.8.1"
+   },
+   "devDependencies": {
+     "@babel/core": "^7.20.0",
+     "@react-native-community/cli": "^20.1.1",
+     "@types/react": "~19.1.10",
+     "@types/react-dom": "~19.1.7",
+     "typescript": "~5.9.2"
+   },
+   "private": true,
+   "overrides": {
  
 EOF
 )

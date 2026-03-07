@@ -613,6 +613,7 @@ class BookingWithDetails(BaseModel):
     provider_location: Optional[str] = None
     provider_lat: Optional[float] = None
     provider_long: Optional[float] = None
+    conversation_id: Optional[int] = None
 
     class Config:
         from_attributes = True
@@ -711,6 +712,29 @@ class BookingMessagesResponse(BaseModel):
 
 class MarkMessagesReadRequest(BaseModel):
     booking_id: int
+
+
+class NotificationOut(BaseModel):
+    id: int
+    user_id: int
+    type: str
+    title: str
+    body: str
+    conversation_id: Optional[int] = None
+    message_id: Optional[int] = None
+    is_read: bool
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class NotificationsResponse(BaseModel):
+    notifications: List[NotificationOut] = []
+
+
+class NotificationUnreadCountResponse(BaseModel):
+    unread_count: int
 
 class BookingUpdate(BaseModel):
     start_time: Optional[datetime] = None

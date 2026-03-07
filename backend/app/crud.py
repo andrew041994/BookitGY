@@ -3,7 +3,7 @@ from datetime import datetime, timedelta, date, time
 import logging
 from decimal import Decimal, ROUND_HALF_UP
 from typing import Optional, List
-from sqlalchemy import func, cast, String, case, select, or_, desc
+from sqlalchemy import func, cast, String, case, select, or_, desc, update
 from sqlalchemy.orm import Session, aliased, joinedload
 from sqlalchemy.exc import IntegrityError
 from passlib.context import CryptContext
@@ -69,7 +69,12 @@ def validate_coordinates(lat: Optional[float], long: Optional[float]) -> None:
             raise ValueError("Longitude must be between -180 and 180 degrees")
 
 
-def send_push(to_token: Optional[str], title: str, body: str) -> None:
+def send_push(
+    to_token: Optional[str],
+    title: str,
+    body: str,
+    data: Optional[dict] = None,
+) -> None:
     if not to_token:
         return
 
@@ -79,6 +84,8 @@ def send_push(to_token: Optional[str], title: str, body: str) -> None:
         "title": title,
         "body": body,
     }
+    if data:
+        payload["data"] = data
 
     try:
         requests.post(EXPO_PUSH_URL, json=payload, timeout=5)
@@ -892,10 +899,27 @@ def send_booking_message(
 
     if recipient:
         preview_text = "Sent an image" if not normalized_text else normalized_text
+        body_text = preview_text[:80]
+        notification = models.Notification(
+            user_id=recipient.id,
+            type="message",
+            title=f"New message from {get_display_name(sender)}",
+            body=body_text,
+            conversation_id=conversation.id,
+            message_id=message.id,
+            is_read=False,
+        )
+        db.add(notification)
+        db.commit()
+
         send_push(
             recipient.expo_push_token,
-            "New booking message",
-            f"{get_display_name(sender)}: {preview_text[:120]}",
+            f"New message from {get_display_name(sender)}",
+            body_text,
+            data={
+                "type": "chat",
+                "conversation_id": conversation.id,
+            },
         )
 
     return message
@@ -2848,6 +2872,11 @@ def list_bookings_for_provider(
             "status": normalized_booking_status_value(booking.status),
             "canceled_at": getattr(booking, "canceled_at", None),
             "completed_at": getattr(booking, "completed_at", None),
+            "conversation_id": (
+                db.query(models.Conversation.id)
+                .filter(models.Conversation.booking_id == booking.id)
+                .scalar()
+            ),
         }
         for booking, service, customer in rows
     ]
@@ -2994,6 +3023,12 @@ def list_bookings_for_customer(db: Session, customer_id: int):
                     provider_lat = provider_user.lat
                     provider_long = provider_user.long
 
+        conversation = (
+            db.query(models.Conversation)
+            .filter(models.Conversation.booking_id == booking.id)
+            .first()
+        )
+
         results.append(
             schemas.BookingWithDetails(
                 id=booking.id,
@@ -3015,6 +3050,7 @@ def list_bookings_for_customer(db: Session, customer_id: int):
                 provider_location=provider_location,
                 provider_lat=provider_lat,
                 provider_long=provider_long,
+                conversation_id=conversation.id if conversation else None,
             )
         )
 
@@ -3830,3 +3866,54 @@ def update_provider(
 #     booking.status = "cancelled"
 #     db.commit()
 #     return True
+
+
+def list_notifications_for_user(db: Session, *, user_id: int):
+    return (
+        db.query(models.Notification)
+        .filter(models.Notification.user_id == user_id)
+        .order_by(models.Notification.created_at.desc(), models.Notification.id.desc())
+        .all()
+    )
+
+
+def mark_notification_read(db: Session, *, notification_id: int, user_id: int) -> bool:
+    notification = (
+        db.query(models.Notification)
+        .filter(
+            models.Notification.id == notification_id,
+            models.Notification.user_id == user_id,
+        )
+        .first()
+    )
+    if not notification:
+        return False
+    if not notification.is_read:
+        notification.is_read = True
+        db.commit()
+    return True
+
+
+def mark_all_notifications_read(db: Session, *, user_id: int) -> int:
+    result = db.execute(
+        update(models.Notification)
+        .where(
+            models.Notification.user_id == user_id,
+            models.Notification.is_read.is_(False),
+        )
+        .values(is_read=True)
+    )
+    db.commit()
+    return result.rowcount or 0
+
+
+def get_unread_notification_count(db: Session, *, user_id: int) -> int:
+    return int(
+        db.query(func.count(models.Notification.id))
+        .filter(
+            models.Notification.user_id == user_id,
+            models.Notification.is_read.is_(False),
+        )
+        .scalar()
+        or 0
+    )

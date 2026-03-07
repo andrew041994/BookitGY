@@ -47,6 +47,7 @@ import ProviderCard from "./src/components/ProviderCard";
 import * as Location from "expo-location";
 import Constants from "expo-constants";
 import * as ImagePicker from "expo-image-picker";
+import * as Notifications from "expo-notifications";
 import { Ionicons } from "@expo/vector-icons";
 import {
   CalendarProvider,
@@ -106,6 +107,14 @@ const CLOUDINARY_BOOKING_MESSAGES_FOLDER =
 
 console.log("### API base URL =", API);
 
+
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowAlert: true,
+    shouldPlaySound: true,
+    shouldSetBadge: false,
+  }),
+});
 
 const colors = theme.colors;
 const HEADER_LOGO_WIDTH = 120;
@@ -3794,7 +3803,7 @@ function BookingChatModal({
   );
 }
 
-function AppointmentsScreen({ token, showFlash }) {
+function AppointmentsScreen({ token, showFlash, pendingChatConversationId, clearPendingChatConversationId }) {
   const [bookings, setBookings] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -3951,6 +3960,15 @@ function AppointmentsScreen({ token, showFlash }) {
     );
   };
 
+
+  useEffect(() => {
+    if (!pendingChatConversationId || !bookings?.length) return;
+    const match = bookings.find((b) => Number(b?.conversation_id) === Number(pendingChatConversationId));
+    if (match) {
+      setChatBooking(match);
+      clearPendingChatConversationId?.();
+    }
+  }, [bookings, clearPendingChatConversationId, pendingChatConversationId]);
   const datedBookings = bookings.map((b) => ({
     ...b,
     _start: normalizeStart(b),
@@ -5216,7 +5234,7 @@ function SearchScreen({ token, showFlash, navigation, route, toggleFavorite, isF
 
 
 
-function ProviderDashboardScreen({ token, showFlash }) {
+function ProviderDashboardScreen({ token, showFlash, pendingChatConversationId, clearPendingChatConversationId }) {
   // const providerLabel = profile?.full_name || "Provider";
   const [services, setServices] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -6338,6 +6356,15 @@ const loadProviderSummary = async () => {
     );
   }
 };
+
+  useEffect(() => {
+    if (!pendingChatConversationId || !bookings?.length) return;
+    const match = bookings.find((b) => Number(b?.conversation_id) === Number(pendingChatConversationId));
+    if (match) {
+      setChatBooking(match);
+      clearPendingChatConversationId?.();
+    }
+  }, [bookings, clearPendingChatConversationId, pendingChatConversationId]);
 
   const insets = useSafeAreaInsets();
   // const headerMinHeight =
@@ -9063,6 +9090,108 @@ function ProviderCalendarScreen({ token, showFlash }) {
   );
 }
 
+const formatTimeAgo = (value) => {
+  const date = value ? new Date(value) : null;
+  if (!date || Number.isNaN(date.getTime())) return "";
+  const diffMs = Date.now() - date.getTime();
+  const diffMins = Math.max(1, Math.floor(diffMs / 60000));
+  if (diffMins < 60) return `${diffMins}m ago`;
+  const diffHours = Math.floor(diffMins / 60);
+  if (diffHours < 24) return `${diffHours}h ago`;
+  const diffDays = Math.floor(diffHours / 24);
+  return `${diffDays}d ago`;
+};
+
+function NotificationBell({ unreadCount = 0, onPress }) {
+  return (
+    <TouchableOpacity style={styles.notificationBellButton} onPress={onPress}>
+      <Ionicons name="notifications-outline" size={24} color={colors.textPrimary} />
+      {unreadCount > 0 ? (
+        <View style={styles.notificationBellBadge}>
+          <Text style={styles.notificationBellBadgeText}>{unreadCount > 99 ? "99+" : unreadCount}</Text>
+        </View>
+      ) : null}
+    </TouchableOpacity>
+  );
+}
+
+function NotificationsScreen({ navigation, refreshUnreadCount, setPendingChatConversationId }) {
+  const [loading, setLoading] = useState(true);
+  const [notifications, setNotifications] = useState([]);
+
+  const loadNotifications = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await apiClient.get('/notifications/me');
+      const rows = Array.isArray(res?.data?.notifications) ? res.data.notifications : [];
+      setNotifications(rows);
+      await refreshUnreadCount?.();
+    } catch (err) {
+      console.log('Error loading notifications', err?.response?.data || err?.message || err);
+    } finally {
+      setLoading(false);
+    }
+  }, [refreshUnreadCount]);
+
+  useFocusEffect(
+    useCallback(() => {
+      loadNotifications();
+    }, [loadNotifications])
+  );
+
+  const handlePressNotification = useCallback(async (item) => {
+    if (!item) return;
+    if (!item.is_read) {
+      try {
+        await apiClient.patch(`/notifications/${item.id}/read`);
+      } catch (err) {
+        console.log('Error marking notification as read', err?.response?.data || err?.message || err);
+      }
+    }
+
+    if (item.type === 'message' && item.conversation_id) {
+      setPendingChatConversationId?.(item.conversation_id);
+      navigation.navigate('Appointments');
+    }
+
+    await loadNotifications();
+  }, [loadNotifications, navigation, setPendingChatConversationId]);
+
+  return (
+    <SafeAreaView style={styles.container}>
+      <View style={styles.card}>
+        <View style={styles.notificationsHeaderRow}>
+          <Text style={styles.profileTitle}>Notifications</Text>
+          <TouchableOpacity onPress={async () => { await apiClient.patch('/notifications/read-all'); await loadNotifications(); }}>
+            <Text style={styles.bookingEdit}>Mark all read</Text>
+          </TouchableOpacity>
+        </View>
+
+        {loading ? (
+          <ActivityIndicator />
+        ) : notifications.length === 0 ? (
+          <Text style={styles.serviceMeta}>No notifications yet.</Text>
+        ) : (
+          <FlatList
+            data={notifications}
+            keyExtractor={(item) => `${item.id}`}
+            renderItem={({ item }) => (
+              <TouchableOpacity style={styles.notificationItem} onPress={() => handlePressNotification(item)}>
+                <View style={styles.notificationBody}>
+                  <Text style={styles.notificationTitle}>{item.title}</Text>
+                  <Text style={styles.notificationText}>{item.body}</Text>
+                  <Text style={styles.serviceMeta}>{formatTimeAgo(item.created_at)}</Text>
+                </View>
+                {!item.is_read ? <View style={styles.notificationUnreadDot} /> : null}
+              </TouchableOpacity>
+            )}
+          />
+        )}
+      </View>
+    </SafeAreaView>
+  );
+}
+
 // Tabs after login
 function MainApp({
   authLoading,
@@ -9071,7 +9200,25 @@ function MainApp({
   showFlash,
   navigationRef,
   setNavReady,
+  pendingChatConversationId,
+  setPendingChatConversationId,
 }) {
+  const [unreadNotificationCount, setUnreadNotificationCount] = useState(0);
+
+  const refreshUnreadCount = useCallback(async () => {
+    try {
+      const res = await apiClient.get('/notifications/me/unread-count');
+      const count = Number(res?.data?.unread_count || 0);
+      setUnreadNotificationCount(Number.isFinite(count) ? count : 0);
+    } catch (err) {
+      console.log('Error loading unread notification count', err?.response?.data || err?.message || err);
+    }
+  }, []);
+
+  useEffect(() => {
+    refreshUnreadCount();
+  }, [refreshUnreadCount]);
+
   const {
     favoriteIds,
     favoriteProviders,
@@ -9095,7 +9242,7 @@ function MainApp({
         <Tab.Navigator
           initialRouteName="Dashboard"
           screenOptions={({ route }) => ({
-            headerShown: false,
+            headerShown: route.name === 'Dashboard',
             tabBarShowLabel: true,
             tabBarActiveTintColor: colors.primary,
             tabBarInactiveTintColor: colors.textSecondary,
@@ -9123,12 +9270,19 @@ function MainApp({
                 {route.name}
               </Text>
             ),
+            headerRight: route.name === 'Dashboard' ? () => (
+              <NotificationBell
+                unreadCount={unreadNotificationCount}
+                onPress={() => navigationRef?.current?.navigate('Notifications')}
+              />
+            ) : undefined,
             tabBarIcon: ({ color, focused }) => {
               let iconName = "home-outline";
 
               if (route.name === "Dashboard") iconName = "speedometer-outline";
               else if (route.name === "Calendar") iconName = "calendar-outline";
               else if (route.name === "Billing") iconName = "card-outline";
+              else if (route.name === "Notifications") iconName = "notifications-outline";
               else if (route.name === "Profile") iconName = "person-outline";
 
               if (focused) {
@@ -9158,6 +9312,8 @@ function MainApp({
               <ProviderDashboardScreen
                 token={token}
                 showFlash={showFlash}
+                pendingChatConversationId={pendingChatConversationId}
+                clearPendingChatConversationId={() => setPendingChatConversationId(null)}
               />
             )}
           </Tab.Screen>
@@ -9175,6 +9331,17 @@ function MainApp({
           </Tab.Screen>
 
 
+          <Tab.Screen name="Notifications">
+              {({ navigation }) => (
+                <NotificationsScreen
+                  navigation={navigation}
+                  refreshUnreadCount={refreshUnreadCount}
+                  setPendingChatConversationId={setPendingChatConversationId}
+                />
+              )}
+            </Tab.Screen>
+
+
           <Tab.Screen name="Profile">
             {() => (
               <ProfileScreen
@@ -9190,7 +9357,7 @@ function MainApp({
         // 👇 Client view: Profile + Search
             <Tab.Navigator
             screenOptions={({ route }) => ({
-              headerShown: false,
+              headerShown: route.name === "Home",
               tabBarShowLabel: true,
               tabBarActiveTintColor: colors.primary,
               tabBarInactiveTintColor: colors.textSecondary,
@@ -9218,12 +9385,19 @@ function MainApp({
                   {route.name}
                 </Text>
               ),
-              tabBarIcon: ({ color, focused }) => {
+              headerRight: route.name === 'Home' ? () => (
+              <NotificationBell
+                unreadCount={unreadNotificationCount}
+                onPress={() => navigationRef?.current?.navigate('Notifications')}
+              />
+            ) : undefined,
+            tabBarIcon: ({ color, focused }) => {
                 let iconName;
 
                 if (route.name === "Home") iconName = "home-outline";
                 else if (route.name === "Search") iconName = "search-outline";
                 else if (route.name === "Appointments") iconName = "calendar-outline";
+                else if (route.name === "Notifications") iconName = "notifications-outline";
                 else if (route.name === "Profile") iconName = "person-outline";
 
                 if (focused) {
@@ -9277,8 +9451,25 @@ function MainApp({
                 />
               )}
             </Tab.Screen>
+            <Tab.Screen name="Notifications">
+              {({ navigation }) => (
+                <NotificationsScreen
+                  navigation={navigation}
+                  refreshUnreadCount={refreshUnreadCount}
+                  setPendingChatConversationId={setPendingChatConversationId}
+                />
+              )}
+            </Tab.Screen>
             <Tab.Screen name="Appointments">
-              {() => <AppointmentsScreen token={token} showFlash={showFlash} />}
+              {({ route }) => (
+                <AppointmentsScreen
+                  token={token}
+                  showFlash={showFlash}
+                  route={route}
+                  pendingChatConversationId={pendingChatConversationId}
+                  clearPendingChatConversationId={() => setPendingChatConversationId(null)}
+                />
+              )}
             </Tab.Screen>
             <Tab.Screen name="Profile">
               {() => (
@@ -9356,6 +9547,7 @@ function App() {
   const url = ExpoLinking.useURL();
 
   const [flash, setFlash] = useState(null);
+  const [pendingChatConversationId, setPendingChatConversationId] = useState(null);
 
   const formatFlashText = useCallback((text) => {
     if (typeof text === "string") return text;
@@ -9390,6 +9582,23 @@ function App() {
 
     return String(text);
   }, []);
+
+  useEffect(() => {
+    const sub = Notifications.addNotificationResponseReceivedListener((response) => {
+      const data = response?.notification?.request?.content?.data || {};
+      if (data?.type === 'chat' && data?.conversation_id) {
+        setPendingChatConversationId(Number(data.conversation_id));
+        if (navigationRef?.current) {
+          navigationRef.current.navigate(token?.isProvider ? 'Dashboard' : 'Appointments');
+        }
+      }
+    });
+
+    return () => {
+      sub?.remove?.();
+    };
+  }, [navigationRef, token?.isProvider]);
+
 
   const showFlash = useCallback((type, text) => {
     setFlash({ type, text: formatFlashText(text) });
@@ -10056,6 +10265,8 @@ function App() {
             showFlash={showFlash}
             navigationRef={navigationRef}
             setNavReady={setNavReady}
+            pendingChatConversationId={pendingChatConversationId}
+            setPendingChatConversationId={setPendingChatConversationId}
           />
         )}
       </SafeAreaView>
@@ -12637,6 +12848,64 @@ signupTextButtonText: {
     height: "100%",
   },
 
+  notificationBellButton: {
+    marginRight: 12,
+    padding: 4,
+  },
+  notificationBellBadge: {
+    position: "absolute",
+    right: -2,
+    top: -2,
+    minWidth: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: colors.error,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 3,
+  },
+  notificationBellBadgeText: {
+    color: colors.textPrimary,
+    fontSize: 10,
+    fontWeight: "700",
+  },
+  notificationsHeaderRow: {
+    width: "100%",
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 12,
+  },
+  notificationItem: {
+    width: "100%",
+    backgroundColor: colors.surfaceElevated,
+    borderColor: colors.border,
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 10,
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  notificationBody: {
+    flex: 1,
+    paddingRight: 8,
+  },
+  notificationTitle: {
+    color: colors.textPrimary,
+    fontWeight: "700",
+    marginBottom: 4,
+  },
+  notificationText: {
+    color: colors.textSecondary,
+    marginBottom: 4,
+  },
+  notificationUnreadDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: colors.primary,
+  },
 })
 
 export default App;

@@ -17,6 +17,7 @@ providers_routes = importlib.import_module("app.routes.providers")
 bookings_routes = importlib.import_module("app.routes.bookings")
 profile_routes = importlib.import_module("app.routes.profile")
 admin_routes = importlib.import_module("app.routes.admin")
+notifications_routes = importlib.import_module("app.routes.notifications")
 from app.security import get_current_user_from_header
 from app.workers.cron import registerCronJobs
 settings = get_settings()
@@ -175,6 +176,7 @@ app.include_router(providers_routes.router)
 app.include_router(bookings_routes.router)
 app.include_router(profile_routes.router)
 app.include_router(admin_routes.router)
+app.include_router(notifications_routes.router)
 
 
 # -------------------------------------------------------------------
