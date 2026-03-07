@@ -370,7 +370,7 @@ def update_my_working_hours(
     return rows
 
 
-@router.get("/providers/me/summary")
+@router.get("/providers/me/summary", response_model=schemas.ProviderSummary)
 def get_my_provider_summary(
     db: Session = Depends(get_db),
     provider: models.Provider = Depends(_require_current_provider),
@@ -386,6 +386,8 @@ def get_my_provider_summary(
         "service_charge_percentage": float(service_charge_pct),
         "service_charge_percent": float(service_charge_pct),
         "service_charge_rate": float(service_charge_pct) / 100,
+        "avg_rating": provider.avg_rating,
+        "rating_count": int(provider.rating_count or 0),
     }
 
 

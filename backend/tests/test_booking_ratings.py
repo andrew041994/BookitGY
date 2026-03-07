@@ -93,6 +93,14 @@ def test_create_booking_rating_and_aggregate_refresh(db_session):
     assert provider_row["rating_count"] == 1
     assert provider_row["avg_rating"] == 5.0
 
+    # provider dashboard summary endpoint exposes aggregate rating
+    current["user"] = provider_user
+    summary_resp = client.get("/providers/me/summary")
+    assert summary_resp.status_code == 200
+    summary_row = summary_resp.json()
+    assert summary_row["rating_count"] == 1
+    assert summary_row["avg_rating"] == 5.0
+
     app.dependency_overrides.clear()
 
 

@@ -1,82 +1,61 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
-diff --git a/mobile/src/components/RatingSummary.js b/mobile/src/components/RatingSummary.js
-new file mode 100644
-index 0000000000000000000000000000000000000000..690c8931810cfce2c7fbd7b1960083fe668bf1a4
---- /dev/null
-+++ b/mobile/src/components/RatingSummary.js
-@@ -0,0 +1,72 @@
-+import React from "react";
-+import { Text, View, StyleSheet } from "react-native";
-+import { theme } from "../theme";
-+
-+const colors = theme.colors;
-+
-+const resolveRatingValue = (source) => {
-+  const raw =
-+    source?.rating ??
-+    source?.average_rating ??
-+    source?.avg_rating ??
-+    source?.rating_avg ??
-+    source?.rating_value;
-+  const numeric = Number(raw);
-+  return Number.isFinite(numeric) ? numeric : null;
-+};
-+
-+const resolveRatingCount = (source) => {
-+  const raw =
-+    source?.rating_count ??
-+    source?.ratings_count ??
-+    source?.total_ratings ??
-+    source?.reviews_count;
-+  const numeric = Number(raw);
-+  if (raw == null || raw === "") return null;
-+  if (!Number.isFinite(numeric)) return null;
-+  return Math.floor(numeric);
-+};
-+
-+export const getRatingSummary = (source, emptyLabel = "Not yet rated") => {
-+  const ratingValue = resolveRatingValue(source);
-+  const ratingCount = resolveRatingCount(source);
-+  const hasRatings =
-+    typeof ratingValue === "number" && (ratingCount == null || ratingCount > 0);
-+
-+  return {
-+    hasRatings,
-+    ratingValue,
-+    ratingCount,
-+    text: hasRatings
-+      ? `★ ${ratingValue.toFixed(1)}${ratingCount > 0 ? ` (${ratingCount})` : ""}`
-+      : emptyLabel,
-+  };
-+};
-+
-+const RatingSummary = ({ source, emptyLabel = "Not yet rated", style, textStyle }) => {
-+  const summary = getRatingSummary(source, emptyLabel);
-+  return (
-+    <View style={[styles.wrap, style]}>
-+      <Text style={[styles.text, !summary.hasRatings && styles.textMuted, textStyle]} numberOfLines={1}>
-+        {summary.text}
-+      </Text>
-+    </View>
-+  );
-+};
-+
-+const styles = StyleSheet.create({
-+  wrap: {
-+    flexShrink: 1,
-+  },
-+  text: {
-+    fontSize: 12,
-+    fontWeight: "700",
-+    color: colors.primary,
-+  },
-+  textMuted: {
-+    color: colors.textMuted,
-+    fontWeight: "600",
-+  },
-+});
-+
-+export default RatingSummary;
+diff --git a/mobile/App.js b/mobile/App.js
+index e3a20bdad67a3d52cda5fd2b8cf0d84680f6e69a..313c534d75edcc84b3fc02990b9834ce5f68622a 100644
+--- a/mobile/App.js
++++ b/mobile/App.js
+@@ -6222,50 +6222,52 @@ const to24Hour = (time12) => {
+       );
+     }).length;
+   };
+ 
+ const loadProviderProfile = async () => {
+   try {
+     setProfileLoading(true);
+     setProfileError("");
+ 
+     const storedToken = await loadToken();
+     if (!storedToken) {
+       setProfileError("No access token found. Please log in again.");
+       return;
+     }
+ 
+     const res = await apiClient.get("/providers/me/profile");
+ 
+       setProfile({
+         full_name: res.data.full_name || "",
+         phone: res.data.phone || "",
+         whatsapp: res.data.whatsapp || "",
+         location: res.data.location || "",
+         bio: res.data.bio || "",
+         professions: res.data.professions || [],
+         username: res.data.username || "",
++        avg_rating: res.data.avg_rating,
++        rating_count: Number(res.data.rating_count || 0),
+       });
+ 
+       setAvatarUrl(res.data.avatar_url || null);
+ 
+   } catch (err) {
+     console.log("Error loading provider profile", err.response?.data || err.message);
+     setProfileError("Could not load provider profile.");
+     if (showFlash) showFlash("error", "Could not load provider profile.");
+   } finally {
+     setProfileLoading(false);
+   }
+ };
+ 
+ const loadCatalog = async () => {
+   try {
+     setCatalogLoading(true);
+     setCatalogError("");
+ 
+     const authToken = await getAuthToken(token);
+     if (!authToken) {
+       setCatalogError("No access token found. Please log in again.");
+       return;
+     }
+ 
+     const res = await apiClient.get(`/providers/me/catalog`);
  
 EOF
 )

@@ -872,7 +872,12 @@ class UserProfileUpdate(BaseModel):
 class ProviderSummary(BaseModel):
     account_number: str
     total_fees_due_gyd: float
+    total_credit_balance_gyd: Optional[float] = None
     service_charge_percentage: Optional[float] = None
+    service_charge_percent: Optional[float] = None
+    service_charge_rate: Optional[float] = None
+    avg_rating: Optional[float] = None
+    rating_count: int = 0
 
 class RefreshTokenRequest(BaseModel):
     refresh_token: str

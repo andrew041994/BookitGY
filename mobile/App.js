@@ -6244,6 +6244,8 @@ const loadProviderProfile = async () => {
         bio: res.data.bio || "",
         professions: res.data.professions || [],
         username: res.data.username || "",
+        avg_rating: res.data.avg_rating,
+        rating_count: Number(res.data.rating_count || 0),
       });
 
       setAvatarUrl(res.data.avatar_url || null);
