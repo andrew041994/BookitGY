@@ -174,6 +174,101 @@ def get_provider_for_user(db: Session, user_id: int):
     return get_provider_by_user_id(db, user_id)
 
 
+
+
+def _refresh_provider_rating_aggregates(db: Session, provider_id: int) -> None:
+    avg_rating, rating_count = (
+        db.query(func.avg(models.BookingRating.stars), func.count(models.BookingRating.id))
+        .filter(models.BookingRating.provider_id == provider_id)
+        .one()
+    )
+
+    provider = db.query(models.Provider).filter(models.Provider.id == provider_id).first()
+    if not provider:
+        return
+
+    provider.avg_rating = float(avg_rating) if avg_rating is not None else None
+    provider.rating_count = int(rating_count or 0)
+
+
+def create_booking_rating(
+    db: Session,
+    booking_id: int,
+    requester_user_id: int,
+    stars: int,
+):
+    booking_row = (
+        db.query(models.Booking, models.Service)
+        .join(models.Service, models.Booking.service_id == models.Service.id)
+        .filter(models.Booking.id == booking_id)
+        .first()
+    )
+
+    if not booking_row:
+        return None
+
+    booking, service = booking_row
+
+    if booking.customer_id != requester_user_id:
+        raise PermissionError("You can only rate your own booking.")
+
+    if normalized_booking_status_value(booking.status) != "completed":
+        raise ValueError("Booking must be completed before it can be rated.")
+
+    if not service or not service.provider_id:
+        raise ValueError("Booking does not have a valid provider.")
+
+    existing = (
+        db.query(models.BookingRating)
+        .filter(models.BookingRating.booking_id == booking.id)
+        .first()
+    )
+    if existing:
+        raise RuntimeError("Rating already exists for this booking.")
+
+    rating = models.BookingRating(
+        booking_id=booking.id,
+        provider_id=service.provider_id,
+        client_id=requester_user_id,
+        stars=stars,
+    )
+    db.add(rating)
+    db.flush()
+
+    _refresh_provider_rating_aggregates(db, service.provider_id)
+
+    db.commit()
+    db.refresh(rating)
+    return rating
+
+
+def get_booking_rating_for_user(db: Session, booking_id: int, user: models.User):
+    booking_row = (
+        db.query(models.Booking, models.Service, models.Provider)
+        .join(models.Service, models.Booking.service_id == models.Service.id)
+        .join(models.Provider, models.Service.provider_id == models.Provider.id)
+        .filter(models.Booking.id == booking_id)
+        .first()
+    )
+
+    if not booking_row:
+        return None
+
+    booking, _service, provider = booking_row
+
+    is_client = booking.customer_id == user.id
+    is_provider = provider.user_id == user.id
+    is_admin = bool(getattr(user, "is_admin", False))
+
+    if not (is_client or is_provider or is_admin):
+        raise PermissionError("You are not allowed to view this booking rating.")
+
+    return (
+        db.query(models.BookingRating)
+        .filter(models.BookingRating.booking_id == booking_id)
+        .first()
+    )
+
 def list_providers(db: Session, profession: Optional[str] = None):
     """
     Public list of providers for the client search screen.
@@ -225,6 +320,8 @@ def list_providers(db: Session, profession: Optional[str] = None):
                 "professions": professions,
                 "services": services,
                 "avatar_url": provider.avatar_url,
+                "avg_rating": provider.avg_rating,
+                "rating_count": int(provider.rating_count or 0),
                 "is_suspended": bool(getattr(user, "is_suspended", False)),
             }
         )
@@ -2860,10 +2957,11 @@ def list_bookings_for_provider(
     """Return bookings for this provider, newest first, optionally within a date range."""
 
     query = (
-        db.query(models.Booking, models.Service, models.User)
+        db.query(models.Booking, models.Service, models.User, models.BookingRating)
         .join(models.Service, models.Booking.service_id == models.Service.id)
         .join(models.Provider, models.Service.provider_id == models.Provider.id)
-        .join(models.User, models.Booking.customer_id == models.User.id)
+         .join(models.User, models.Booking.customer_id == models.User.id)
+        .outerjoin(models.BookingRating, models.BookingRating.booking_id == models.Booking.id)
         .filter(models.Provider.id == provider_id)
     )
 
@@ -2890,8 +2988,11 @@ def list_bookings_for_provider(
                 .filter(models.Conversation.booking_id == booking.id)
                 .scalar()
             ),
+            "can_rate": False,
+            "has_rating": rating is not None,
+            "rating_stars": rating.stars if rating else None,
         }
-        for booking, service, customer in rows
+        for booking, service, customer, rating in rows
     ]
 
 
@@ -3044,6 +3145,12 @@ def list_bookings_for_customer(db: Session, customer_id: int):
             .filter(models.Conversation.booking_id == booking.id)
             .first()
         )
+        rating = (
+            db.query(models.BookingRating)
+            .filter(models.BookingRating.booking_id == booking.id)
+            .first()
+        )
+        has_rating = rating is not None
 
         results.append(
             schemas.BookingWithDetails(
@@ -3067,6 +3174,14 @@ def list_bookings_for_customer(db: Session, customer_id: int):
                 provider_lat=provider_lat,
                 provider_long=provider_long,
                 conversation_id=conversation.id if conversation else None,
+                can_rate=(
+                    normalized_booking_status_value(booking.status) == "completed"
+                    and service is not None
+                    and service.provider_id is not None
+                    and not has_rating
+                ),
+                has_rating=has_rating,
+                rating_stars=rating.stars if rating else None,
             )
         )
 
@@ -3778,6 +3893,9 @@ def list_todays_bookings_for_provider(db: Session, provider_id: int):
                 service_price_gyd=service.price_gyd or 0.0,
                 customer_name=get_display_name(customer),
                 customer_phone=customer.phone or "",
+                can_rate=False,
+                has_rating=False,
+                rating_stars=None,
             )
         )
     return results
@@ -3824,6 +3942,9 @@ def list_upcoming_bookings_for_provider(
                 service_price_gyd=service.price_gyd or 0.0,
                 customer_name=get_display_name(customer),
                 customer_phone=customer.phone or "",
+                can_rate=False,
+                has_rating=False,
+                rating_stars=None,
             )
         )
     return results

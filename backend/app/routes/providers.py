@@ -66,6 +66,8 @@ def get_public_provider_by_username(username: str, db: Session = Depends(get_db)
         display_name=crud.get_display_name(user),
         avatar_url=provider.avatar_url or user.avatar_url,
         business_name=None,
+        avg_rating=provider.avg_rating,
+        rating_count=int(provider.rating_count or 0),
     )
 
 # -------------------------------------------------------------------

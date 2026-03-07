@@ -1,335 +1,156 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
-diff --git a/mobile/App.js b/mobile/App.js
-index 846b0129ab9164052d2ce51792a87a8c09bc6906..c85b4ec1628d5a531072a7b000a6fe51b8edcb44 100644
---- a/mobile/App.js
-+++ b/mobile/App.js
-@@ -3464,72 +3464,102 @@ function ClientHomeScreen({
-             >
-               {favoriteCards}
-             </ScrollView>
-           ) : null}
-           </View>
-         </ScrollView>
-         </View>      
-     );
-   }
- 
- 
- 
- 
- 
- 
- const getCleanApiErrorMessage = (err, fallbackMessage) => {
-   const detail =
-     err?.response?.data?.detail ||
-     err?.response?.data?.message ||
-     err?.message;
-   if (!detail) return fallbackMessage;
-   if (typeof detail === "string") return detail;
-   return fallbackMessage;
- };
- 
--const isBookingCancelledStatus = (status) =>
--  String(status || "").trim().toLowerCase().includes("cancel");
-+const getBookingChatReadOnlyReason = (booking) => {
-+  if (!booking) return null;
+diff --git a/backend/tests/test_booking_ratings.py b/backend/tests/test_booking_ratings.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..bb5720844660d116259f2a7ac5dd51e6b0f8b4fc
+--- /dev/null
++++ b/backend/tests/test_booking_ratings.py
+@@ -0,0 +1,146 @@
++from datetime import datetime, timedelta
 +
-+  const normalizedStatus = String(booking?.status || booking?.state || "")
-+    .trim()
-+    .toLowerCase();
++from fastapi.testclient import TestClient
 +
-+  const isCancelled =
-+    normalizedStatus === "cancelled" ||
-+    normalizedStatus === "canceled" ||
-+    Boolean(
-+      booking?.cancelled_at ||
-+      booking?.canceled_at ||
-+      booking?.is_cancelled ||
-+      booking?.isCanceled
-+    );
 +
-+  if (isCancelled) {
-+    return "Messaging is unavailable because this appointment has been cancelled.";
-+  }
++def _build_client(session):
++    from app.main import app
++    from app.database import get_db
++    from app.security import get_current_user_from_header
 +
-+  const isCompleted =
-+    normalizedStatus === "completed" ||
-+    Boolean(booking?.completed_at || booking?.is_completed);
++    current = {"user": None}
 +
-+  if (isCompleted) {
-+    return "Messaging is unavailable because this appointment is completed.";
-+  }
++    def override_get_db():
++        yield session
 +
-+  return null;
-+};
- 
- function BookingChatModal({
-   visible,
-   onClose,
-   booking,
-   currentUserId,
-   showFlash,
- }) {
-   const [messages, setMessages] = useState([]);
-   const [loading, setLoading] = useState(false);
-   const [refreshing, setRefreshing] = useState(false);
-   const [sending, setSending] = useState(false);
-   const [text, setText] = useState("");
-   const [selectedImage, setSelectedImage] = useState(null);
-   const [viewerImage, setViewerImage] = useState(null);
-   const listRef = useRef(null);
-   const insets = useSafeAreaInsets();
- 
-   const bookingId = booking?.id || booking?.booking_id;
--  const isCancelled = isBookingCancelledStatus(booking?.status);
-+  const chatReadOnlyReason = getBookingChatReadOnlyReason(booking);
-+  const isChatReadOnly = Boolean(chatReadOnlyReason);
- 
-   const loadMessages = useCallback(
-     async (useRefresh = false) => {
-       if (!bookingId) return;
-       try {
-         if (useRefresh) setRefreshing(true);
-         else setLoading(true);
- 
-         const res = await apiClient.get(`/bookings/${bookingId}/messages`);
-         const rows = Array.isArray(res?.data?.messages) ? res.data.messages : [];
-         setMessages(rows);
- 
-         await apiClient.post(`/bookings/messages/read`, { booking_id: bookingId });
-       } catch (err) {
-         const msg = getCleanApiErrorMessage(err, "Could not load chat messages.");
-         showFlash && showFlash("error", msg);
-       } finally {
-         setLoading(false);
-         setRefreshing(false);
-       }
-     },
-     [bookingId, showFlash]
-   );
- 
-   useEffect(() => {
-@@ -3611,210 +3641,210 @@ function BookingChatModal({
-       throw new Error(uploadData?.error?.message || "Image upload failed.");
-     }
- 
-     return {
-       attachment_type: "image",
-       file_url: uploadData.secure_url,
-       mime_type: uploadData.resource_type === "image" ? mimeType : null,
-       file_size_bytes: Number.isFinite(uploadData.bytes)
-         ? uploadData.bytes
-         : null,
-       width: Number.isFinite(uploadData.width) ? uploadData.width : null,
-       height: Number.isFinite(uploadData.height) ? uploadData.height : null,
-       original_filename: uploadData.original_filename || filename,
-     };
-   }, []);
- 
-   const handleSend = useCallback(async () => {
-     if (sending) return;
- 
-     const trimmedText = text.trim();
-     if (!trimmedText && !selectedImage) {
-       showFlash && showFlash("error", "Message must include text or an image.");
-       return;
-     }
- 
--    if (isCancelled) {
--      showFlash &&
--        showFlash("error", "This chat is unavailable because the booking has been cancelled.");
-+    if (isChatReadOnly) {
-+      showFlash && showFlash("error", chatReadOnlyReason);
-       return;
-     }
- 
-     try {
-       setSending(true);
-       let attachmentPayload = null;
- 
-       if (selectedImage?.uri) {
-         console.log("[chat-image-send] selected image", { uri: selectedImage.uri });
-         console.log("[chat-image-send] upload start", { booking_id: bookingId });
-         attachmentPayload = await uploadChatImageToCloudinary(selectedImage);
-         console.log("[chat-image-send] upload success", {
-           file_url: attachmentPayload?.file_url,
-           width: attachmentPayload?.width,
-           height: attachmentPayload?.height,
-         });
-       }
- 
-       const payload = {
-         booking_id: bookingId,
-         text: trimmedText || null,
-         attachment: attachmentPayload,
-       };
-       console.log("[chat-image-send] payload ready", {
-         booking_id: payload.booking_id,
-         has_text: Boolean(payload.text),
-         has_attachment: Boolean(payload.attachment),
-       });
-       console.log("[chat-image-send] send route", { method: "POST", route: "/bookings/messages" });
- 
-       await apiClient.post(`/bookings/messages`, payload);
- 
-       console.log("[chat-image-send] send success", { booking_id: bookingId });
-       setText("");
-       setSelectedImage(null);
-       await loadMessages(true);
-     } catch (err) {
-       console.log("[chat-image-send] send failure", err?.response?.data || err?.message || err);
-       const msg = getCleanApiErrorMessage(err, "Could not send message.");
-       showFlash && showFlash("error", msg);
-     } finally {
-       setSending(false);
-     }
-   }, [
-     bookingId,
--    isCancelled,
-+    chatReadOnlyReason,
-+    isChatReadOnly,
-     loadMessages,
-     selectedImage,
-     sending,
-     showFlash,
-     text,
-     uploadChatImageToCloudinary,
-   ]);
- 
-   const renderItem = ({ item }) => {
-     const mine = Number(item?.sender_user_id) === Number(currentUserId);
-     const imageUrl = resolveImageUrl(item?.attachment?.file_url);
-     const createdAt = item?.created_at ? new Date(item.created_at) : null;
-     const timeText = createdAt && !Number.isNaN(createdAt.getTime())
-       ? createdAt.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })
-       : "";
- 
-     return (
-       <View style={[styles.chatRow, mine ? styles.chatRowMine : styles.chatRowOther]}>
-         <View style={[styles.chatBubble, mine ? styles.chatBubbleMine : styles.chatBubbleOther]}>
-           {item?.text ? <Text style={styles.chatText}>{item.text}</Text> : null}
-           {imageUrl ? (
-             <TouchableOpacity onPress={() => setViewerImage(imageUrl)} activeOpacity={0.85}>
-               <Image source={{ uri: imageUrl }} style={styles.chatImage} resizeMode="cover" />
-             </TouchableOpacity>
-           ) : null}
-           {timeText ? <Text style={styles.chatTime}>{timeText}</Text> : null}
-         </View>
-       </View>
-     );
-   };
- 
-   return (
-     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
-       <SafeAreaView style={styles.chatSafeArea} edges={["left", "right", "bottom"]}>
-         <KeyboardAvoidingView
-           style={styles.chatKeyboardWrapper}
-           behavior={Platform.OS === "ios" ? "padding" : undefined}
-           keyboardVerticalOffset={Platform.OS === "ios" ? 86 : 0}
-         >
-           <View style={[styles.chatHeader, { paddingTop: Math.max(insets.top, 8) }]}>
-             <TouchableOpacity onPress={onClose} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-               <Text style={styles.chatCloseText}>Close</Text>
-             </TouchableOpacity>
-             <Text style={styles.chatHeaderTitle}>Booking Chat</Text>
-             <View style={{ width: 46 }} />
-           </View>
- 
--          {isCancelled ? (
-+          {isChatReadOnly ? (
-             <View style={styles.chatCancelledBanner}>
-               <Text style={styles.chatCancelledText}>
--                This chat is unavailable because the booking has been cancelled.
-+                {chatReadOnlyReason}
-               </Text>
-             </View>
-           ) : null}
- 
-           {loading ? (
-             <View style={styles.loadingRow}>
-               <ActivityIndicator />
-               <Text style={styles.serviceMeta}>Loading messages…</Text>
-             </View>
-           ) : (
-             <FlatList
-               ref={listRef}
-               data={messages}
-               keyExtractor={(item) => `${item.id}`}
-               renderItem={renderItem}
-               style={styles.chatList}
-               contentContainerStyle={styles.chatListContent}
-               onRefresh={() => loadMessages(true)}
-               refreshing={refreshing}
-               ListEmptyComponent={
-                 <Text style={styles.serviceMeta}>Send a message about this booking</Text>
-               }
-             />
-           )}
- 
-           <View style={styles.chatComposer}>
-             {selectedImage?.uri ? (
-               <View style={styles.chatSelectedImageWrap}>
-                 <Image source={{ uri: selectedImage.uri }} style={styles.chatSelectedImage} />
-                 <TouchableOpacity onPress={() => setSelectedImage(null)}>
-                   <Text style={styles.chatRemoveImageText}>Remove</Text>
-                 </TouchableOpacity>
-               </View>
-             ) : null}
- 
-             <View style={styles.chatComposerRow}>
-               <TouchableOpacity
-                 style={styles.chatAttachButton}
-                 onPress={handlePickImage}
--                disabled={sending || isCancelled}
-+                disabled={sending || isChatReadOnly}
-               >
-                 <Ionicons name="image-outline" size={20} color={colors.textPrimary} />
-               </TouchableOpacity>
- 
-               <TextInput
-                 value={text}
-                 onChangeText={setText}
-                 placeholder="Type a message"
-                 placeholderTextColor={colors.textMuted}
-                 style={styles.chatInput}
--                editable={!sending && !isCancelled}
-+                editable={!sending && !isChatReadOnly}
-               />
- 
-               <TouchableOpacity
-                 style={[
-                   styles.chatSendButton,
--                  (sending || isCancelled || (!text.trim() && !selectedImage)) && styles.chatSendButtonDisabled,
-+                  (sending || isChatReadOnly || (!text.trim() && !selectedImage)) && styles.chatSendButtonDisabled,
-                 ]}
-                 onPress={handleSend}
--                disabled={sending || isCancelled || (!text.trim() && !selectedImage)}
-+                disabled={sending || isChatReadOnly || (!text.trim() && !selectedImage)}
-               >
-                 <Text style={styles.chatSendButtonText}>{sending ? "..." : "Send"}</Text>
-               </TouchableOpacity>
-             </View>
-           </View>
-         </KeyboardAvoidingView>
-       </SafeAreaView>
- 
-       <Modal
-         visible={!!viewerImage}
-         transparent={true}
-         animationType="fade"
-         onRequestClose={() => setViewerImage(null)}
-       >
-         <Pressable style={styles.chatViewerBackdrop} onPress={() => setViewerImage(null)}>
-           {viewerImage ? (
-             <Image source={{ uri: viewerImage }} style={styles.chatViewerImage} resizeMode="contain" />
-           ) : null}
-         </Pressable>
-       </Modal>
-     </Modal>
-   );
- }
- 
- function AppointmentsScreen({ token, showFlash, pendingChatConversationId, clearPendingChatConversationId }) {
++    def override_user():
++        return current["user"]
++
++    app.dependency_overrides[get_db] = override_get_db
++    app.dependency_overrides[get_current_user_from_header] = override_user
++    return app, TestClient(app), current
++
++
++def _setup_booking(session, models, *, status="completed"):
++    provider_user = models.User(username="provider_rate@example.com", is_provider=True)
++    client_user = models.User(username="client_rate@example.com")
++    stranger_user = models.User(username="stranger_rate@example.com")
++    admin_user = models.User(username="admin_rate@example.com", is_admin=True)
++    session.add_all([provider_user, client_user, stranger_user, admin_user])
++    session.commit()
++
++    provider = models.Provider(user_id=provider_user.id, account_number="ACC-RATE")
++    session.add(provider)
++    session.commit()
++
++    service = models.Service(
++        provider_id=provider.id,
++        name="Rateable Service",
++        description="desc",
++        price_gyd=1200,
++        duration_minutes=60,
++    )
++    session.add(service)
++    session.commit()
++
++    booking = models.Booking(
++        customer_id=client_user.id,
++        service_id=service.id,
++        start_time=datetime.utcnow() - timedelta(hours=3),
++        end_time=datetime.utcnow() - timedelta(hours=2),
++        status=status,
++    )
++    session.add(booking)
++    session.commit()
++    session.refresh(booking)
++    session.refresh(provider)
++
++    return provider_user, client_user, stranger_user, admin_user, provider, booking
++
++
++def test_create_booking_rating_and_aggregate_refresh(db_session):
++    session, models, crud = db_session
++    provider_user, client_user, _stranger, _admin, provider, booking = _setup_booking(session, models)
++    app, client, current = _build_client(session)
++
++    current["user"] = client_user
++    resp = client.post(f"/bookings/{booking.id}/rating", json={"stars": 5})
++    assert resp.status_code == 201
++    payload = resp.json()
++    assert payload["booking_id"] == booking.id
++    assert payload["stars"] == 5
++
++    session.refresh(provider)
++    assert provider.rating_count == 1
++    assert provider.avg_rating == 5.0
++
++    # duplicate rating blocked
++    dup = client.post(f"/bookings/{booking.id}/rating", json={"stars": 4})
++    assert dup.status_code == 409
++
++    # booking list for client exposes rating fields
++    bookings_resp = client.get("/bookings/me")
++    assert bookings_resp.status_code == 200
++    row = next(x for x in bookings_resp.json() if x["id"] == booking.id)
++    assert row["has_rating"] is True
++    assert row["rating_stars"] == 5
++    assert row["can_rate"] is False
++
++    # provider list includes aggregate rating
++    providers_resp = client.get("/providers")
++    assert providers_resp.status_code == 200
++    provider_row = next(x for x in providers_resp.json() if x["provider_id"] == provider.id)
++    assert provider_row["rating_count"] == 1
++    assert provider_row["avg_rating"] == 5.0
++
++    app.dependency_overrides.clear()
++
++
++def test_rating_creation_rules_and_authorized_get(db_session):
++    session, models, _crud = db_session
++    provider_user, client_user, stranger_user, admin_user, _provider, booking = _setup_booking(session, models)
++    app, client, current = _build_client(session)
++
++    # non-owner client forbidden
++    current["user"] = stranger_user
++    resp = client.post(f"/bookings/{booking.id}/rating", json={"stars": 4})
++    assert resp.status_code == 403
++
++    # owner can create
++    current["user"] = client_user
++    create_resp = client.post(f"/bookings/{booking.id}/rating", json={"stars": 4})
++    assert create_resp.status_code == 201
++
++    # provider tied to booking can read
++    current["user"] = provider_user
++    get_resp = client.get(f"/bookings/{booking.id}/rating")
++    assert get_resp.status_code == 200
++    assert get_resp.json()["stars"] == 4
++
++    # admin can read
++    current["user"] = admin_user
++    admin_get = client.get(f"/bookings/{booking.id}/rating")
++    assert admin_get.status_code == 200
++
++    # unrelated user forbidden
++    current["user"] = stranger_user
++    denied_get = client.get(f"/bookings/{booking.id}/rating")
++    assert denied_get.status_code == 403
++
++    app.dependency_overrides.clear()
++
++
++def test_rating_requires_completed_booking(db_session):
++    session, models, _crud = db_session
++    _provider_user, client_user, _stranger, _admin, _provider, booking = _setup_booking(session, models, status="confirmed")
++    app, client, current = _build_client(session)
++
++    current["user"] = client_user
++    resp = client.post(f"/bookings/{booking.id}/rating", json={"stars": 3})
++    assert resp.status_code == 400
++
++    # pydantic request validation for stars range
++    invalid_resp = client.post(f"/bookings/{booking.id}/rating", json={"stars": 6})
++    assert invalid_resp.status_code == 422
++
++    app.dependency_overrides.clear()
  
 EOF
 )

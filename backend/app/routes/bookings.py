@@ -419,3 +419,57 @@ def mark_booking_messages_read(
         raise HTTPException(status_code=404, detail="Booking not found")
 
     return {"updated": updated}
+
+
+@router.post(
+    "/bookings/{booking_id}/rating",
+    response_model=schemas.BookingRatingOut,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_booking_rating(
+    booking_id: int,
+    payload: schemas.BookingRatingCreate,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user_from_header),
+):
+    if current_user.is_provider:
+        raise HTTPException(status_code=403, detail="Only clients can create ratings.")
+
+    try:
+        rating = crud.create_booking_rating(
+            db,
+            booking_id=booking_id,
+            requester_user_id=current_user.id,
+            stars=payload.stars,
+        )
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+
+    if rating is None:
+        raise HTTPException(status_code=404, detail="Booking not found")
+
+    return rating
+
+
+@router.get(
+    "/bookings/{booking_id}/rating",
+    response_model=schemas.BookingRatingOut,
+)
+def get_booking_rating(
+    booking_id: int,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user_from_header),
+):
+    try:
+        rating = crud.get_booking_rating_for_user(db, booking_id=booking_id, user=current_user)
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc))
+
+    if rating is None:
+        raise HTTPException(status_code=404, detail="Rating not found")
+
+    return rating

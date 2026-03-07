@@ -91,6 +91,8 @@ def read_my_provider_profile(
         bio=provider.bio or "",
         professions=professions,
         avatar_url=provider.avatar_url,
+        avg_rating=provider.avg_rating,
+        rating_count=int(provider.rating_count or 0),
     )
 
 
@@ -185,6 +187,8 @@ def update_my_provider_profile(
         bio=provider.bio or "",
         professions=professions,
         avatar_url=provider.avatar_url,
+        avg_rating=provider.avg_rating,
+        rating_count=int(provider.rating_count or 0),
     )
 
 

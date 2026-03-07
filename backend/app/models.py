@@ -12,6 +12,7 @@ from sqlalchemy import (
     Enum,
     UniqueConstraint,
     ForeignKeyConstraint,
+    CheckConstraint,
 )
 
 from .database import Base
@@ -101,7 +102,10 @@ class Provider(Base):
     account_number = Column(String, unique=True, index=True)  # NEW
     avatar_url = Column(String, nullable=True)
     is_locked = Column(Boolean, default=False)
+    avg_rating = Column(Float, nullable=True)
+    rating_count = Column(Integer, nullable=False, default=0)
     user = relationship("User")
+    booking_ratings = relationship("BookingRating", back_populates="provider")
 
 
 
@@ -142,6 +146,26 @@ class Booking(Base):
     canceled_at = Column(DateTime, nullable=True)
     canceled_by_user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     canceled_by_role = Column(String, nullable=True)
+    rating = relationship("BookingRating", back_populates="booking", uselist=False)
+
+
+class BookingRating(Base):
+    __tablename__ = "booking_ratings"
+    __table_args__ = (
+        UniqueConstraint("booking_id", name="uq_booking_ratings_booking_id"),
+        CheckConstraint("stars >= 1 AND stars <= 5", name="ck_booking_ratings_stars_range"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    booking_id = Column(Integer, ForeignKey("bookings.id"), nullable=False, index=True)
+    provider_id = Column(Integer, ForeignKey("providers.id"), nullable=False, index=True)
+    client_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    stars = Column(Integer, nullable=False)
+    created_at = Column(DateTime, default=now_guyana, nullable=False)
+    updated_at = Column(DateTime, default=now_guyana, onupdate=now_guyana, nullable=False)
+
+    booking = relationship("Booking", back_populates="rating")
+    provider = relationship("Provider", back_populates="booking_ratings")
 
 
 class Conversation(Base):

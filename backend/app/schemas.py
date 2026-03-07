@@ -277,6 +277,23 @@ class BookingCreate(BaseModel):
     start_time: datetime
 
 
+class BookingRatingCreate(BaseModel):
+    stars: int = Field(..., ge=1, le=5)
+
+
+class BookingRatingOut(BaseModel):
+    id: int
+    booking_id: int
+    provider_id: int
+    client_id: int
+    stars: int
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
 class WorkingHoursBase(BaseModel):
     weekday: int               # 0 = Monday, 6 = Sunday
     is_closed: bool
@@ -570,6 +587,8 @@ class ProviderProfileOut(BaseModel):
     bio: Optional[str] = None
     professions: List[str] = []
     avatar_url: Optional[str] = None   # 👈 NEW
+    avg_rating: Optional[float] = None
+    rating_count: int = 0
 
 
 
@@ -614,6 +633,9 @@ class BookingWithDetails(BaseModel):
     provider_lat: Optional[float] = None
     provider_long: Optional[float] = None
     conversation_id: Optional[int] = None
+    can_rate: bool = False
+    has_rating: bool = False
+    rating_stars: Optional[int] = None
 
     class Config:
         from_attributes = True
@@ -750,6 +772,8 @@ class ProviderListItem(BaseModel):
     professions: List[str] = []
     services: List[str] = []
     avatar_url: Optional[str] = None
+    avg_rating: Optional[float] = None
+    rating_count: int = 0
 
 
 class AvailabilitySlot(BaseModel):
@@ -818,6 +842,8 @@ class PublicProviderOut(BaseModel):
     display_name: str
     avatar_url: Optional[str] = None
     business_name: Optional[str] = None
+    avg_rating: Optional[float] = None
+    rating_count: int = 0
 
 class UserProfileOut(BaseModel):
     full_name: str
