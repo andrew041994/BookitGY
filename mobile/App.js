@@ -9151,7 +9151,13 @@ function NotificationsScreen({ navigation, refreshUnreadCount, setPendingChatCon
 
     if (item.type === 'message' && item.conversation_id) {
       setPendingChatConversationId?.(item.conversation_id);
-      navigation.navigate('Appointments');
+
+      const routeNames = navigation?.getState?.()?.routeNames || [];
+      if (routeNames.includes('Appointments')) {
+        navigation.navigate('Appointments');
+      } else if (routeNames.includes('Dashboard')) {
+        navigation.navigate('Dashboard');
+      }
     }
 
     await loadNotifications();
