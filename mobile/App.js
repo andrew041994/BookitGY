@@ -9389,8 +9389,9 @@ function MainApp({
           })}
         >
           <Tab.Screen name="Dashboard">
-            {() => (
+            {(props) => (
               <ProviderDashboardScreen
+                {...props}
                 token={token}
                 showFlash={showFlash}
                 pendingChatConversationId={pendingChatConversationId}
@@ -9405,14 +9406,14 @@ function MainApp({
           </Tab.Screen>
 
           <Tab.Screen name="Calendar">
-            {() => (
-              <ProviderCalendarScreen token={token} showFlash={showFlash} />
+            {(props) => (
+              <ProviderCalendarScreen {...props} token={token} showFlash={showFlash} />
             )}
           </Tab.Screen>
 
           <Tab.Screen name="Billing">
-            {() => (
-              <ProviderBillingScreen token={token} showFlash={showFlash} />
+            {(props) => (
+              <ProviderBillingScreen {...props} token={token} showFlash={showFlash} />
             )}
           </Tab.Screen>
 
@@ -9436,8 +9437,9 @@ function MainApp({
 
 
           <Tab.Screen name="Profile">
-            {() => (
+            {(props) => (
               <ProfileScreen
+                {...props}
                 authLoading={authLoading}
                 token={token}
                 setToken={setToken}
@@ -9587,8 +9589,9 @@ function MainApp({
               )}
             </Tab.Screen>
             <Tab.Screen name="Profile">
-              {() => (
+              {(props) => (
                 <ProfileScreen
+                  {...props}
                   authLoading={authLoading}
                   token={token}
                   setToken={setToken}
