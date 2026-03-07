@@ -61,6 +61,8 @@ import {
 } from "react-native-safe-area-context";
 import { KeyboardAwareScrollView } from "react-native-keyboard-aware-scroll-view";
 import { apiClient } from "./src/api";
+import { submitBookingRating } from "./src/api/bookings";
+import { getRatingSummary } from "./src/components/RatingSummary";
 // import { AccessToken, LoginManager } from "react-native-fbsdk-next";
 import BookitGYLogoTransparent from "./assets/bookitgy-logo-transparent.png"
 import { theme } from "./src/theme";
@@ -3853,6 +3855,9 @@ function AppointmentsScreen({ token, showFlash, pendingChatConversationId, clear
   const [error, setError] = useState("");
   const [refreshing, setRefreshing] = useState(false);
   const [chatBooking, setChatBooking] = useState(null);
+  const [ratingBooking, setRatingBooking] = useState(null);
+  const [ratingStars, setRatingStars] = useState(0);
+  const [ratingSubmitting, setRatingSubmitting] = useState(false);
 
   // Booking datetimes are stored/served as Guyana-local wall time (UTC-4, no DST).
   // Parse naive strings explicitly as Guyana so device timezone does not affect logic.
@@ -4138,6 +4143,21 @@ function AppointmentsScreen({ token, showFlash, pendingChatConversationId, clear
     // status color mapping
     const statusThemeKey = getAppointmentStatusThemeKey(statusLabel);
     const statusTheme = APPOINTMENT_STATUS_THEME[statusThemeKey];
+    const bookingId = booking.id || booking.booking_id;
+    const bookingBelongsToClient =
+      booking?.client_id == null || token?.userId == null
+        ? true
+        : Number(booking?.client_id) === Number(token?.userId);
+    const canRateBooking =
+      !isUpcoming &&
+      statusThemeKey === "completed" &&
+      bookingBelongsToClient &&
+      booking?.can_rate === true &&
+      booking?.has_rating !== true;
+    const hasBookingRating =
+      statusThemeKey === "completed" &&
+      (booking?.has_rating === true || Number(booking?.rating_stars) > 0);
+    const readOnlyStars = Number(booking?.rating_stars || booking?.stars || 0);
 
     return (
       <View
@@ -4191,6 +4211,24 @@ function AppointmentsScreen({ token, showFlash, pendingChatConversationId, clear
               <Text style={styles.appointmentMessageButtonText}>Message</Text>
             </TouchableOpacity>
           </View>
+
+          {canRateBooking && bookingId ? (
+            <TouchableOpacity
+              style={styles.rateProviderButton}
+              onPress={() => {
+                setRatingBooking(booking);
+                setRatingStars(0);
+              }}
+            >
+              <Text style={styles.rateProviderButtonText}>Rate Provider</Text>
+            </TouchableOpacity>
+          ) : null}
+
+          {hasBookingRating && readOnlyStars > 0 ? (
+            <Text style={styles.bookingRatingReadOnly}>
+              Your rating: {"★".repeat(readOnlyStars)}
+            </Text>
+          ) : null}
         </View>
 
         {isUpcoming &&
@@ -4291,6 +4329,118 @@ function AppointmentsScreen({ token, showFlash, pendingChatConversationId, clear
     currentUserId={token?.userId}
     showFlash={showFlash}
   />
+
+  <Modal
+    visible={!!ratingBooking}
+    animationType="fade"
+    transparent
+    onRequestClose={() => {
+      if (!ratingSubmitting) {
+        setRatingBooking(null);
+        setRatingStars(0);
+      }
+    }}
+  >
+    <View style={styles.modalOverlay}>
+      <View style={styles.ratingModalCard}>
+        <Text style={styles.sectionTitle}>Rate Provider</Text>
+        <Text style={styles.serviceMeta}>
+          {ratingBooking?.provider_name || "Your provider"}
+        </Text>
+
+        <View style={styles.ratingStarsRow}>
+          {[1, 2, 3, 4, 5].map((star) => {
+            const selected = ratingStars >= star;
+            return (
+              <TouchableOpacity
+                key={star}
+                accessibilityRole="button"
+                accessibilityLabel={`Rate ${star} star${star > 1 ? "s" : ""}`}
+                style={styles.ratingStarButton}
+                disabled={ratingSubmitting}
+                onPress={() => setRatingStars(star)}
+              >
+                <Text style={[styles.ratingStarText, selected && styles.ratingStarTextSelected]}>
+                  ★
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+
+        <View style={styles.modalActions}>
+          <TouchableOpacity
+            style={styles.modalButton}
+            disabled={ratingSubmitting}
+            onPress={() => {
+              setRatingBooking(null);
+              setRatingStars(0);
+            }}
+          >
+            <Text style={styles.modalButtonText}>Cancel</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[
+              styles.chatSendButton,
+              styles.ratingSubmitButton,
+              (ratingSubmitting || ratingStars < 1) && styles.chatSendButtonDisabled,
+            ]}
+            disabled={ratingSubmitting || ratingStars < 1}
+            onPress={async () => {
+              const bookingId = ratingBooking?.id || ratingBooking?.booking_id;
+              if (!bookingId || ratingStars < 1 || ratingSubmitting) return;
+
+              try {
+                setRatingSubmitting(true);
+                await submitBookingRating(bookingId, ratingStars);
+
+                setBookings((prev) =>
+                  (prev || []).map((entry) => {
+                    const entryId = entry?.id || entry?.booking_id;
+                    if (String(entryId) !== String(bookingId)) return entry;
+                    return {
+                      ...entry,
+                      can_rate: false,
+                      has_rating: true,
+                      rating_stars: ratingStars,
+                    };
+                  })
+                );
+
+                if (showFlash) showFlash("success", "Thanks for rating your provider.");
+                setRatingBooking(null);
+                setRatingStars(0);
+              } catch (err) {
+                const statusCode = err?.response?.status;
+                const detail =
+                  err?.response?.data?.detail ||
+                  err?.response?.data?.message ||
+                  "Could not submit your rating.";
+
+                if (statusCode === 409 || String(detail).toLowerCase().includes("already")) {
+                  if (showFlash) showFlash("error", "This booking has already been rated.");
+                } else if (statusCode === 403 || statusCode === 401) {
+                  if (showFlash) showFlash("error", "You are not allowed to rate this booking.");
+                } else if (statusCode === 422) {
+                  if (showFlash) showFlash("error", "Please select a rating from 1 to 5 stars.");
+                } else if (String(detail).toLowerCase().includes("complete")) {
+                  if (showFlash) showFlash("error", "You can only rate completed bookings.");
+                } else if (showFlash) {
+                  showFlash("error", detail);
+                }
+              } finally {
+                setRatingSubmitting(false);
+              }
+            }}
+          >
+            <Text style={styles.chatSendButtonText}>
+              {ratingSubmitting ? "Submitting..." : "Submit"}
+            </Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </View>
+  </Modal>
   </>
 );
 }
@@ -5428,6 +5578,14 @@ const providerUsername =
   token?.user?.username ||
   token?.username;
 const providerProfileLink = buildProviderPublicLink(providerUsername);
+const providerRatingSummary = getRatingSummary(
+  {
+    ...(providerSummary || {}),
+    ...(provider || {}),
+    ...(profile || {}),
+  },
+  "No ratings"
+);
 
 useLayoutEffect(() => {
   navigation.setOptions({
@@ -6557,6 +6715,11 @@ const loadProviderSummary = async () => {
         <View style={styles.homeHeader}>
           <Text style={styles.homeGreeting}>Provider dashboard</Text>
           <Text style={styles.homeSubtitle}>Welcome, {providerLabel}</Text>
+          <Text style={styles.providerDashboardRatingText}>
+            {providerRatingSummary.hasRatings
+              ? `★ ${providerRatingSummary.ratingValue.toFixed(1)}${providerRatingSummary.ratingCount > 0 ? ` (${providerRatingSummary.ratingCount} rating${providerRatingSummary.ratingCount === 1 ? "" : "s"})` : ""}`
+              : "No ratings"}
+          </Text>
         </View>
     
         {/*Account Info */}
@@ -10789,6 +10952,12 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     marginTop: 6,
   },
+  providerDashboardRatingText: {
+    marginTop: 4,
+    fontSize: 13,
+    color: colors.textMuted,
+    fontWeight: "600",
+  },
   searchBar: {
     flexDirection: "row",
     alignItems: "center",
@@ -11317,6 +11486,33 @@ cardHeartButton: {
     borderWidth: 1,
     borderColor: colors.border,
   },
+  ratingModalCard: {
+    backgroundColor: colors.surface,
+    borderRadius: 16,
+    padding: 20,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  ratingStarsRow: {
+    marginTop: 14,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginBottom: 10,
+  },
+  ratingStarButton: {
+    paddingVertical: 6,
+    paddingHorizontal: 4,
+  },
+  ratingStarText: {
+    fontSize: 36,
+    color: colors.textMuted,
+  },
+  ratingStarTextSelected: {
+    color: "#F4B400",
+  },
+  ratingSubmitButton: {
+    marginLeft: 12,
+  },
   modalTitle: {
     fontSize: 18,
     fontWeight: "700",
@@ -11613,6 +11809,27 @@ appointmentCancelButtonText: {
   appointmentCount: {
     fontSize: 13,
     color: colors.textMuted,
+  },
+  rateProviderButton: {
+    marginTop: 10,
+    alignSelf: "flex-start",
+    borderWidth: 1,
+    borderColor: colors.primary,
+    backgroundColor: colors.primarySoft,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+  },
+  rateProviderButtonText: {
+    color: colors.primary,
+    fontWeight: "700",
+    fontSize: 12,
+  },
+  bookingRatingReadOnly: {
+    marginTop: 8,
+    fontSize: 12,
+    color: colors.textSecondary,
+    fontWeight: "600",
   },
 
 bookingRow: {

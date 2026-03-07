@@ -2,6 +2,7 @@ import React from "react";
 import { View, Text, StyleSheet, Image, TouchableOpacity } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { theme } from "../theme";
+import { getRatingSummary } from "./RatingSummary";
 
 const colors = theme.colors;
 
@@ -12,19 +13,6 @@ const getInitials = (name) => {
   return parts
     .map((part) => part.charAt(0).toUpperCase())
     .join("");
-};
-
-const resolveRatingValue = (provider, ratingOverride) => {
-  const raw =
-    ratingOverride ??
-    provider?.rating ??
-    provider?.average_rating ??
-    provider?.avg_rating ??
-    provider?.rating_avg ??
-    provider?.rating_value;
-  if (raw == null) return null;
-  const numeric = Number(raw);
-  return Number.isFinite(numeric) ? numeric : null;
 };
 
 const formatDistanceLabel = (distanceKm) => {
@@ -51,9 +39,13 @@ const ProviderCard = ({
   isSelected = false,
   style,
 }) => {
-  const ratingValue = resolveRatingValue(provider, rating);
-  const ratingLabel =
-    typeof ratingValue === "number" ? ratingValue.toFixed(1) : null;
+  const ratingSummary = getRatingSummary(
+    {
+      ...(provider || {}),
+      rating: rating ?? provider?.rating,
+    },
+    "Not yet rated"
+  );
   const distanceText = distanceKm != null ? formatDistanceLabel(distanceKm) : "";
   const professionLabel =
     profession ||
@@ -112,9 +104,17 @@ const ProviderCard = ({
         </View>
 
         <View style={styles.middleColumn}>
-          <Text style={styles.name} numberOfLines={1}>
-            {provider?.name || "Provider"}
-          </Text>
+          <View style={styles.nameRow}>
+            <Text style={styles.name} numberOfLines={1}>
+              {provider?.name || "Provider"}
+            </Text>
+            <Text
+              style={[styles.ratingTextInline, !ratingSummary.hasRatings && styles.ratingTextMuted]}
+              numberOfLines={1}
+            >
+              {ratingSummary.text}
+            </Text>
+          </View>
 
           {professionLine ? (
             <Text style={styles.profession} numberOfLines={4}>
@@ -140,12 +140,6 @@ const ProviderCard = ({
             </Text>
           ) : null}
         </View>
-
-        {ratingLabel ? (
-          <View style={styles.ratingBadge}>
-            <Text style={styles.ratingText}>★ {ratingLabel}</Text>
-          </View>
-        ) : null}
       </View>
 
       {ctaLabel ? (
@@ -227,10 +221,18 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingRight: 8,
   },
+  nameRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 8,
+  },
   name: {
     fontSize: 16,
     fontWeight: "700",
     color: colors.textPrimary,
+    flex: 1,
+    minWidth: 0,
   },
   profession: {
     fontSize: 13,
@@ -242,18 +244,16 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     marginTop: 2,
   },
-  ratingBadge: {
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 999,
-    backgroundColor: colors.primarySoft,
-    borderWidth: 1,
-    borderColor: colors.primary,
-  },
-  ratingText: {
+  ratingTextInline: {
     fontSize: 12,
     fontWeight: "700",
     color: colors.primary,
+    maxWidth: 110,
+    textAlign: "right",
+  },
+  ratingTextMuted: {
+    color: colors.textMuted,
+    fontWeight: "600",
   },
   bottomRow: {
     marginTop: 12,

@@ -1,0 +1,72 @@
+import React from "react";
+import { Text, View, StyleSheet } from "react-native";
+import { theme } from "../theme";
+
+const colors = theme.colors;
+
+const resolveRatingValue = (source) => {
+  const raw =
+    source?.rating ??
+    source?.average_rating ??
+    source?.avg_rating ??
+    source?.rating_avg ??
+    source?.rating_value;
+  const numeric = Number(raw);
+  return Number.isFinite(numeric) ? numeric : null;
+};
+
+const resolveRatingCount = (source) => {
+  const raw =
+    source?.rating_count ??
+    source?.ratings_count ??
+    source?.total_ratings ??
+    source?.reviews_count;
+  const numeric = Number(raw);
+  if (raw == null || raw === "") return null;
+  if (!Number.isFinite(numeric)) return null;
+  return Math.floor(numeric);
+};
+
+export const getRatingSummary = (source, emptyLabel = "Not yet rated") => {
+  const ratingValue = resolveRatingValue(source);
+  const ratingCount = resolveRatingCount(source);
+  const hasRatings =
+    typeof ratingValue === "number" && (ratingCount == null || ratingCount > 0);
+
+  return {
+    hasRatings,
+    ratingValue,
+    ratingCount,
+    text: hasRatings
+      ? `★ ${ratingValue.toFixed(1)}${ratingCount > 0 ? ` (${ratingCount})` : ""}`
+      : emptyLabel,
+  };
+};
+
+const RatingSummary = ({ source, emptyLabel = "Not yet rated", style, textStyle }) => {
+  const summary = getRatingSummary(source, emptyLabel);
+  return (
+    <View style={[styles.wrap, style]}>
+      <Text style={[styles.text, !summary.hasRatings && styles.textMuted, textStyle]} numberOfLines={1}>
+        {summary.text}
+      </Text>
+    </View>
+  );
+};
+
+const styles = StyleSheet.create({
+  wrap: {
+    flexShrink: 1,
+  },
+  text: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: colors.primary,
+  },
+  textMuted: {
+    color: colors.textMuted,
+    fontWeight: "600",
+  },
+});
+
+export default RatingSummary;
