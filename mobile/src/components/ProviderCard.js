@@ -226,6 +226,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     gap: 8,
+    paddingRight: 24,
   },
   name: {
     fontSize: 16,
@@ -249,6 +250,8 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     color: colors.primary,
     maxWidth: 110,
+    marginRight: 8,
+    flexShrink: 0,
     textAlign: "right",
   },
   ratingTextMuted: {
