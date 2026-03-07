@@ -1,60 +1,184 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
-diff --git a/mobile/package.json b/mobile/package.json
-index b419e9d1529f8fc43c0da5a4598c212eb397784c..b0d1bd7c308345b65b2b1359535633199aa3303a 100644
---- a/mobile/package.json
-+++ b/mobile/package.json
-@@ -5,50 +5,51 @@
-   "scripts": {
-     "start": "expo start",
-     "android": "expo run:android",
-     "ios": "expo run:ios",
-     "version:bump": "node ./scripts/bump-version.mjs --patch",
-     "version:bump:minor": "node ./scripts/bump-version.mjs --minor",
-     "version:bump:major": "node ./scripts/bump-version.mjs --major",
-     "version:set": "node ./scripts/bump-version.mjs --set",
-     "ios:release": "npm run version:bump && eas build -p ios --profile production",
-     "android:release": "npm run version:bump && eas build -p android --profile production"
-   },
-   "dependencies": {
-     "@react-native-async-storage/async-storage": "2.2.0",
-     "@react-native-community/datetimepicker": "8.4.4",
-     "@react-navigation/bottom-tabs": "^6.6.1",
-     "@react-navigation/native": "^6.1.18",
-     "axios": "^1.13.2",
-     "babel-preset-expo": "~54.0.10",
-     "expo": "^54.0.33",
-     "expo-auth-session": "~6.1.0",
-     "expo-build-properties": "~1.0.10",
-     "expo-constants": "^18.0.13",
-     "expo-image-picker": "~17.0.10",
-     "expo-linking": "^8.0.11",
-     "expo-location": "~19.0.8",
-+    "expo-notifications": "~0.32.12",
-     "expo-secure-store": "~15.0.8",
-     "expo-web-browser": "~15.0.10",
-     "react": "19.1.0",
-     "react-dom": "19.1.0",
-     "react-native": "0.81.5",
-     "react-native-calendars": "^1.1314.0",
-     "react-native-dotenv": "^3.4.11",
-     "react-native-gesture-handler": "~2.28.0",
-     "react-native-keyboard-aware-scroll-view": "^0.9.5",
-     "react-native-maps": "1.20.1",
-     "react-native-safe-area-context": "~5.6.0",
-     "react-native-screens": "~4.16.0",
-     "react-native-web": "^0.21.0",
-     "sentry-expo": "~7.0.0",
-     "tslib": "^2.8.1"
-   },
-   "devDependencies": {
-     "@babel/core": "^7.20.0",
-     "@react-native-community/cli": "^20.1.1",
-     "@types/react": "~19.1.10",
-     "@types/react-dom": "~19.1.7",
-     "typescript": "~5.9.2"
-   },
-   "private": true,
-   "overrides": {
+diff --git a/mobile/App.js b/mobile/App.js
+index af8460fcce71b9acde5a8a4193c86e30b49cbe70..8ca429fa3316b7457d5733f8694c106f28d013fd 100644
+--- a/mobile/App.js
++++ b/mobile/App.js
+@@ -9526,95 +9526,173 @@ const DEEPLINK_DEBUG = false;
+ function App() {
+ 
+   const mountIdRef = useRef(Math.random().toString(16).slice(2));
+   console.log("APP MOUNT ID:", mountIdRef.current);
+   useEffect(() => console.log("APP useEffect ran for mount", mountIdRef.current), []);
+ 
+   const [token, setToken] = useState(null);
+   const [authLoading, setAuthLoading] = useState(true);
+   const [authMode, setAuthMode] = useState("landing"); // 'landing' | 'login' | 'signup' | 'forgot' | 'verifyEmail' | 'finishSetup'
+   const [pendingVerifyEmail, setPendingVerifyEmail] = useState("");
+   const [pendingGoogleLink, setPendingGoogleLink] = useState(null);
+   const [isAdmin, setIsAdmin] = useState(false);
+   const [setupContext, setSetupContext] = useState(null);
+   const [pendingDeepLinkUsername, setPendingDeepLinkUsername] = useState(null);
+   const [navReady, setNavReady] = useState(false);
+   const navReadyRef = useRef(false);
+   const navigationRef = useRef(null);
+   const authBootstrapRef = useRef({ inFlight: false, completed: false });
+   const tokenRef = useRef(token);
+   const lastDeeplinkHandledAtRef = useRef(0);
+   const lastHandledUrlRef = useRef(null);
+   const url = ExpoLinking.useURL();
+ 
+   const [flash, setFlash] = useState(null);
+   const [pendingChatConversationId, setPendingChatConversationId] = useState(null);
++  const pushRegistrationInFlightRef = useRef(false);
++  const lastRegisteredPushTokenRef = useRef(null);
++
++  const registerExpoPushToken = useCallback(async () => {
++    if (!token?.token || pushRegistrationInFlightRef.current) return;
++
++    pushRegistrationInFlightRef.current = true;
++    try {
++      if (Platform.OS === "android") {
++        await Notifications.setNotificationChannelAsync("default", {
++          name: "default",
++          importance: Notifications.AndroidImportance.MAX,
++          vibrationPattern: [0, 250, 250, 250],
++          lightColor: "#FF231F7C",
++        });
++      }
++
++      const currentPermissions = await Notifications.getPermissionsAsync();
++      let finalStatus = currentPermissions?.status;
++
++      if (finalStatus !== "granted") {
++        const requestedPermissions = await Notifications.requestPermissionsAsync();
++        finalStatus = requestedPermissions?.status;
++      }
++
++      if (finalStatus !== "granted") {
++        return;
++      }
++
++      const projectId =
++        Constants?.expoConfig?.extra?.eas?.projectId ??
++        Constants?.easConfig?.projectId;
++
++      if (!projectId) {
++        console.log("[notifications] Missing EAS projectId; cannot get Expo push token.");
++        return;
++      }
++
++      const tokenResponse = await Notifications.getExpoPushTokenAsync({ projectId });
++      const expoPushToken = tokenResponse?.data;
++      if (!expoPushToken) return;
++
++      const storedPushToken = await AsyncStorage.getItem("expoPushToken");
++      if (
++        expoPushToken === storedPushToken ||
++        expoPushToken === lastRegisteredPushTokenRef.current
++      ) {
++        return;
++      }
++
++      await apiClient.put("/users/me", { expo_push_token: expoPushToken });
++      await AsyncStorage.setItem("expoPushToken", expoPushToken);
++      lastRegisteredPushTokenRef.current = expoPushToken;
++    } catch (err) {
++      console.log(
++        "[notifications] Failed to register Expo push token",
++        err?.response?.data || err?.message || err
++      );
++    } finally {
++      pushRegistrationInFlightRef.current = false;
++    }
++  }, [token?.token]);
+ 
+   const formatFlashText = useCallback((text) => {
+     if (typeof text === "string") return text;
+     if (text == null) return "Something went wrong.";
+ 
+     const formatErrorItem = (item) => {
+       if (typeof item === "string") return item;
+       if (!item || typeof item !== "object") return String(item);
+ 
+       const message = item.msg || item.message;
+       if (Array.isArray(item.loc) && item.loc.length > 0) {
+         const field = item.loc[item.loc.length - 1];
+         return message ? `${field}: ${message}` : String(item);
+       }
+       if (message) return message;
+       return JSON.stringify(item);
+     };
+ 
+     if (Array.isArray(text)) {
+       return text.map(formatErrorItem).filter(Boolean).join("\n");
+     }
+ 
+     if (typeof text === "object") {
+       if (Array.isArray(text.detail)) {
+         return formatFlashText(text.detail);
+       }
+       if (typeof text.detail === "string") return text.detail;
+       if (typeof text.message === "string") return text.message;
+       if (typeof text.msg === "string") return text.msg;
+       return JSON.stringify(text);
+     }
+ 
+     return String(text);
+   }, []);
+ 
++
++  useEffect(() => {
++    if (!token?.token) return;
++    registerExpoPushToken();
++  }, [registerExpoPushToken, token?.token]);
++
+   useEffect(() => {
+-    const sub = Notifications.addNotificationResponseReceivedListener((response) => {
++    const handleNotificationResponse = (response) => {
+       const data = response?.notification?.request?.content?.data || {};
+       if (data?.type === 'chat' && data?.conversation_id) {
+         setPendingChatConversationId(Number(data.conversation_id));
+         if (navigationRef?.current) {
+           navigationRef.current.navigate(token?.isProvider ? 'Dashboard' : 'Appointments');
+         }
+       }
+-    });
++    };
++
++    const hydrateLastNotificationResponse = async () => {
++      const initialResponse = await Notifications.getLastNotificationResponseAsync();
++      if (initialResponse) {
++        handleNotificationResponse(initialResponse);
++      }
++    };
++
++    hydrateLastNotificationResponse();
++    const sub = Notifications.addNotificationResponseReceivedListener(handleNotificationResponse);
+ 
+     return () => {
+       sub?.remove?.();
+     };
+   }, [navigationRef, token?.isProvider]);
+ 
+ 
+   const showFlash = useCallback((type, text) => {
+     setFlash({ type, text: formatFlashText(text) });
+     setTimeout(() => {
+       setFlash(null);
+     }, 4500);
+   }, [formatFlashText]);
+ 
+   const [googleLoading, setGoogleLoading] = useState(false);
+ 
+   // Expo Go proxy is a fallback only; OAuth/OpenID testing is expected in development builds or standalone/TestFlight apps.
+   const isExpoGo = Constants.appOwnership === "expo";
+   const useProxy = isExpoGo;
+   const hasLoggedGoogleEnvRef = useRef(false);
+ 
+   useEffect(() => {
+     if (hasLoggedGoogleEnvRef.current) return;
+     hasLoggedGoogleEnvRef.current = true;
+     console.log("[google] appOwnership:", Constants.appOwnership);
  
 EOF
 )

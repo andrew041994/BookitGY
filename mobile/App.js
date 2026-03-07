@@ -9548,6 +9548,68 @@ function App() {
 
   const [flash, setFlash] = useState(null);
   const [pendingChatConversationId, setPendingChatConversationId] = useState(null);
+  const pushRegistrationInFlightRef = useRef(false);
+  const lastRegisteredPushTokenRef = useRef(null);
+
+  const registerExpoPushToken = useCallback(async () => {
+    if (!token?.token || pushRegistrationInFlightRef.current) return;
+
+    pushRegistrationInFlightRef.current = true;
+    try {
+      if (Platform.OS === "android") {
+        await Notifications.setNotificationChannelAsync("default", {
+          name: "default",
+          importance: Notifications.AndroidImportance.MAX,
+          vibrationPattern: [0, 250, 250, 250],
+          lightColor: "#FF231F7C",
+        });
+      }
+
+      const currentPermissions = await Notifications.getPermissionsAsync();
+      let finalStatus = currentPermissions?.status;
+
+      if (finalStatus !== "granted") {
+        const requestedPermissions = await Notifications.requestPermissionsAsync();
+        finalStatus = requestedPermissions?.status;
+      }
+
+      if (finalStatus !== "granted") {
+        return;
+      }
+
+      const projectId =
+        Constants?.expoConfig?.extra?.eas?.projectId ??
+        Constants?.easConfig?.projectId;
+
+      if (!projectId) {
+        console.log("[notifications] Missing EAS projectId; cannot get Expo push token.");
+        return;
+      }
+
+      const tokenResponse = await Notifications.getExpoPushTokenAsync({ projectId });
+      const expoPushToken = tokenResponse?.data;
+      if (!expoPushToken) return;
+
+      const storedPushToken = await AsyncStorage.getItem("expoPushToken");
+      if (
+        expoPushToken === storedPushToken ||
+        expoPushToken === lastRegisteredPushTokenRef.current
+      ) {
+        return;
+      }
+
+      await apiClient.put("/users/me", { expo_push_token: expoPushToken });
+      await AsyncStorage.setItem("expoPushToken", expoPushToken);
+      lastRegisteredPushTokenRef.current = expoPushToken;
+    } catch (err) {
+      console.log(
+        "[notifications] Failed to register Expo push token",
+        err?.response?.data || err?.message || err
+      );
+    } finally {
+      pushRegistrationInFlightRef.current = false;
+    }
+  }, [token?.token]);
 
   const formatFlashText = useCallback((text) => {
     if (typeof text === "string") return text;
@@ -9583,8 +9645,14 @@ function App() {
     return String(text);
   }, []);
 
+
   useEffect(() => {
-    const sub = Notifications.addNotificationResponseReceivedListener((response) => {
+    if (!token?.token) return;
+    registerExpoPushToken();
+  }, [registerExpoPushToken, token?.token]);
+
+  useEffect(() => {
+    const handleNotificationResponse = (response) => {
       const data = response?.notification?.request?.content?.data || {};
       if (data?.type === 'chat' && data?.conversation_id) {
         setPendingChatConversationId(Number(data.conversation_id));
@@ -9592,7 +9660,17 @@ function App() {
           navigationRef.current.navigate(token?.isProvider ? 'Dashboard' : 'Appointments');
         }
       }
-    });
+    };
+
+    const hydrateLastNotificationResponse = async () => {
+      const initialResponse = await Notifications.getLastNotificationResponseAsync();
+      if (initialResponse) {
+        handleNotificationResponse(initialResponse);
+      }
+    };
+
+    hydrateLastNotificationResponse();
+    const sub = Notifications.addNotificationResponseReceivedListener(handleNotificationResponse);
 
     return () => {
       sub?.remove?.();
