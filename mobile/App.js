@@ -22,6 +22,7 @@ import {
   Share,
   Modal,
   FlatList,
+  AppState,
 } from "react-native";
 import * as ExpoLinking from "expo-linking";
 import * as AuthSession from "expo-auth-session";
@@ -9245,6 +9246,11 @@ function MainApp({
   const [unreadNotificationCount, setUnreadNotificationCount] = useState(0);
 
   const refreshUnreadCount = useCallback(async () => {
+    if (!token?.token) {
+      setUnreadNotificationCount(0);
+      return;
+    }
+
     try {
       const res = await apiClient.get('/notifications/me/unread-count');
       const count = Number(res?.data?.unread_count || 0);
@@ -9252,11 +9258,37 @@ function MainApp({
     } catch (err) {
       console.log('Error loading unread notification count', err?.response?.data || err?.message || err);
     }
-  }, []);
+  }, [token?.token]);
 
   useEffect(() => {
     refreshUnreadCount();
   }, [refreshUnreadCount]);
+
+  useEffect(() => {
+    if (!token?.token) return;
+
+    const receivedSubscription = Notifications.addNotificationReceivedListener(() => {
+      refreshUnreadCount();
+    });
+
+    return () => {
+      receivedSubscription?.remove?.();
+    };
+  }, [refreshUnreadCount, token?.token]);
+
+  useEffect(() => {
+    if (!token?.token) return;
+
+    const appStateSubscription = AppState.addEventListener('change', (nextAppState) => {
+      if (nextAppState === 'active') {
+        refreshUnreadCount();
+      }
+    });
+
+    return () => {
+      appStateSubscription?.remove?.();
+    };
+  }, [refreshUnreadCount, token?.token]);
 
   const {
     favoriteIds,
@@ -9365,6 +9397,11 @@ function MainApp({
                 clearPendingChatConversationId={() => setPendingChatConversationId(null)}
               />
             )}
+            listeners={{
+              focus: () => {
+                refreshUnreadCount();
+              },
+            }}
           </Tab.Screen>
 
           <Tab.Screen name="Calendar">
@@ -9503,6 +9540,11 @@ function MainApp({
                   refreshFavoriteProviders={refreshFavoriteProviders}
                 />
               )}
+              listeners={{
+                focus: () => {
+                  refreshUnreadCount();
+                },
+              }}
             </Tab.Screen>
             <Tab.Screen name="Search">
               {({ navigation, route }) => (

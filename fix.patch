@@ -1,116 +1,267 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
 diff --git a/mobile/App.js b/mobile/App.js
-index 6e0e6116de734dedb2e15f4e65b36c1b7c3c895b..691e1dbbe84a34981f39bb418af2b827451b944b 100644
+index 691e1dbbe84a34981f39bb418af2b827451b944b..ab38fa1cec160ede93625245173776acc93cac26 100644
 --- a/mobile/App.js
 +++ b/mobile/App.js
-@@ -9170,51 +9170,51 @@ function NotificationsScreen({
+@@ -1,49 +1,50 @@
+ import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
  
-   const handleClose = useCallback(() => {
-     if (navigation?.canGoBack?.()) {
-       navigation.goBack();
-       return;
+ import {
+   Text,
+   View,
+   StyleSheet,
+   TextInput,
+   Button,
+   Alert,
+   ActivityIndicator,
+   ScrollView,
+   TouchableOpacity,
+   Switch,
+   Linking,
+   Platform,
+   Image,
+   KeyboardAvoidingView,
+   TouchableWithoutFeedback,
+   Keyboard,
+   Pressable,
+   RefreshControl,
+   Share,
+   Modal,
+   FlatList,
++  AppState,
+ } from "react-native";
+ import * as ExpoLinking from "expo-linking";
+ import * as AuthSession from "expo-auth-session";
+ import * as Google from "expo-auth-session/providers/google";
+ import * as WebBrowser from "expo-web-browser";
+ 
+ import {
+   NavigationContainer,
+   CommonActions,
+   useFocusEffect,
+   useIsFocused,
+ } from "@react-navigation/native";
+ import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
+ import { enableScreens } from "react-native-screens";
+ import AsyncStorage from "@react-native-async-storage/async-storage";
+ import {
+   clearAllAuthTokens,
+   loadToken,
+   saveRefreshToken,
+   saveToken,
+ } from "./src/components/tokenStorage";
+ import ProviderCard from "./src/components/ProviderCard";
+ import * as Location from "expo-location";
+ import Constants from "expo-constants";
+ import * as ImagePicker from "expo-image-picker";
+@@ -9223,63 +9224,94 @@ function NotificationsScreen({
+                 </View>
+                 {!item.is_read ? <View style={styles.notificationUnreadDot} /> : null}
+               </TouchableOpacity>
+             )}
+           />
+         )}
+       </View>
+     </SafeAreaView>
+   );
+ }
+ 
+ // Tabs after login
+ function MainApp({
+   authLoading,
+   token,
+   setToken,
+   showFlash,
+   navigationRef,
+   setNavReady,
+   pendingChatConversationId,
+   setPendingChatConversationId,
+ }) {
+   const [unreadNotificationCount, setUnreadNotificationCount] = useState(0);
+ 
+   const refreshUnreadCount = useCallback(async () => {
++    if (!token?.token) {
++      setUnreadNotificationCount(0);
++      return;
++    }
++
+     try {
+       const res = await apiClient.get('/notifications/me/unread-count');
+       const count = Number(res?.data?.unread_count || 0);
+       setUnreadNotificationCount(Number.isFinite(count) ? count : 0);
+     } catch (err) {
+       console.log('Error loading unread notification count', err?.response?.data || err?.message || err);
      }
+-  }, []);
++  }, [token?.token]);
  
-     const fallbackRoute = isProvider ? "Dashboard" : "Home";
-     const routeNames = navigation?.getState?.()?.routeNames || [];
-     if (routeNames.includes(fallbackRoute)) {
-       navigation.navigate(fallbackRoute);
-       return;
-     }
+   useEffect(() => {
+     refreshUnreadCount();
+   }, [refreshUnreadCount]);
  
-     const parentNavigation = navigation?.getParent?.();
-     const parentRouteNames = parentNavigation?.getState?.()?.routeNames || [];
-     if (parentRouteNames.includes(fallbackRoute)) {
-       parentNavigation.navigate(fallbackRoute);
-       return;
-     }
- 
-     navigation.dispatch(CommonActions.navigate({ name: fallbackRoute }));
-   }, [isProvider, navigation]);
- 
++  useEffect(() => {
++    if (!token?.token) return;
++
++    const receivedSubscription = Notifications.addNotificationReceivedListener(() => {
++      refreshUnreadCount();
++    });
++
++    return () => {
++      receivedSubscription?.remove?.();
++    };
++  }, [refreshUnreadCount, token?.token]);
++
++  useEffect(() => {
++    if (!token?.token) return;
++
++    const appStateSubscription = AppState.addEventListener('change', (nextAppState) => {
++      if (nextAppState === 'active') {
++        refreshUnreadCount();
++      }
++    });
++
++    return () => {
++      appStateSubscription?.remove?.();
++    };
++  }, [refreshUnreadCount, token?.token]);
++
+   const {
+     favoriteIds,
+     favoriteProviders,
+     favoritesLoading,
+     toggleFavorite,
+     isFavorite,
+     syncFavoritesFromList,
+     refreshFavoriteProviders,
+   } = useFavoriteProviders(token?.email || token?.userId);
    return (
--    <SafeAreaView style={styles.container}>
-+    <SafeAreaView style={styles.notificationsScreenContainer}>
-       <View style={styles.card}>
-         <View style={styles.notificationsHeaderRow}>
-           <Text style={styles.profileTitle}>Notifications</Text>
-           <View style={styles.notificationsHeaderActions}>
-             <TouchableOpacity onPress={async () => { await apiClient.patch('/notifications/read-all'); await loadNotifications(); }}>
-               <Text style={styles.bookingEdit}>Mark all read</Text>
-             </TouchableOpacity>
-             <TouchableOpacity onPress={handleClose}>
-               <Text style={styles.bookingEdit}>Close</Text>
-             </TouchableOpacity>
-           </View>
-         </View>
  
-         {loading ? (
-           <ActivityIndicator />
-         ) : notifications.length === 0 ? (
-           <Text style={styles.serviceMeta}>No notifications yet.</Text>
-         ) : (
-           <FlatList
-             data={notifications}
-             keyExtractor={(item) => `${item.id}`}
-             renderItem={({ item }) => (
-               <TouchableOpacity style={styles.notificationItem} onPress={() => handlePressNotification(item)}>
-                 <View style={styles.notificationBody}>
-                   <Text style={styles.notificationTitle}>{item.title}</Text>
-@@ -12998,50 +12998,54 @@ signupTextButtonText: {
-     width: "100%",
-     height: "100%",
-   },
+     <NavigationContainer
+       ref={navigationRef}
+       onReady={() => {
+         console.log("[nav] ready");
+         setNavReady(true);
+       }}
+     >
+       {token.isProvider ? (
+         // 👇 Provider view: Dashboard + Billing + Profile
+         <Tab.Navigator
+           initialRouteName="Dashboard"
+           screenOptions={({ route }) => ({
+             headerShown: route.name === 'Dashboard',
+             sceneContainerStyle: {
+@@ -9343,50 +9375,55 @@ function MainApp({
+                   style={{
+                     padding: 6,
+                     borderRadius: 16,
+                     backgroundColor: focused ? colors.primarySoft : "transparent",
+                   }}
+                 >
+                   <Ionicons
+                     name={iconName}
+                     size={focused ? 26 : 22}
+                     color={color}
+                   />
+                 </View>
+               );
+             },
+           })}
+         >
+           <Tab.Screen name="Dashboard">
+             {() => (
+               <ProviderDashboardScreen
+                 token={token}
+                 showFlash={showFlash}
+                 pendingChatConversationId={pendingChatConversationId}
+                 clearPendingChatConversationId={() => setPendingChatConversationId(null)}
+               />
+             )}
++            listeners={{
++              focus: () => {
++                refreshUnreadCount();
++              },
++            }}
+           </Tab.Screen>
  
-   notificationBellButton: {
-     marginRight: 12,
-     padding: 4,
-   },
-   notificationBellBadge: {
-     position: "absolute",
-     right: -2,
-     top: -2,
-     minWidth: 16,
-     height: 16,
-     borderRadius: 8,
-     backgroundColor: colors.error,
-     alignItems: "center",
-     justifyContent: "center",
-     paddingHorizontal: 3,
-   },
-   notificationBellBadgeText: {
-     color: colors.textPrimary,
-     fontSize: 10,
-     fontWeight: "700",
-   },
-+  notificationsScreenContainer: {
-+    flex: 1,
-+    backgroundColor: "#0F223A",
-+  },
-   notificationsHeaderRow: {
-     width: "100%",
-     flexDirection: "row",
-     justifyContent: "space-between",
-     alignItems: "center",
-     marginBottom: 12,
-   },
-   notificationsHeaderActions: {
-     flexDirection: "row",
-     alignItems: "center",
-     gap: 14,
-   },
-   notificationItem: {
-     width: "100%",
-     backgroundColor: colors.surfaceElevated,
-     borderColor: colors.border,
-     borderWidth: 1,
-     borderRadius: 12,
-     padding: 12,
-     marginBottom: 10,
-     flexDirection: "row",
-     alignItems: "center",
-   },
-   notificationBody: {
-     flex: 1,
+           <Tab.Screen name="Calendar">
+             {() => (
+               <ProviderCalendarScreen token={token} showFlash={showFlash} />
+             )}
+           </Tab.Screen>
+ 
+           <Tab.Screen name="Billing">
+             {() => (
+               <ProviderBillingScreen token={token} showFlash={showFlash} />
+             )}
+           </Tab.Screen>
+ 
+ 
+           <Tab.Screen
+             name="Notifications"
+             options={{
+               headerShown: false,
+               tabBarButton: () => null,
+             }}
+           >
+             {({ navigation }) => (
+               <NotificationsScreen
+                 navigation={navigation}
+@@ -9481,50 +9518,55 @@ function MainApp({
+                     <Ionicons
+                       name={iconName}
+                       size={focused ? 26 : 22}
+                       color={color}
+                     />
+                   </View>
+                 );
+               },
+             })}
+             initialRouteName="Home"
+           >
+             <Tab.Screen name="Home">
+               {({ navigation }) => (
+                 <ClientHomeScreen
+                   navigation={navigation}
+                   token={token}
+                   favoriteProviders={favoriteProviders}
+                   favoriteIds={favoriteIds}
+                   favoritesLoading={favoritesLoading}
+                   toggleFavorite={toggleFavorite}
+                   isFavorite={isFavorite}
+                   syncFavoritesFromList={syncFavoritesFromList}
+                   refreshFavoriteProviders={refreshFavoriteProviders}
+                 />
+               )}
++              listeners={{
++                focus: () => {
++                  refreshUnreadCount();
++                },
++              }}
+             </Tab.Screen>
+             <Tab.Screen name="Search">
+               {({ navigation, route }) => (
+                 <SearchScreen
+                   token={token}
+                   showFlash={showFlash}
+                   navigation={navigation}
+                   route={route}
+                   toggleFavorite={toggleFavorite}
+                   isFavorite={isFavorite}
+                   syncFavoritesFromList={syncFavoritesFromList}
+                 />
+               )}
+             </Tab.Screen>
+             <Tab.Screen
+               name="Notifications"
+               options={{
+                 headerShown: false,
+                 tabBarButton: () => null,
+               }}
+             >
+               {({ navigation }) => (
+                 <NotificationsScreen
+                   navigation={navigation}
+                   refreshUnreadCount={refreshUnreadCount}
  
 EOF
 )
