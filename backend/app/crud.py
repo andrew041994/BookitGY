@@ -46,16 +46,6 @@ def format_gyd_amount(value: Decimal | float | int) -> str:
     return f"{amount:,.2f}"
 
 
-def _build_provider_billing_page_url(account_number: str) -> str | None:
-    settings = get_settings()
-    base_url = (settings.FRONTEND_LOGIN_URL or "").strip()
-    if not base_url:
-        return None
-
-    base_root = base_url.rsplit("/", 1)[0] if "/" in base_url else base_url
-    return f"{base_root}/provider/billing?account={account_number}"
-
-
 def normalized_booking_status_value(status: str | None) -> str:
     normalized = (status or "").strip().lower()
     if normalized == "canceled":
@@ -1695,8 +1685,6 @@ def _send_monthly_bill_email_if_needed(
 
     month_label = bill.month.strftime("%b %Y")
     due_date_label = bill.due_date.strftime("%Y-%m-%d") if bill.due_date else None
-    billing_page_url = _build_provider_billing_page_url(provider.account_number or "")
-
     try:
         send_monthly_statement_email(
             to_email,
@@ -1705,7 +1693,6 @@ def _send_monthly_bill_email_if_needed(
             credits_applied_gyd=format_gyd_amount(credits_applied),
             remaining_balance_gyd=format_gyd_amount(remaining_balance_due),
             due_date_label=due_date_label,
-            billing_page_url=billing_page_url,
         )
     except Exception:
         logger.exception(

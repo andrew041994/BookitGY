@@ -1,63 +1,62 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
-diff --git a/backend/tests/test_billing_cron.py b/backend/tests/test_billing_cron.py
-new file mode 100644
-index 0000000000000000000000000000000000000000..9f18a95ffa7ba1bed979029d43a4f6215d91808f
---- /dev/null
-+++ b/backend/tests/test_billing_cron.py
-@@ -0,0 +1,53 @@
-+from datetime import datetime
-+
-+
-+def test_run_billing_job_targets_previous_month(db_session, monkeypatch):
-+    from app.workers import cron
-+
-+    captured = {}
-+
-+    class _DummyDb:
-+        def close(self):
-+            return None
-+
-+    monkeypatch.setattr(cron, "_ensure_tables_initialized", lambda: None)
-+    monkeypatch.setattr(cron, "SessionLocal", lambda: _DummyDb())
-+    monkeypatch.setattr(cron, "now_guyana", lambda: datetime(2026, 3, 6, 9, 30, 0))
-+
-+    def _fake_generate_monthly_bills(db, **kwargs):
-+        captured.update(kwargs)
-+
-+    monkeypatch.setattr(cron, "generate_monthly_bills", _fake_generate_monthly_bills)
-+
-+    cron.run_billing_job()
-+
-+    assert captured["month"].isoformat() == "2026-02-01"
-+    assert captured["target_month"].isoformat() == "2026-02-01"
-+
-+
-+def test_register_cron_jobs_schedules_billing_monthly(db_session):
-+    from app.workers import cron
-+
-+    class _DummyScheduler:
-+        def __init__(self):
-+            self.jobs = []
-+
-+        def add_job(self, func, trigger, **kwargs):
-+            self.jobs.append((func, trigger, kwargs))
-+
-+    scheduler = _DummyScheduler()
-+
-+    cron.registerCronJobs(scheduler)
-+
-+    billing_jobs = [
-+        (trigger, kwargs)
-+        for func, trigger, kwargs in scheduler.jobs
-+        if func == cron.run_billing_job
-+    ]
-+
-+    assert billing_jobs == [
-+        (
-+            "cron",
-+            {"day": 1, "hour": 0, "minute": 10},
-+        )
-+    ]
+diff --git a/backend/app/utils/email.py b/backend/app/utils/email.py
+index 25908aaf30422e3702f433c76598c4a5ae0f6022..240c648dd687699305a49e1a42d6443430fcdf34 100644
+--- a/backend/app/utils/email.py
++++ b/backend/app/utils/email.py
+@@ -142,52 +142,48 @@ def send_provider_suspension_email(
+         subject = "Your BookitGY account has been reactivated"
+         content = (
+             "Your provider account has been restored and can now accept bookings again.\n\n"
+             f"{provider_line}"
+             f"Account: {account_number}"
+         )
+ 
+     message = Mail(
+         from_email=settings.SENDGRID_FROM_EMAIL,
+         to_emails=to_email,
+         subject=subject,
+         plain_text_content=content,
+     )
+ 
+     _send_email(message, "Failed to send provider suspension email.")
+ 
+ 
+ def send_monthly_statement_email(
+     to_email: str,
+     *,
+     month_label: str,
+     fees_due_gyd: str,
+     credits_applied_gyd: str,
+     remaining_balance_gyd: str,
+     due_date_label: str | None = None,
+-    billing_page_url: str | None = None,
+ ) -> None:
+     _ensure_email_configured()
+ 
+     subject = f"BookitGY — Monthly statement for {month_label}"
+     due_date_line = f"Due date: {due_date_label}\n" if due_date_label else ""
+-    billing_page_line = (
+-        f"View your billing page: {billing_page_url}\n" if billing_page_url else ""
+-    )
+     content = (
+         f"Your BookitGY monthly statement for {month_label} is ready.\n\n"
+         f"Fees due: GYD {fees_due_gyd}\n"
+         f"Credits applied: GYD {credits_applied_gyd}\n"
+         f"Remaining balance due: GYD {remaining_balance_gyd}\n"
+         f"{due_date_line}"
+-        f"{billing_page_line}\n"
++        "\n"
+         "If you have any questions, contact bookitgy.service@gmail.com."
+     )
+ 
+     message = Mail(
+         from_email=settings.SENDGRID_FROM_EMAIL,
+         to_emails=to_email,
+         subject=subject,
+         plain_text_content=content,
+     )
+ 
+     _send_email(message, "Failed to send monthly billing statement email.")
  
 EOF
 )
