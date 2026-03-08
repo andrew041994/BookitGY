@@ -10227,22 +10227,35 @@ function App() {
   const useProxy = isExpoGo;
   const hasLoggedGoogleEnvRef = useRef(false);
 
+  const googleIosClientId = (process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID || "").trim();
+  const googleAndroidClientId = (process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID || "").trim();
+  const googleWebClientId = (process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID || "").trim();
+
   useEffect(() => {
     if (hasLoggedGoogleEnvRef.current) return;
     hasLoggedGoogleEnvRef.current = true;
     console.log("[google] appOwnership:", Constants.appOwnership);
     console.log("[google] isExpoGo:", isExpoGo);
     console.log("[google] useProxy:", useProxy);
-  }, [isExpoGo, useProxy]);
+
+    const missingClientIds = [];
+    if (!googleIosClientId) missingClientIds.push("EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID");
+    if (!googleAndroidClientId) missingClientIds.push("EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID");
+    if (!googleWebClientId) missingClientIds.push("EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID");
+
+    if (missingClientIds.length) {
+      console.warn(`[google] Missing OAuth client ID env vars: ${missingClientIds.join(", ")}`);
+    }
+  }, [googleAndroidClientId, googleIosClientId, googleWebClientId, isExpoGo, useProxy]);
 
   const discovery = AuthSession.useAutoDiscovery("https://accounts.google.com");
 
   const [request, response, promptAsync] = Google.useAuthRequest(
   {
-    expoClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
-    iosClientId: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID,
-    androidClientId: process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID,
-    webClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
+    expoClientId: googleWebClientId,
+    iosClientId: googleIosClientId,
+    androidClientId: googleAndroidClientId,
+    webClientId: googleWebClientId,
     responseType: AuthSession.ResponseType.Code,
     usePKCE: true,
     scopes: ["openid", "profile", "email"],
@@ -10360,8 +10373,15 @@ function App() {
 
       const exchangeClientId =
         Platform.OS === "ios" && !isExpoGo
-          ? process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID
-          : process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID;
+          ? googleIosClientId
+          : Platform.OS === "android" && !isExpoGo
+            ? googleAndroidClientId
+            : googleWebClientId;
+
+      if (!exchangeClientId) {
+        showFlash?.("error", "Google client ID missing for this build. Please contact support.");
+        return;
+      }
 
       if (DEBUG_GOOGLE_AUTH) {
         console.log("[google] exchange", {
@@ -10518,6 +10538,9 @@ function App() {
     DEBUG_GOOGLE_AUTH,
     decodeJwtNoVerify,
     discovery,
+    googleAndroidClientId,
+    googleIosClientId,
+    googleWebClientId,
     isExpoGo,
     promptAsync,
     request,
