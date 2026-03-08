@@ -3813,8 +3813,8 @@ function BookingChatModal({
       <SafeAreaView style={styles.chatSafeArea} edges={["left", "right", "bottom"]}>
         <KeyboardAvoidingView
           style={styles.chatKeyboardWrapper}
-          behavior={Platform.OS === "ios" ? "padding" : undefined}
-          keyboardVerticalOffset={Platform.OS === "ios" ? 86 : 0}
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+          keyboardVerticalOffset={0}
         >
           <View style={[styles.chatHeader, { paddingTop: Math.max(insets.top, 8) }]}>
             <TouchableOpacity onPress={onClose} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>

@@ -1,209 +1,63 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
 diff --git a/mobile/App.js b/mobile/App.js
-index 4a2fde72c55dddc5e09073180803a6254ce4ed90..fc7f92e76f6aafeaad101e83cd25e591f50520d7 100644
+index 1bfa8cd519971fe8cc2ad35b5f4eac03cdf04492..083b9a4b00aca26e5709b287fee444b86b660e60 100644
 --- a/mobile/App.js
 +++ b/mobile/App.js
-@@ -10205,66 +10205,79 @@ function App() {
-     };
+@@ -3791,52 +3791,52 @@ function BookingChatModal({
+     const createdAt = item?.created_at ? new Date(item.created_at) : null;
+     const timeText = createdAt && !Number.isNaN(createdAt.getTime())
+       ? createdAt.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })
+       : "";
  
-     hydrateLastNotificationResponse();
-     const sub = Notifications.addNotificationResponseReceivedListener(handleNotificationResponse);
+     return (
+       <View style={[styles.chatRow, mine ? styles.chatRowMine : styles.chatRowOther]}>
+         <View style={[styles.chatBubble, mine ? styles.chatBubbleMine : styles.chatBubbleOther]}>
+           {item?.text ? <Text style={styles.chatText}>{item.text}</Text> : null}
+           {imageUrl ? (
+             <TouchableOpacity onPress={() => setViewerImage(imageUrl)} activeOpacity={0.85}>
+               <Image source={{ uri: imageUrl }} style={styles.chatImage} resizeMode="cover" />
+             </TouchableOpacity>
+           ) : null}
+           {timeText ? <Text style={styles.chatTime}>{timeText}</Text> : null}
+         </View>
+       </View>
+     );
+   };
  
-     return () => {
-       sub?.remove?.();
-     };
-   }, [navigationRef, token?.isProvider]);
+   return (
+     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
+       <SafeAreaView style={styles.chatSafeArea} edges={["left", "right", "bottom"]}>
+         <KeyboardAvoidingView
+           style={styles.chatKeyboardWrapper}
+-          behavior={Platform.OS === "ios" ? "padding" : undefined}
+-          keyboardVerticalOffset={Platform.OS === "ios" ? 86 : 0}
++          behavior={Platform.OS === "ios" ? "padding" : "height"}
++          keyboardVerticalOffset={0}
+         >
+           <View style={[styles.chatHeader, { paddingTop: Math.max(insets.top, 8) }]}>
+             <TouchableOpacity onPress={onClose} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+               <Text style={styles.chatCloseText}>Close</Text>
+             </TouchableOpacity>
+             <Text style={styles.chatHeaderTitle}>Booking Chat</Text>
+             <View style={{ width: 46 }} />
+           </View>
  
+           {isChatReadOnly ? (
+             <View style={styles.chatCancelledBanner}>
+               <Text style={styles.chatCancelledText}>
+                 {chatReadOnlyReason}
+               </Text>
+             </View>
+           ) : null}
  
-   const showFlash = useCallback((type, text) => {
-     setFlash({ type, text: formatFlashText(text) });
-     setTimeout(() => {
-       setFlash(null);
-     }, 4500);
-   }, [formatFlashText]);
- 
-   const [googleLoading, setGoogleLoading] = useState(false);
- 
-   // Expo Go proxy is a fallback only; OAuth/OpenID testing is expected in development builds or standalone/TestFlight apps.
-   const isExpoGo = Constants.appOwnership === "expo";
-   const useProxy = isExpoGo;
-   const hasLoggedGoogleEnvRef = useRef(false);
- 
-+  const googleIosClientId = (process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID || "").trim();
-+  const googleAndroidClientId = (process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID || "").trim();
-+  const googleWebClientId = (process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID || "").trim();
-+
-   useEffect(() => {
-     if (hasLoggedGoogleEnvRef.current) return;
-     hasLoggedGoogleEnvRef.current = true;
-     console.log("[google] appOwnership:", Constants.appOwnership);
-     console.log("[google] isExpoGo:", isExpoGo);
-     console.log("[google] useProxy:", useProxy);
--  }, [isExpoGo, useProxy]);
-+
-+    const missingClientIds = [];
-+    if (!googleIosClientId) missingClientIds.push("EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID");
-+    if (!googleAndroidClientId) missingClientIds.push("EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID");
-+    if (!googleWebClientId) missingClientIds.push("EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID");
-+
-+    if (missingClientIds.length) {
-+      console.warn(`[google] Missing OAuth client ID env vars: ${missingClientIds.join(", ")}`);
-+    }
-+  }, [googleAndroidClientId, googleIosClientId, googleWebClientId, isExpoGo, useProxy]);
- 
-   const discovery = AuthSession.useAutoDiscovery("https://accounts.google.com");
- 
-   const [request, response, promptAsync] = Google.useAuthRequest(
-   {
--    expoClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
--    iosClientId: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID,
--    androidClientId: process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID,
--    webClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
-+    expoClientId: googleWebClientId,
-+    iosClientId: googleIosClientId,
-+    androidClientId: googleAndroidClientId,
-+    webClientId: googleWebClientId,
-     responseType: AuthSession.ResponseType.Code,
-     usePKCE: true,
-     scopes: ["openid", "profile", "email"],
-   },
-   discovery
- );
- 
-   const decodeBase64UrlToUtf8 = useCallback((value) => {
-     if (typeof value !== "string" || !value) {
-       return "";
-     }
- 
-     const b64 = value
-       .replace(/-/g, "+")
-       .replace(/_/g, "/")
-       .padEnd(Math.ceil(value.length / 4) * 4, "=");
- 
-     if (typeof Buffer !== "undefined" && Buffer?.from) {
-       return Buffer.from(b64, "base64").toString("utf8");
-     }
- 
-     if (typeof globalThis?.atob === "function") {
-       const binary = globalThis.atob(b64);
-       const escaped = Array.from(binary)
-         .map((char) => `%${char.charCodeAt(0).toString(16).padStart(2, "0")}`)
-@@ -10338,52 +10351,59 @@ function App() {
-         showFlash?.(
-           "error",
-           "Google did not return an auth code. Please try again."
-         );
-         return;
-       }
- 
-       const redirectUri = request?.redirectUri;
-       if (!redirectUri) {
-         showFlash?.("error", "Google redirect URI missing. Please try again.");
-         return;
-       }
- 
-       if (!request?.codeVerifier) {
-         showFlash?.("error", "Google PKCE verifier missing. Please try again.");
-         return;
-       }
- 
-       if (!discovery?.tokenEndpoint) {
-         showFlash?.("error", "Google discovery not ready. Please try again.");
-         return;
-       }
- 
-       const exchangeClientId =
-         Platform.OS === "ios" && !isExpoGo
--          ? process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID
--          : process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID;
-+          ? googleIosClientId
-+          : Platform.OS === "android" && !isExpoGo
-+            ? googleAndroidClientId
-+            : googleWebClientId;
-+
-+      if (!exchangeClientId) {
-+        showFlash?.("error", "Google client ID missing for this build. Please contact support.");
-+        return;
-+      }
- 
-       if (DEBUG_GOOGLE_AUTH) {
-         console.log("[google] exchange", {
-           platform: Platform.OS,
-           isExpoGo,
-           exchangeClientId,
-           redirectUri,
-         });
-       }
- 
-       const tokenRes = await AuthSession.exchangeCodeAsync(
-         {
-           clientId: exchangeClientId,
-           code,
-           redirectUri,
-           extraParams: {
-             code_verifier: request.codeVerifier,
-           },
-         },
-         discovery
-       );
- 
-       const idToken = typeof tokenRes?.idToken === "string" ? tokenRes.idToken.trim() : "";
- 
-       if (DEBUG_GOOGLE_AUTH) {
-@@ -10496,50 +10516,53 @@ function App() {
-         });
-         setAuthMode("login");
- 
-         showFlash?.(
-           "error",
-           "An account already exists with this email. Log in with your password to link Google."
-         );
-         return;
-       }
- 
-       const backendCode = data?.code || data?.detail?.code || null;
- 
-       showFlash?.(
-         "error",
-         backendCode
-           ? `Google login failed (${backendCode}). Please try again.`
-           : "Google login failed. Please try again."
-       );
-     } finally {
-       setGoogleLoading(false);
-     }
-   }, [
-     DEBUG_GOOGLE_AUTH,
-     decodeJwtNoVerify,
-     discovery,
-+    googleAndroidClientId,
-+    googleIosClientId,
-+    googleWebClientId,
-     isExpoGo,
-     promptAsync,
-     request,
-     setToken,
-     showFlash,
-     useProxy,
-   ]);
- 
-   useEffect(() => {
-     tokenRef.current = token;
-   }, [token]);
- 
-   useEffect(() => {
-     navReadyRef.current = navReady;
-   }, [navReady]);
- 
-   useEffect(() => {
-     if (!token) setNavReady(false);
-   }, [token]);
- 
-   const navigateToClientSearch = useCallback(
-   (username, navRef, nonce) => {
-     if (!navRef?.current) return false;
- 
-     const params = { incomingUsername: username, deeplinkNonce: nonce };
+           {loading ? (
+             <View style={styles.loadingRow}>
+               <ActivityIndicator />
+               <Text style={styles.serviceMeta}>Loading messages…</Text>
+             </View>
+           ) : (
+             <FlatList
+               ref={listRef}
  
 EOF
 )
