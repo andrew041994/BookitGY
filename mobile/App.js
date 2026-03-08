@@ -10391,7 +10391,11 @@ function App() {
           redirectUri,
         });
       }
-
+        console.log("GOOGLE DEBUG", {
+          platform: Platform.OS,
+          redirectUri: request?.redirectUri,
+          clientId: exchangeClientId,
+        });
       const tokenRes = await AuthSession.exchangeCodeAsync(
         {
           clientId: exchangeClientId,
