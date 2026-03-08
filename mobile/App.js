@@ -10238,17 +10238,17 @@ function App() {
   const discovery = AuthSession.useAutoDiscovery("https://accounts.google.com");
 
   const [request, response, promptAsync] = Google.useAuthRequest(
-    {
-      expoClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
-      iosClientId: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID,
-      androidClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
-      webClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
-      responseType: AuthSession.ResponseType.Code,
-      usePKCE: true,
-      scopes: ["openid", "profile", "email"],
-    },
-    discovery
-  );
+  {
+    expoClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
+    iosClientId: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID,
+    androidClientId: process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID,
+    webClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
+    responseType: AuthSession.ResponseType.Code,
+    usePKCE: true,
+    scopes: ["openid", "profile", "email"],
+  },
+  discovery
+);
 
   const decodeBase64UrlToUtf8 = useCallback((value) => {
     if (typeof value !== "string" || !value) {
