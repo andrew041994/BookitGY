@@ -31,12 +31,6 @@ export default {
           }
         }
       ],
-        "@react-native-community/datetimepicker",
-        "expo-secure-store",
-        "sentry-expo"
-    // [
-    //   "react-native-fbsdk-next",
-    //   {
     //     appID: (process.env.FACEBOOK_APP_ID || "").trim(),
     //     clientToken: (process.env.FACEBOOK_CLIENT_TOKEN || "").trim(),
     //     displayName: "BookitGY",
