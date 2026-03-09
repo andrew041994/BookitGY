@@ -1,9 +1,110 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
 diff --git a/mobile/App.js b/mobile/App.js
-index 1c6447716911c613d73863d1d54e78bb4f795ad6..ad1d314979d3cd5a2c5a359490d8848b216dc5db 100644
+index ad1d314979d3cd5a2c5a359490d8848b216dc5db..31ac3126ebdd861f14eccab7d464dc91efbe5f19 100644
 --- a/mobile/App.js
 +++ b/mobile/App.js
-@@ -3932,51 +3932,56 @@ function BookingChatModal({
+@@ -3619,50 +3619,66 @@ const getBookingChatReadOnlyReason = (booking) => {
+   }
+ 
+   return null;
+ };
+ 
+ function BookingChatModal({
+   visible,
+   onClose,
+   booking,
+   currentUserId,
+   showFlash,
+ }) {
+   const [messages, setMessages] = useState([]);
+   const [loading, setLoading] = useState(false);
+   const [refreshing, setRefreshing] = useState(false);
+   const [sending, setSending] = useState(false);
+   const [text, setText] = useState("");
+   const [selectedImage, setSelectedImage] = useState(null);
+   const [viewerImage, setViewerImage] = useState(null);
+   const listRef = useRef(null);
+   const insets = useSafeAreaInsets();
+ 
+   const bookingId = booking?.id || booking?.booking_id;
+   const chatReadOnlyReason = getBookingChatReadOnlyReason(booking);
+   const isChatReadOnly = Boolean(chatReadOnlyReason);
++  const chatTitle = useMemo(() => {
++    if (!booking) return "Chat";
++
++    const isCurrentUserClient =
++      booking?.client_id != null && currentUserId != null
++        ? Number(booking.client_id) === Number(currentUserId)
++        : null;
++
++    const otherParticipantName = isCurrentUserClient
++      ? booking?.provider_username || booking?.provider_name
++      : isCurrentUserClient === false
++        ? booking?.customer_username || booking?.customer_name || booking?.client_username || booking?.client_name
++        : booking?.provider_username || booking?.provider_name || booking?.customer_username || booking?.customer_name || booking?.client_username || booking?.client_name;
++
++    return String(otherParticipantName || "").trim() || "Chat";
++  }, [booking, currentUserId]);
+ 
+   const logImageMessageShapeSummary = useCallback((context, details) => {
+     console.log("[chat-image-debug] shape-summary", {
+       context,
+       ...details,
+     });
+   }, []);
+ 
+   const loadMessages = useCallback(
+     async (useRefresh = false) => {
+       if (!bookingId) return;
+       try {
+         if (useRefresh) setRefreshing(true);
+         else setLoading(true);
+ 
+         const res = await apiClient.get(`/bookings/${bookingId}/messages`);
+         const rows = Array.isArray(res?.data?.messages) ? res.data.messages : [];
+         const imageRows = rows.filter(
+           (row) => row?.attachment?.attachment_type === "image" || Boolean(row?.attachment?.file_url)
+         );
+ 
+         if (imageRows.length) {
+           console.log("[chat-image-debug] GET /bookings/{booking_id}/messages image-only response", {
+             booking_id: bookingId,
+             status: res?.status,
+@@ -3899,51 +3915,51 @@ function BookingChatModal({
+         <View style={[styles.chatBubble, mine ? styles.chatBubbleMine : styles.chatBubbleOther]}>
+           {item?.text ? <Text style={styles.chatText}>{item.text}</Text> : null}
+           {imageUrl ? (
+             <TouchableOpacity onPress={() => setViewerImage(imageUrl)} activeOpacity={0.85}>
+               <Image source={{ uri: imageUrl }} style={styles.chatImage} resizeMode="cover" />
+             </TouchableOpacity>
+           ) : null}
+           {timeText ? <Text style={styles.chatTime}>{timeText}</Text> : null}
+         </View>
+       </View>
+     );
+   };
+ 
+   return (
+     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
+       <SafeAreaView style={styles.chatSafeArea} edges={["left", "right", "bottom"]}>
+         <KeyboardAvoidingView
+           style={styles.chatKeyboardWrapper}
+           behavior={Platform.OS === "ios" ? "padding" : "height"}
+           keyboardVerticalOffset={0}
+         >
+           <View style={[styles.chatHeader, { paddingTop: Math.max(insets.top, 8) }]}>
+             <TouchableOpacity onPress={onClose} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+               <Text style={styles.chatCloseText}>Close</Text>
+             </TouchableOpacity>
+-            <Text style={styles.chatHeaderTitle}>Booking Chat</Text>
++            <Text style={styles.chatHeaderTitle}>{chatTitle}</Text>
+             <View style={{ width: 46 }} />
+           </View>
+ 
+           {isChatReadOnly ? (
+             <View style={styles.chatCancelledBanner}>
+               <Text style={styles.chatCancelledText}>
+                 {chatReadOnlyReason}
                </Text>
              </View>
            ) : null}
@@ -22,45 +123,6 @@ index 1c6447716911c613d73863d1d54e78bb4f795ad6..ad1d314979d3cd5a2c5a359490d8848b
                style={styles.chatList}
                contentContainerStyle={styles.chatListContent}
                onRefresh={() => loadMessages(true)}
-               refreshing={refreshing}
-               ListEmptyComponent={
-                 <Text style={styles.serviceMeta}>Send a message about this booking</Text>
-               }
-             />
-           )}
- 
--          <View style={styles.chatComposer}>
-+          <View
-+            style={[
-+              styles.chatComposer,
-+              { paddingBottom: 8 + (insets.bottom > 0 ? 4 : 0) },
-+            ]}
-+          >
-             {selectedImage?.uri ? (
-               <View style={styles.chatSelectedImageWrap}>
-                 <Image source={{ uri: selectedImage.uri }} style={styles.chatSelectedImage} />
-                 <TouchableOpacity onPress={() => setSelectedImage(null)}>
-                   <Text style={styles.chatRemoveImageText}>Remove</Text>
-                 </TouchableOpacity>
-               </View>
-             ) : null}
- 
-             <View style={styles.chatComposerRow}>
-               <TouchableOpacity
-                 style={styles.chatAttachButton}
-                 onPress={handlePickImage}
-                 disabled={sending || isChatReadOnly}
-               >
-                 <Ionicons name="image-outline" size={20} color={colors.textPrimary} />
-               </TouchableOpacity>
- 
-               <TextInput
-                 value={text}
-                 onChangeText={setText}
-                 placeholder="Type a message"
-                 placeholderTextColor={colors.textMuted}
-                 style={styles.chatInput}
-                 editable={!sending && !isChatReadOnly}
  
 EOF
 )

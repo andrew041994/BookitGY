@@ -3641,6 +3641,22 @@ function BookingChatModal({
   const bookingId = booking?.id || booking?.booking_id;
   const chatReadOnlyReason = getBookingChatReadOnlyReason(booking);
   const isChatReadOnly = Boolean(chatReadOnlyReason);
+  const chatTitle = useMemo(() => {
+    if (!booking) return "Chat";
+
+    const isCurrentUserClient =
+      booking?.client_id != null && currentUserId != null
+        ? Number(booking.client_id) === Number(currentUserId)
+        : null;
+
+    const otherParticipantName = isCurrentUserClient
+      ? booking?.provider_username || booking?.provider_name
+      : isCurrentUserClient === false
+        ? booking?.customer_username || booking?.customer_name || booking?.client_username || booking?.client_name
+        : booking?.provider_username || booking?.provider_name || booking?.customer_username || booking?.customer_name || booking?.client_username || booking?.client_name;
+
+    return String(otherParticipantName || "").trim() || "Chat";
+  }, [booking, currentUserId]);
 
   const logImageMessageShapeSummary = useCallback((context, details) => {
     console.log("[chat-image-debug] shape-summary", {
@@ -3921,7 +3937,7 @@ function BookingChatModal({
             <TouchableOpacity onPress={onClose} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
               <Text style={styles.chatCloseText}>Close</Text>
             </TouchableOpacity>
-            <Text style={styles.chatHeaderTitle}>Booking Chat</Text>
+            <Text style={styles.chatHeaderTitle}>{chatTitle}</Text>
             <View style={{ width: 46 }} />
           </View>
 
