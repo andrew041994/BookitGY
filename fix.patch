@@ -1,19 +1,9 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
 diff --git a/mobile/App.js b/mobile/App.js
-index 6fe78ba41f3ea37095a864370623f51ce67178b6..525cd088b69f3c36314d4c87aebddb1fd9188ca0 100644
+index 525cd088b69f3c36314d4c87aebddb1fd9188ca0..67c3d8e2d9bfd5e8776ad32dbe54a35868ff3fb6 100644
 --- a/mobile/App.js
 +++ b/mobile/App.js
-@@ -3613,50 +3613,51 @@ const getBookingChatReadOnlyReason = (booking) => {
-   const isCompleted =
-     normalizedStatus === "completed" ||
-     Boolean(booking?.completed_at || booking?.is_completed);
- 
-   if (isCompleted) {
-     return "Messaging is unavailable because this appointment is completed.";
-   }
- 
-   return null;
- };
+@@ -3623,113 +3623,166 @@ const getBookingChatReadOnlyReason = (booking) => {
  
  function BookingChatModal({
    visible,
@@ -29,7 +19,7 @@ index 6fe78ba41f3ea37095a864370623f51ce67178b6..525cd088b69f3c36314d4c87aebddb1f
    const [text, setText] = useState("");
    const [selectedImage, setSelectedImage] = useState(null);
    const [viewerImage, setViewerImage] = useState(null);
-+  const [chatUsers, setChatUsers] = useState({ provider: null, client: null });
+   const [chatUsers, setChatUsers] = useState({ provider: null, client: null });
    const listRef = useRef(null);
    const insets = useSafeAreaInsets();
  
@@ -39,6 +29,42 @@ index 6fe78ba41f3ea37095a864370623f51ce67178b6..525cd088b69f3c36314d4c87aebddb1f
    const chatParticipant = useMemo(() => {
      if (!booking) return { name: "Chat", avatarUrl: null };
  
++    const toComparableId = (value) => {
++      if (value == null) return null;
++      const str = String(value).trim();
++      return str.length ? str : null;
++    };
++
++    const collectIds = (...values) => {
++      const ids = new Set();
++      for (const value of values) {
++        if (value == null) continue;
++        if (Array.isArray(value)) {
++          value.forEach((item) => {
++            const normalized = toComparableId(item);
++            if (normalized) ids.add(normalized);
++          });
++          continue;
++        }
++        if (typeof value === "object") {
++          collectIds(
++            value?.id,
++            value?.user_id,
++            value?.provider_id,
++            value?.provider_user_id,
++            value?.client_id,
++            value?.client_user_id,
++            value?.customer_id,
++            value?.customer_user_id
++          ).forEach((id) => ids.add(id));
++          continue;
++        }
++        const normalized = toComparableId(value);
++        if (normalized) ids.add(normalized);
++      }
++      return ids;
++    };
++
      const pickFirstImageUrl = (...values) => {
        for (const value of values) {
          const resolved = resolveImageUrl(value);
@@ -55,7 +81,37 @@ index 6fe78ba41f3ea37095a864370623f51ce67178b6..525cd088b69f3c36314d4c87aebddb1f
          userLike?.profile_image_url,
          userLike?.profile_photo,
          userLike?.profile_image,
-@@ -3674,124 +3675,133 @@ function BookingChatModal({
+         userLike?.image_url,
+         userLike?.avatar
+       );
+ 
++    const currentUserComparableId = toComparableId(currentUserId);
++    const providerIds = collectIds(
++      booking?.provider,
++      chatUsers?.provider,
++      booking?.provider_id,
++      booking?.provider_user_id
++    );
++    const clientIds = collectIds(
++      booking?.client,
++      booking?.customer,
++      chatUsers?.client,
++      booking?.client_id,
++      booking?.client_user_id,
++      booking?.customer_id,
++      booking?.customer_user_id
++    );
++
++    const isCurrentUserProvider =
++      currentUserComparableId != null && providerIds.has(currentUserComparableId);
+     const isCurrentUserClient =
+-      booking?.client_id != null && currentUserId != null
+-        ? Number(booking.client_id) === Number(currentUserId)
+-        : null;
++      currentUserComparableId != null && clientIds.has(currentUserComparableId);
+ 
+     const providerAvatar = resolveUserAvatar(
+       booking?.provider,
        booking?.provider_avatar_url,
        booking?.provider_profile_photo_url,
        booking?.provider_profile_image_url,
@@ -80,31 +136,32 @@ index 6fe78ba41f3ea37095a864370623f51ce67178b6..525cd088b69f3c36314d4c87aebddb1f
        booking?.client_image_url
      );
  
-     const otherParticipantName = isCurrentUserClient
--      ? booking?.provider_username || booking?.provider_name
-+      ? chatUsers?.provider?.username || booking?.provider_username || booking?.provider_name
-       : isCurrentUserClient === false
--        ? booking?.customer_username || booking?.customer_name || booking?.client_username || booking?.client_name
--        : booking?.provider_username || booking?.provider_name || booking?.customer_username || booking?.customer_name || booking?.client_username || booking?.client_name;
-+        ? chatUsers?.client?.username || booking?.customer_username || booking?.customer_name || booking?.client_username || booking?.client_name
-+        : chatUsers?.provider?.username || booking?.provider_username || booking?.provider_name || chatUsers?.client?.username || booking?.customer_username || booking?.customer_name || booking?.client_username || booking?.client_name;
+-    const otherParticipantName = isCurrentUserClient
+-      ? chatUsers?.provider?.username || booking?.provider_username || booking?.provider_name
+-      : isCurrentUserClient === false
+-        ? chatUsers?.client?.username || booking?.customer_username || booking?.customer_name || booking?.client_username || booking?.client_name
++    const otherParticipantName = isCurrentUserProvider
++      ? chatUsers?.client?.username || booking?.customer_username || booking?.customer_name || booking?.client_username || booking?.client_name
++      : isCurrentUserClient
++        ? chatUsers?.provider?.username || booking?.provider_username || booking?.provider_name
+         : chatUsers?.provider?.username || booking?.provider_username || booking?.provider_name || chatUsers?.client?.username || booking?.customer_username || booking?.customer_name || booking?.client_username || booking?.client_name;
  
      const avatarUrlRaw =
-       isCurrentUserClient === true
--        ? providerAvatar
-+        ? resolveImageUrl(chatUsers?.provider?.avatar_url) || providerAvatar
-         : isCurrentUserClient === false
--          ? clientAvatar
--          : providerAvatar || clientAvatar;
-+          ? resolveImageUrl(chatUsers?.client?.avatar_url) || clientAvatar
-+          : resolveImageUrl(chatUsers?.provider?.avatar_url) || providerAvatar || resolveImageUrl(chatUsers?.client?.avatar_url) || clientAvatar;
+-      isCurrentUserClient === true
++      isCurrentUserProvider
++        ? resolveImageUrl(chatUsers?.client?.avatar_url) || clientAvatar
++        : isCurrentUserClient
+         ? resolveImageUrl(chatUsers?.provider?.avatar_url) || providerAvatar
+-        : isCurrentUserClient === false
+-          ? resolveImageUrl(chatUsers?.client?.avatar_url) || clientAvatar
+-          : resolveImageUrl(chatUsers?.provider?.avatar_url) || providerAvatar || resolveImageUrl(chatUsers?.client?.avatar_url) || clientAvatar;
++        : resolveImageUrl(chatUsers?.provider?.avatar_url) || providerAvatar || resolveImageUrl(chatUsers?.client?.avatar_url) || clientAvatar;
  
      return {
        name: String(otherParticipantName || "").trim() || "Chat",
        avatarUrl: avatarUrlRaw,
      };
--  }, [booking, currentUserId]);
-+  }, [booking, currentUserId, chatUsers]);
+   }, [booking, currentUserId, chatUsers]);
  
    const logImageMessageShapeSummary = useCallback((context, details) => {
      console.log("[chat-image-debug] shape-summary", {
@@ -122,80 +179,8 @@ index 6fe78ba41f3ea37095a864370623f51ce67178b6..525cd088b69f3c36314d4c87aebddb1f
  
          const res = await apiClient.get(`/bookings/${bookingId}/messages`);
          const rows = Array.isArray(res?.data?.messages) ? res.data.messages : [];
-+        setChatUsers({
-+          provider: res?.data?.provider || null,
-+          client: res?.data?.client || null,
-+        });
-         const imageRows = rows.filter(
-           (row) => row?.attachment?.attachment_type === "image" || Boolean(row?.attachment?.file_url)
-         );
- 
-         if (imageRows.length) {
-           console.log("[chat-image-debug] GET /bookings/{booking_id}/messages image-only response", {
-             booking_id: bookingId,
-             status: res?.status,
-             image_message_count: imageRows.length,
-             image_messages: imageRows.map((row) => {
-               const attachment = row?.attachment || null;
-               const resolvedImageUrl = resolveImageUrl(attachment?.file_url);
-               return {
-                 id: row?.id,
-                 text: row?.text,
-                 attachment,
-                 renderer_inputs: {
-                   attachment_file_url: attachment?.file_url ?? null,
-                   resolved_image_url: resolvedImageUrl,
-                   will_render_image: Boolean(resolvedImageUrl),
-                 },
-               };
-             }),
-           });
-         }
- 
-         setMessages(rows);
- 
-         await apiClient.post(`/bookings/messages/read`, { booking_id: bookingId });
-       } catch (err) {
-         const msg = getCleanApiErrorMessage(err, "Could not load chat messages.");
-         showFlash && showFlash("error", msg);
-       } finally {
-         setLoading(false);
-         setRefreshing(false);
-       }
-     },
-     [bookingId, showFlash]
-   );
- 
-+  useEffect(() => {
-+    if (visible) return;
-+    setChatUsers({ provider: null, client: null });
-+  }, [visible, bookingId]);
-+
-   useEffect(() => {
-     if (!visible || !bookingId) return;
-     loadMessages();
-     const interval = setInterval(() => {
-       loadMessages(true);
-     }, 15000);
-     return () => clearInterval(interval);
-   }, [visible, bookingId, loadMessages]);
- 
-   useEffect(() => {
-     if (!visible || !messages.length) return;
-     requestAnimationFrame(() => {
-       listRef.current?.scrollToEnd?.({ animated: true });
-     });
-   }, [messages, visible]);
- 
-   const handlePickImage = useCallback(async () => {
-     try {
-       const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-       if (!permission.granted) {
-         showFlash && showFlash("error", "Allow photo library access to attach images.");
-         return;
-       }
- 
-       const result = await ImagePicker.launchImageLibraryAsync({
+         setChatUsers({
+           provider: res?.data?.provider || null,
  
 EOF
 )

@@ -3645,6 +3645,42 @@ function BookingChatModal({
   const chatParticipant = useMemo(() => {
     if (!booking) return { name: "Chat", avatarUrl: null };
 
+    const toComparableId = (value) => {
+      if (value == null) return null;
+      const str = String(value).trim();
+      return str.length ? str : null;
+    };
+
+    const collectIds = (...values) => {
+      const ids = new Set();
+      for (const value of values) {
+        if (value == null) continue;
+        if (Array.isArray(value)) {
+          value.forEach((item) => {
+            const normalized = toComparableId(item);
+            if (normalized) ids.add(normalized);
+          });
+          continue;
+        }
+        if (typeof value === "object") {
+          collectIds(
+            value?.id,
+            value?.user_id,
+            value?.provider_id,
+            value?.provider_user_id,
+            value?.client_id,
+            value?.client_user_id,
+            value?.customer_id,
+            value?.customer_user_id
+          ).forEach((id) => ids.add(id));
+          continue;
+        }
+        const normalized = toComparableId(value);
+        if (normalized) ids.add(normalized);
+      }
+      return ids;
+    };
+
     const pickFirstImageUrl = (...values) => {
       for (const value of values) {
         const resolved = resolveImageUrl(value);
@@ -3665,10 +3701,27 @@ function BookingChatModal({
         userLike?.avatar
       );
 
+    const currentUserComparableId = toComparableId(currentUserId);
+    const providerIds = collectIds(
+      booking?.provider,
+      chatUsers?.provider,
+      booking?.provider_id,
+      booking?.provider_user_id
+    );
+    const clientIds = collectIds(
+      booking?.client,
+      booking?.customer,
+      chatUsers?.client,
+      booking?.client_id,
+      booking?.client_user_id,
+      booking?.customer_id,
+      booking?.customer_user_id
+    );
+
+    const isCurrentUserProvider =
+      currentUserComparableId != null && providerIds.has(currentUserComparableId);
     const isCurrentUserClient =
-      booking?.client_id != null && currentUserId != null
-        ? Number(booking.client_id) === Number(currentUserId)
-        : null;
+      currentUserComparableId != null && clientIds.has(currentUserComparableId);
 
     const providerAvatar = resolveUserAvatar(
       booking?.provider,
@@ -3696,18 +3749,18 @@ function BookingChatModal({
       booking?.client_image_url
     );
 
-    const otherParticipantName = isCurrentUserClient
-      ? chatUsers?.provider?.username || booking?.provider_username || booking?.provider_name
-      : isCurrentUserClient === false
-        ? chatUsers?.client?.username || booking?.customer_username || booking?.customer_name || booking?.client_username || booking?.client_name
+    const otherParticipantName = isCurrentUserProvider
+      ? chatUsers?.client?.username || booking?.customer_username || booking?.customer_name || booking?.client_username || booking?.client_name
+      : isCurrentUserClient
+        ? chatUsers?.provider?.username || booking?.provider_username || booking?.provider_name
         : chatUsers?.provider?.username || booking?.provider_username || booking?.provider_name || chatUsers?.client?.username || booking?.customer_username || booking?.customer_name || booking?.client_username || booking?.client_name;
 
     const avatarUrlRaw =
-      isCurrentUserClient === true
+      isCurrentUserProvider
+        ? resolveImageUrl(chatUsers?.client?.avatar_url) || clientAvatar
+        : isCurrentUserClient
         ? resolveImageUrl(chatUsers?.provider?.avatar_url) || providerAvatar
-        : isCurrentUserClient === false
-          ? resolveImageUrl(chatUsers?.client?.avatar_url) || clientAvatar
-          : resolveImageUrl(chatUsers?.provider?.avatar_url) || providerAvatar || resolveImageUrl(chatUsers?.client?.avatar_url) || clientAvatar;
+        : resolveImageUrl(chatUsers?.provider?.avatar_url) || providerAvatar || resolveImageUrl(chatUsers?.client?.avatar_url) || clientAvatar;
 
     return {
       name: String(otherParticipantName || "").trim() || "Chat",
