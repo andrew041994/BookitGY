@@ -2364,6 +2364,21 @@ function ProfileScreen({ authLoading, setToken, showFlash, token }) {
     }
   }, [loadMyBookings, loadProfile, showBookings]);
 
+  const providerShareProfessions = useMemo(() => {
+    const fromUser = Array.isArray(user?.professions) ? user.professions : [];
+    return fromUser.filter((item) => String(item || "").trim().length > 0);
+  }, [user]);
+  const providerShareRatingValue = Number(user?.avg_rating || 0);
+  const providerShareRatingCount = Number(user?.rating_count || 0);
+  const providerShareRatingLabel =
+    providerShareRatingValue > 0
+      ? `★ ${providerShareRatingValue.toFixed(1)}${
+          providerShareRatingCount > 0
+            ? ` (${providerShareRatingCount} rating${providerShareRatingCount === 1 ? "" : "s"})`
+            : ""
+        }`
+      : "★ New on BookitGY";
+
   if (loading) {
     return (
       <View style={styles.center}>
@@ -2467,21 +2482,6 @@ function ProfileScreen({ authLoading, setToken, showFlash, token }) {
   const providerPublicLink = buildProviderPublicLink(user?.username);
   const isProfileValid = Boolean(String(editProfile.username || "").trim());
   const isSaveDisabled = editSaving || !isProfileValid;
-
-  const providerShareProfessions = useMemo(() => {
-    const fromUser = Array.isArray(user?.professions) ? user.professions : [];
-    return fromUser.filter((item) => String(item || "").trim().length > 0);
-  }, [user]);
-  const providerShareRatingValue = Number(user?.avg_rating || 0);
-  const providerShareRatingCount = Number(user?.rating_count || 0);
-  const providerShareRatingLabel =
-    providerShareRatingValue > 0
-      ? `★ ${providerShareRatingValue.toFixed(1)}${
-          providerShareRatingCount > 0
-            ? ` (${providerShareRatingCount} rating${providerShareRatingCount === 1 ? "" : "s"})`
-            : ""
-        }`
-      : "★ New on BookitGY";
 
   const handleShareProviderCard = async () => {
     if (!captureRef || !providerShareCardRef.current) {

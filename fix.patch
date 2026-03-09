@@ -1,157 +1,140 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
-diff --git a/mobile/src/components/ProviderShareCard.js b/mobile/src/components/ProviderShareCard.js
-new file mode 100644
-index 0000000000000000000000000000000000000000..49592a0ac4a0524b89b74b93cca17704c594ebb6
---- /dev/null
-+++ b/mobile/src/components/ProviderShareCard.js
-@@ -0,0 +1,147 @@
-+import React from "react";
-+import { Image, StyleSheet, Text, View } from "react-native";
-+import { theme } from "../theme";
+diff --git a/mobile/App.js b/mobile/App.js
+index 6ade36964fdd112925b2530e91272dafff9cb857..f5d97acd14d2182bbb083f3f9daac1abfcd40777 100644
+--- a/mobile/App.js
++++ b/mobile/App.js
+@@ -2342,50 +2342,65 @@ function ProfileScreen({ authLoading, setToken, showFlash, token }) {
+     const res = await apiClient.get("/bookings/me");
+ 
+     const rawBookings = res.data;
+     const bookingsList = Array.isArray(rawBookings)
+       ? rawBookings
+       : rawBookings?.bookings || rawBookings?.results || [];
+ 
+     setBookings(bookingsList);
+   } catch (err) {
+     console.log("Error loading my bookings", err.response?.data || err.message);
+     setBookingsError("Could not load your bookings.");
+     if (showFlash) showFlash("error", "Could not load your bookings.");
+   } finally {
+     setBookingsLoading(false);
+   }
+ }, [showFlash]);
+ 
+ 
+   const onRefresh = useCallback(async () => {
+     await loadProfile(true);
+     if (showBookings) {
+       await loadMyBookings();
+     }
+   }, [loadMyBookings, loadProfile, showBookings]);
+ 
++  const providerShareProfessions = useMemo(() => {
++    const fromUser = Array.isArray(user?.professions) ? user.professions : [];
++    return fromUser.filter((item) => String(item || "").trim().length > 0);
++  }, [user]);
++  const providerShareRatingValue = Number(user?.avg_rating || 0);
++  const providerShareRatingCount = Number(user?.rating_count || 0);
++  const providerShareRatingLabel =
++    providerShareRatingValue > 0
++      ? `★ ${providerShareRatingValue.toFixed(1)}${
++          providerShareRatingCount > 0
++            ? ` (${providerShareRatingCount} rating${providerShareRatingCount === 1 ? "" : "s"})`
++            : ""
++        }`
++      : "★ New on BookitGY";
 +
-+const colors = theme.colors;
-+
-+export default function ProviderShareCard({
-+  avatarUrl,
-+  username,
-+  professions = [],
-+  ratingLabel,
-+  brandingSource,
-+}) {
-+  const safeUsername = String(username || "@bookitgy_provider").trim();
-+  const professionText = Array.isArray(professions) && professions.length
-+    ? professions.join(" • ")
-+    : "BookitGY Provider";
-+
-+  return (
-+    <View style={styles.card}>
-+      <View style={styles.brandRow}>
-+        <Text style={styles.brandName}>BookitGY</Text>
-+        <Text style={styles.brandMeta}>Provider Card</Text>
-+      </View>
-+
-+      <View style={styles.profileRow}>
-+        {avatarUrl ? (
-+          <Image source={{ uri: avatarUrl }} style={styles.avatar} />
-+        ) : (
-+          <View style={styles.avatarFallback}>
-+            <Text style={styles.avatarInitial}>{safeUsername.charAt(0).toUpperCase()}</Text>
-+          </View>
-+        )}
-+
-+        <View style={styles.profileTextWrap}>
-+          <Text numberOfLines={2} style={styles.username}>@{safeUsername.replace(/^@/, "")}</Text>
-+          <Text numberOfLines={2} style={styles.rating}>{ratingLabel || "★ New on BookitGY"}</Text>
-+          <Text style={styles.professions}>{professionText}</Text>
-+        </View>
-+      </View>
-+
-+      <View style={styles.footer}>
-+        <Text style={styles.cta}>Download BookitGY to schedule your appointment</Text>
-+        {brandingSource ? <Image source={brandingSource} style={styles.logo} resizeMode="contain" /> : null}
-+      </View>
-+    </View>
-+  );
-+}
-+
-+const styles = StyleSheet.create({
-+  card: {
-+    width: "100%",
-+    borderRadius: 22,
-+    borderWidth: 1,
-+    borderColor: "rgba(77,163,255,0.45)",
-+    backgroundColor: "#121826",
-+    padding: 16,
-+    shadowColor: "#4DA3FF",
-+    shadowOpacity: 0.2,
-+    shadowRadius: 14,
-+    shadowOffset: { width: 0, height: 8 },
-+    elevation: 6,
-+  },
-+  brandRow: {
-+    flexDirection: "row",
-+    justifyContent: "space-between",
-+    alignItems: "center",
-+    marginBottom: 14,
-+  },
-+  brandName: {
-+    color: colors.text,
-+    fontWeight: "700",
-+    letterSpacing: 0.5,
-+  },
-+  brandMeta: {
-+    color: colors.textSecondary,
-+    fontSize: 12,
-+  },
-+  profileRow: {
-+    flexDirection: "row",
-+    alignItems: "flex-start",
-+  },
-+  avatar: {
-+    width: 74,
-+    height: 74,
-+    borderRadius: 37,
-+    borderWidth: 1,
-+    borderColor: "rgba(255,255,255,0.25)",
-+  },
-+  avatarFallback: {
-+    width: 74,
-+    height: 74,
-+    borderRadius: 37,
-+    backgroundColor: "#202B45",
-+    alignItems: "center",
-+    justifyContent: "center",
-+    borderWidth: 1,
-+    borderColor: "rgba(255,255,255,0.25)",
-+  },
-+  avatarInitial: {
-+    color: colors.text,
-+    fontWeight: "700",
-+    fontSize: 26,
-+  },
-+  profileTextWrap: {
-+    flex: 1,
-+    marginLeft: 12,
-+    minWidth: 0,
-+  },
-+  username: {
-+    color: colors.text,
-+    fontSize: 21,
-+    fontWeight: "700",
-+  },
-+  rating: {
-+    marginTop: 2,
-+    color: "#F4D03F",
-+    fontWeight: "600",
-+  },
-+  professions: {
-+    marginTop: 8,
-+    color: colors.textSecondary,
-+    lineHeight: 20,
-+  },
-+  footer: {
-+    marginTop: 16,
-+    borderTopWidth: 1,
-+    borderTopColor: "rgba(255,255,255,0.12)",
-+    paddingTop: 10,
-+    flexDirection: "row",
-+    alignItems: "center",
-+    justifyContent: "space-between",
-+    gap: 8,
-+  },
-+  cta: {
-+    color: colors.text,
-+    fontSize: 12,
-+    lineHeight: 16,
-+    fontWeight: "600",
-+    flex: 1,
-+  },
-+  logo: {
-+    width: 56,
-+    height: 24,
-+    opacity: 0.9,
-+  },
-+});
+   if (loading) {
+     return (
+       <View style={styles.center}>
+         <ActivityIndicator size="large" />
+         <Text style={styles.loadingText}>Loading profile…</Text>
+       </View>
+     );
+   }
+ 
+   if (error) {
+     return (
+       <View style={styles.center}>
+         <Text style={styles.errorText}>{error}</Text>
+       </View>
+     );
+   }
+ 
+   if (!user) {
+     return (
+       <View style={styles.center}>
+         <Text style={styles.errorText}>No user data.</Text>
+       </View>
+     );
+   }
+ 
+@@ -2446,65 +2461,50 @@ function ProfileScreen({ authLoading, setToken, showFlash, token }) {
+         if (showFlash) {
+           showFlash(
+             "error",
+             "No location is available yet for this booking."
+           );
+         }
+         return;
+       }
+ 
+       Linking.openURL(url);
+     } catch (err) {
+       console.log("Error opening maps", err);
+       if (showFlash) {
+         showFlash("error", "Could not open maps on this device.");
+       }
+     }
+   };
+ 
+   const displayAvatarUrl = resolveImageUrl(avatarUrl || user?.avatar_url);
+   const isProviderPublic =
+     user?.is_provider === true || token?.is_provider === true;
+   const providerPublicLink = buildProviderPublicLink(user?.username);
+   const isProfileValid = Boolean(String(editProfile.username || "").trim());
+   const isSaveDisabled = editSaving || !isProfileValid;
+ 
+-  const providerShareProfessions = useMemo(() => {
+-    const fromUser = Array.isArray(user?.professions) ? user.professions : [];
+-    return fromUser.filter((item) => String(item || "").trim().length > 0);
+-  }, [user]);
+-  const providerShareRatingValue = Number(user?.avg_rating || 0);
+-  const providerShareRatingCount = Number(user?.rating_count || 0);
+-  const providerShareRatingLabel =
+-    providerShareRatingValue > 0
+-      ? `★ ${providerShareRatingValue.toFixed(1)}${
+-          providerShareRatingCount > 0
+-            ? ` (${providerShareRatingCount} rating${providerShareRatingCount === 1 ? "" : "s"})`
+-            : ""
+-        }`
+-      : "★ New on BookitGY";
+-
+   const handleShareProviderCard = async () => {
+     if (!captureRef || !providerShareCardRef.current) {
+       showFlash?.("error", "Sharing is not available in this build yet.");
+       return;
+     }
+ 
+     try {
+       setSharingProviderCard(true);
+       setShareCardVisible(true);
+ 
+       await new Promise((resolve) => setTimeout(resolve, 180));
+ 
+       const imageUri = await captureRef(providerShareCardRef.current, {
+         format: "png",
+         quality: 1,
+       });
+ 
+       await Share.share({
+         title: "My BookitGY provider card",
+         message: "Book with me on BookitGY",
+         url: imageUri,
+       });
+     } catch (err) {
+       console.log("Error sharing provider card", err?.message || err);
+       showFlash?.("error", "Could not generate your provider card image.");
  
 EOF
 )
