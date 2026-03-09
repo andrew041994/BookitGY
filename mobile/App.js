@@ -3954,7 +3954,12 @@ function BookingChatModal({
             />
           )}
 
-          <View style={styles.chatComposer}>
+          <View
+            style={[
+              styles.chatComposer,
+              { paddingBottom: 8 + (insets.bottom > 0 ? 4 : 0) },
+            ]}
+          >
             {selectedImage?.uri ? (
               <View style={styles.chatSelectedImageWrap}>
                 <Image source={{ uri: selectedImage.uri }} style={styles.chatSelectedImage} />

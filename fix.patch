@@ -1,0 +1,66 @@
+ (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
+diff --git a/mobile/App.js b/mobile/App.js
+index 1c6447716911c613d73863d1d54e78bb4f795ad6..ad1d314979d3cd5a2c5a359490d8848b216dc5db 100644
+--- a/mobile/App.js
++++ b/mobile/App.js
+@@ -3932,51 +3932,56 @@ function BookingChatModal({
+               </Text>
+             </View>
+           ) : null}
+ 
+           {loading ? (
+             <View style={styles.loadingRow}>
+               <ActivityIndicator />
+               <Text style={styles.serviceMeta}>Loading messages…</Text>
+             </View>
+           ) : (
+             <FlatList
+               ref={listRef}
+               data={messages}
+               keyExtractor={(item) => `${item.id}`}
+               renderItem={renderItem}
+               style={styles.chatList}
+               contentContainerStyle={styles.chatListContent}
+               onRefresh={() => loadMessages(true)}
+               refreshing={refreshing}
+               ListEmptyComponent={
+                 <Text style={styles.serviceMeta}>Send a message about this booking</Text>
+               }
+             />
+           )}
+ 
+-          <View style={styles.chatComposer}>
++          <View
++            style={[
++              styles.chatComposer,
++              { paddingBottom: 8 + (insets.bottom > 0 ? 4 : 0) },
++            ]}
++          >
+             {selectedImage?.uri ? (
+               <View style={styles.chatSelectedImageWrap}>
+                 <Image source={{ uri: selectedImage.uri }} style={styles.chatSelectedImage} />
+                 <TouchableOpacity onPress={() => setSelectedImage(null)}>
+                   <Text style={styles.chatRemoveImageText}>Remove</Text>
+                 </TouchableOpacity>
+               </View>
+             ) : null}
+ 
+             <View style={styles.chatComposerRow}>
+               <TouchableOpacity
+                 style={styles.chatAttachButton}
+                 onPress={handlePickImage}
+                 disabled={sending || isChatReadOnly}
+               >
+                 <Ionicons name="image-outline" size={20} color={colors.textPrimary} />
+               </TouchableOpacity>
+ 
+               <TextInput
+                 value={text}
+                 onChangeText={setText}
+                 placeholder="Type a message"
+                 placeholderTextColor={colors.textMuted}
+                 style={styles.chatInput}
+                 editable={!sending && !isChatReadOnly}
+ 
+EOF
+)
