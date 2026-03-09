@@ -4,8 +4,15 @@ from fastapi.testclient import TestClient
 
 
 def _create_booking_graph(session, models):
-    provider_user = models.User(username="provider_chat@example.com", is_provider=True)
-    client_user = models.User(username="client_chat@example.com")
+    provider_user = models.User(
+        username="provider_chat@example.com",
+        is_provider=True,
+        avatar_url="https://cdn.example.com/provider-avatar.jpg",
+    )
+    client_user = models.User(
+        username="client_chat@example.com",
+        avatar_url="https://cdn.example.com/client-avatar.jpg",
+    )
     outsider_user = models.User(username="outsider_chat@example.com")
     session.add_all([provider_user, client_user, outsider_user])
     session.commit()
@@ -144,11 +151,21 @@ def test_booking_messaging_flow(db_session):
     payload = r.json()
     ids = [m["id"] for m in payload["messages"]]
     assert ids == sorted(ids)
+    assert payload["provider"] == {
+        "username": "provider_chat@example.com",
+        "avatar_url": "https://cdn.example.com/provider-avatar.jpg",
+    }
+    assert payload["client"] == {
+        "username": "client_chat@example.com",
+        "avatar_url": "https://cdn.example.com/client-avatar.jpg",
+    }
 
     # 12) one booking does not expose another booking's chat
     r_other = client.get(f"/bookings/{other_booking.id}/messages")
     assert r_other.status_code == 200
     assert r_other.json()["messages"] == []
+    assert r_other.json()["provider"]["username"] == "provider_chat@example.com"
+    assert r_other.json()["client"]["username"] == "client_chat@example.com"
 
     # mark read compatibility
     current["user"] = provider_user

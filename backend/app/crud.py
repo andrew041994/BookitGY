@@ -1077,6 +1077,19 @@ def list_booking_messages(
     if not context:
         return None
 
+    provider_user = get_user_by_id(db, context["provider_user_id"])
+    client_user = get_user_by_id(db, context["client_user_id"])
+    participants = {
+        "provider": {
+            "username": provider_user.username if provider_user else "Provider",
+            "avatar_url": provider_user.avatar_url if provider_user else None,
+        },
+        "client": {
+            "username": client_user.username if client_user else "Client",
+            "avatar_url": client_user.avatar_url if client_user else None,
+        },
+    }
+
     conversation = (
         db.query(models.Conversation)
         .filter(models.Conversation.booking_id == booking_id)
@@ -1086,6 +1099,7 @@ def list_booking_messages(
         return {
             "booking_id": booking_id,
             "conversation_id": None,
+            **participants,
             "messages": [],
         }
 
@@ -1115,6 +1129,7 @@ def list_booking_messages(
     return {
         "booking_id": booking_id,
         "conversation_id": conversation.id,
+        **participants,
         "messages": messages,
     }
 

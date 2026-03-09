@@ -3635,6 +3635,7 @@ function BookingChatModal({
   const [text, setText] = useState("");
   const [selectedImage, setSelectedImage] = useState(null);
   const [viewerImage, setViewerImage] = useState(null);
+  const [chatUsers, setChatUsers] = useState({ provider: null, client: null });
   const listRef = useRef(null);
   const insets = useSafeAreaInsets();
 
@@ -3696,23 +3697,23 @@ function BookingChatModal({
     );
 
     const otherParticipantName = isCurrentUserClient
-      ? booking?.provider_username || booking?.provider_name
+      ? chatUsers?.provider?.username || booking?.provider_username || booking?.provider_name
       : isCurrentUserClient === false
-        ? booking?.customer_username || booking?.customer_name || booking?.client_username || booking?.client_name
-        : booking?.provider_username || booking?.provider_name || booking?.customer_username || booking?.customer_name || booking?.client_username || booking?.client_name;
+        ? chatUsers?.client?.username || booking?.customer_username || booking?.customer_name || booking?.client_username || booking?.client_name
+        : chatUsers?.provider?.username || booking?.provider_username || booking?.provider_name || chatUsers?.client?.username || booking?.customer_username || booking?.customer_name || booking?.client_username || booking?.client_name;
 
     const avatarUrlRaw =
       isCurrentUserClient === true
-        ? providerAvatar
+        ? resolveImageUrl(chatUsers?.provider?.avatar_url) || providerAvatar
         : isCurrentUserClient === false
-          ? clientAvatar
-          : providerAvatar || clientAvatar;
+          ? resolveImageUrl(chatUsers?.client?.avatar_url) || clientAvatar
+          : resolveImageUrl(chatUsers?.provider?.avatar_url) || providerAvatar || resolveImageUrl(chatUsers?.client?.avatar_url) || clientAvatar;
 
     return {
       name: String(otherParticipantName || "").trim() || "Chat",
       avatarUrl: avatarUrlRaw,
     };
-  }, [booking, currentUserId]);
+  }, [booking, currentUserId, chatUsers]);
 
   const logImageMessageShapeSummary = useCallback((context, details) => {
     console.log("[chat-image-debug] shape-summary", {
@@ -3730,6 +3731,10 @@ function BookingChatModal({
 
         const res = await apiClient.get(`/bookings/${bookingId}/messages`);
         const rows = Array.isArray(res?.data?.messages) ? res.data.messages : [];
+        setChatUsers({
+          provider: res?.data?.provider || null,
+          client: res?.data?.client || null,
+        });
         const imageRows = rows.filter(
           (row) => row?.attachment?.attachment_type === "image" || Boolean(row?.attachment?.file_url)
         );
@@ -3769,6 +3774,11 @@ function BookingChatModal({
     },
     [bookingId, showFlash]
   );
+
+  useEffect(() => {
+    if (visible) return;
+    setChatUsers({ provider: null, client: null });
+  }, [visible, bookingId]);
 
   useEffect(() => {
     if (!visible || !bookingId) return;

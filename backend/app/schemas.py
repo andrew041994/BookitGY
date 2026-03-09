@@ -774,9 +774,16 @@ class BookingMessageOut(BaseModel):
     attachment: Optional[MessageAttachmentOut] = None
 
 
+class BookingChatParticipantOut(BaseModel):
+    username: str
+    avatar_url: Optional[str] = None
+
+
 class BookingMessagesResponse(BaseModel):
     booking_id: int
     conversation_id: Optional[int] = None
+    provider: Optional[BookingChatParticipantOut] = None
+    client: Optional[BookingChatParticipantOut] = None
     messages: List[BookingMessageOut] = []
 
 
