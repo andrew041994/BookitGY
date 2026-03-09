@@ -1,139 +1,55 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
-diff --git a/backend/tests/test_duration_and_overlap.py b/backend/tests/test_duration_and_overlap.py
+diff --git a/mobile/src/utils/duration.js b/mobile/src/utils/duration.js
 new file mode 100644
-index 0000000000000000000000000000000000000000..2da3a950fcee5759a6646329d61d38cec47a70cf
+index 0000000000000000000000000000000000000000..beafe48d90b2f32c11ae4d1f9a20d860fb10acab
 --- /dev/null
-+++ b/backend/tests/test_duration_and_overlap.py
-@@ -0,0 +1,129 @@
-+from datetime import datetime, timedelta
++++ b/mobile/src/utils/duration.js
+@@ -0,0 +1,45 @@
++export const minutesToDurationParts = (totalMinutes) => {
++  const safeMinutes = Number.isFinite(Number(totalMinutes))
++    ? Math.max(0, Math.floor(Number(totalMinutes)))
++    : 0;
++  const days = Math.floor(safeMinutes / 1440);
++  const hours = Math.floor((safeMinutes % 1440) / 60);
++  const minutes = safeMinutes % 60;
++  return { days, hours, minutes };
++};
 +
-+import pytest
++export const durationPartsToMinutes = ({ days = 0, hours = 0, minutes = 0 } = {}) => {
++  const safeDays = Math.max(0, Math.floor(Number(days) || 0));
++  const safeHours = Math.max(0, Math.floor(Number(hours) || 0));
++  const safeMinutes = Math.max(0, Math.floor(Number(minutes) || 0));
++  return safeDays * 1440 + safeHours * 60 + safeMinutes;
++};
 +
-+from app import schemas
-+from app.utils.time import now_guyana
-+from app.utils.duration import (
-+    derive_booking_end,
-+    duration_parts_to_minutes,
-+    minutes_to_duration_parts,
-+)
++export const validateDurationParts = ({ days = 0, hours = 0, minutes = 0 } = {}) => {
++  const values = { days: Number(days), hours: Number(hours), minutes: Number(minutes) };
 +
++  if ([values.days, values.hours, values.minutes].some((value) => Number.isNaN(value))) {
++    return "Duration fields must be numeric.";
++  }
 +
-+def _create_provider_graph(session, models):
-+    provider_user = models.User(username="provider-2@example.com", is_provider=True)
-+    customer_user = models.User(username="customer-2@example.com")
-+    customer_user_2 = models.User(username="customer-3@example.com")
-+    session.add_all([provider_user, customer_user, customer_user_2])
-+    session.commit()
++  if (values.days < 0 || values.hours < 0 || values.minutes < 0) {
++    return "Duration values cannot be negative.";
++  }
 +
-+    provider = models.Provider(user_id=provider_user.id, account_number="ACC-2")
-+    session.add(provider)
-+    session.commit()
-+    session.refresh(provider)
++  if (durationPartsToMinutes(values) <= 0) {
++    return "Enter a duration greater than 0.";
++  }
 +
-+    service = models.Service(
-+        provider_id=provider.id,
-+        name="Long Service",
-+        price_gyd=1000,
-+        duration_minutes=60,
-+    )
-+    session.add(service)
-+    session.commit()
-+    session.refresh(service)
++  return "";
++};
 +
-+    return provider, customer_user, customer_user_2, service
++export const formatDuration = (totalMinutes) => {
++  const { days, hours, minutes } = minutesToDurationParts(totalMinutes);
++  const chunks = [];
 +
++  if (days) chunks.push(`${days} day${days === 1 ? "" : "s"}`);
++  if (hours) chunks.push(`${hours} hr${hours === 1 ? "" : "s"}`);
++  if (minutes || chunks.length === 0) chunks.push(`${minutes} min`);
 +
-+def test_duration_math_roundtrip():
-+    assert duration_parts_to_minutes(days=0, hours=3, minutes_part=0) == 180
-+    assert duration_parts_to_minutes(days=3, hours=0, minutes_part=0) == 4320
-+    assert duration_parts_to_minutes(days=1, hours=2, minutes_part=30) == 1590
-+
-+    assert minutes_to_duration_parts(4320) == (3, 0, 0)
-+    assert minutes_to_duration_parts(75) == (0, 1, 15)
-+
-+
-+def test_end_time_derivation():
-+    start = datetime(2024, 1, 1, 10, 0)
-+    assert derive_booking_end(start, 90) == datetime(2024, 1, 1, 11, 30)
-+
-+
-+@pytest.mark.usefixtures("db_session")
-+def test_overlap_rules_include_cross_midnight_and_adjacent_allowed(db_session):
-+    session, models, crud = db_session
-+    provider, customer_1, customer_2, service = _create_provider_graph(session, models)
-+
-+    base = now_guyana() + timedelta(days=10)
-+    first_start = base.replace(hour=23, minute=0, second=0, microsecond=0)
-+
-+    first = crud.create_booking(
-+        session,
-+        customer_id=customer_1.id,
-+        booking=schemas.BookingCreate(
-+            service_id=service.id,
-+            start_time=first_start,
-+        ),
-+    )
-+
-+    with pytest.raises(ValueError):
-+        crud.create_booking(
-+            session,
-+            customer_id=customer_2.id,
-+            booking=schemas.BookingCreate(
-+                service_id=service.id,
-+                start_time=first_start + timedelta(minutes=30),
-+            ),
-+        )
-+
-+    service.duration_minutes = 60 * 24 * 3
-+    session.commit()
-+
-+    long_booking = crud.create_booking(
-+        session,
-+        customer_id=customer_2.id,
-+        booking=schemas.BookingCreate(
-+            service_id=service.id,
-+            start_time=first_start + timedelta(days=30, hours=10),
-+        ),
-+    )
-+
-+    with pytest.raises(ValueError):
-+        crud.create_booking(
-+            session,
-+            customer_id=customer_1.id,
-+            booking=schemas.BookingCreate(
-+                service_id=service.id,
-+                start_time=first_start + timedelta(days=31, hours=11),
-+            ),
-+        )
-+
-+    short_service = models.Service(
-+        provider_id=provider.id,
-+        name="Short Service",
-+        price_gyd=1000,
-+        duration_minutes=60,
-+    )
-+    session.add(short_service)
-+    session.commit()
-+    session.refresh(short_service)
-+
-+    adjacent = crud.create_booking(
-+        session,
-+        customer_id=customer_1.id,
-+        booking=schemas.BookingCreate(
-+            service_id=short_service.id,
-+            start_time=long_booking.end_time,
-+        ),
-+    )
-+
-+    assert adjacent.start_time == long_booking.end_time
-+
-+
-+def test_time_bucket_boundaries(db_session):
-+    session, models, crud = db_session
-+    now = datetime(2025, 1, 1, 12, 0)
-+    assert crud.booking_time_bucket(now + timedelta(minutes=1), now + timedelta(hours=1), now=now) == "upcoming"
-+    assert crud.booking_time_bucket(now - timedelta(minutes=1), now + timedelta(minutes=1), now=now) == "in_progress"
-+    assert crud.booking_time_bucket(now - timedelta(hours=2), now - timedelta(hours=1), now=now) == "finished"
++  return chunks.join(" ");
++};
  
 EOF
 )

@@ -63,6 +63,12 @@ import { KeyboardAwareScrollView } from "react-native-keyboard-aware-scroll-view
 import { apiClient } from "./src/api";
 import { submitBookingRating } from "./src/api/bookings";
 import { getRatingSummary } from "./src/components/RatingSummary";
+import {
+  durationPartsToMinutes,
+  formatDuration,
+  minutesToDurationParts,
+  validateDurationParts,
+} from "./src/utils/duration";
 // import { AccessToken, LoginManager } from "react-native-fbsdk-next";
 import BookitGYLogoTransparent from "./assets/bookitgy-logo-transparent.png"
 import { theme } from "./src/theme";
@@ -154,6 +160,17 @@ const PROVIDER_BLOCKED_STATUS_THEME = {
   accent: "#C0392B",
   bgTint: "rgba(192,57,43,0.10)",
   border: "rgba(192,57,43,0.35)",
+};
+
+const getServiceDurationMinutes = (service) => {
+  if (service?.duration_minutes != null) {
+    return Number(service.duration_minutes) || 0;
+  }
+  return durationPartsToMinutes({
+    days: service?.duration_days || 0,
+    hours: service?.duration_hours || 0,
+    minutes: service?.duration_minutes_part || 0,
+  });
 };
 
 
@@ -3993,15 +4010,27 @@ function AppointmentsScreen({ token, showFlash, pendingChatConversationId, clear
 
     const startDate = normalizeStart(booking);
     if (!startDate) return false;
-    return startDate.getTime() < nowTs;
+    return startDate.getTime() <= nowTs;
+  };
+
+  const isInProgressBooking = (booking, nowTs) => {
+    if (isCancelledBooking(booking) || isCompletedBooking(booking)) return false;
+    const startIso = booking?.start_time || booking?.start;
+    const endIso = booking?.end_time || booking?.end;
+    const startTs = parseGuyanaDateMs(startIso);
+    const endTs = parseGuyanaDateMs(endIso);
+    if (startTs == null) return false;
+    if (endTs != null) {
+      return nowTs >= startTs && nowTs < endTs;
+    }
+    return nowTs >= startTs && !bookingHasEnded(booking, nowTs);
   };
 
   const isUpcomingBooking = (booking, nowTs) => {
     const startDate = booking?._start || normalizeStart(booking);
     if (!startDate) return false;
     if (isCancelledBooking(booking) || isCompletedBooking(booking)) return false;
-    if (bookingHasEnded(booking, nowTs)) return false;
-    return true;
+    return nowTs < startDate.getTime();
   };
 
   const formatBookingDate = (iso) => {
@@ -4170,8 +4199,12 @@ function AppointmentsScreen({ token, showFlash, pendingChatConversationId, clear
     .filter((b) => isUpcomingBooking(b, nowTs))
     .sort((a, b) => a._start - b._start);
 
+  const inProgressBookings = datedBookings
+    .filter((b) => isInProgressBooking(b, nowTs))
+    .sort((a, b) => a._start - b._start);
+
   const finishedBookings = datedBookings
-    .filter((b) => !isUpcomingBooking(b, nowTs))
+    .filter((b) => !isUpcomingBooking(b, nowTs) && !isInProgressBooking(b, nowTs))
     .sort((a, b) => {
       const aTime = a?._start?.getTime?.() ?? 0;
       const bTime = b?._start?.getTime?.() ?? 0;
@@ -4200,8 +4233,18 @@ function AppointmentsScreen({ token, showFlash, pendingChatConversationId, clear
 
   const renderBooking = (booking, isUpcoming = false) => {
     const startIso = booking.start_time || booking.start;
+    const endIso = booking.end_time || booking.end;
     const dateLabel = formatBookingDate(startIso);
     const timeLabel = formatBookingTime(startIso);
+    const endDateLabel = formatBookingDate(endIso);
+    const endTimeLabel = formatBookingTime(endIso);
+    const durationMinutes = Number(
+      booking?.service_duration_minutes ??
+        booking?.duration_minutes ??
+        booking?.duration ??
+        0
+    );
+    const durationLabel = formatDuration(durationMinutes);
     const statusLabel = deriveStatus(booking);
     // status color mapping
     const statusThemeKey = getAppointmentStatusThemeKey(statusLabel);
@@ -4240,9 +4283,15 @@ function AppointmentsScreen({ token, showFlash, pendingChatConversationId, clear
           </Text>
           {(dateLabel || timeLabel) && (
             <Text style={styles.appointmentMeta}>
-              {dateLabel} {timeLabel ? `· ${timeLabel}` : ""}
+              Starts: {dateLabel} {timeLabel ? `· ${timeLabel}` : ""}
             </Text>
           )}
+          {(endDateLabel || endTimeLabel) && (
+            <Text style={styles.appointmentMeta}>
+              Ends: {endDateLabel} {endTimeLabel ? `· ${endTimeLabel}` : ""}
+            </Text>
+          )}
+          <Text style={styles.appointmentMeta}>Duration: {durationLabel}</Text>
           {booking.provider_location ? (
             <Text style={styles.appointmentMeta}>
               {booking.provider_location}
@@ -4358,6 +4407,22 @@ function AppointmentsScreen({ token, showFlash, pendingChatConversationId, clear
             </Text>
           ) : (
             upcomingBookings.map((booking) => renderBooking(booking, true))
+          )}
+        </View>
+
+        <View style={styles.card}>
+          <View style={styles.appointmentHeader}>
+            <Text style={styles.sectionTitle}>In Progress</Text>
+            <Text style={styles.appointmentCount}>
+              {inProgressBookings.length} booking
+              {inProgressBookings.length === 1 ? "" : "s"}
+            </Text>
+          </View>
+
+          {inProgressBookings.length === 0 ? (
+            <Text style={styles.serviceMeta}>No appointments in progress.</Text>
+          ) : (
+            inProgressBookings.map((booking) => renderBooking(booking, false))
           )}
         </View>
 
@@ -5420,7 +5485,7 @@ function SearchScreen({ token, showFlash, navigation, route, toggleFavorite, isF
                             <View style={{ flex: 1, paddingRight: 8 }}>
                               <Text style={styles.serviceName}>{s.name}</Text>
                               <Text style={styles.serviceMeta}>
-                                {s.duration_minutes} min
+                                {formatDuration(getServiceDurationMinutes(s))}
                               </Text>
                               {s.description ? (
                                 <Text style={styles.serviceMeta}>{s.description}</Text>
@@ -5443,6 +5508,9 @@ function SearchScreen({ token, showFlash, navigation, route, toggleFavorite, isF
                 {selectedService && (
                   <View style={styles.card}>
                     <Text style={styles.sectionTitle}>Choose a date</Text>
+                    <Text style={styles.serviceMeta}>
+                      Estimated duration: {formatDuration(getServiceDurationMinutes(selectedService))}
+                    </Text>
 
                     {availabilityLoading && (
                       <View style={{ paddingVertical: 10 }}>
@@ -5584,7 +5652,9 @@ function ProviderDashboardScreen({
   const [adding, setAdding] = useState(false);
   const [newName, setNewName] = useState("");
   const [newPrice, setNewPrice] = useState("");
-  const [newDuration, setNewDuration] = useState("30");
+  const [newDurationDays, setNewDurationDays] = useState("0");
+  const [newDurationHours, setNewDurationHours] = useState("0");
+  const [newDurationMinutes, setNewDurationMinutes] = useState("30");
   const [newDescription, setNewDescription] = useState("");
   const [isSavingService, setIsSavingService] = useState(false);
   const [bookings, setBookings] = useState([]);
@@ -5667,11 +5737,11 @@ const parseServiceNumber = useCallback((value) => {
   return Number.isFinite(numberValue) ? numberValue : null;
 }, []);
 
-const validateServiceFields = useCallback((name, price, duration) => {
+const validateServiceFields = useCallback((name, price, durationParts) => {
   const errors = { name: "", price: "", duration: "" };
   const trimmedName = String(name || "").trim();
   const priceNumber = parseServiceNumber(price);
-  const durationNumber = parseServiceNumber(duration);
+  const durationError = validateDurationParts(durationParts);
 
   if (!trimmedName) {
     errors.name = "Service name is required.";
@@ -5681,16 +5751,29 @@ const validateServiceFields = useCallback((name, price, duration) => {
     errors.price = "Enter a price greater than 0.";
   }
 
-  if (!durationNumber || durationNumber <= 0) {
-    errors.duration = "Enter a duration greater than 0.";
+  if (durationError) {
+    errors.duration = durationError;
   }
 
   return errors;
 }, [parseServiceNumber]);
 
 const serviceErrors = useMemo(
-  () => validateServiceFields(newName, newPrice, newDuration),
-  [newName, newPrice, newDuration, validateServiceFields]
+  () =>
+    validateServiceFields(newName, newPrice, {
+      days: parseServiceNumber(newDurationDays) || 0,
+      hours: parseServiceNumber(newDurationHours) || 0,
+      minutes: parseServiceNumber(newDurationMinutes) || 0,
+    }),
+  [
+    newName,
+    newPrice,
+    newDurationDays,
+    newDurationHours,
+    newDurationMinutes,
+    validateServiceFields,
+    parseServiceNumber,
+  ]
 );
 
 const isServiceFormValid =
@@ -5783,7 +5866,9 @@ const handleShareProfileLink = async () => {
 const resetForm = () => {
     setNewName("");
     setNewPrice("");
-    setNewDuration("30");
+    setNewDurationDays("0");
+    setNewDurationHours("0");
+    setNewDurationMinutes("30");
     setNewDescription("");
   };
 
@@ -6138,7 +6223,12 @@ const to24Hour = (time12) => {
   if (isSavingService) return;
   if (!isServiceFormValid) return;
 
-  const currentErrors = validateServiceFields(newName, newPrice, newDuration);
+  const durationParts = {
+    days: parseServiceNumber(newDurationDays) || 0,
+    hours: parseServiceNumber(newDurationHours) || 0,
+    minutes: parseServiceNumber(newDurationMinutes) || 0,
+  };
+  const currentErrors = validateServiceFields(newName, newPrice, durationParts);
   const isValid =
     !currentErrors.name &&
     !currentErrors.price &&
@@ -6157,7 +6247,7 @@ const to24Hour = (time12) => {
   }
 
   const priceNumber = parseServiceNumber(newPrice);
-  const durationNumber = parseServiceNumber(newDuration);
+  const durationNumber = durationPartsToMinutes(durationParts);
 
   try {
     setIsSavingService(true);
@@ -6171,6 +6261,9 @@ const to24Hour = (time12) => {
       name: newName.trim(),
       description: newDescription.trim(),
       duration_minutes: durationNumber,
+      duration_days: durationParts.days,
+      duration_hours: durationParts.hours,
+      duration_minutes_part: durationParts.minutes,
       price_gyd: priceNumber,
     };
 
@@ -7021,10 +7114,32 @@ const loadProviderSummary = async () => {
                   styles.input,
                   serviceErrors.duration ? styles.inputError : null,
                 ]}
-                placeholder="Duration (minutes)"
+                placeholder="Duration days"
                 placeholderTextColor={colors.textSecondary}
-                value={newDuration}
-                onChangeText={setNewDuration}
+                value={newDurationDays}
+                onChangeText={setNewDurationDays}
+                keyboardType="numeric"
+              />
+              <TextInput
+                style={[
+                  styles.input,
+                  serviceErrors.duration ? styles.inputError : null,
+                ]}
+                placeholder="Duration hours"
+                placeholderTextColor={colors.textSecondary}
+                value={newDurationHours}
+                onChangeText={setNewDurationHours}
+                keyboardType="numeric"
+              />
+              <TextInput
+                style={[
+                  styles.input,
+                  serviceErrors.duration ? styles.inputError : null,
+                ]}
+                placeholder="Duration minutes"
+                placeholderTextColor={colors.textSecondary}
+                value={newDurationMinutes}
+                onChangeText={setNewDurationMinutes}
                 keyboardType="numeric"
               />
               {serviceErrors.duration ? (
@@ -7104,7 +7219,7 @@ const loadProviderSummary = async () => {
                 <View style={{ flex: 1, paddingRight: 8 }}>
                   <Text style={styles.serviceName}>{s.name}</Text>
                   <Text style={styles.serviceMeta}>
-                    {s.duration_minutes} min
+                    {formatDuration(getServiceDurationMinutes(s))}
                   </Text>
                   {s.description ? (
                     <Text style={styles.serviceMeta}>{s.description}</Text>
