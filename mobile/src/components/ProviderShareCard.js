@@ -89,7 +89,6 @@ const styles = StyleSheet.create({
   },
   contentWrap: {
     flex: 1,
-    justifyContent: "space-between",
   },
   glassHighlight: {
     ...StyleSheet.absoluteFillObject,
@@ -112,13 +111,10 @@ const styles = StyleSheet.create({
     justifyContent: "flex-start",
   },
   middleSection: {
-    flexGrow: 1,
-    flexShrink: 0,
-    justifyContent: "flex-start",
     alignItems: "center",
-    paddingTop: 36,
-    paddingBottom: 8,
-    minHeight: 0,
+    paddingTop: 18,
+    paddingBottom: 0,
+    marginTop: 8,
   },
   avatar: {
     width: 106,
@@ -166,6 +162,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 22,
   },
   footer: {
+    marginTop: "auto",
     minHeight: 52,
     paddingTop: 0,
     alignItems: "center",
