@@ -29,6 +29,7 @@
     "expo-location": "~19.0.8",
     "expo-notifications": "~0.32.16",
     "expo-secure-store": "~15.0.8",
+    "expo-sharing": "~14.0.8",
     "expo-web-browser": "~15.0.10",
     "react": "19.1.0",
     "react-dom": "19.1.0",
@@ -40,10 +41,10 @@
     "react-native-maps": "1.20.1",
     "react-native-safe-area-context": "~5.6.0",
     "react-native-screens": "~4.16.0",
+    "react-native-view-shot": "4.0.3",
     "react-native-web": "^0.21.0",
     "sentry-expo": "~7.0.0",
-    "tslib": "^2.8.1",
-    "react-native-view-shot": "^4.0.3"
+    "tslib": "^2.8.1"
   },
   "devDependencies": {
     "@babel/core": "^7.20.0",
