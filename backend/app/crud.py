@@ -3792,7 +3792,7 @@ def get_provider_availability(
     # Evaluate every candidate start independently instead of anchoring to the
     # service duration. This keeps long-duration services bookable from any
     # valid later slot on a day (e.g., 9:05, 9:30, 10:00, etc.).
-    slot_step = timedelta(minutes=5)
+    slot_step = timedelta(minutes=15)
 
     for offset in range(days):
         day_date = (now + timedelta(days=offset)).date()
