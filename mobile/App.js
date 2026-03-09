@@ -3644,35 +3644,56 @@ function BookingChatModal({
   const chatParticipant = useMemo(() => {
     if (!booking) return { name: "Chat", avatarUrl: null };
 
+    const pickFirstImageUrl = (...values) => {
+      for (const value of values) {
+        const resolved = resolveImageUrl(value);
+        if (resolved) return resolved;
+      }
+      return null;
+    };
+
+    const resolveUserAvatar = (userLike, ...extraValues) =>
+      pickFirstImageUrl(
+        ...extraValues,
+        userLike?.avatar_url,
+        userLike?.profile_photo_url,
+        userLike?.profile_image_url,
+        userLike?.profile_photo,
+        userLike?.profile_image,
+        userLike?.image_url,
+        userLike?.avatar
+      );
+
     const isCurrentUserClient =
       booking?.client_id != null && currentUserId != null
         ? Number(booking.client_id) === Number(currentUserId)
         : null;
 
-    const providerAvatar =
-      booking?.provider_avatar_url ||
-      booking?.provider_profile_photo_url ||
-      booking?.provider_profile_image_url ||
-      booking?.provider?.avatar_url ||
-      booking?.provider?.profile_photo_url ||
-      booking?.provider?.profile_image_url ||
-      booking?.provider?.avatar;
+    const providerAvatar = resolveUserAvatar(
+      booking?.provider,
+      booking?.provider_avatar_url,
+      booking?.provider_profile_photo_url,
+      booking?.provider_profile_image_url,
+      booking?.provider_profile_photo,
+      booking?.provider_profile_image,
+      booking?.provider_image_url
+    );
 
-    const clientAvatar =
-      booking?.customer_avatar_url ||
-      booking?.client_avatar_url ||
-      booking?.customer_profile_photo_url ||
-      booking?.client_profile_photo_url ||
-      booking?.customer_profile_image_url ||
-      booking?.client_profile_image_url ||
-      booking?.customer?.avatar_url ||
-      booking?.client?.avatar_url ||
-      booking?.customer?.profile_photo_url ||
-      booking?.client?.profile_photo_url ||
-      booking?.customer?.profile_image_url ||
-      booking?.client?.profile_image_url ||
-      booking?.customer?.avatar ||
-      booking?.client?.avatar;
+    const clientAvatar = resolveUserAvatar(
+      booking?.customer || booking?.client,
+      booking?.customer_avatar_url,
+      booking?.client_avatar_url,
+      booking?.customer_profile_photo_url,
+      booking?.client_profile_photo_url,
+      booking?.customer_profile_image_url,
+      booking?.client_profile_image_url,
+      booking?.customer_profile_photo,
+      booking?.client_profile_photo,
+      booking?.customer_profile_image,
+      booking?.client_profile_image,
+      booking?.customer_image_url,
+      booking?.client_image_url
+    );
 
     const otherParticipantName = isCurrentUserClient
       ? booking?.provider_username || booking?.provider_name
@@ -3689,7 +3710,7 @@ function BookingChatModal({
 
     return {
       name: String(otherParticipantName || "").trim() || "Chat",
-      avatarUrl: resolveImageUrl(avatarUrlRaw),
+      avatarUrl: avatarUrlRaw,
     };
   }, [booking, currentUserId]);
 
