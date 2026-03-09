@@ -45,6 +45,7 @@ import {
   saveToken,
 } from "./src/components/tokenStorage";
 import ProviderCard from "./src/components/ProviderCard";
+import ProviderShareCard from "./src/components/ProviderShareCard";
 import * as Location from "expo-location";
 import Constants from "expo-constants";
 import * as ImagePicker from "expo-image-picker";
@@ -75,8 +76,15 @@ import { theme } from "./src/theme";
 // import * as Sentry from "sentry-expo";
 
 let Clipboard = null;
+let ViewShot = null;
+let captureRef = null;
 try {
   Clipboard = require("expo-clipboard");
+} catch (e) {}
+try {
+  const viewShotModule = require("react-native-view-shot");
+  ViewShot = viewShotModule?.default || null;
+  captureRef = viewShotModule?.captureRef || null;
 } catch (e) {}
 
 enableScreens(false);
@@ -1910,6 +1918,9 @@ function ProfileScreen({ authLoading, setToken, showFlash, token }) {
   const [deleteModalVisible, setDeleteModalVisible] = useState(false);
   const [deletePassword, setDeletePassword] = useState("");
   const [deleteLoading, setDeleteLoading] = useState(false);
+  const providerShareCardRef = useRef(null);
+  const [shareCardVisible, setShareCardVisible] = useState(false);
+  const [sharingProviderCard, setSharingProviderCard] = useState(false);
 
   const forceLogout = useCallback(
     async (flashMessage) => {
@@ -2457,6 +2468,52 @@ function ProfileScreen({ authLoading, setToken, showFlash, token }) {
   const isProfileValid = Boolean(String(editProfile.username || "").trim());
   const isSaveDisabled = editSaving || !isProfileValid;
 
+  const providerShareProfessions = useMemo(() => {
+    const fromUser = Array.isArray(user?.professions) ? user.professions : [];
+    return fromUser.filter((item) => String(item || "").trim().length > 0);
+  }, [user]);
+  const providerShareRatingValue = Number(user?.avg_rating || 0);
+  const providerShareRatingCount = Number(user?.rating_count || 0);
+  const providerShareRatingLabel =
+    providerShareRatingValue > 0
+      ? `★ ${providerShareRatingValue.toFixed(1)}${
+          providerShareRatingCount > 0
+            ? ` (${providerShareRatingCount} rating${providerShareRatingCount === 1 ? "" : "s"})`
+            : ""
+        }`
+      : "★ New on BookitGY";
+
+  const handleShareProviderCard = async () => {
+    if (!captureRef || !providerShareCardRef.current) {
+      showFlash?.("error", "Sharing is not available in this build yet.");
+      return;
+    }
+
+    try {
+      setSharingProviderCard(true);
+      setShareCardVisible(true);
+
+      await new Promise((resolve) => setTimeout(resolve, 180));
+
+      const imageUri = await captureRef(providerShareCardRef.current, {
+        format: "png",
+        quality: 1,
+      });
+
+      await Share.share({
+        title: "My BookitGY provider card",
+        message: "Book with me on BookitGY",
+        url: imageUri,
+      });
+    } catch (err) {
+      console.log("Error sharing provider card", err?.message || err);
+      showFlash?.("error", "Could not generate your provider card image.");
+    } finally {
+      setSharingProviderCard(false);
+      setShareCardVisible(false);
+    }
+  };
+
   const handleShareProviderLink = async () => {
     if (!providerPublicLink) {
       if (showFlash) {
@@ -2522,7 +2579,26 @@ function ProfileScreen({ authLoading, setToken, showFlash, token }) {
   };
 
   return (
-    <ScrollView
+    <>
+      {shareCardVisible && ViewShot ? (
+        <View style={styles.providerShareCaptureLayer} pointerEvents="none">
+          <ViewShot
+            ref={providerShareCardRef}
+            options={{ format: "png", quality: 1 }}
+            style={styles.providerShareCaptureCardWrap}
+          >
+            <ProviderShareCard
+              avatarUrl={displayAvatarUrl}
+              username={user.username || user.full_name || "bookitgy_provider"}
+              professions={providerShareProfessions}
+              ratingLabel={providerShareRatingLabel}
+              brandingSource={BookitGYLogoTransparent}
+            />
+          </ViewShot>
+        </View>
+      ) : null}
+
+      <ScrollView
       contentContainerStyle={styles.profileScroll}
       refreshControl={
         <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
@@ -2647,6 +2723,35 @@ function ProfileScreen({ authLoading, setToken, showFlash, token }) {
               <Text style={styles.value}>{user.location}</Text>
             </>
           )}
+        </View>
+      )}
+
+      {isProvider && (
+        <View style={styles.card}>
+          <Text style={styles.sectionTitle}>Share your provider card</Text>
+          <Text style={styles.hoursHelp}>
+            Create a polished card image to share on WhatsApp, Facebook, Instagram, and Stories.
+          </Text>
+          <ProviderShareCard
+            avatarUrl={displayAvatarUrl}
+            username={user.username || user.full_name || "bookitgy_provider"}
+            professions={providerShareProfessions}
+            ratingLabel={providerShareRatingLabel}
+            brandingSource={BookitGYLogoTransparent}
+          />
+          <TouchableOpacity
+            style={[
+              styles.actionButton,
+              styles.providerShareButton,
+              sharingProviderCard && styles.providerShareButtonDisabled,
+            ]}
+            onPress={handleShareProviderCard}
+            disabled={sharingProviderCard}
+          >
+            <Text style={styles.actionButtonText}>
+              {sharingProviderCard ? "Generating card..." : "Share card image"}
+            </Text>
+          </TouchableOpacity>
         </View>
       )}
 
@@ -2909,9 +3014,8 @@ function ProfileScreen({ authLoading, setToken, showFlash, token }) {
       </Modal>
 
     </ScrollView>
-    
+    </>
   );
-  
 }
 
 
@@ -11831,6 +11935,25 @@ cardHeartButton: {
     fontSize: 15,
     fontWeight: "500",
     color: colors.textPrimary,
+  },
+  providerShareButton: {
+    marginTop: 14,
+    borderColor: colors.primary,
+    backgroundColor: colors.primarySoft,
+  },
+  providerShareButtonDisabled: {
+    opacity: 0.65,
+  },
+  providerShareCaptureLayer: {
+    position: "absolute",
+    opacity: 0,
+    left: -9999,
+    top: -9999,
+  },
+  providerShareCaptureCardWrap: {
+    width: 1080,
+    padding: 40,
+    backgroundColor: colors.background,
   },
   logoutButton: {
     backgroundColor: "transparent",
