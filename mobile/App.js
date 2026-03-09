@@ -12022,7 +12022,10 @@ cardHeartButton: {
     top: -9999,
   },
   providerShareCaptureCardWrap: {
-    width: 600,
+    width: "100%",
+    maxWidth: 420,
+    aspectRatio: 1.9,
+    alignSelf: "center",
     padding: 0,
     backgroundColor: "transparent",
   },
