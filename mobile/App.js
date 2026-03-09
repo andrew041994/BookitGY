@@ -5666,7 +5666,7 @@ function SearchScreen({ token, showFlash, navigation, route, toggleFavorite, isF
                       </Text>
                     ) : (
                       <View style={styles.timesContainer}>
-                        {availabilityMap[selectedDate].map((slotIso) => {
+                        {(availabilityMap[selectedDate] || []).map((slotIso) => {
                           const isSelected = selectedSlot === slotIso;
                           return (
                             <TouchableOpacity

@@ -1,74 +1,36 @@
-(cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF'
+ (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
 diff --git a/mobile/App.js b/mobile/App.js
-index e72b08f5c02304a77e6cee6d3418db015d990d8b..fb7c6407031fc87843f0d9648f9489ee1cec1ea8 100644
+index fb7c6407031fc87843f0d9648f9489ee1cec1ea8..1c6447716911c613d73863d1d54e78bb4f795ad6 100644
 --- a/mobile/App.js
 +++ b/mobile/App.js
-@@ -5293,68 +5293,50 @@ function SearchScreen({ token, showFlash, navigation, route, toggleFavorite, isF
-       // Refresh availability after failure to show updated slots
-       try {
-         if (selectedProvider && selectedService) {
-           await loadAvailability(
-             providerId,
-             selectedService.id
-           );
-         }
-       } catch (e) {
-         console.log("Error refreshing availability after failure", e);
-       }
-     } finally {
-       setBookingLoading(false);
-     }
-   };
+@@ -5644,51 +5644,51 @@ function SearchScreen({ token, showFlash, navigation, route, toggleFavorite, isF
+                                   </Text>
+                                   <Text style={styles.datePillDay}>
+                                     {d.date.getDate()}
+                                   </Text>
+                                 </TouchableOpacity>
+                               );
+                             })}
+                           </ScrollView>
+                         )}
+                       </>
+                     )}
+                   </View>
+                 )}
  
-   // Map date string -> slots for easier lookup
-   const availabilityMap = React.useMemo(() => {
-     const map = {};
-     (availability || []).forEach((day) => {
-       map[day.date] = day.slots || [];
-     });
-     return map;
-   }, [availability]);
--
--  const displayedAvailabilityMap = React.useMemo(() => {
--    const durationMinutes = getServiceDurationMinutes(selectedService);
--    if (!durationMinutes || durationMinutes <= 0) {
--      return availabilityMap;
--    }
--
--    return Object.entries(availabilityMap).reduce((map, [dateKey, slots]) => {
--      map[dateKey] = (slots || []).filter((slotIso) => {
--        const slotStart = new Date(slotIso);
--        if (Number.isNaN(slotStart.getTime())) return false;
--
--        const minutesFromDayStart = slotStart.getHours() * 60 + slotStart.getMinutes();
--        return minutesFromDayStart % durationMinutes === 0;
--      });
--      return map;
--    }, {});
--  }, [availabilityMap, selectedService]);
- 
-   const makeDateKey = (d) => {
-     const year = d.getFullYear();
-     const month = String(d.getMonth() + 1).padStart(2, "0");
-     const day = String(d.getDate()).padStart(2, "0");
-     return `${year}-${month}-${day}`; // "YYYY-MM-DD"
-   };
- 
-@@ -5638,57 +5620,57 @@ function SearchScreen({ token, showFlash, navigation, route, toggleFavorite, isF
                  {/* Time slots for selected date */}
                  {selectedService && selectedDate && (
                    <View style={styles.card}>
                      <Text style={styles.sectionTitle}>Available time slots</Text>
  
--                    {(displayedAvailabilityMap[selectedDate] || []).length === 0 ? (
-+                    {(availabilityMap[selectedDate] || []).length === 0 ? (
+                     {(availabilityMap[selectedDate] || []).length === 0 ? (
                        <Text style={styles.serviceHint}>
                          No available times for this date.
                        </Text>
                      ) : (
                        <View style={styles.timesContainer}>
--                        {displayedAvailabilityMap[selectedDate].map((slotIso) => {
-+                        {availabilityMap[selectedDate].map((slotIso) => {
+-                        {availabilityMap[selectedDate].map((slotIso) => {
++                        {(availabilityMap[selectedDate] || []).map((slotIso) => {
                            const isSelected = selectedSlot === slotIso;
                            return (
                              <TouchableOpacity
@@ -94,5 +56,6 @@ index e72b08f5c02304a77e6cee6d3418db015d990d8b..fb7c6407031fc87843f0d9648f9489ee
                      )}
                    </View>
                  )}
+ 
 EOF
 )
