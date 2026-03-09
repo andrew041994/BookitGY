@@ -127,3 +127,100 @@ def test_time_bucket_boundaries(db_session):
     assert crud.booking_time_bucket(now + timedelta(minutes=1), now + timedelta(hours=1), now=now) == "upcoming"
     assert crud.booking_time_bucket(now - timedelta(minutes=1), now + timedelta(minutes=1), now=now) == "in_progress"
     assert crud.booking_time_bucket(now - timedelta(hours=2), now - timedelta(hours=1), now=now) == "finished"
+
+
+def test_multi_day_availability_allows_later_slots_on_same_day(db_session, monkeypatch):
+    session, models, crud = db_session
+    provider, customer_1, _, service = _create_provider_graph(session, models)
+
+    long_service = service
+    long_service.duration_minutes = 60 * 24 * 3
+
+    short_service = models.Service(
+        provider_id=provider.id,
+        name="Short Service",
+        price_gyd=500,
+        duration_minutes=60,
+    )
+    ten_min_service = models.Service(
+        provider_id=provider.id,
+        name="10 Minute Service",
+        price_gyd=200,
+        duration_minutes=10,
+    )
+    fifteen_min_service = models.Service(
+        provider_id=provider.id,
+        name="15 Minute Service",
+        price_gyd=200,
+        duration_minutes=15,
+    )
+    forty_five_min_service = models.Service(
+        provider_id=provider.id,
+        name="45 Minute Service",
+        price_gyd=200,
+        duration_minutes=45,
+    )
+    session.add_all([short_service, ten_min_service, fifteen_min_service, forty_five_min_service])
+
+    # Thursday 09:00-12:00 working window.
+    session.add(
+        models.ProviderWorkingHours(
+            provider_id=provider.id,
+            weekday=3,
+            is_closed=False,
+            start_time="09:00",
+            end_time="12:00",
+        )
+    )
+    session.commit()
+
+    # Existing long booking: Monday 09:00 -> Thursday 09:00.
+    session.add(
+        models.Booking(
+            customer_id=customer_1.id,
+            service_id=long_service.id,
+            start_time=datetime(2025, 1, 6, 9, 0),
+            end_time=datetime(2025, 1, 9, 9, 0),
+            status="confirmed",
+        )
+    )
+    session.commit()
+
+    monkeypatch.setattr(crud, "now_guyana", lambda: datetime(2025, 1, 6, 8, 0))
+
+    long_availability = crud.get_provider_availability(
+        session,
+        provider_id=provider.id,
+        service_id=long_service.id,
+        days=4,
+    )
+
+    short_availability = crud.get_provider_availability(
+        session,
+        provider_id=provider.id,
+        service_id=short_service.id,
+        days=4,
+    )
+
+    assert len(long_availability) == 1
+    long_slots = long_availability[0]["slots"]
+    assert datetime(2025, 1, 9, 9, 0) in long_slots
+    assert datetime(2025, 1, 9, 9, 5) in long_slots
+    assert datetime(2025, 1, 9, 9, 10) in long_slots
+    assert datetime(2025, 1, 9, 9, 30) in long_slots
+    assert datetime(2025, 1, 9, 10, 0) in long_slots
+
+    assert len(short_availability) == 1
+    short_slots = short_availability[0]["slots"]
+    assert datetime(2025, 1, 9, 9, 5) in short_slots
+
+    for custom_service in (ten_min_service, fifteen_min_service, forty_five_min_service):
+        custom_availability = crud.get_provider_availability(
+            session,
+            provider_id=provider.id,
+            service_id=custom_service.id,
+            days=4,
+        )
+        assert len(custom_availability) == 1
+        custom_slots = custom_availability[0]["slots"]
+        assert datetime(2025, 1, 9, 9, 5) in custom_slots

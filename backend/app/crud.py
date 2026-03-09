@@ -3789,6 +3789,10 @@ def get_provider_availability(
     now = now_guyana()
 
     slot_duration = timedelta(minutes=service.duration_minutes)
+    # Evaluate every candidate start independently instead of anchoring to the
+    # service duration. This keeps long-duration services bookable from any
+    # valid later slot on a day (e.g., 9:05, 9:30, 10:00, etc.).
+    slot_step = timedelta(minutes=5)
 
     for offset in range(days):
         day_date = (now + timedelta(days=offset)).date()
@@ -3855,7 +3859,7 @@ def get_provider_availability(
             # For *today*, don't offer slots that start in the past
             # (but keep them aligned to working hours)
             if is_today and slot_start <= now:
-                slot_start += slot_duration
+                slot_start += slot_step
                 continue
 
             # Check for overlap with any existing booking
@@ -3874,8 +3878,9 @@ def get_provider_availability(
             if not conflict:
                 slots_for_day.append(slot_start)
 
-            # Step forward by the service duration (so slots line up)
-            slot_start += slot_duration
+            # Step forward by the slot interval so each candidate start time is
+            # evaluated independently, including for long services.
+            slot_start += slot_step
 
         if slots_for_day:
             availability.append(
