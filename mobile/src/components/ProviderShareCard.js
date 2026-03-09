@@ -47,7 +47,7 @@ export default function ProviderShareCard({
       </View>
 
       <View style={styles.footer}>
-        <Text style={styles.cta}>Download BookitGY to schedule an appointment</Text>
+        <Text numberOfLines={2} ellipsizeMode="tail" style={styles.cta}>Download BookitGY to schedule an appointment</Text>
         {brandingSource ? <Image source={brandingSource} style={styles.logo} resizeMode="contain" /> : null}
       </View>
     </View>
@@ -57,7 +57,9 @@ export default function ProviderShareCard({
 const styles = StyleSheet.create({
   card: {
     width: "100%",
-    minHeight: 210,
+    maxWidth: 560,
+    alignSelf: "center",
+    aspectRatio: 1.9,
     borderRadius: 22,
     borderWidth: 1,
     borderColor: "rgba(77,163,255,0.45)",
@@ -89,6 +91,7 @@ const styles = StyleSheet.create({
   profileContent: {
     flexDirection: "row",
     alignItems: "center",
+    flex: 1,
   },
   avatar: {
     width: 80,

@@ -1927,6 +1927,7 @@ function ProfileScreen({ authLoading, setToken, showFlash, token }) {
   const providerShareCardRef = useRef(null);
   const [shareCardVisible, setShareCardVisible] = useState(false);
   const [sharingProviderCard, setSharingProviderCard] = useState(false);
+  const [providerProfile, setProviderProfile] = useState(null);
 
   const forceLogout = useCallback(
     async (flashMessage) => {
@@ -2179,15 +2180,19 @@ function ProfileScreen({ authLoading, setToken, showFlash, token }) {
         if ((token && token.isProvider) || res.data.is_provider) {
           try {
             const provRes = await apiClient.get("/providers/me/profile");
+            setProviderProfile(provRes.data || null);
             if (provRes.data.avatar_url) {
               avatar = provRes.data.avatar_url;
             }
           } catch (err) {
+            setProviderProfile(null);
             console.log(
               "Error loading provider avatar for profile",
               err.response?.data || err.message
             );
           }
+        } else {
+          setProviderProfile(null);
         }
 
         setAvatarUrl(avatar);
@@ -2371,23 +2376,26 @@ function ProfileScreen({ authLoading, setToken, showFlash, token }) {
   }, [loadMyBookings, loadProfile, showBookings]);
 
   const providerShareProfessions = useMemo(() => {
-    const rawProfessions = Array.isArray(user?.professions)
-      ? user.professions
-      : Array.isArray(user?.provider_profile?.professions)
-      ? user.provider_profile.professions
-      : [];
+    const candidateSources = [
+      providerProfile?.professions,
+      user?.provider_profile?.professions,
+      user?.professions,
+    ];
+
+    const rawProfessions =
+      candidateSources.find((source) => Array.isArray(source) && source.length > 0) || [];
 
     return rawProfessions
       .map((entry) => {
         if (typeof entry === "string") return entry;
         if (entry && typeof entry === "object") {
-          return entry.name || entry.title || "";
+          return entry.name || entry.title || entry.label || entry.profession || "";
         }
         return "";
       })
       .map((value) => String(value || "").trim())
       .filter(Boolean);
-  }, [user]);
+  }, [providerProfile?.professions, user]);
   const providerShareRatingValue = Number(user?.avg_rating || 0);
   const providerShareRatingCount = Number(user?.rating_count || 0);
   const providerShareRatingLabel =
@@ -2533,8 +2541,8 @@ function ProfileScreen({ authLoading, setToken, showFlash, token }) {
       const imageUri = await captureRef(providerShareCardRef.current, {
         format: "png",
         quality: 1,
-        width: 1080,
-        height: 640,
+        width: 1200,
+        height: 700,
       });
 
       await Share.share({
@@ -11988,10 +11996,9 @@ cardHeartButton: {
     top: -9999,
   },
   providerShareCaptureCardWrap: {
-    width: 1080,
-    minHeight: 640,
-    padding: 40,
-    backgroundColor: colors.background,
+    width: 600,
+    padding: 0,
+    backgroundColor: "transparent",
   },
   logoutButton: {
     backgroundColor: "transparent",
