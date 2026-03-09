@@ -1,76 +1,70 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
 diff --git a/mobile/App.js b/mobile/App.js
-index 6ade36964fdd112925b2530e91272dafff9cb857..f5d97acd14d2182bbb083f3f9daac1abfcd40777 100644
+index f5d97acd14d2182bbb083f3f9daac1abfcd40777..b8cd13600e94100efb067a46b2663152f8bcca19 100644
 --- a/mobile/App.js
 +++ b/mobile/App.js
-@@ -2342,50 +2342,65 @@ function ProfileScreen({ authLoading, setToken, showFlash, token }) {
-     const res = await apiClient.get("/bookings/me");
+@@ -61,52 +61,58 @@ import {
+   useSafeAreaInsets,
+ } from "react-native-safe-area-context";
+ import { KeyboardAwareScrollView } from "react-native-keyboard-aware-scroll-view";
+ import { apiClient } from "./src/api";
+ import { submitBookingRating } from "./src/api/bookings";
+ import { getRatingSummary } from "./src/components/RatingSummary";
+ import {
+   durationPartsToMinutes,
+   formatDuration,
+   minutesToDurationParts,
+   validateDurationParts,
+ } from "./src/utils/duration";
+ // import { AccessToken, LoginManager } from "react-native-fbsdk-next";
+ import BookitGYLogoTransparent from "./assets/bookitgy-logo-transparent.png"
+ import { theme } from "./src/theme";
+ // import * as Sentry from "sentry-expo";
  
-     const rawBookings = res.data;
-     const bookingsList = Array.isArray(rawBookings)
-       ? rawBookings
-       : rawBookings?.bookings || rawBookings?.results || [];
+ let Clipboard = null;
+ let ViewShot = null;
+ let captureRef = null;
+ try {
+   Clipboard = require("expo-clipboard");
+ } catch (e) {}
+ try {
+   const viewShotModule = require("react-native-view-shot");
+-  ViewShot = viewShotModule?.default || null;
+-  captureRef = viewShotModule?.captureRef || null;
++  ViewShot =
++    viewShotModule?.default ||
++    viewShotModule?.ViewShot ||
++    (typeof viewShotModule === "function" ? viewShotModule : null);
++  captureRef =
++    viewShotModule?.captureRef ||
++    viewShotModule?.default?.captureRef ||
++    null;
+ } catch (e) {}
  
-     setBookings(bookingsList);
-   } catch (err) {
-     console.log("Error loading my bookings", err.response?.data || err.message);
-     setBookingsError("Could not load your bookings.");
-     if (showFlash) showFlash("error", "Could not load your bookings.");
-   } finally {
-     setBookingsLoading(false);
-   }
- }, [showFlash]);
+ enableScreens(false);
+ WebBrowser.maybeCompleteAuthSession();
  
  
-   const onRefresh = useCallback(async () => {
-     await loadProfile(true);
-     if (showBookings) {
-       await loadMyBookings();
-     }
-   }, [loadMyBookings, loadProfile, showBookings]);
  
-+  const providerShareProfessions = useMemo(() => {
-+    const fromUser = Array.isArray(user?.professions) ? user.professions : [];
-+    return fromUser.filter((item) => String(item || "").trim().length > 0);
-+  }, [user]);
-+  const providerShareRatingValue = Number(user?.avg_rating || 0);
-+  const providerShareRatingCount = Number(user?.rating_count || 0);
-+  const providerShareRatingLabel =
-+    providerShareRatingValue > 0
-+      ? `★ ${providerShareRatingValue.toFixed(1)}${
-+          providerShareRatingCount > 0
-+            ? ` (${providerShareRatingCount} rating${providerShareRatingCount === 1 ? "" : "s"})`
-+            : ""
-+        }`
-+      : "★ New on BookitGY";
-+
-   if (loading) {
-     return (
-       <View style={styles.center}>
-         <ActivityIndicator size="large" />
-         <Text style={styles.loadingText}>Loading profile…</Text>
-       </View>
-     );
-   }
  
-   if (error) {
-     return (
-       <View style={styles.center}>
-         <Text style={styles.errorText}>{error}</Text>
-       </View>
-     );
-   }
+ // import { API } from "./App"; // wherever you define your base URL
  
-   if (!user) {
-     return (
-       <View style={styles.center}>
-         <Text style={styles.errorText}>No user data.</Text>
-       </View>
-     );
-   }
  
-@@ -2446,65 +2461,50 @@ function ProfileScreen({ authLoading, setToken, showFlash, token }) {
-         if (showFlash) {
+ 
+ 
+ 
+ const API =
+   Constants.expoConfig?.extra?.API_URL ||
+   Constants.manifest?.extra?.API_URL ||
+   "https://bookitgy.onrender.com";
+ 
+ const CLOUDINARY_CLOUD_NAME =
+   process.env.EXPO_PUBLIC_CLOUDINARY_CLOUD_NAME ||
+   Constants.expoConfig?.extra?.CLOUDINARY_CLOUD_NAME ||
+   Constants.manifest?.extra?.CLOUDINARY_CLOUD_NAME ||
+   "";
+ 
+@@ -2462,61 +2468,76 @@ function ProfileScreen({ authLoading, setToken, showFlash, token }) {
            showFlash(
              "error",
              "No location is available yet for this booking."
@@ -95,23 +89,19 @@ index 6ade36964fdd112925b2530e91272dafff9cb857..f5d97acd14d2182bbb083f3f9daac1ab
    const isProfileValid = Boolean(String(editProfile.username || "").trim());
    const isSaveDisabled = editSaving || !isProfileValid;
  
--  const providerShareProfessions = useMemo(() => {
--    const fromUser = Array.isArray(user?.professions) ? user.professions : [];
--    return fromUser.filter((item) => String(item || "").trim().length > 0);
--  }, [user]);
--  const providerShareRatingValue = Number(user?.avg_rating || 0);
--  const providerShareRatingCount = Number(user?.rating_count || 0);
--  const providerShareRatingLabel =
--    providerShareRatingValue > 0
--      ? `★ ${providerShareRatingValue.toFixed(1)}${
--          providerShareRatingCount > 0
--            ? ` (${providerShareRatingCount} rating${providerShareRatingCount === 1 ? "" : "s"})`
--            : ""
--        }`
--      : "★ New on BookitGY";
--
    const handleShareProviderCard = async () => {
-     if (!captureRef || !providerShareCardRef.current) {
+-    if (!captureRef || !providerShareCardRef.current) {
++    const hasViewShot = Boolean(ViewShot);
++    const hasCaptureRef = typeof captureRef === "function";
++    const hasCardRef = Boolean(providerShareCardRef.current);
++
++    console.log("[ProviderShareCard] share preflight", {
++      hasViewShot,
++      hasCaptureRef,
++      hasCardRef,
++    });
++
++    if (!hasViewShot || !hasCaptureRef) {
        showFlash?.("error", "Sharing is not available in this build yet.");
        return;
      }
@@ -122,6 +112,11 @@ index 6ade36964fdd112925b2530e91272dafff9cb857..f5d97acd14d2182bbb083f3f9daac1ab
  
        await new Promise((resolve) => setTimeout(resolve, 180));
  
++      if (!providerShareCardRef.current) {
++        showFlash?.("error", "Sharing is not available in this build yet.");
++        return;
++      }
++
        const imageUri = await captureRef(providerShareCardRef.current, {
          format: "png",
          quality: 1,
@@ -135,6 +130,18 @@ index 6ade36964fdd112925b2530e91272dafff9cb857..f5d97acd14d2182bbb083f3f9daac1ab
      } catch (err) {
        console.log("Error sharing provider card", err?.message || err);
        showFlash?.("error", "Could not generate your provider card image.");
+     } finally {
+       setSharingProviderCard(false);
+       setShareCardVisible(false);
+     }
+   };
+ 
+   const handleShareProviderLink = async () => {
+     if (!providerPublicLink) {
+       if (showFlash) {
+         showFlash("error", "Set a username to enable your profile link.");
+       }
+       return;
  
 EOF
 )

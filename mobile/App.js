@@ -83,8 +83,14 @@ try {
 } catch (e) {}
 try {
   const viewShotModule = require("react-native-view-shot");
-  ViewShot = viewShotModule?.default || null;
-  captureRef = viewShotModule?.captureRef || null;
+  ViewShot =
+    viewShotModule?.default ||
+    viewShotModule?.ViewShot ||
+    (typeof viewShotModule === "function" ? viewShotModule : null);
+  captureRef =
+    viewShotModule?.captureRef ||
+    viewShotModule?.default?.captureRef ||
+    null;
 } catch (e) {}
 
 enableScreens(false);
@@ -2484,7 +2490,17 @@ function ProfileScreen({ authLoading, setToken, showFlash, token }) {
   const isSaveDisabled = editSaving || !isProfileValid;
 
   const handleShareProviderCard = async () => {
-    if (!captureRef || !providerShareCardRef.current) {
+    const hasViewShot = Boolean(ViewShot);
+    const hasCaptureRef = typeof captureRef === "function";
+    const hasCardRef = Boolean(providerShareCardRef.current);
+
+    console.log("[ProviderShareCard] share preflight", {
+      hasViewShot,
+      hasCaptureRef,
+      hasCardRef,
+    });
+
+    if (!hasViewShot || !hasCaptureRef) {
       showFlash?.("error", "Sharing is not available in this build yet.");
       return;
     }
@@ -2494,6 +2510,11 @@ function ProfileScreen({ authLoading, setToken, showFlash, token }) {
       setShareCardVisible(true);
 
       await new Promise((resolve) => setTimeout(resolve, 180));
+
+      if (!providerShareCardRef.current) {
+        showFlash?.("error", "Sharing is not available in this build yet.");
+        return;
+      }
 
       const imageUri = await captureRef(providerShareCardRef.current, {
         format: "png",
