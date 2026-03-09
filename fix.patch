@@ -1,9 +1,9 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
 diff --git a/mobile/src/components/ProviderShareCard.js b/mobile/src/components/ProviderShareCard.js
-index 0dca357c02711db7aab635a097bf95d794214297..68950ddf52625c60dd553b474f0d6786816d7243 100644
+index 68950ddf52625c60dd553b474f0d6786816d7243..96e52e09cc246222e2cecaa42728bd9cc6aa2d8f 100644
 --- a/mobile/src/components/ProviderShareCard.js
 +++ b/mobile/src/components/ProviderShareCard.js
-@@ -1,102 +1,102 @@
+@@ -1,71 +1,73 @@
  import React from "react";
  import { Image, StyleSheet, Text, View } from "react-native";
  import { theme } from "../theme";
@@ -14,11 +14,12 @@ index 0dca357c02711db7aab635a097bf95d794214297..68950ddf52625c60dd553b474f0d6786
    avatarUrl,
    username,
    professions = [],
--  ratingLabel,
-+  ratingText,
+-  ratingText,
++  ratingValue,
    brandingSource,
  }) {
-   const safeUsername = String(username || "@bookitgy_provider").trim();
+-  const safeUsername = String(username || "@bookitgy_provider").trim();
++  const safeUsername = String(username || "").trim().replace(/^@/, "");
    const normalizedProfessions = Array.isArray(professions)
      ? professions
          .map((value) => String(value || "").trim())
@@ -27,9 +28,10 @@ index 0dca357c02711db7aab635a097bf95d794214297..68950ddf52625c60dd553b474f0d6786
    const professionText = normalizedProfessions.length
      ? normalizedProfessions.join(" • ")
      : "BookitGY Provider";
--  const normalizedRating = String(ratingLabel || "").trim();
--  const ratingText = normalizedRating ? `★ ${normalizedRating}` : "★ New Provider";
-+  const normalizedRating = String(ratingText || "").trim() || "★ New Provider";
+-  const normalizedRating = String(ratingText || "").trim() || "★ New Provider";
++  const parsedRating = Number(ratingValue);
++  const hasNumericRating = Number.isFinite(parsedRating);
++  const normalizedRating = hasNumericRating ? parsedRating.toFixed(1) : "0.0";
  
    return (
      <View style={styles.card}>
@@ -50,10 +52,11 @@ index 0dca357c02711db7aab635a097bf95d794214297..68950ddf52625c60dd553b474f0d6786
          <View style={styles.contentCol}>
            <View style={styles.identityRow}>
              <Text numberOfLines={1} ellipsizeMode="tail" style={styles.username}>
-               @{safeUsername.replace(/^@/, "")}
+-              @{safeUsername.replace(/^@/, "")}
++              {safeUsername}
              </Text>
--            <Text numberOfLines={1} style={styles.rating}>{ratingText}</Text>
-+            <Text numberOfLines={1} style={styles.rating}>{normalizedRating}</Text>
+-            <Text numberOfLines={1} style={styles.rating}>{normalizedRating}</Text>
++            <Text numberOfLines={1} style={styles.rating}>⭐️ {normalizedRating}</Text>
            </View>
            <Text numberOfLines={2} ellipsizeMode="tail" style={styles.professions}>{professionText}</Text>
          </View>
@@ -79,52 +82,7 @@ index 0dca357c02711db7aab635a097bf95d794214297..68950ddf52625c60dd553b474f0d6786
      backgroundColor: "#121826",
      paddingHorizontal: 18,
      paddingVertical: 14,
-     shadowColor: "#4DA3FF",
-     shadowOpacity: 0.2,
-     shadowRadius: 14,
-     shadowOffset: { width: 0, height: 8 },
-     elevation: 6,
-+    justifyContent: "space-between",
-   },
-   brandRow: {
-     flexDirection: "row",
-     justifyContent: "space-between",
-     alignItems: "center",
-     marginBottom: 12,
-   },
-   brandName: {
-     color: colors.text,
-     fontSize: 18,
-     fontWeight: "700",
-     letterSpacing: 0.5,
-   },
-   brandMeta: {
-     color: colors.textSecondary,
-     fontSize: 12,
-   },
-   profileContent: {
-     flexDirection: "row",
-     alignItems: "center",
-     flex: 1,
-   },
-   avatar: {
-     width: 80,
-     height: 80,
-@@ -125,47 +125,46 @@ const styles = StyleSheet.create({
-   },
-   identityRow: {
-     flexDirection: "row",
-     alignItems: "center",
-     minWidth: 0,
-   },
-   username: {
-     color: colors.text,
-     fontSize: 20,
-     fontWeight: "700",
-     flex: 1,
-     marginRight: 10,
-   },
-   rating: {
+@@ -139,32 +141,33 @@ const styles = StyleSheet.create({
      color: "#F4D03F",
      fontWeight: "600",
      fontSize: 14,
@@ -136,7 +94,6 @@ index 0dca357c02711db7aab635a097bf95d794214297..68950ddf52625c60dd553b474f0d6786
      lineHeight: 19,
    },
    footer: {
--    marginTop: "auto",
      borderTopWidth: 1,
      borderTopColor: "rgba(255,255,255,0.12)",
      paddingTop: 10,
@@ -151,6 +108,7 @@ index 0dca357c02711db7aab635a097bf95d794214297..68950ddf52625c60dd553b474f0d6786
      lineHeight: 18,
      fontWeight: "600",
      flex: 1,
++    textAlign: "center",
    },
    logo: {
      width: 78,

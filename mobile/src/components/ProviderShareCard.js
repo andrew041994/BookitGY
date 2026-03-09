@@ -8,10 +8,10 @@ export default function ProviderShareCard({
   avatarUrl,
   username,
   professions = [],
-  ratingText,
+  ratingValue,
   brandingSource,
 }) {
-  const safeUsername = String(username || "@bookitgy_provider").trim();
+  const safeUsername = String(username || "").trim().replace(/^@/, "");
   const normalizedProfessions = Array.isArray(professions)
     ? professions
         .map((value) => String(value || "").trim())
@@ -20,7 +20,9 @@ export default function ProviderShareCard({
   const professionText = normalizedProfessions.length
     ? normalizedProfessions.join(" • ")
     : "BookitGY Provider";
-  const normalizedRating = String(ratingText || "").trim() || "★ New Provider";
+  const parsedRating = Number(ratingValue);
+  const hasNumericRating = Number.isFinite(parsedRating);
+  const normalizedRating = hasNumericRating ? parsedRating.toFixed(1) : "0.0";
 
   return (
     <View style={styles.card}>
@@ -41,9 +43,9 @@ export default function ProviderShareCard({
         <View style={styles.contentCol}>
           <View style={styles.identityRow}>
             <Text numberOfLines={1} ellipsizeMode="tail" style={styles.username}>
-              @{safeUsername.replace(/^@/, "")}
+              {safeUsername}
             </Text>
-            <Text numberOfLines={1} style={styles.rating}>{normalizedRating}</Text>
+            <Text numberOfLines={1} style={styles.rating}>⭐️ {normalizedRating}</Text>
           </View>
           <Text numberOfLines={2} ellipsizeMode="tail" style={styles.professions}>{professionText}</Text>
         </View>
@@ -161,6 +163,7 @@ const styles = StyleSheet.create({
     lineHeight: 18,
     fontWeight: "600",
     flex: 1,
+    textAlign: "center",
   },
   logo: {
     width: 78,

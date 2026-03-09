@@ -2396,11 +2396,7 @@ function ProfileScreen({ authLoading, setToken, showFlash, token }) {
       .map((value) => String(value || "").trim())
       .filter(Boolean);
   }, [providerProfile?.professions, user]);
-  const providerShareRatingValue = Number(user?.avg_rating || 0);
-  const providerShareRatingText =
-    providerShareRatingValue > 0
-      ? `★ ${providerShareRatingValue.toFixed(1)}`
-      : "★ New Provider";
+  const providerShareRatingValue = Number(user?.avg_rating);
 
   if (loading) {
     return (
@@ -2631,7 +2627,7 @@ function ProfileScreen({ authLoading, setToken, showFlash, token }) {
               avatarUrl={displayAvatarUrl}
               username={user.username || user.full_name || "bookitgy_provider"}
               professions={providerShareProfessions}
-              ratingText={providerShareRatingText}
+              ratingValue={providerShareRatingValue}
               brandingSource={BookitGYLogoTransparent}
             />
           </ViewShot>
@@ -2776,7 +2772,7 @@ function ProfileScreen({ authLoading, setToken, showFlash, token }) {
             avatarUrl={displayAvatarUrl}
             username={user.username || user.full_name || "bookitgy_provider"}
             professions={providerShareProfessions}
-            ratingText={providerShareRatingText}
+            ratingValue={providerShareRatingValue}
             brandingSource={BookitGYLogoTransparent}
           />
           <TouchableOpacity
