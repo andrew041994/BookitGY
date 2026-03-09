@@ -1,4 +1,5 @@
 import React from "react";
+import { LinearGradient } from "expo-linear-gradient";
 import { Image, StyleSheet, Text, View } from "react-native";
 import { theme } from "../theme";
 
@@ -26,6 +27,12 @@ export default function ProviderShareCard({
 
   return (
     <View style={styles.card}>
+      <LinearGradient
+        colors={["rgba(255,255,255,0.08)", "rgba(255,255,255,0.03)", "transparent"]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 0, y: 0.65 }}
+        style={styles.glassHighlight}
+      />
       <View style={styles.brandRow}>
         <Text style={styles.brandName}>BookitGY</Text>
         <Text style={styles.brandMeta}>Provider Card</Text>
@@ -77,6 +84,12 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 8 },
     elevation: 6,
     justifyContent: "space-between",
+    position: "relative",
+    overflow: "hidden",
+  },
+  glassHighlight: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: 24,
   },
   brandRow: {
     flexDirection: "row",
