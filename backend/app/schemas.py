@@ -1,10 +1,12 @@
-from pydantic import BaseModel, EmailStr, Field, validator
+from pydantic import BaseModel, EmailStr, Field, validator, root_validator
 
 
 from datetime import datetime, date, time
 from typing import Optional, List
 import re
 from decimal import Decimal
+
+from app.utils.duration import duration_parts_to_minutes, minutes_to_duration_parts
 
 
 USERNAME_MIN_LENGTH = 3
@@ -235,7 +237,10 @@ class ServiceCreate(BaseModel):
     name: str = Field(..., min_length=1)
     description: str
     price_gyd: float = Field(..., gt=0)
-    duration_minutes: int = Field(..., gt=0)
+    duration_minutes: Optional[int] = Field(None, gt=0)
+    duration_days: Optional[int] = Field(None, ge=0)
+    duration_hours: Optional[int] = Field(None, ge=0)
+    duration_minutes_part: Optional[int] = Field(None, ge=0)
 
     @validator("name")
     def name_must_not_be_blank(cls, value: str) -> str:
@@ -244,11 +249,35 @@ class ServiceCreate(BaseModel):
             raise ValueError("Service name is required")
         return trimmed
 
+    @root_validator(skip_on_failure=True)
+    def resolve_duration_minutes(cls, values):
+        provided_parts = any(
+            values.get(field) is not None
+            for field in ("duration_days", "duration_hours", "duration_minutes_part")
+        )
+        duration_minutes = values.get("duration_minutes")
+
+        if provided_parts:
+            values["duration_minutes"] = duration_parts_to_minutes(
+                days=values.get("duration_days") or 0,
+                hours=values.get("duration_hours") or 0,
+                minutes_part=values.get("duration_minutes_part") or 0,
+            )
+        elif duration_minutes is None:
+            raise ValueError(
+                "Provide either duration_minutes or duration_days/duration_hours/duration_minutes_part"
+            )
+        return values
+
+
 class ServiceUpdate(BaseModel):
     name: Optional[str] = Field(None, min_length=1)
     description: Optional[str] = None
     price_gyd: Optional[float] = Field(None, gt=0)
     duration_minutes: Optional[int] = Field(None, gt=0)
+    duration_days: Optional[int] = Field(None, ge=0)
+    duration_hours: Optional[int] = Field(None, ge=0)
+    duration_minutes_part: Optional[int] = Field(None, ge=0)
 
     @validator("name")
     def name_must_not_be_blank(cls, value: Optional[str]) -> Optional[str]:
@@ -259,6 +288,20 @@ class ServiceUpdate(BaseModel):
             raise ValueError("Service name is required")
         return trimmed
 
+    @root_validator(skip_on_failure=True)
+    def resolve_duration_minutes(cls, values):
+        provided_parts = any(
+            values.get(field) is not None
+            for field in ("duration_days", "duration_hours", "duration_minutes_part")
+        )
+        if provided_parts:
+            values["duration_minutes"] = duration_parts_to_minutes(
+                days=values.get("duration_days") or 0,
+                hours=values.get("duration_hours") or 0,
+                minutes_part=values.get("duration_minutes_part") or 0,
+            )
+        return values
+
 
 class ServiceOut(BaseModel):
     id: int
@@ -267,9 +310,11 @@ class ServiceOut(BaseModel):
     description: str
     price_gyd: float
     duration_minutes: int
-
+    duration_days: int = 0
+    duration_hours: int = 0
+    duration_minutes_part: int = 0
     class Config:
-        from_attributes = True
+        orm_mode = True
 
 
 class BookingCreate(BaseModel):
@@ -327,6 +372,7 @@ class BookingSummary(BaseModel):
     start_time: datetime
     end_time: datetime
     status: str
+    time_bucket: Optional[str] = None
 
 
 class BillCreditUpdate(BaseModel):
@@ -617,11 +663,13 @@ class BookingWithDetails(BaseModel):
     start_time: datetime
     end_time: datetime
     status: str
+    time_bucket: Optional[str] = None
     canceled_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None
 
     service_name: str
     service_duration_minutes: int
+    service_duration_human: Optional[str] = None
     service_price_gyd: float
 
     customer_name: str

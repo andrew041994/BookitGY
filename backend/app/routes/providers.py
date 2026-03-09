@@ -280,7 +280,7 @@ def get_my_provider(
 # Provider "me" services
 # -------------------------------------------------------------------
 
-@router.get("/providers/me/services")
+@router.get("/providers/me/services", response_model=List[schemas.ServiceOut])
 def list_my_services(
     db: Session = Depends(get_db),
     provider: models.Provider = Depends(_require_current_provider),
@@ -288,7 +288,7 @@ def list_my_services(
     return crud.list_services_for_provider(db, provider.id)
 
 
-@router.post("/providers/me/services")
+@router.post("/providers/me/services", response_model=schemas.ServiceOut)
 def create_my_service(
     service_in: schemas.ServiceCreate,
     db: Session = Depends(get_db),
@@ -304,7 +304,7 @@ def create_my_service(
         )
 
 
-@router.put("/providers/me/services/{service_id}")
+@router.put("/providers/me/services/{service_id}", response_model=schemas.ServiceOut)
 def update_my_service(
     service_id: int,
     service_update: schemas.ServiceUpdate,
@@ -312,7 +312,10 @@ def update_my_service(
     provider: models.Provider = Depends(_require_current_provider),
 ):
     try:
-        return crud.update_service(db, provider.id, service_id, service_update)
+        service = crud.update_service(db, provider.id, service_id, service_update)
+        if not service:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Service not found")
+        return service
     except IntegrityError:
         db.rollback()
         raise HTTPException(

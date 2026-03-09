@@ -18,6 +18,8 @@ from sqlalchemy import (
 from .database import Base
 from datetime import datetime
 from app.utils.time import now_guyana
+
+from app.utils.duration import minutes_to_duration_parts
 from sqlalchemy.orm import relationship
 
 
@@ -122,6 +124,18 @@ class Service(Base):
     # CREATE INDEX IF NOT EXISTS idx_services_provider_is_active ON services(provider_id, is_active);
     is_active = Column(Boolean, default=True, nullable=False)
 
+    @property
+    def duration_days(self):
+        return minutes_to_duration_parts(self.duration_minutes or 0)[0]
+
+    @property
+    def duration_hours(self):
+        return minutes_to_duration_parts(self.duration_minutes or 0)[1]
+
+    @property
+    def duration_minutes_part(self):
+        return minutes_to_duration_parts(self.duration_minutes or 0)[2]
+
 
 class Booking(Base):
     __tablename__ = "bookings"
@@ -131,6 +145,14 @@ class Booking(Base):
     service_id = Column(Integer, ForeignKey("services.id"), nullable=False, index=True)
     start_time = Column(DateTime, nullable=False, index=True)
     end_time = Column(DateTime, nullable=False, index=True)
+
+    @property
+    def start_at(self):
+        return self.start_time
+
+    @property
+    def end_at(self):
+        return self.end_time
     status = Column(
         Enum(
             "confirmed",

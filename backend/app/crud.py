@@ -16,6 +16,7 @@ from typing import Optional
 from dotenv import load_dotenv, find_dotenv
 from app.utils.passwords import validate_password
 from app.utils.time import now_guyana, today_start_guyana, today_end_guyana
+from app.utils.duration import derive_booking_end, format_duration_human
 from app.utils.email import send_monthly_statement_email
 
 load_dotenv(find_dotenv(), override=False)
@@ -39,6 +40,16 @@ SUSPENDED_PROVIDER_MESSAGE = (
 LOCKED_PROVIDER_MESSAGE = (
     "Provider account is locked and cannot accept or confirm new appointments."
 )
+BOOKING_TIME_BLOCKING_STATUSES = ("pending", "confirmed", "in_progress")
+
+
+def booking_time_bucket(start_time: datetime, end_time: datetime, now: datetime | None = None) -> str:
+    reference = now or now_guyana()
+    if reference < start_time:
+        return "upcoming"
+    if start_time <= reference < end_time:
+        return "in_progress"
+    return "finished"
 
 
 def format_gyd_amount(value: Decimal | float | int) -> str:
@@ -474,6 +485,27 @@ def create_service_for_provider(db: Session, provider_id: int, service_in: schem
         duration_minutes=service_in.duration_minutes,
     )
     db.add(svc)
+    db.commit()
+    db.refresh(svc)
+    return svc
+
+
+def update_service(
+    db: Session,
+    provider_id: int,
+    service_id: int,
+    service_update: schemas.ServiceUpdate,
+):
+    svc = get_service_for_provider(db, service_id, provider_id, include_inactive=True)
+    if not svc:
+        return None
+
+    updates = service_update.dict(exclude_unset=True)
+    allowed_fields = {"name", "description", "price_gyd", "duration_minutes"}
+    for field_name in allowed_fields:
+        if field_name in updates:
+            setattr(svc, field_name, updates[field_name])
+
     db.commit()
     db.refresh(svc)
     return svc
@@ -1650,18 +1682,16 @@ def create_booking(
         raise ValueError("Cannot book a time in the past")
 
     # Compute end time based on service duration
-    end_time = booking.start_time + timedelta(
-        minutes=service.duration_minutes
-    )
+    end_time = derive_booking_end(booking.start_time, service.duration_minutes)
 
-    # Check overlapping *future/ongoing* confirmed bookings for this same service
+    # Check overlapping bookings that reserve provider time.
     normalized_status = normalized_booking_status_expr()
 
     overlap = (
         db.query(models.Booking)
-        .filter(models.Booking.service_id == booking.service_id)
-        .filter(normalized_status == "confirmed")
-        .filter(models.Booking.end_time > now)  # ignore bookings that already ended
+        .join(models.Service, models.Booking.service_id == models.Service.id)
+        .filter(models.Service.provider_id == provider.id)
+        .filter(normalized_status.in_(BOOKING_TIME_BLOCKING_STATUSES))
         .filter(
             models.Booking.start_time < end_time,
             models.Booking.end_time > booking.start_time,
@@ -3104,7 +3134,8 @@ def list_bookings_for_customer(db: Session, customer_id: int):
         return []
 
     # Keep customer-facing booking statuses in sync with backend completion rules.
-    _auto_complete_finished_bookings(db, as_of=now_guyana())
+    now = now_guyana()
+    _auto_complete_finished_bookings(db, as_of=now)
 
     rows = (
         db.query(models.Booking, models.Service)
@@ -3158,10 +3189,12 @@ def list_bookings_for_customer(db: Session, customer_id: int):
                 start_time=booking.start_time,
                 end_time=booking.end_time,
                 status=normalized_booking_status_value(booking.status),
+                time_bucket=booking_time_bucket(booking.start_time, booking.end_time, now=now),
                 canceled_at=getattr(booking, "canceled_at", None),
                 completed_at=getattr(booking, "completed_at", None),
                 service_name=service.name if service else "",
                 service_duration_minutes=service.duration_minutes if service else 0,
+                service_duration_human=format_duration_human(service.duration_minutes if service else 0),
                 service_price_gyd=(
                     float(service.price_gyd or 0.0)
                     if service and service.price_gyd is not None
@@ -3486,7 +3519,7 @@ def _provider_has_booking_overlap(
             models.Service.provider_id == provider_id,
             models.Booking.start_time < end_at,
             models.Booking.end_time > start_at,
-            normalized_booking_status_expr() == "confirmed",
+            normalized_booking_status_expr().in_(BOOKING_TIME_BLOCKING_STATUSES),
         )
         .first()
         is not None
@@ -3783,17 +3816,19 @@ def get_provider_availability(
 
         is_today = (day_date == now.date())
 
-        # Get existing confirmed bookings for this provider on that day
+        # Get existing time blocks for this provider in a range that covers
+        # same-day and cross-day overlaps with long-duration appointments.
         normalized_status = normalized_booking_status_expr()
+        query_end = day_end + slot_duration
 
         bookings = (
             db.query(models.Booking)
             .join(models.Service, models.Booking.service_id == models.Service.id)
             .filter(
                 models.Service.provider_id == provider_id,
-                models.Booking.start_time < day_end,
+                models.Booking.start_time < query_end,
                 models.Booking.end_time > day_start,
-                normalized_status == "confirmed",
+                normalized_status.in_(BOOKING_TIME_BLOCKING_STATUSES),
             )
             .all()
         )
@@ -3802,7 +3837,7 @@ def get_provider_availability(
             db.query(models.ProviderBlockedTime)
             .filter(
                 models.ProviderBlockedTime.provider_id == provider_id,
-                models.ProviderBlockedTime.start_at < day_end,
+                models.ProviderBlockedTime.start_at < query_end,
                 models.ProviderBlockedTime.end_at > day_start,
             )
             .all()
@@ -3814,7 +3849,7 @@ def get_provider_availability(
         slot_start = day_start
         slots_for_day = []
 
-        while slot_start + slot_duration <= day_end:
+        while slot_start < day_end:
             slot_end = slot_start + slot_duration
 
             # For *today*, don't offer slots that start in the past
@@ -3870,9 +3905,9 @@ def list_todays_bookings_for_provider(db: Session, provider_id: int):
         .join(models.User, models.Booking.customer_id == models.User.id)
         .filter(
             models.Service.provider_id == provider_id,
-            normalized_status == "confirmed",
-            models.Booking.start_time >= start_of_day,
-            models.Booking.start_time <= end_of_day,
+            normalized_status.in_(BOOKING_TIME_BLOCKING_STATUSES),
+            models.Booking.start_time < end_of_day,
+            models.Booking.end_time > start_of_day,
             models.Booking.end_time > now,
         )
         .order_by(models.Booking.start_time)
@@ -3886,10 +3921,12 @@ def list_todays_bookings_for_provider(db: Session, provider_id: int):
                 start_time=booking.start_time,
                 end_time=booking.end_time,
                 status=normalized_booking_status_value(booking.status),
+                time_bucket=booking_time_bucket(booking.start_time, booking.end_time, now=now),
                 canceled_at=getattr(booking, "canceled_at", None),
                 completed_at=getattr(booking, "completed_at", None),
                 service_name=service.name,
                 service_duration_minutes=service.duration_minutes,
+                service_duration_human=format_duration_human(service.duration_minutes),
                 service_price_gyd=service.price_gyd or 0.0,
                 customer_name=get_display_name(customer),
                 customer_phone=customer.phone or "",
@@ -3913,6 +3950,7 @@ def list_upcoming_bookings_for_provider(
     start = end_of_today + timedelta(seconds=1)
     end = start + timedelta(days=days_ahead)
     normalized_status = normalized_booking_status_expr()
+    now = now_guyana()
 
     q = (
       db.query(models.Booking, models.Service, models.User)
@@ -3920,7 +3958,7 @@ def list_upcoming_bookings_for_provider(
       .join(models.User, models.Booking.customer_id == models.User.id)
       .filter(
           models.Service.provider_id == provider_id,
-          normalized_status == "confirmed",
+          normalized_status.in_(BOOKING_TIME_BLOCKING_STATUSES),
           models.Booking.start_time > end_of_today,
           models.Booking.start_time < end,
       )
@@ -3935,10 +3973,12 @@ def list_upcoming_bookings_for_provider(
                 start_time=booking.start_time,
                 end_time=booking.end_time,
                 status=normalized_booking_status_value(booking.status),
+                time_bucket=booking_time_bucket(booking.start_time, booking.end_time, now=now),
                 canceled_at=None,
                 completed_at=None,
                 service_name=service.name,
                 service_duration_minutes=service.duration_minutes,
+                service_duration_human=format_duration_human(service.duration_minutes),
                 service_price_gyd=service.price_gyd or 0.0,
                 customer_name=get_display_name(customer),
                 customer_phone=customer.phone or "",
