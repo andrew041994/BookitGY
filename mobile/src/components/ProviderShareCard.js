@@ -34,27 +34,30 @@ export default function ProviderShareCard({
         style={styles.glassHighlight}
       />
       <View style={styles.topRow}>
-        {avatarUrl ? (
-          <Image source={{ uri: avatarUrl }} style={styles.avatar} />
-        ) : (
-          <View style={styles.avatarFallback}>
-            <Text style={styles.avatarInitial}>{safeUsername.charAt(0).toUpperCase()}</Text>
-          </View>
-        )}
-        <Text numberOfLines={1} style={styles.rating}>⭐️ {normalizedRating}</Text>
-      </View>
-
-      <View style={styles.mainContent}>
-        {brandingSource ? <Image source={brandingSource} style={styles.logo} resizeMode="contain" /> : null}
-        <View style={styles.identityBlock}>
-          <Text numberOfLines={1} ellipsizeMode="tail" style={styles.username}>
-            {safeUsername}
-          </Text>
-          <Text numberOfLines={2} ellipsizeMode="tail" style={styles.professions}>{professionText}</Text>
+        <View style={styles.topLeft}>
+          {avatarUrl ? (
+            <Image source={{ uri: avatarUrl }} style={styles.avatar} />
+          ) : (
+            <View style={styles.avatarFallback}>
+              <Text style={styles.avatarInitial}>{safeUsername.charAt(0).toUpperCase()}</Text>
+            </View>
+          )}
+        </View>
+        <View style={styles.topRight}>
+          <Text numberOfLines={1} style={styles.rating}>⭐️ {normalizedRating}</Text>
         </View>
       </View>
 
+      <View style={styles.middleSection}>
+        {brandingSource ? <Image source={brandingSource} style={styles.logo} resizeMode="contain" /> : null}
+        <Text numberOfLines={1} ellipsizeMode="tail" style={styles.username}>
+          {safeUsername}
+        </Text>
+        <Text numberOfLines={2} ellipsizeMode="tail" style={styles.professions}>{professionText}</Text>
+      </View>
+
       <View style={styles.footer}>
+        <View style={styles.divider} />
         <Text numberOfLines={2} ellipsizeMode="tail" style={styles.cta}>Download BookitGY to schedule an appointment</Text>
       </View>
     </View>
@@ -91,12 +94,18 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     alignItems: "flex-start",
   },
-  mainContent: {
+  topLeft: {
+    alignSelf: "flex-start",
+  },
+  topRight: {
+    alignSelf: "flex-start",
+  },
+  middleSection: {
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
-    paddingTop: 4,
-    paddingBottom: 6,
+    paddingTop: 8,
+    paddingBottom: 10,
   },
   avatar: {
     width: 80,
@@ -120,17 +129,14 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     fontSize: 30,
   },
-  identityBlock: {
-    alignItems: "center",
-    marginTop: 6,
-    width: "100%",
-    paddingHorizontal: 8,
-  },
   username: {
     color: "#FFFFFF",
     fontSize: 20,
     fontWeight: "700",
     textAlign: "center",
+    marginTop: 8,
+    width: "100%",
+    paddingHorizontal: 8,
   },
   rating: {
     color: "#FFD700",
@@ -144,12 +150,18 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 19,
     textAlign: "center",
+    width: "100%",
+    paddingHorizontal: 10,
   },
   footer: {
-    borderTopWidth: 1,
-    borderTopColor: "rgba(255,255,255,0.15)",
-    paddingTop: 10,
+    paddingTop: 2,
     alignItems: "center",
+  },
+  divider: {
+    width: "100%",
+    height: 1,
+    backgroundColor: "rgba(255,255,255,0.15)",
+    marginBottom: 10,
   },
   cta: {
     color: "#E6EDF6",
