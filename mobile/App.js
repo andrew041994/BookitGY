@@ -2552,7 +2552,12 @@ function ProfileScreen({ authLoading, setToken, showFlash, token }) {
       setSharingProviderCard(true);
       setShareCardVisible(true);
 
-      await new Promise((resolve) => setTimeout(resolve, 180));
+      await new Promise((resolve) => {
+        requestAnimationFrame(() => {
+          requestAnimationFrame(resolve);
+        });
+      });
+      await new Promise((resolve) => setTimeout(resolve, 650));
 
       if (!providerShareCardRef.current) {
         showFlash?.("error", "Sharing is not available in this build yet.");

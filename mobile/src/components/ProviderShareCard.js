@@ -33,8 +33,9 @@ export default function ProviderShareCard({
         end={{ x: 0, y: 0.65 }}
         style={styles.glassHighlight}
       />
-      <View style={styles.topRow}>
-        <View style={styles.topLeft}>
+      <View style={styles.contentWrap}>
+        <View style={styles.topRow}>
+          <View style={styles.topLeft}>
           {avatarUrl ? (
             <Image source={{ uri: avatarUrl }} style={styles.avatar} />
           ) : (
@@ -42,23 +43,24 @@ export default function ProviderShareCard({
               <Text style={styles.avatarInitial}>{safeUsername.charAt(0).toUpperCase()}</Text>
             </View>
           )}
+          </View>
+          <View style={styles.topRight}>
+            <Text numberOfLines={1} style={styles.rating}>⭐️ {normalizedRating}</Text>
+          </View>
         </View>
-        <View style={styles.topRight}>
-          <Text numberOfLines={1} style={styles.rating}>⭐️ {normalizedRating}</Text>
+
+        <View style={styles.middleSection}>
+          {brandingSource ? <Image source={brandingSource} style={styles.logo} resizeMode="contain" /> : null}
+          <Text numberOfLines={1} ellipsizeMode="tail" style={styles.username}>
+            {safeUsername}
+          </Text>
+          <Text numberOfLines={2} ellipsizeMode="tail" style={styles.professions}>{professionText}</Text>
         </View>
-      </View>
 
-      <View style={styles.middleSection}>
-        {brandingSource ? <Image source={brandingSource} style={styles.logo} resizeMode="contain" /> : null}
-        <Text numberOfLines={1} ellipsizeMode="tail" style={styles.username}>
-          {safeUsername}
-        </Text>
-        <Text numberOfLines={2} ellipsizeMode="tail" style={styles.professions}>{professionText}</Text>
-      </View>
-
-      <View style={styles.footer}>
-        <View style={styles.divider} />
-        <Text numberOfLines={2} ellipsizeMode="tail" style={styles.cta}>Download BookitGY to schedule an appointment</Text>
+        <View style={styles.footer}>
+          <View style={styles.divider} />
+          <Text numberOfLines={2} ellipsizeMode="tail" style={styles.cta}>Download BookitGY to schedule an appointment</Text>
+        </View>
       </View>
     </View>
   );
@@ -74,16 +76,20 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "rgba(77,163,255,0.45)",
     backgroundColor: "#121826",
-    paddingHorizontal: 18,
-    paddingVertical: 14,
+    paddingHorizontal: 20,
+    paddingTop: 14,
+    paddingBottom: 16,
     shadowColor: "#4DA3FF",
     shadowOpacity: 0.2,
     shadowRadius: 14,
     shadowOffset: { width: 0, height: 8 },
     elevation: 6,
-    justifyContent: "space-between",
     position: "relative",
     overflow: "hidden",
+  },
+  contentWrap: {
+    flex: 1,
+    justifyContent: "space-between",
   },
   glassHighlight: {
     ...StyleSheet.absoluteFillObject,
@@ -92,20 +98,27 @@ const styles = StyleSheet.create({
   topRow: {
     flexDirection: "row",
     justifyContent: "space-between",
-    alignItems: "flex-start",
+    alignItems: "center",
+    minHeight: 80,
   },
   topLeft: {
-    alignSelf: "flex-start",
+    width: 80,
+    alignItems: "flex-start",
+    justifyContent: "flex-start",
   },
   topRight: {
-    alignSelf: "flex-start",
+    minWidth: 96,
+    alignItems: "flex-end",
+    justifyContent: "flex-start",
   },
   middleSection: {
-    flex: 1,
+    flexGrow: 1,
+    flexShrink: 0,
     justifyContent: "center",
     alignItems: "center",
-    paddingTop: 8,
-    paddingBottom: 10,
+    paddingTop: 10,
+    paddingBottom: 12,
+    minHeight: 132,
   },
   avatar: {
     width: 80,
@@ -131,31 +144,32 @@ const styles = StyleSheet.create({
   },
   username: {
     color: "#FFFFFF",
-    fontSize: 20,
+    fontSize: 21,
     fontWeight: "700",
     textAlign: "center",
-    marginTop: 8,
+    marginTop: 10,
     width: "100%",
-    paddingHorizontal: 8,
+    paddingHorizontal: 16,
   },
   rating: {
     color: "#FFD700",
     fontWeight: "700",
     fontSize: 18,
-    marginTop: 8,
   },
   professions: {
-    marginTop: 6,
+    marginTop: 8,
     color: "#C9D4E3",
-    fontSize: 14,
+    fontSize: 15,
     lineHeight: 19,
     textAlign: "center",
     width: "100%",
-    paddingHorizontal: 10,
+    paddingHorizontal: 18,
   },
   footer: {
+    minHeight: 62,
     paddingTop: 2,
     alignItems: "center",
+    justifyContent: "flex-end",
   },
   divider: {
     width: "100%",
@@ -168,12 +182,12 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 18,
     fontWeight: "600",
-    width: "94%",
+    width: "96%",
     textAlign: "center",
   },
   logo: {
-    width: 160,
-    height: 48,
+    width: 190,
+    height: 58,
     opacity: 0.88,
   },
 });
