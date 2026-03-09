@@ -1,9 +1,9 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
 diff --git a/mobile/src/components/ProviderShareCard.js b/mobile/src/components/ProviderShareCard.js
-index 2990fa8f51d35c596d0fa53ec96a9cafbb101164..0dca357c02711db7aab635a097bf95d794214297 100644
+index 0dca357c02711db7aab635a097bf95d794214297..68950ddf52625c60dd553b474f0d6786816d7243 100644
 --- a/mobile/src/components/ProviderShareCard.js
 +++ b/mobile/src/components/ProviderShareCard.js
-@@ -1,69 +1,73 @@
+@@ -1,102 +1,102 @@
  import React from "react";
  import { Image, StyleSheet, Text, View } from "react-native";
  import { theme } from "../theme";
@@ -14,7 +14,8 @@ index 2990fa8f51d35c596d0fa53ec96a9cafbb101164..0dca357c02711db7aab635a097bf95d7
    avatarUrl,
    username,
    professions = [],
-   ratingLabel,
+-  ratingLabel,
++  ratingText,
    brandingSource,
  }) {
    const safeUsername = String(username || "@bookitgy_provider").trim();
@@ -26,8 +27,9 @@ index 2990fa8f51d35c596d0fa53ec96a9cafbb101164..0dca357c02711db7aab635a097bf95d7
    const professionText = normalizedProfessions.length
      ? normalizedProfessions.join(" • ")
      : "BookitGY Provider";
-+  const normalizedRating = String(ratingLabel || "").trim();
-+  const ratingText = normalizedRating ? `★ ${normalizedRating}` : "★ New Provider";
+-  const normalizedRating = String(ratingLabel || "").trim();
+-  const ratingText = normalizedRating ? `★ ${normalizedRating}` : "★ New Provider";
++  const normalizedRating = String(ratingText || "").trim() || "★ New Provider";
  
    return (
      <View style={styles.card}>
@@ -46,16 +48,13 @@ index 2990fa8f51d35c596d0fa53ec96a9cafbb101164..0dca357c02711db7aab635a097bf95d7
          )}
  
          <View style={styles.contentCol}>
--          <Text numberOfLines={1} ellipsizeMode="tail" style={styles.username}>
--            @{safeUsername.replace(/^@/, "")}
--          </Text>
--          <Text numberOfLines={1} style={styles.rating}>{ratingLabel || "★ New on BookitGY"}</Text>
-+          <View style={styles.identityRow}>
-+            <Text numberOfLines={1} ellipsizeMode="tail" style={styles.username}>
-+              @{safeUsername.replace(/^@/, "")}
-+            </Text>
-+            <Text numberOfLines={1} style={styles.rating}>{ratingText}</Text>
-+          </View>
+           <View style={styles.identityRow}>
+             <Text numberOfLines={1} ellipsizeMode="tail" style={styles.username}>
+               @{safeUsername.replace(/^@/, "")}
+             </Text>
+-            <Text numberOfLines={1} style={styles.rating}>{ratingText}</Text>
++            <Text numberOfLines={1} style={styles.rating}>{normalizedRating}</Text>
+           </View>
            <Text numberOfLines={2} ellipsizeMode="tail" style={styles.professions}>{professionText}</Text>
          </View>
        </View>
@@ -81,47 +80,51 @@ index 2990fa8f51d35c596d0fa53ec96a9cafbb101164..0dca357c02711db7aab635a097bf95d7
      paddingHorizontal: 18,
      paddingVertical: 14,
      shadowColor: "#4DA3FF",
-@@ -97,65 +101,71 @@ const styles = StyleSheet.create({
-     width: 80,
-     height: 80,
-     borderRadius: 40,
-     borderWidth: 2,
-     borderColor: "rgba(255,255,255,0.35)",
+     shadowOpacity: 0.2,
+     shadowRadius: 14,
+     shadowOffset: { width: 0, height: 8 },
+     elevation: 6,
++    justifyContent: "space-between",
    },
-   avatarFallback: {
-     width: 80,
-     height: 80,
-     borderRadius: 40,
-     backgroundColor: "#202B45",
+   brandRow: {
+     flexDirection: "row",
+     justifyContent: "space-between",
      alignItems: "center",
-     justifyContent: "center",
-     borderWidth: 2,
-     borderColor: "rgba(255,255,255,0.35)",
+     marginBottom: 12,
    },
-   avatarInitial: {
+   brandName: {
      color: colors.text,
+     fontSize: 18,
      fontWeight: "700",
-     fontSize: 30,
+     letterSpacing: 0.5,
    },
-   contentCol: {
+   brandMeta: {
+     color: colors.textSecondary,
+     fontSize: 12,
+   },
+   profileContent: {
+     flexDirection: "row",
+     alignItems: "center",
      flex: 1,
-     marginLeft: 14,
    },
-+  identityRow: {
-+    flexDirection: "row",
-+    alignItems: "center",
-+    minWidth: 0,
-+  },
+   avatar: {
+     width: 80,
+     height: 80,
+@@ -125,47 +125,46 @@ const styles = StyleSheet.create({
+   },
+   identityRow: {
+     flexDirection: "row",
+     alignItems: "center",
+     minWidth: 0,
+   },
    username: {
      color: colors.text,
--    fontSize: 22,
-+    fontSize: 20,
+     fontSize: 20,
      fontWeight: "700",
-+    flex: 1,
-+    marginRight: 10,
+     flex: 1,
+     marginRight: 10,
    },
    rating: {
--    marginTop: 4,
      color: "#F4D03F",
      fontWeight: "600",
      fontSize: 14,
@@ -133,8 +136,7 @@ index 2990fa8f51d35c596d0fa53ec96a9cafbb101164..0dca357c02711db7aab635a097bf95d7
      lineHeight: 19,
    },
    footer: {
--    marginTop: 12,
-+    marginTop: "auto",
+-    marginTop: "auto",
      borderTopWidth: 1,
      borderTopColor: "rgba(255,255,255,0.12)",
      paddingTop: 10,

@@ -8,7 +8,7 @@ export default function ProviderShareCard({
   avatarUrl,
   username,
   professions = [],
-  ratingLabel,
+  ratingText,
   brandingSource,
 }) {
   const safeUsername = String(username || "@bookitgy_provider").trim();
@@ -20,8 +20,7 @@ export default function ProviderShareCard({
   const professionText = normalizedProfessions.length
     ? normalizedProfessions.join(" • ")
     : "BookitGY Provider";
-  const normalizedRating = String(ratingLabel || "").trim();
-  const ratingText = normalizedRating ? `★ ${normalizedRating}` : "★ New Provider";
+  const normalizedRating = String(ratingText || "").trim() || "★ New Provider";
 
   return (
     <View style={styles.card}>
@@ -44,7 +43,7 @@ export default function ProviderShareCard({
             <Text numberOfLines={1} ellipsizeMode="tail" style={styles.username}>
               @{safeUsername.replace(/^@/, "")}
             </Text>
-            <Text numberOfLines={1} style={styles.rating}>{ratingText}</Text>
+            <Text numberOfLines={1} style={styles.rating}>{normalizedRating}</Text>
           </View>
           <Text numberOfLines={2} ellipsizeMode="tail" style={styles.professions}>{professionText}</Text>
         </View>
@@ -75,6 +74,7 @@ const styles = StyleSheet.create({
     shadowRadius: 14,
     shadowOffset: { width: 0, height: 8 },
     elevation: 6,
+    justifyContent: "space-between",
   },
   brandRow: {
     flexDirection: "row",
@@ -147,7 +147,6 @@ const styles = StyleSheet.create({
     lineHeight: 19,
   },
   footer: {
-    marginTop: "auto",
     borderTopWidth: 1,
     borderTopColor: "rgba(255,255,255,0.12)",
     paddingTop: 10,
