@@ -2534,7 +2534,7 @@ function ProfileScreen({ authLoading, setToken, showFlash, token }) {
         format: "png",
         quality: 1,
         width: 1080,
-        height: 1350,
+        height: 640,
       });
 
       await Share.share({
@@ -11989,7 +11989,7 @@ cardHeartButton: {
   },
   providerShareCaptureCardWrap: {
     width: 1080,
-    minHeight: 1350,
+    minHeight: 640,
     padding: 40,
     backgroundColor: colors.background,
   },

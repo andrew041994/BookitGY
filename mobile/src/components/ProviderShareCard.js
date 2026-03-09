@@ -12,8 +12,13 @@ export default function ProviderShareCard({
   brandingSource,
 }) {
   const safeUsername = String(username || "@bookitgy_provider").trim();
-  const professionText = Array.isArray(professions) && professions.length
-    ? professions.join(" • ")
+  const normalizedProfessions = Array.isArray(professions)
+    ? professions
+        .map((value) => String(value || "").trim())
+        .filter(Boolean)
+    : [];
+  const professionText = normalizedProfessions.length
+    ? normalizedProfessions.join(" • ")
     : "BookitGY Provider";
 
   return (
@@ -32,9 +37,13 @@ export default function ProviderShareCard({
           </View>
         )}
 
-        <Text numberOfLines={2} style={styles.username}>@{safeUsername.replace(/^@/, "")}</Text>
-        <Text numberOfLines={1} style={styles.rating}>{ratingLabel || "★ New on BookitGY"}</Text>
-        <Text numberOfLines={2} style={styles.professions}>{professionText}</Text>
+        <View style={styles.contentCol}>
+          <Text numberOfLines={1} ellipsizeMode="tail" style={styles.username}>
+            @{safeUsername.replace(/^@/, "")}
+          </Text>
+          <Text numberOfLines={1} style={styles.rating}>{ratingLabel || "★ New on BookitGY"}</Text>
+          <Text numberOfLines={2} ellipsizeMode="tail" style={styles.professions}>{professionText}</Text>
+        </View>
       </View>
 
       <View style={styles.footer}>
@@ -48,13 +57,13 @@ export default function ProviderShareCard({
 const styles = StyleSheet.create({
   card: {
     width: "100%",
-    minHeight: 620,
+    minHeight: 210,
     borderRadius: 22,
     borderWidth: 1,
     borderColor: "rgba(77,163,255,0.45)",
     backgroundColor: "#121826",
-    paddingHorizontal: 42,
-    paddingVertical: 36,
+    paddingHorizontal: 18,
+    paddingVertical: 14,
     shadowColor: "#4DA3FF",
     shadowOpacity: 0.2,
     shadowRadius: 14,
@@ -65,34 +74,33 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 28,
+    marginBottom: 12,
   },
   brandName: {
     color: colors.text,
-    fontSize: 28,
+    fontSize: 18,
     fontWeight: "700",
-    letterSpacing: 0.8,
+    letterSpacing: 0.5,
   },
   brandMeta: {
     color: colors.textSecondary,
-    fontSize: 18,
+    fontSize: 12,
   },
   profileContent: {
-    flex: 1,
+    flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
   },
   avatar: {
-    width: 170,
-    height: 170,
-    borderRadius: 85,
+    width: 80,
+    height: 80,
+    borderRadius: 40,
     borderWidth: 2,
     borderColor: "rgba(255,255,255,0.35)",
   },
   avatarFallback: {
-    width: 170,
-    height: 170,
-    borderRadius: 85,
+    width: 80,
+    height: 80,
+    borderRadius: 40,
     backgroundColor: "#202B45",
     alignItems: "center",
     justifyContent: "center",
@@ -102,34 +110,34 @@ const styles = StyleSheet.create({
   avatarInitial: {
     color: colors.text,
     fontWeight: "700",
-    fontSize: 58,
+    fontSize: 30,
+  },
+  contentCol: {
+    flex: 1,
+    marginLeft: 14,
   },
   username: {
-    marginTop: 24,
     color: colors.text,
-    fontSize: 56,
+    fontSize: 22,
     fontWeight: "700",
-    textAlign: "center",
   },
   rating: {
-    marginTop: 12,
+    marginTop: 4,
     color: "#F4D03F",
     fontWeight: "600",
-    fontSize: 28,
+    fontSize: 14,
   },
   professions: {
-    marginTop: 14,
+    marginTop: 6,
     color: colors.textSecondary,
-    fontSize: 30,
-    lineHeight: 40,
-    textAlign: "center",
-    maxWidth: "90%",
+    fontSize: 14,
+    lineHeight: 19,
   },
   footer: {
-    marginTop: 28,
+    marginTop: 12,
     borderTopWidth: 1,
     borderTopColor: "rgba(255,255,255,0.12)",
-    paddingTop: 20,
+    paddingTop: 10,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
@@ -137,14 +145,14 @@ const styles = StyleSheet.create({
   },
   cta: {
     color: colors.text,
-    fontSize: 26,
-    lineHeight: 34,
+    fontSize: 13,
+    lineHeight: 18,
     fontWeight: "600",
     flex: 1,
   },
   logo: {
-    width: 120,
-    height: 52,
+    width: 78,
+    height: 28,
     opacity: 0.82,
   },
 });

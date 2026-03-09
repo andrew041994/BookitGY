@@ -1,9 +1,9 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
 diff --git a/mobile/src/components/ProviderShareCard.js b/mobile/src/components/ProviderShareCard.js
-index 49592a0ac4a0524b89b74b93cca17704c594ebb6..7b7ecdf06843c535677823c8b64b94c8bd7936a8 100644
+index 7b7ecdf06843c535677823c8b64b94c8bd7936a8..8d7190d5e095df4ce8086c0e04e652dd23ffe81d 100644
 --- a/mobile/src/components/ProviderShareCard.js
 +++ b/mobile/src/components/ProviderShareCard.js
-@@ -1,147 +1,150 @@
+@@ -1,150 +1,158 @@
  import React from "react";
  import { Image, StyleSheet, Text, View } from "react-native";
  import { theme } from "../theme";
@@ -18,8 +18,15 @@ index 49592a0ac4a0524b89b74b93cca17704c594ebb6..7b7ecdf06843c535677823c8b64b94c8
    brandingSource,
  }) {
    const safeUsername = String(username || "@bookitgy_provider").trim();
-   const professionText = Array.isArray(professions) && professions.length
-     ? professions.join(" • ")
+-  const professionText = Array.isArray(professions) && professions.length
+-    ? professions.join(" • ")
++  const normalizedProfessions = Array.isArray(professions)
++    ? professions
++        .map((value) => String(value || "").trim())
++        .filter(Boolean)
++    : [];
++  const professionText = normalizedProfessions.length
++    ? normalizedProfessions.join(" • ")
      : "BookitGY Provider";
  
    return (
@@ -29,8 +36,7 @@ index 49592a0ac4a0524b89b74b93cca17704c594ebb6..7b7ecdf06843c535677823c8b64b94c8
          <Text style={styles.brandMeta}>Provider Card</Text>
        </View>
  
--      <View style={styles.profileRow}>
-+      <View style={styles.profileContent}>
+       <View style={styles.profileContent}>
          {avatarUrl ? (
            <Image source={{ uri: avatarUrl }} style={styles.avatar} />
          ) : (
@@ -39,19 +45,20 @@ index 49592a0ac4a0524b89b74b93cca17704c594ebb6..7b7ecdf06843c535677823c8b64b94c8
            </View>
          )}
  
--        <View style={styles.profileTextWrap}>
--          <Text numberOfLines={2} style={styles.username}>@{safeUsername.replace(/^@/, "")}</Text>
--          <Text numberOfLines={2} style={styles.rating}>{ratingLabel || "★ New on BookitGY"}</Text>
--          <Text style={styles.professions}>{professionText}</Text>
--        </View>
-+        <Text numberOfLines={2} style={styles.username}>@{safeUsername.replace(/^@/, "")}</Text>
-+        <Text numberOfLines={1} style={styles.rating}>{ratingLabel || "★ New on BookitGY"}</Text>
-+        <Text numberOfLines={2} style={styles.professions}>{professionText}</Text>
+-        <Text numberOfLines={2} style={styles.username}>@{safeUsername.replace(/^@/, "")}</Text>
+-        <Text numberOfLines={1} style={styles.rating}>{ratingLabel || "★ New on BookitGY"}</Text>
+-        <Text numberOfLines={2} style={styles.professions}>{professionText}</Text>
++        <View style={styles.contentCol}>
++          <Text numberOfLines={1} ellipsizeMode="tail" style={styles.username}>
++            @{safeUsername.replace(/^@/, "")}
++          </Text>
++          <Text numberOfLines={1} style={styles.rating}>{ratingLabel || "★ New on BookitGY"}</Text>
++          <Text numberOfLines={2} ellipsizeMode="tail" style={styles.professions}>{professionText}</Text>
++        </View>
        </View>
  
        <View style={styles.footer}>
--        <Text style={styles.cta}>Download BookitGY to schedule your appointment</Text>
-+        <Text style={styles.cta}>Download BookitGY to schedule an appointment</Text>
+         <Text style={styles.cta}>Download BookitGY to schedule an appointment</Text>
          {brandingSource ? <Image source={brandingSource} style={styles.logo} resizeMode="contain" /> : null}
        </View>
      </View>
@@ -61,14 +68,16 @@ index 49592a0ac4a0524b89b74b93cca17704c594ebb6..7b7ecdf06843c535677823c8b64b94c8
  const styles = StyleSheet.create({
    card: {
      width: "100%",
-+    minHeight: 620,
+-    minHeight: 620,
++    minHeight: 210,
      borderRadius: 22,
      borderWidth: 1,
      borderColor: "rgba(77,163,255,0.45)",
      backgroundColor: "#121826",
--    padding: 16,
-+    paddingHorizontal: 42,
-+    paddingVertical: 36,
+-    paddingHorizontal: 42,
+-    paddingVertical: 36,
++    paddingHorizontal: 18,
++    paddingVertical: 14,
      shadowColor: "#4DA3FF",
      shadowOpacity: 0.2,
      shadowRadius: 14,
@@ -79,121 +88,115 @@ index 49592a0ac4a0524b89b74b93cca17704c594ebb6..7b7ecdf06843c535677823c8b64b94c8
      flexDirection: "row",
      justifyContent: "space-between",
      alignItems: "center",
--    marginBottom: 14,
-+    marginBottom: 28,
+-    marginBottom: 28,
++    marginBottom: 12,
    },
    brandName: {
      color: colors.text,
-+    fontSize: 28,
+-    fontSize: 28,
++    fontSize: 18,
      fontWeight: "700",
--    letterSpacing: 0.5,
-+    letterSpacing: 0.8,
+-    letterSpacing: 0.8,
++    letterSpacing: 0.5,
    },
    brandMeta: {
      color: colors.textSecondary,
--    fontSize: 12,
-+    fontSize: 18,
+-    fontSize: 18,
++    fontSize: 12,
    },
--  profileRow: {
--    flexDirection: "row",
--    alignItems: "flex-start",
-+  profileContent: {
-+    flex: 1,
-+    alignItems: "center",
-+    justifyContent: "center",
+   profileContent: {
+-    flex: 1,
++    flexDirection: "row",
+     alignItems: "center",
+-    justifyContent: "center",
    },
    avatar: {
--    width: 74,
--    height: 74,
--    borderRadius: 37,
--    borderWidth: 1,
--    borderColor: "rgba(255,255,255,0.25)",
-+    width: 170,
-+    height: 170,
-+    borderRadius: 85,
-+    borderWidth: 2,
-+    borderColor: "rgba(255,255,255,0.35)",
+-    width: 170,
+-    height: 170,
+-    borderRadius: 85,
++    width: 80,
++    height: 80,
++    borderRadius: 40,
+     borderWidth: 2,
+     borderColor: "rgba(255,255,255,0.35)",
    },
    avatarFallback: {
--    width: 74,
--    height: 74,
--    borderRadius: 37,
-+    width: 170,
-+    height: 170,
-+    borderRadius: 85,
+-    width: 170,
+-    height: 170,
+-    borderRadius: 85,
++    width: 80,
++    height: 80,
++    borderRadius: 40,
      backgroundColor: "#202B45",
      alignItems: "center",
      justifyContent: "center",
--    borderWidth: 1,
--    borderColor: "rgba(255,255,255,0.25)",
-+    borderWidth: 2,
-+    borderColor: "rgba(255,255,255,0.35)",
+     borderWidth: 2,
+     borderColor: "rgba(255,255,255,0.35)",
    },
    avatarInitial: {
      color: colors.text,
      fontWeight: "700",
--    fontSize: 26,
--  },
--  profileTextWrap: {
--    flex: 1,
--    marginLeft: 12,
--    minWidth: 0,
-+    fontSize: 58,
+-    fontSize: 58,
++    fontSize: 30,
++  },
++  contentCol: {
++    flex: 1,
++    marginLeft: 14,
    },
    username: {
-+    marginTop: 24,
+-    marginTop: 24,
      color: colors.text,
--    fontSize: 21,
-+    fontSize: 56,
+-    fontSize: 56,
++    fontSize: 22,
      fontWeight: "700",
-+    textAlign: "center",
+-    textAlign: "center",
    },
    rating: {
--    marginTop: 2,
-+    marginTop: 12,
+-    marginTop: 12,
++    marginTop: 4,
      color: "#F4D03F",
      fontWeight: "600",
-+    fontSize: 28,
+-    fontSize: 28,
++    fontSize: 14,
    },
    professions: {
--    marginTop: 8,
-+    marginTop: 14,
+-    marginTop: 14,
++    marginTop: 6,
      color: colors.textSecondary,
--    lineHeight: 20,
-+    fontSize: 30,
-+    lineHeight: 40,
-+    textAlign: "center",
-+    maxWidth: "90%",
+-    fontSize: 30,
+-    lineHeight: 40,
+-    textAlign: "center",
+-    maxWidth: "90%",
++    fontSize: 14,
++    lineHeight: 19,
    },
    footer: {
--    marginTop: 16,
-+    marginTop: 28,
+-    marginTop: 28,
++    marginTop: 12,
      borderTopWidth: 1,
      borderTopColor: "rgba(255,255,255,0.12)",
--    paddingTop: 10,
-+    paddingTop: 20,
+-    paddingTop: 20,
++    paddingTop: 10,
      flexDirection: "row",
      alignItems: "center",
      justifyContent: "space-between",
--    gap: 8,
-+    gap: 16,
+     gap: 16,
    },
    cta: {
      color: colors.text,
--    fontSize: 12,
--    lineHeight: 16,
-+    fontSize: 26,
-+    lineHeight: 34,
+-    fontSize: 26,
+-    lineHeight: 34,
++    fontSize: 13,
++    lineHeight: 18,
      fontWeight: "600",
      flex: 1,
    },
    logo: {
--    width: 56,
--    height: 24,
--    opacity: 0.9,
-+    width: 120,
-+    height: 52,
-+    opacity: 0.82,
+-    width: 120,
+-    height: 52,
++    width: 78,
++    height: 28,
+     opacity: 0.82,
    },
  });
  
