@@ -1,55 +1,376 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
-diff --git a/mobile/src/utils/duration.js b/mobile/src/utils/duration.js
-new file mode 100644
-index 0000000000000000000000000000000000000000..beafe48d90b2f32c11ae4d1f9a20d860fb10acab
---- /dev/null
-+++ b/mobile/src/utils/duration.js
-@@ -0,0 +1,45 @@
-+export const minutesToDurationParts = (totalMinutes) => {
-+  const safeMinutes = Number.isFinite(Number(totalMinutes))
-+    ? Math.max(0, Math.floor(Number(totalMinutes)))
-+    : 0;
-+  const days = Math.floor(safeMinutes / 1440);
-+  const hours = Math.floor((safeMinutes % 1440) / 60);
-+  const minutes = safeMinutes % 60;
-+  return { days, hours, minutes };
+diff --git a/mobile/App.js b/mobile/App.js
+index 9247626b50f0ce6df44e37dafc643911ee09dcee..fb7c6407031fc87843f0d9648f9489ee1cec1ea8 100644
+--- a/mobile/App.js
++++ b/mobile/App.js
+@@ -269,50 +269,134 @@ const normalizeSearchValue = (value) =>
+     .toLowerCase();
+ 
+ const resolveImageUrl = (url) => {
+     if (!url || typeof url !== "string") return null;
+     if (url.startsWith("http")) return url;
+     if (url.startsWith("//")) return `https:${url}`;
+     const normalizedPath = url.startsWith("/") ? url : `/${url}`;
+     return `${API}${normalizedPath}`;
+   };
+ 
+ const toNum = (value) => {
+   const n = typeof value === "string" ? parseFloat(value) : value;
+   return Number.isFinite(n) ? n : null;
+ };
+ 
+ function formatTimeRange(start, end) {
+   if (!(start instanceof Date) || Number.isNaN(start.getTime())) return "--:--";
+   const fmt = (d) =>
+     d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }).replace(" ", "");
+   if (end instanceof Date && !Number.isNaN(end.getTime())) {
+     return `${fmt(start)} – ${fmt(end)}`;
+   }
+   return `${fmt(start)} – --:--`;
+ }
+ 
++const GUYANA_TIME_ZONE = "America/Guyana";
++const GUYANA_LOCALE = "en-US";
++
++const isSameGuyanaCalendarDay = (start, end) => {
++  if (!(start instanceof Date) || Number.isNaN(start.getTime())) return false;
++  if (!(end instanceof Date) || Number.isNaN(end.getTime())) return false;
++
++  const keyOptions = {
++    year: "numeric",
++    month: "2-digit",
++    day: "2-digit",
++    timeZone: GUYANA_TIME_ZONE,
++  };
++
++  return (
++    start.toLocaleDateString(GUYANA_LOCALE, keyOptions) ===
++    end.toLocaleDateString(GUYANA_LOCALE, keyOptions)
++  );
 +};
 +
-+export const durationPartsToMinutes = ({ days = 0, hours = 0, minutes = 0 } = {}) => {
-+  const safeDays = Math.max(0, Math.floor(Number(days) || 0));
-+  const safeHours = Math.max(0, Math.floor(Number(hours) || 0));
-+  const safeMinutes = Math.max(0, Math.floor(Number(minutes) || 0));
-+  return safeDays * 1440 + safeHours * 60 + safeMinutes;
-+};
-+
-+export const validateDurationParts = ({ days = 0, hours = 0, minutes = 0 } = {}) => {
-+  const values = { days: Number(days), hours: Number(hours), minutes: Number(minutes) };
-+
-+  if ([values.days, values.hours, values.minutes].some((value) => Number.isNaN(value))) {
-+    return "Duration fields must be numeric.";
++const formatProviderAppointmentSpan = (start, end) => {
++  if (!(start instanceof Date) || Number.isNaN(start.getTime())) {
++    return {
++      isSameDay: true,
++      compactLabel: "--:--",
++      startLabel: "Starts: --",
++      endLabel: "Ends: --",
++    };
 +  }
 +
-+  if (values.days < 0 || values.hours < 0 || values.minutes < 0) {
-+    return "Duration values cannot be negative.";
++  const timeLabel = (value) =>
++    value.toLocaleTimeString(GUYANA_LOCALE, {
++      hour: "numeric",
++      minute: "2-digit",
++      hour12: true,
++      timeZone: GUYANA_TIME_ZONE,
++    });
++
++  const shortDateLabel = (value) =>
++    value.toLocaleDateString(GUYANA_LOCALE, {
++      weekday: "short",
++      month: "short",
++      day: "numeric",
++      timeZone: GUYANA_TIME_ZONE,
++    });
++
++  const fullDateLabel = (value) =>
++    value.toLocaleDateString(GUYANA_LOCALE, {
++      weekday: "short",
++      month: "short",
++      day: "numeric",
++      year: "numeric",
++      timeZone: GUYANA_TIME_ZONE,
++    });
++
++  const hasEnd = end instanceof Date && !Number.isNaN(end.getTime());
++  const sameDay = hasEnd ? isSameGuyanaCalendarDay(start, end) : true;
++
++  if (hasEnd && sameDay) {
++    return {
++      isSameDay: true,
++      compactLabel: `${shortDateLabel(start)} · ${timeLabel(start)} – ${timeLabel(end)}`,
++      startLabel: null,
++      endLabel: null,
++    };
 +  }
 +
-+  if (durationPartsToMinutes(values) <= 0) {
-+    return "Enter a duration greater than 0.";
++  if (hasEnd) {
++    return {
++      isSameDay: false,
++      compactLabel: null,
++      startLabel: `Starts: ${fullDateLabel(start)} · ${timeLabel(start)}`,
++      endLabel: `Ends: ${fullDateLabel(end)} · ${timeLabel(end)}`,
++    };
 +  }
 +
-+  return "";
++  return {
++    isSameDay: true,
++    compactLabel: `${shortDateLabel(start)} · ${timeLabel(start)} – --:--`,
++    startLabel: null,
++    endLabel: null,
++  };
 +};
 +
-+export const formatDuration = (totalMinutes) => {
-+  const { days, hours, minutes } = minutesToDurationParts(totalMinutes);
-+  const chunks = [];
-+
-+  if (days) chunks.push(`${days} day${days === 1 ? "" : "s"}`);
-+  if (hours) chunks.push(`${hours} hr${hours === 1 ? "" : "s"}`);
-+  if (minutes || chunks.length === 0) chunks.push(`${minutes} min`);
-+
-+  return chunks.join(" ");
-+};
+ const getDistanceKm = (lat1, lon1, lat2, lon2) => {
+   if (lat1 == null || lon1 == null || lat2 == null || lon2 == null) {
+     return null;
+   }
+   const toRad = (value) => (value * Math.PI) / 180;
+   const R = 6371;
+   const dLat = toRad(lat2 - lat1);
+   const dLon = toRad(lon2 - lon1);
+   const a =
+     Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+     Math.cos(toRad(lat1)) *
+       Math.cos(toRad(lat2)) *
+       Math.sin(dLon / 2) *
+       Math.sin(dLon / 2);
+   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+   const distance = R * c;
+   return Number.isFinite(distance) ? distance : null;
+ };
+ 
+ function dedupeById(list) {
+   const map = new Map();
+   for (const item of list || []) {
+     const k = item?.id != null ? String(item.id) : null;
+     if (!k) continue;
+     map.set(k, item);
+@@ -6904,67 +6988,63 @@ const loadProviderSummary = async () => {
+           )}
+ 
+           {!todayLoading && todayError ? (
+             <Text style={styles.errorText}>{todayError}</Text>
+           ) : null}
+ 
+           {!todayLoading && !todayError && todayBookings.length === 0 && (
+             <>
+               <Text style={styles.value}>0 bookings</Text>
+               <Text style={styles.serviceMeta}>
+                 Once bookings are added, you’ll see your daily schedule here.
+               </Text>
+             </>
+           )}
+ 
+           {!todayLoading && !todayError && todayBookings.length > 0 && (
+             <>
+               <Text style={styles.value}>
+                 {todayBookings.length} booking
+                 {todayBookings.length > 1 ? "s" : ""}
+               </Text>
+ 
+               {todayBookings.map((b) => {
+                 const start = new Date(b.start_time);
+                 const end = new Date(b.end_time);
+-
+-                const formatTime = (dt) => {
+-                  const d = new Date(dt);
+-                  let h = d.getHours();
+-                  const m = d.getMinutes();
+-                  const suffix = h >= 12 ? "PM" : "AM";
+-                  h = h % 12 || 12;
+-                  const mm = m.toString().padStart(2, "0");
+-                  return `${h}:${mm} ${suffix}`;
+-                };
++                const appointmentSpan = formatProviderAppointmentSpan(start, end);
+ 
+                 return (
+                   <View key={b.id} style={styles.bookingRow}>
+                     <View style={styles.bookingMain}>
+-                      <Text style={styles.bookingTime}>
+-                        {formatTime(start)} – {formatTime(end)}
+-                      </Text>
++                      {appointmentSpan.isSameDay ? (
++                        <Text style={styles.bookingTime}>{appointmentSpan.compactLabel}</Text>
++                      ) : (
++                        <>
++                          <Text style={styles.bookingTime}>{appointmentSpan.startLabel}</Text>
++                          <Text style={styles.bookingTime}>{appointmentSpan.endLabel}</Text>
++                        </>
++                      )}
+                       <Text style={styles.bookingService}>{b.service_name}</Text>
+                       <Text style={styles.bookingMeta}>
+                         {b.customer_name} · {b.customer_phone}
+                       </Text>
+                     </View>
+ 
+                     <View style={styles.bookingActions}>
+                       {/* <TouchableOpacity onPress={() => handleEditBooking(b)}>
+                         <Text style={styles.bookingEdit}>Edit</Text>
+                       </TouchableOpacity> */}
+                       <TouchableOpacity
+                         onPress={() => handleCancelBooking(b.id)}
+                       >
+                         <Text style={styles.bookingCancel}>Cancel</Text>
+                       </TouchableOpacity>
+                       <TouchableOpacity
+                         style={styles.bookingMessageButton}
+                         onPress={() => setChatBooking(b)}
+                       >
+                         <Text style={styles.bookingEdit}>Message</Text>
+                       </TouchableOpacity>
+                     </View>
+                   </View>
+                 );
+               })}
+@@ -6982,73 +7062,63 @@ const loadProviderSummary = async () => {
+               <Text style={styles.serviceMeta}>
+                 Loading upcoming bookings…
+               </Text>
+             </View>
+           )}
+ 
+           {!upcomingLoading && upcomingError ? (
+             <Text style={styles.errorText}>{upcomingError}</Text>
+           ) : null}
+ 
+           {!upcomingLoading &&
+             !upcomingError &&
+             upcomingBookings.length === 0 && (
+               <Text style={styles.serviceMeta}>
+                 No upcoming bookings for the next few days.
+               </Text>
+             )}
+ 
+           {!upcomingLoading &&
+             !upcomingError &&
+             upcomingBookings.length > 0 && (
+               <>
+                 {upcomingBookings.map((b) => {
+                   const start = new Date(b.start_time);
+                   const end = new Date(b.end_time);
+-
+-                  const formatTime = (dt) => {
+-                    let h = dt.getHours();
+-                    const m = dt.getMinutes();
+-                    const suffix = h >= 12 ? "PM" : "AM";
+-                    h = h % 12 || 12;
+-                    return `${h}:${m.toString().padStart(2, "0")} ${suffix}`;
+-                  };
+-
+-                  const formatDate = (dt) =>
+-                    dt.toLocaleDateString("en-US", {
+-                      weekday: "short",
+-                      month: "short",
+-                      day: "numeric",
+-                    });
++                  const appointmentSpan = formatProviderAppointmentSpan(start, end);
+ 
+                   return (
+                     <View key={b.id} style={styles.bookingRow}>
+                       <View style={styles.bookingMain}>
+-                        <Text style={styles.bookingTime}>
+-                          {formatDate(start)} · {formatTime(start)} –{" "}
+-                          {formatTime(end)}
+-                        </Text>
++                        {appointmentSpan.isSameDay ? (
++                          <Text style={styles.bookingTime}>{appointmentSpan.compactLabel}</Text>
++                        ) : (
++                          <>
++                            <Text style={styles.bookingTime}>{appointmentSpan.startLabel}</Text>
++                            <Text style={styles.bookingTime}>{appointmentSpan.endLabel}</Text>
++                          </>
++                        )}
+                         <Text style={styles.bookingService}>
+                           {b.service_name}
+                         </Text>
+                         <Text style={styles.bookingMeta}>
+                           {b.customer_name} · {b.customer_phone}
+                         </Text>
+                       </View>
+ 
+                       <View style={styles.bookingActions}>
+                         {/* <TouchableOpacity onPress={() => handleEditBooking(b)}>
+                           <Text style={styles.bookingEdit}>Edit</Text>
+                         </TouchableOpacity> */}
+                         <TouchableOpacity
+                           onPress={() => handleCancelBooking(b.id)}
+                         >
+                           <Text style={styles.bookingCancel}>Cancel</Text>
+                         </TouchableOpacity>
+                         <TouchableOpacity
+                           style={styles.bookingMessageButton}
+                           onPress={() => setChatBooking(b)}
+                         >
+                           <Text style={styles.bookingEdit}>Message</Text>
+                         </TouchableOpacity>
+                       </View>
+                     </View>
+@@ -9024,63 +9094,70 @@ function ProviderCalendarScreen({ token, showFlash }) {
+       const status = getBookingStatusLabel(booking);
+       const statusThemeKey = getAppointmentStatusThemeKey(status?.type || status?.label);
+       const statusTheme = APPOINTMENT_STATUS_THEME[statusThemeKey];
+       const completed = status.type === "completed";
+       const isCancelling = !!(bookingId && cancellingByBookingId[bookingId]);
+       const canCancel = isBookingCancellable(booking);
+ 
+       const parsedStart = propsStartDate instanceof Date
+         ? propsStartDate
+         : (booking?.start_time
+           ? new Date(booking.start_time)
+           : (booking?.start ? new Date(booking.start) : null));
+       const start = parsedStart instanceof Date && !Number.isNaN(parsedStart.getTime()) ? parsedStart : null;
+ 
+       let parsedEnd = propsEndDate instanceof Date
+         ? propsEndDate
+         : (booking?.end_time
+           ? new Date(booking.end_time)
+           : (booking?.end ? new Date(booking.end) : null));
+ 
+       if ((!parsedEnd || Number.isNaN(parsedEnd.getTime())) && start && booking?.duration_minutes) {
+         parsedEnd = new Date(start.getTime() + Number(booking.duration_minutes) * 60000);
+       }
+ 
+       const end = parsedEnd instanceof Date && !Number.isNaN(parsedEnd.getTime()) ? parsedEnd : null;
+-      const timeLabel = start ? formatTimeRange(start, end) : "--:--";
++      const appointmentSpan = formatProviderAppointmentSpan(start, end);
+ 
+       return (
+         <View
+           style={[
+             styles.providerCalendarRow,
+             completed && styles.providerCalendarRowCompleted,
+             { borderColor: statusTheme.border, backgroundColor: statusTheme.bgTint },
+           ]}
+         >
+           <View style={[styles.providerCalendarLeftAccentBar, { backgroundColor: statusTheme.accent }]} />
+           <View style={{ flex: 1 }}>
+-            <Text style={styles.providerCalendarTime}>{timeLabel}</Text>
++            {appointmentSpan.isSameDay ? (
++              <Text style={styles.providerCalendarTime}>{appointmentSpan.compactLabel}</Text>
++            ) : (
++              <>
++                <Text style={styles.providerCalendarTime}>{appointmentSpan.startLabel}</Text>
++                <Text style={styles.providerCalendarTime}>{appointmentSpan.endLabel}</Text>
++              </>
++            )}
+             <Text
+               style={[
+                 styles.providerCalendarService,
+                 completed && styles.providerCalendarTextCompleted,
+               ]}
+             >
+               {booking?.service_name || "Service"}
+             </Text>
+             {!compact ? (
+               <Text
+                 style={[
+                   styles.providerCalendarCustomer,
+                   completed && styles.providerCalendarTextCompleted,
+                 ]}
+               >
+                 {booking?.customer_name || "Customer"}
+               </Text>
+             ) : null}
+           </View>
+           <View style={styles.providerCalendarRightActions}>
+             <View
+               style={[
+                 styles.providerCalendarStatusBadge,
+                 { borderColor: statusTheme.accent, backgroundColor: statusTheme.bgTint },
+               ]}
  
 EOF
 )

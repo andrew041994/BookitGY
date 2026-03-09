@@ -291,6 +291,90 @@ function formatTimeRange(start, end) {
   return `${fmt(start)} – --:--`;
 }
 
+const GUYANA_TIME_ZONE = "America/Guyana";
+const GUYANA_LOCALE = "en-US";
+
+const isSameGuyanaCalendarDay = (start, end) => {
+  if (!(start instanceof Date) || Number.isNaN(start.getTime())) return false;
+  if (!(end instanceof Date) || Number.isNaN(end.getTime())) return false;
+
+  const keyOptions = {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    timeZone: GUYANA_TIME_ZONE,
+  };
+
+  return (
+    start.toLocaleDateString(GUYANA_LOCALE, keyOptions) ===
+    end.toLocaleDateString(GUYANA_LOCALE, keyOptions)
+  );
+};
+
+const formatProviderAppointmentSpan = (start, end) => {
+  if (!(start instanceof Date) || Number.isNaN(start.getTime())) {
+    return {
+      isSameDay: true,
+      compactLabel: "--:--",
+      startLabel: "Starts: --",
+      endLabel: "Ends: --",
+    };
+  }
+
+  const timeLabel = (value) =>
+    value.toLocaleTimeString(GUYANA_LOCALE, {
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: true,
+      timeZone: GUYANA_TIME_ZONE,
+    });
+
+  const shortDateLabel = (value) =>
+    value.toLocaleDateString(GUYANA_LOCALE, {
+      weekday: "short",
+      month: "short",
+      day: "numeric",
+      timeZone: GUYANA_TIME_ZONE,
+    });
+
+  const fullDateLabel = (value) =>
+    value.toLocaleDateString(GUYANA_LOCALE, {
+      weekday: "short",
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+      timeZone: GUYANA_TIME_ZONE,
+    });
+
+  const hasEnd = end instanceof Date && !Number.isNaN(end.getTime());
+  const sameDay = hasEnd ? isSameGuyanaCalendarDay(start, end) : true;
+
+  if (hasEnd && sameDay) {
+    return {
+      isSameDay: true,
+      compactLabel: `${shortDateLabel(start)} · ${timeLabel(start)} – ${timeLabel(end)}`,
+      startLabel: null,
+      endLabel: null,
+    };
+  }
+
+  if (hasEnd) {
+    return {
+      isSameDay: false,
+      compactLabel: null,
+      startLabel: `Starts: ${fullDateLabel(start)} · ${timeLabel(start)}`,
+      endLabel: `Ends: ${fullDateLabel(end)} · ${timeLabel(end)}`,
+    };
+  }
+
+  return {
+    isSameDay: true,
+    compactLabel: `${shortDateLabel(start)} · ${timeLabel(start)} – --:--`,
+    startLabel: null,
+    endLabel: null,
+  };
+};
+
 const getDistanceKm = (lat1, lon1, lat2, lon2) => {
   if (lat1 == null || lon1 == null || lat2 == null || lon2 == null) {
     return null;
@@ -6926,23 +7010,19 @@ const loadProviderSummary = async () => {
               {todayBookings.map((b) => {
                 const start = new Date(b.start_time);
                 const end = new Date(b.end_time);
-
-                const formatTime = (dt) => {
-                  const d = new Date(dt);
-                  let h = d.getHours();
-                  const m = d.getMinutes();
-                  const suffix = h >= 12 ? "PM" : "AM";
-                  h = h % 12 || 12;
-                  const mm = m.toString().padStart(2, "0");
-                  return `${h}:${mm} ${suffix}`;
-                };
+                const appointmentSpan = formatProviderAppointmentSpan(start, end);
 
                 return (
                   <View key={b.id} style={styles.bookingRow}>
                     <View style={styles.bookingMain}>
-                      <Text style={styles.bookingTime}>
-                        {formatTime(start)} – {formatTime(end)}
-                      </Text>
+                      {appointmentSpan.isSameDay ? (
+                        <Text style={styles.bookingTime}>{appointmentSpan.compactLabel}</Text>
+                      ) : (
+                        <>
+                          <Text style={styles.bookingTime}>{appointmentSpan.startLabel}</Text>
+                          <Text style={styles.bookingTime}>{appointmentSpan.endLabel}</Text>
+                        </>
+                      )}
                       <Text style={styles.bookingService}>{b.service_name}</Text>
                       <Text style={styles.bookingMeta}>
                         {b.customer_name} · {b.customer_phone}
@@ -7004,29 +7084,19 @@ const loadProviderSummary = async () => {
                 {upcomingBookings.map((b) => {
                   const start = new Date(b.start_time);
                   const end = new Date(b.end_time);
-
-                  const formatTime = (dt) => {
-                    let h = dt.getHours();
-                    const m = dt.getMinutes();
-                    const suffix = h >= 12 ? "PM" : "AM";
-                    h = h % 12 || 12;
-                    return `${h}:${m.toString().padStart(2, "0")} ${suffix}`;
-                  };
-
-                  const formatDate = (dt) =>
-                    dt.toLocaleDateString("en-US", {
-                      weekday: "short",
-                      month: "short",
-                      day: "numeric",
-                    });
+                  const appointmentSpan = formatProviderAppointmentSpan(start, end);
 
                   return (
                     <View key={b.id} style={styles.bookingRow}>
                       <View style={styles.bookingMain}>
-                        <Text style={styles.bookingTime}>
-                          {formatDate(start)} · {formatTime(start)} –{" "}
-                          {formatTime(end)}
-                        </Text>
+                        {appointmentSpan.isSameDay ? (
+                          <Text style={styles.bookingTime}>{appointmentSpan.compactLabel}</Text>
+                        ) : (
+                          <>
+                            <Text style={styles.bookingTime}>{appointmentSpan.startLabel}</Text>
+                            <Text style={styles.bookingTime}>{appointmentSpan.endLabel}</Text>
+                          </>
+                        )}
                         <Text style={styles.bookingService}>
                           {b.service_name}
                         </Text>
@@ -9046,7 +9116,7 @@ function ProviderCalendarScreen({ token, showFlash }) {
       }
 
       const end = parsedEnd instanceof Date && !Number.isNaN(parsedEnd.getTime()) ? parsedEnd : null;
-      const timeLabel = start ? formatTimeRange(start, end) : "--:--";
+      const appointmentSpan = formatProviderAppointmentSpan(start, end);
 
       return (
         <View
@@ -9058,7 +9128,14 @@ function ProviderCalendarScreen({ token, showFlash }) {
         >
           <View style={[styles.providerCalendarLeftAccentBar, { backgroundColor: statusTheme.accent }]} />
           <View style={{ flex: 1 }}>
-            <Text style={styles.providerCalendarTime}>{timeLabel}</Text>
+            {appointmentSpan.isSameDay ? (
+              <Text style={styles.providerCalendarTime}>{appointmentSpan.compactLabel}</Text>
+            ) : (
+              <>
+                <Text style={styles.providerCalendarTime}>{appointmentSpan.startLabel}</Text>
+                <Text style={styles.providerCalendarTime}>{appointmentSpan.endLabel}</Text>
+              </>
+            )}
             <Text
               style={[
                 styles.providerCalendarService,
