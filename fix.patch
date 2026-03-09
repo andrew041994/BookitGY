@@ -1,9 +1,9 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
 diff --git a/mobile/App.js b/mobile/App.js
-index ad1d314979d3cd5a2c5a359490d8848b216dc5db..31ac3126ebdd861f14eccab7d464dc91efbe5f19 100644
+index 31ac3126ebdd861f14eccab7d464dc91efbe5f19..b113d31f9172f43d5c073f167253f91cde43f921 100644
 --- a/mobile/App.js
 +++ b/mobile/App.js
-@@ -3619,50 +3619,66 @@ const getBookingChatReadOnlyReason = (booking) => {
+@@ -3619,65 +3619,100 @@ const getBookingChatReadOnlyReason = (booking) => {
    }
  
    return null;
@@ -29,22 +29,60 @@ index ad1d314979d3cd5a2c5a359490d8848b216dc5db..31ac3126ebdd861f14eccab7d464dc91
    const bookingId = booking?.id || booking?.booking_id;
    const chatReadOnlyReason = getBookingChatReadOnlyReason(booking);
    const isChatReadOnly = Boolean(chatReadOnlyReason);
-+  const chatTitle = useMemo(() => {
-+    if (!booking) return "Chat";
+-  const chatTitle = useMemo(() => {
+-    if (!booking) return "Chat";
++  const chatParticipant = useMemo(() => {
++    if (!booking) return { name: "Chat", avatarUrl: null };
+ 
+     const isCurrentUserClient =
+       booking?.client_id != null && currentUserId != null
+         ? Number(booking.client_id) === Number(currentUserId)
+         : null;
+ 
++    const providerAvatar =
++      booking?.provider_avatar_url ||
++      booking?.provider_profile_photo_url ||
++      booking?.provider_profile_image_url ||
++      booking?.provider?.avatar_url ||
++      booking?.provider?.profile_photo_url ||
++      booking?.provider?.profile_image_url ||
++      booking?.provider?.avatar;
 +
-+    const isCurrentUserClient =
-+      booking?.client_id != null && currentUserId != null
-+        ? Number(booking.client_id) === Number(currentUserId)
-+        : null;
++    const clientAvatar =
++      booking?.customer_avatar_url ||
++      booking?.client_avatar_url ||
++      booking?.customer_profile_photo_url ||
++      booking?.client_profile_photo_url ||
++      booking?.customer_profile_image_url ||
++      booking?.client_profile_image_url ||
++      booking?.customer?.avatar_url ||
++      booking?.client?.avatar_url ||
++      booking?.customer?.profile_photo_url ||
++      booking?.client?.profile_photo_url ||
++      booking?.customer?.profile_image_url ||
++      booking?.client?.profile_image_url ||
++      booking?.customer?.avatar ||
++      booking?.client?.avatar;
 +
-+    const otherParticipantName = isCurrentUserClient
-+      ? booking?.provider_username || booking?.provider_name
-+      : isCurrentUserClient === false
-+        ? booking?.customer_username || booking?.customer_name || booking?.client_username || booking?.client_name
-+        : booking?.provider_username || booking?.provider_name || booking?.customer_username || booking?.customer_name || booking?.client_username || booking?.client_name;
+     const otherParticipantName = isCurrentUserClient
+       ? booking?.provider_username || booking?.provider_name
+       : isCurrentUserClient === false
+         ? booking?.customer_username || booking?.customer_name || booking?.client_username || booking?.client_name
+         : booking?.provider_username || booking?.provider_name || booking?.customer_username || booking?.customer_name || booking?.client_username || booking?.client_name;
+ 
+-    return String(otherParticipantName || "").trim() || "Chat";
++    const avatarUrlRaw =
++      isCurrentUserClient === true
++        ? providerAvatar
++        : isCurrentUserClient === false
++          ? clientAvatar
++          : providerAvatar || clientAvatar;
 +
-+    return String(otherParticipantName || "").trim() || "Chat";
-+  }, [booking, currentUserId]);
++    return {
++      name: String(otherParticipantName || "").trim() || "Chat",
++      avatarUrl: resolveImageUrl(avatarUrlRaw),
++    };
+   }, [booking, currentUserId]);
  
    const logImageMessageShapeSummary = useCallback((context, details) => {
      console.log("[chat-image-debug] shape-summary", {
@@ -69,8 +107,7 @@ index ad1d314979d3cd5a2c5a359490d8848b216dc5db..31ac3126ebdd861f14eccab7d464dc91
          if (imageRows.length) {
            console.log("[chat-image-debug] GET /bookings/{booking_id}/messages image-only response", {
              booking_id: bookingId,
-             status: res?.status,
-@@ -3899,51 +3915,51 @@ function BookingChatModal({
+@@ -3915,51 +3950,68 @@ function BookingChatModal({
          <View style={[styles.chatBubble, mine ? styles.chatBubbleMine : styles.chatBubbleOther]}>
            {item?.text ? <Text style={styles.chatText}>{item.text}</Text> : null}
            {imageUrl ? (
@@ -96,8 +133,25 @@ index ad1d314979d3cd5a2c5a359490d8848b216dc5db..31ac3126ebdd861f14eccab7d464dc91
              <TouchableOpacity onPress={onClose} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
                <Text style={styles.chatCloseText}>Close</Text>
              </TouchableOpacity>
--            <Text style={styles.chatHeaderTitle}>Booking Chat</Text>
-+            <Text style={styles.chatHeaderTitle}>{chatTitle}</Text>
+-            <Text style={styles.chatHeaderTitle}>{chatTitle}</Text>
++            <View style={styles.chatHeaderParticipant}>
++              {chatParticipant?.avatarUrl ? (
++                <Image
++                  source={{ uri: chatParticipant.avatarUrl }}
++                  style={styles.chatHeaderAvatar}
++                  resizeMode="cover"
++                />
++              ) : (
++                <View style={styles.chatHeaderAvatarFallback}>
++                  <Text style={styles.chatHeaderAvatarInitial}>
++                    {(chatParticipant?.name || "Chat").charAt(0).toUpperCase()}
++                  </Text>
++                </View>
++              )}
++              <Text style={styles.chatHeaderTitle} numberOfLines={1} ellipsizeMode="tail">
++                {chatParticipant?.name || "Chat"}
++              </Text>
++            </View>
              <View style={{ width: 46 }} />
            </View>
  
@@ -123,6 +177,90 @@ index ad1d314979d3cd5a2c5a359490d8848b216dc5db..31ac3126ebdd861f14eccab7d464dc91
                style={styles.chatList}
                contentContainerStyle={styles.chatListContent}
                onRefresh={() => loadMessages(true)}
+@@ -13596,54 +13648,83 @@ signupTextButtonText: {
+   appointmentMessageButtonText: {
+     color: colors.textPrimary,
+     fontSize: 12,
+     fontWeight: "600",
+   },
+   chatSafeArea: {
+     flex: 1,
+     backgroundColor: colors.background,
+   },
+   chatKeyboardWrapper: {
+     flex: 1,
+   },
+   chatHeader: {
+     flexDirection: "row",
+     justifyContent: "space-between",
+     alignItems: "center",
+     paddingHorizontal: 16,
+     paddingVertical: 12,
+     borderBottomWidth: 1,
+     borderBottomColor: colors.border,
+   },
+   chatCloseText: {
+     color: colors.primary,
+     fontWeight: "600",
+   },
++  chatHeaderParticipant: {
++    flexDirection: "row",
++    alignItems: "center",
++    flex: 1,
++    justifyContent: "center",
++    marginHorizontal: 12,
++  },
++  chatHeaderAvatar: {
++    width: 30,
++    height: 30,
++    borderRadius: 15,
++    backgroundColor: colors.surfaceElevated,
++    marginRight: 8,
++  },
++  chatHeaderAvatarFallback: {
++    width: 30,
++    height: 30,
++    borderRadius: 15,
++    backgroundColor: colors.surfaceElevated,
++    alignItems: "center",
++    justifyContent: "center",
++    marginRight: 8,
++  },
++  chatHeaderAvatarInitial: {
++    color: colors.textPrimary,
++    fontSize: 13,
++    fontWeight: "700",
++  },
+   chatHeaderTitle: {
+     color: colors.textPrimary,
+     fontWeight: "700",
+     fontSize: 16,
++    flexShrink: 1,
+   },
+   chatCancelledBanner: {
+     margin: 12,
+     padding: 10,
+     borderRadius: 10,
+     backgroundColor: "rgba(255,77,79,0.16)",
+     borderWidth: 1,
+     borderColor: "rgba(255,77,79,0.35)",
+   },
+   chatCancelledText: {
+     color: colors.error,
+     fontSize: 13,
+     fontWeight: "600",
+   },
+   chatList: {
+     flex: 1,
+     paddingHorizontal: 12,
+   },
+   chatListContent: {
+     paddingTop: 12,
+     paddingBottom: 12,
+     flexGrow: 1,
+     justifyContent: "flex-end",
+   },
+   chatRow: {
  
 EOF
 )

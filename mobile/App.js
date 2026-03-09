@@ -3641,13 +3641,38 @@ function BookingChatModal({
   const bookingId = booking?.id || booking?.booking_id;
   const chatReadOnlyReason = getBookingChatReadOnlyReason(booking);
   const isChatReadOnly = Boolean(chatReadOnlyReason);
-  const chatTitle = useMemo(() => {
-    if (!booking) return "Chat";
+  const chatParticipant = useMemo(() => {
+    if (!booking) return { name: "Chat", avatarUrl: null };
 
     const isCurrentUserClient =
       booking?.client_id != null && currentUserId != null
         ? Number(booking.client_id) === Number(currentUserId)
         : null;
+
+    const providerAvatar =
+      booking?.provider_avatar_url ||
+      booking?.provider_profile_photo_url ||
+      booking?.provider_profile_image_url ||
+      booking?.provider?.avatar_url ||
+      booking?.provider?.profile_photo_url ||
+      booking?.provider?.profile_image_url ||
+      booking?.provider?.avatar;
+
+    const clientAvatar =
+      booking?.customer_avatar_url ||
+      booking?.client_avatar_url ||
+      booking?.customer_profile_photo_url ||
+      booking?.client_profile_photo_url ||
+      booking?.customer_profile_image_url ||
+      booking?.client_profile_image_url ||
+      booking?.customer?.avatar_url ||
+      booking?.client?.avatar_url ||
+      booking?.customer?.profile_photo_url ||
+      booking?.client?.profile_photo_url ||
+      booking?.customer?.profile_image_url ||
+      booking?.client?.profile_image_url ||
+      booking?.customer?.avatar ||
+      booking?.client?.avatar;
 
     const otherParticipantName = isCurrentUserClient
       ? booking?.provider_username || booking?.provider_name
@@ -3655,7 +3680,17 @@ function BookingChatModal({
         ? booking?.customer_username || booking?.customer_name || booking?.client_username || booking?.client_name
         : booking?.provider_username || booking?.provider_name || booking?.customer_username || booking?.customer_name || booking?.client_username || booking?.client_name;
 
-    return String(otherParticipantName || "").trim() || "Chat";
+    const avatarUrlRaw =
+      isCurrentUserClient === true
+        ? providerAvatar
+        : isCurrentUserClient === false
+          ? clientAvatar
+          : providerAvatar || clientAvatar;
+
+    return {
+      name: String(otherParticipantName || "").trim() || "Chat",
+      avatarUrl: resolveImageUrl(avatarUrlRaw),
+    };
   }, [booking, currentUserId]);
 
   const logImageMessageShapeSummary = useCallback((context, details) => {
@@ -3937,7 +3972,24 @@ function BookingChatModal({
             <TouchableOpacity onPress={onClose} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
               <Text style={styles.chatCloseText}>Close</Text>
             </TouchableOpacity>
-            <Text style={styles.chatHeaderTitle}>{chatTitle}</Text>
+            <View style={styles.chatHeaderParticipant}>
+              {chatParticipant?.avatarUrl ? (
+                <Image
+                  source={{ uri: chatParticipant.avatarUrl }}
+                  style={styles.chatHeaderAvatar}
+                  resizeMode="cover"
+                />
+              ) : (
+                <View style={styles.chatHeaderAvatarFallback}>
+                  <Text style={styles.chatHeaderAvatarInitial}>
+                    {(chatParticipant?.name || "Chat").charAt(0).toUpperCase()}
+                  </Text>
+                </View>
+              )}
+              <Text style={styles.chatHeaderTitle} numberOfLines={1} ellipsizeMode="tail">
+                {chatParticipant?.name || "Chat"}
+              </Text>
+            </View>
             <View style={{ width: 46 }} />
           </View>
 
@@ -13618,10 +13670,39 @@ signupTextButtonText: {
     color: colors.primary,
     fontWeight: "600",
   },
+  chatHeaderParticipant: {
+    flexDirection: "row",
+    alignItems: "center",
+    flex: 1,
+    justifyContent: "center",
+    marginHorizontal: 12,
+  },
+  chatHeaderAvatar: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: colors.surfaceElevated,
+    marginRight: 8,
+  },
+  chatHeaderAvatarFallback: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: colors.surfaceElevated,
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 8,
+  },
+  chatHeaderAvatarInitial: {
+    color: colors.textPrimary,
+    fontSize: 13,
+    fontWeight: "700",
+  },
   chatHeaderTitle: {
     color: colors.textPrimary,
     fontWeight: "700",
     fontSize: 16,
+    flexShrink: 1,
   },
   chatCancelledBanner: {
     margin: 12,
