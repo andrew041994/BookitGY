@@ -1,131 +1,98 @@
- (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
-diff --git a/backend/tests/test_duration_and_overlap.py b/backend/tests/test_duration_and_overlap.py
-index 2da3a950fcee5759a6646329d61d38cec47a70cf..599d752876ab38d064370c2d76bd9b17783b4a7c 100644
---- a/backend/tests/test_duration_and_overlap.py
-+++ b/backend/tests/test_duration_and_overlap.py
-@@ -105,25 +105,122 @@ def test_overlap_rules_include_cross_midnight_and_adjacent_allowed(db_session):
-         price_gyd=1000,
-         duration_minutes=60,
-     )
-     session.add(short_service)
-     session.commit()
-     session.refresh(short_service)
+(cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF'
+diff --git a/mobile/App.js b/mobile/App.js
+index e72b08f5c02304a77e6cee6d3418db015d990d8b..fb7c6407031fc87843f0d9648f9489ee1cec1ea8 100644
+--- a/mobile/App.js
++++ b/mobile/App.js
+@@ -5293,68 +5293,50 @@ function SearchScreen({ token, showFlash, navigation, route, toggleFavorite, isF
+       // Refresh availability after failure to show updated slots
+       try {
+         if (selectedProvider && selectedService) {
+           await loadAvailability(
+             providerId,
+             selectedService.id
+           );
+         }
+       } catch (e) {
+         console.log("Error refreshing availability after failure", e);
+       }
+     } finally {
+       setBookingLoading(false);
+     }
+   };
  
-     adjacent = crud.create_booking(
-         session,
-         customer_id=customer_1.id,
-         booking=schemas.BookingCreate(
-             service_id=short_service.id,
-             start_time=long_booking.end_time,
-         ),
-     )
+   // Map date string -> slots for easier lookup
+   const availabilityMap = React.useMemo(() => {
+     const map = {};
+     (availability || []).forEach((day) => {
+       map[day.date] = day.slots || [];
+     });
+     return map;
+   }, [availability]);
+-
+-  const displayedAvailabilityMap = React.useMemo(() => {
+-    const durationMinutes = getServiceDurationMinutes(selectedService);
+-    if (!durationMinutes || durationMinutes <= 0) {
+-      return availabilityMap;
+-    }
+-
+-    return Object.entries(availabilityMap).reduce((map, [dateKey, slots]) => {
+-      map[dateKey] = (slots || []).filter((slotIso) => {
+-        const slotStart = new Date(slotIso);
+-        if (Number.isNaN(slotStart.getTime())) return false;
+-
+-        const minutesFromDayStart = slotStart.getHours() * 60 + slotStart.getMinutes();
+-        return minutesFromDayStart % durationMinutes === 0;
+-      });
+-      return map;
+-    }, {});
+-  }, [availabilityMap, selectedService]);
  
-     assert adjacent.start_time == long_booking.end_time
+   const makeDateKey = (d) => {
+     const year = d.getFullYear();
+     const month = String(d.getMonth() + 1).padStart(2, "0");
+     const day = String(d.getDate()).padStart(2, "0");
+     return `${year}-${month}-${day}`; // "YYYY-MM-DD"
+   };
  
+@@ -5638,57 +5620,57 @@ function SearchScreen({ token, showFlash, navigation, route, toggleFavorite, isF
+                 {/* Time slots for selected date */}
+                 {selectedService && selectedDate && (
+                   <View style={styles.card}>
+                     <Text style={styles.sectionTitle}>Available time slots</Text>
  
- def test_time_bucket_boundaries(db_session):
-     session, models, crud = db_session
-     now = datetime(2025, 1, 1, 12, 0)
-     assert crud.booking_time_bucket(now + timedelta(minutes=1), now + timedelta(hours=1), now=now) == "upcoming"
-     assert crud.booking_time_bucket(now - timedelta(minutes=1), now + timedelta(minutes=1), now=now) == "in_progress"
-     assert crud.booking_time_bucket(now - timedelta(hours=2), now - timedelta(hours=1), now=now) == "finished"
-+
-+
-+def test_multi_day_availability_allows_later_slots_on_same_day(db_session, monkeypatch):
-+    session, models, crud = db_session
-+    provider, customer_1, _, service = _create_provider_graph(session, models)
-+
-+    long_service = service
-+    long_service.duration_minutes = 60 * 24 * 3
-+
-+    short_service = models.Service(
-+        provider_id=provider.id,
-+        name="Short Service",
-+        price_gyd=500,
-+        duration_minutes=60,
-+    )
-+    ten_min_service = models.Service(
-+        provider_id=provider.id,
-+        name="10 Minute Service",
-+        price_gyd=200,
-+        duration_minutes=10,
-+    )
-+    fifteen_min_service = models.Service(
-+        provider_id=provider.id,
-+        name="15 Minute Service",
-+        price_gyd=200,
-+        duration_minutes=15,
-+    )
-+    forty_five_min_service = models.Service(
-+        provider_id=provider.id,
-+        name="45 Minute Service",
-+        price_gyd=200,
-+        duration_minutes=45,
-+    )
-+    session.add_all([short_service, ten_min_service, fifteen_min_service, forty_five_min_service])
-+
-+    # Thursday 09:00-12:00 working window.
-+    session.add(
-+        models.ProviderWorkingHours(
-+            provider_id=provider.id,
-+            weekday=3,
-+            is_closed=False,
-+            start_time="09:00",
-+            end_time="12:00",
-+        )
-+    )
-+    session.commit()
-+
-+    # Existing long booking: Monday 09:00 -> Thursday 09:00.
-+    session.add(
-+        models.Booking(
-+            customer_id=customer_1.id,
-+            service_id=long_service.id,
-+            start_time=datetime(2025, 1, 6, 9, 0),
-+            end_time=datetime(2025, 1, 9, 9, 0),
-+            status="confirmed",
-+        )
-+    )
-+    session.commit()
-+
-+    monkeypatch.setattr(crud, "now_guyana", lambda: datetime(2025, 1, 6, 8, 0))
-+
-+    long_availability = crud.get_provider_availability(
-+        session,
-+        provider_id=provider.id,
-+        service_id=long_service.id,
-+        days=4,
-+    )
-+
-+    short_availability = crud.get_provider_availability(
-+        session,
-+        provider_id=provider.id,
-+        service_id=short_service.id,
-+        days=4,
-+    )
-+
-+    assert len(long_availability) == 1
-+    long_slots = long_availability[0]["slots"]
-+    assert datetime(2025, 1, 9, 9, 0) in long_slots
-+    assert datetime(2025, 1, 9, 9, 5) in long_slots
-+    assert datetime(2025, 1, 9, 9, 10) in long_slots
-+    assert datetime(2025, 1, 9, 9, 30) in long_slots
-+    assert datetime(2025, 1, 9, 10, 0) in long_slots
-+
-+    assert len(short_availability) == 1
-+    short_slots = short_availability[0]["slots"]
-+    assert datetime(2025, 1, 9, 9, 5) in short_slots
-+
-+    for custom_service in (ten_min_service, fifteen_min_service, forty_five_min_service):
-+        custom_availability = crud.get_provider_availability(
-+            session,
-+            provider_id=provider.id,
-+            service_id=custom_service.id,
-+            days=4,
-+        )
-+        assert len(custom_availability) == 1
-+        custom_slots = custom_availability[0]["slots"]
-+        assert datetime(2025, 1, 9, 9, 5) in custom_slots
- 
+-                    {(displayedAvailabilityMap[selectedDate] || []).length === 0 ? (
++                    {(availabilityMap[selectedDate] || []).length === 0 ? (
+                       <Text style={styles.serviceHint}>
+                         No available times for this date.
+                       </Text>
+                     ) : (
+                       <View style={styles.timesContainer}>
+-                        {displayedAvailabilityMap[selectedDate].map((slotIso) => {
++                        {availabilityMap[selectedDate].map((slotIso) => {
+                           const isSelected = selectedSlot === slotIso;
+                           return (
+                             <TouchableOpacity
+                               key={slotIso}
+                               style={[
+                                 styles.timeSlotButton,
+                                 isSelected && styles.timeSlotButtonSelected,
+                               ]}
+                               onPress={() => setSelectedSlot(slotIso)}
+                             >
+                               <Text
+                                 style={[
+                                   styles.timeSlotLabel,
+                                   isSelected && styles.timeSlotLabelSelected,
+                                 ]}
+                               >
+                                 {formatTimeLabel(slotIso)}
+                               </Text>
+                             </TouchableOpacity>
+                           );
+                         })}
+                       </View>
+                     )}
+                   </View>
+                 )}
 EOF
 )
