@@ -2396,7 +2396,37 @@ function ProfileScreen({ authLoading, setToken, showFlash, token }) {
       .map((value) => String(value || "").trim())
       .filter(Boolean);
   }, [providerProfile?.professions, user]);
-  const providerShareRatingValue = Number(user?.avg_rating);
+  const providerShareRatingValue = useMemo(() => {
+    const ratingCandidates = [
+      providerProfile?.avg_rating,
+      providerProfile?.rating,
+      user?.provider_profile?.avg_rating,
+      user?.provider_profile?.rating,
+      user?.avg_rating,
+      user?.rating,
+    ];
+
+    const resolvedRating = ratingCandidates
+      .map((value) => Number(value))
+      .find((value) => Number.isFinite(value));
+
+    return resolvedRating > 0 ? Number(resolvedRating.toFixed(1)) : 0;
+  }, [
+    providerProfile?.avg_rating,
+    providerProfile?.rating,
+    user?.provider_profile?.avg_rating,
+    user?.provider_profile?.rating,
+    user?.avg_rating,
+    user?.rating,
+  ]);
+
+  console.log("[provider-share-rating]", {
+    providerProfileAvg: providerProfile?.avg_rating,
+    providerProfileRating: providerProfile?.rating,
+    userProviderProfileAvg: user?.provider_profile?.avg_rating,
+    userAvg: user?.avg_rating,
+    resolved: providerShareRatingValue,
+  });
 
   if (loading) {
     return (
