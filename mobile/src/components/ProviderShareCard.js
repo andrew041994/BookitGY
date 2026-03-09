@@ -33,12 +33,7 @@ export default function ProviderShareCard({
         end={{ x: 0, y: 0.65 }}
         style={styles.glassHighlight}
       />
-      <View style={styles.brandRow}>
-        <Text style={styles.brandName}>BookitGY</Text>
-        <Text style={styles.brandMeta}>Provider Card</Text>
-      </View>
-
-      <View style={styles.profileContent}>
+      <View style={styles.topRow}>
         {avatarUrl ? (
           <Image source={{ uri: avatarUrl }} style={styles.avatar} />
         ) : (
@@ -46,21 +41,21 @@ export default function ProviderShareCard({
             <Text style={styles.avatarInitial}>{safeUsername.charAt(0).toUpperCase()}</Text>
           </View>
         )}
+        <Text numberOfLines={1} style={styles.rating}>⭐️ {normalizedRating}</Text>
+      </View>
 
-        <View style={styles.contentCol}>
-          <View style={styles.identityRow}>
-            <Text numberOfLines={1} ellipsizeMode="tail" style={styles.username}>
-              {safeUsername}
-            </Text>
-            <Text numberOfLines={1} style={styles.rating}>⭐️ {normalizedRating}</Text>
-          </View>
+      <View style={styles.mainContent}>
+        {brandingSource ? <Image source={brandingSource} style={styles.logo} resizeMode="contain" /> : null}
+        <View style={styles.identityBlock}>
+          <Text numberOfLines={1} ellipsizeMode="tail" style={styles.username}>
+            {safeUsername}
+          </Text>
           <Text numberOfLines={2} ellipsizeMode="tail" style={styles.professions}>{professionText}</Text>
         </View>
       </View>
 
       <View style={styles.footer}>
         <Text numberOfLines={2} ellipsizeMode="tail" style={styles.cta}>Download BookitGY to schedule an appointment</Text>
-        {brandingSource ? <Image source={brandingSource} style={styles.logo} resizeMode="contain" /> : null}
       </View>
     </View>
   );
@@ -91,26 +86,17 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
     borderRadius: 24,
   },
-  brandRow: {
+  topRow: {
     flexDirection: "row",
     justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 12,
+    alignItems: "flex-start",
   },
-  brandName: {
-    color: "#E6EDF6",
-    fontSize: 18,
-    fontWeight: "700",
-    letterSpacing: 0.5,
-  },
-  brandMeta: {
-    color: colors.textSecondary,
-    fontSize: 12,
-  },
-  profileContent: {
-    flexDirection: "row",
-    alignItems: "center",
+  mainContent: {
     flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    paddingTop: 4,
+    paddingBottom: 6,
   },
   avatar: {
     width: 80,
@@ -134,53 +120,48 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     fontSize: 30,
   },
-  contentCol: {
-    flex: 1,
-    marginLeft: 14,
-  },
-  identityRow: {
-    flexDirection: "row",
+  identityBlock: {
     alignItems: "center",
-    minWidth: 0,
+    marginTop: 6,
+    width: "100%",
+    paddingHorizontal: 8,
   },
   username: {
     color: "#FFFFFF",
     fontSize: 20,
     fontWeight: "700",
-    flex: 1,
-    marginRight: 10,
+    textAlign: "center",
   },
   rating: {
     color: "#FFD700",
-    fontWeight: "600",
-    fontSize: 14,
+    fontWeight: "700",
+    fontSize: 18,
+    marginTop: 8,
   },
   professions: {
     marginTop: 6,
     color: "#C9D4E3",
     fontSize: 14,
     lineHeight: 19,
+    textAlign: "center",
   },
   footer: {
     borderTopWidth: 1,
     borderTopColor: "rgba(255,255,255,0.15)",
     paddingTop: 10,
-    flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
-    gap: 16,
   },
   cta: {
     color: "#E6EDF6",
     fontSize: 13,
     lineHeight: 18,
     fontWeight: "600",
-    flex: 1,
+    width: "94%",
     textAlign: "center",
   },
   logo: {
-    width: 78,
-    height: 28,
-    opacity: 0.82,
+    width: 160,
+    height: 48,
+    opacity: 0.88,
   },
 });

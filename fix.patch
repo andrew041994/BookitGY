@@ -1,91 +1,214 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
-diff --git a/mobile/App.js b/mobile/App.js
-index 95cee5f8ca1b4e4ac6300cfd04c57f45606ca285..36c4166a128ccb260a42af31fe596adea9cd7ac3 100644
---- a/mobile/App.js
-+++ b/mobile/App.js
-@@ -2374,51 +2374,81 @@ function ProfileScreen({ authLoading, setToken, showFlash, token }) {
-       await loadMyBookings();
-     }
-   }, [loadMyBookings, loadProfile, showBookings]);
+diff --git a/mobile/src/components/ProviderShareCard.js b/mobile/src/components/ProviderShareCard.js
+index c37788ab00163520435459b7cc9866f06aaf5fcd..759ad66b579e0b51b7c95fcc4457dfe1bb6e08f2 100644
+--- a/mobile/src/components/ProviderShareCard.js
++++ b/mobile/src/components/ProviderShareCard.js
+@@ -11,176 +11,157 @@ export default function ProviderShareCard({
+   professions = [],
+   ratingValue,
+   brandingSource,
+ }) {
+   const safeUsername = String(username || "").trim().replace(/^@/, "");
+   const normalizedProfessions = Array.isArray(professions)
+     ? professions
+         .map((value) => String(value || "").trim())
+         .filter(Boolean)
+     : [];
+   const professionText = normalizedProfessions.length
+     ? normalizedProfessions.join(" • ")
+     : "BookitGY Provider";
+   const parsedRating = Number(ratingValue);
+   const hasNumericRating = Number.isFinite(parsedRating);
+   const normalizedRating = hasNumericRating ? parsedRating.toFixed(1) : "0.0";
  
-   const providerShareProfessions = useMemo(() => {
-     const candidateSources = [
-       providerProfile?.professions,
-       user?.provider_profile?.professions,
-       user?.professions,
-     ];
+   return (
+     <View style={styles.card}>
+       <LinearGradient
+         colors={["rgba(255,255,255,0.08)", "rgba(255,255,255,0.03)", "transparent"]}
+         start={{ x: 0, y: 0 }}
+         end={{ x: 0, y: 0.65 }}
+         style={styles.glassHighlight}
+       />
+-      <View style={styles.brandRow}>
+-        <Text style={styles.brandName}>BookitGY</Text>
+-        <Text style={styles.brandMeta}>Provider Card</Text>
+-      </View>
+-
+-      <View style={styles.profileContent}>
++      <View style={styles.topRow}>
+         {avatarUrl ? (
+           <Image source={{ uri: avatarUrl }} style={styles.avatar} />
+         ) : (
+           <View style={styles.avatarFallback}>
+             <Text style={styles.avatarInitial}>{safeUsername.charAt(0).toUpperCase()}</Text>
+           </View>
+         )}
++        <Text numberOfLines={1} style={styles.rating}>⭐️ {normalizedRating}</Text>
++      </View>
  
-     const rawProfessions =
-       candidateSources.find((source) => Array.isArray(source) && source.length > 0) || [];
- 
-     return rawProfessions
-       .map((entry) => {
-         if (typeof entry === "string") return entry;
-         if (entry && typeof entry === "object") {
-           return entry.name || entry.title || entry.label || entry.profession || "";
-         }
-         return "";
-       })
-       .map((value) => String(value || "").trim())
-       .filter(Boolean);
-   }, [providerProfile?.professions, user]);
--  const providerShareRatingValue = Number(user?.avg_rating);
-+  const providerShareRatingValue = useMemo(() => {
-+    const ratingCandidates = [
-+      providerProfile?.avg_rating,
-+      providerProfile?.rating,
-+      user?.provider_profile?.avg_rating,
-+      user?.provider_profile?.rating,
-+      user?.avg_rating,
-+      user?.rating,
-+    ];
-+
-+    const resolvedRating = ratingCandidates
-+      .map((value) => Number(value))
-+      .find((value) => Number.isFinite(value));
-+
-+    return resolvedRating > 0 ? Number(resolvedRating.toFixed(1)) : 0;
-+  }, [
-+    providerProfile?.avg_rating,
-+    providerProfile?.rating,
-+    user?.provider_profile?.avg_rating,
-+    user?.provider_profile?.rating,
-+    user?.avg_rating,
-+    user?.rating,
-+  ]);
-+
-+  console.log("[provider-share-rating]", {
-+    providerProfileAvg: providerProfile?.avg_rating,
-+    providerProfileRating: providerProfile?.rating,
-+    userProviderProfileAvg: user?.provider_profile?.avg_rating,
-+    userAvg: user?.avg_rating,
-+    resolved: providerShareRatingValue,
-+  });
- 
-   if (loading) {
-     return (
-       <View style={styles.center}>
-         <ActivityIndicator size="large" />
-         <Text style={styles.loadingText}>Loading profile…</Text>
+-        <View style={styles.contentCol}>
+-          <View style={styles.identityRow}>
+-            <Text numberOfLines={1} ellipsizeMode="tail" style={styles.username}>
+-              {safeUsername}
+-            </Text>
+-            <Text numberOfLines={1} style={styles.rating}>⭐️ {normalizedRating}</Text>
+-          </View>
++      <View style={styles.mainContent}>
++        {brandingSource ? <Image source={brandingSource} style={styles.logo} resizeMode="contain" /> : null}
++        <View style={styles.identityBlock}>
++          <Text numberOfLines={1} ellipsizeMode="tail" style={styles.username}>
++            {safeUsername}
++          </Text>
+           <Text numberOfLines={2} ellipsizeMode="tail" style={styles.professions}>{professionText}</Text>
+         </View>
        </View>
-     );
-   }
  
-   if (error) {
-     return (
-       <View style={styles.center}>
-         <Text style={styles.errorText}>{error}</Text>
+       <View style={styles.footer}>
+         <Text numberOfLines={2} ellipsizeMode="tail" style={styles.cta}>Download BookitGY to schedule an appointment</Text>
+-        {brandingSource ? <Image source={brandingSource} style={styles.logo} resizeMode="contain" /> : null}
        </View>
-     );
-   }
+     </View>
+   );
+ }
  
-   if (!user) {
-     return (
-       <View style={styles.center}>
-         <Text style={styles.errorText}>No user data.</Text>
-       </View>
-     );
-   }
+ const styles = StyleSheet.create({
+   card: {
+     width: "100%",
+     maxWidth: 560,
+     alignSelf: "center",
+     aspectRatio: 1.9,
+     borderRadius: 22,
+     borderWidth: 1,
+     borderColor: "rgba(77,163,255,0.45)",
+     backgroundColor: "#121826",
+     paddingHorizontal: 18,
+     paddingVertical: 14,
+     shadowColor: "#4DA3FF",
+     shadowOpacity: 0.2,
+     shadowRadius: 14,
+     shadowOffset: { width: 0, height: 8 },
+     elevation: 6,
+     justifyContent: "space-between",
+     position: "relative",
+     overflow: "hidden",
+   },
+   glassHighlight: {
+     ...StyleSheet.absoluteFillObject,
+     borderRadius: 24,
+   },
+-  brandRow: {
++  topRow: {
+     flexDirection: "row",
+     justifyContent: "space-between",
+-    alignItems: "center",
+-    marginBottom: 12,
+-  },
+-  brandName: {
+-    color: "#E6EDF6",
+-    fontSize: 18,
+-    fontWeight: "700",
+-    letterSpacing: 0.5,
+-  },
+-  brandMeta: {
+-    color: colors.textSecondary,
+-    fontSize: 12,
++    alignItems: "flex-start",
+   },
+-  profileContent: {
+-    flexDirection: "row",
+-    alignItems: "center",
++  mainContent: {
+     flex: 1,
++    justifyContent: "center",
++    alignItems: "center",
++    paddingTop: 4,
++    paddingBottom: 6,
+   },
+   avatar: {
+     width: 80,
+     height: 80,
+     borderRadius: 40,
+     borderWidth: 2,
+     borderColor: "rgba(255,255,255,0.35)",
+   },
+   avatarFallback: {
+     width: 80,
+     height: 80,
+     borderRadius: 40,
+     backgroundColor: "#202B45",
+     alignItems: "center",
+     justifyContent: "center",
+     borderWidth: 2,
+     borderColor: "rgba(255,255,255,0.35)",
+   },
+   avatarInitial: {
+     color: colors.text,
+     fontWeight: "700",
+     fontSize: 30,
+   },
+-  contentCol: {
+-    flex: 1,
+-    marginLeft: 14,
+-  },
+-  identityRow: {
+-    flexDirection: "row",
++  identityBlock: {
+     alignItems: "center",
+-    minWidth: 0,
++    marginTop: 6,
++    width: "100%",
++    paddingHorizontal: 8,
+   },
+   username: {
+     color: "#FFFFFF",
+     fontSize: 20,
+     fontWeight: "700",
+-    flex: 1,
+-    marginRight: 10,
++    textAlign: "center",
+   },
+   rating: {
+     color: "#FFD700",
+-    fontWeight: "600",
+-    fontSize: 14,
++    fontWeight: "700",
++    fontSize: 18,
++    marginTop: 8,
+   },
+   professions: {
+     marginTop: 6,
+     color: "#C9D4E3",
+     fontSize: 14,
+     lineHeight: 19,
++    textAlign: "center",
+   },
+   footer: {
+     borderTopWidth: 1,
+     borderTopColor: "rgba(255,255,255,0.15)",
+     paddingTop: 10,
+-    flexDirection: "row",
+     alignItems: "center",
+-    justifyContent: "space-between",
+-    gap: 16,
+   },
+   cta: {
+     color: "#E6EDF6",
+     fontSize: 13,
+     lineHeight: 18,
+     fontWeight: "600",
+-    flex: 1,
++    width: "94%",
+     textAlign: "center",
+   },
+   logo: {
+-    width: 78,
+-    height: 28,
+-    opacity: 0.82,
++    width: 160,
++    height: 48,
++    opacity: 0.88,
+   },
+ });
  
 EOF
 )
