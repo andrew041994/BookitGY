@@ -2554,10 +2554,12 @@ function ProfileScreen({ authLoading, setToken, showFlash, token }) {
 
       await new Promise((resolve) => {
         requestAnimationFrame(() => {
-          requestAnimationFrame(resolve);
+          requestAnimationFrame(() => {
+            requestAnimationFrame(resolve);
+          });
         });
       });
-      await new Promise((resolve) => setTimeout(resolve, 650));
+      await new Promise((resolve) => setTimeout(resolve, 900));
 
       if (!providerShareCardRef.current) {
         showFlash?.("error", "Sharing is not available in this build yet.");
@@ -2803,13 +2805,15 @@ function ProfileScreen({ authLoading, setToken, showFlash, token }) {
           <Text style={styles.hoursHelp}>
             Create a polished card image to share on WhatsApp, Facebook, Instagram, and Stories.
           </Text>
-          <ProviderShareCard
-            avatarUrl={displayAvatarUrl}
-            username={user.username || user.full_name || "bookitgy_provider"}
-            professions={providerShareProfessions}
-            ratingValue={providerShareRatingValue}
-            brandingSource={BookitGYLogoTransparent}
-          />
+          <View style={styles.providerSharePreviewWrap}>
+            <ProviderShareCard
+              avatarUrl={displayAvatarUrl}
+              username={user.username || user.full_name || "bookitgy_provider"}
+              professions={providerShareProfessions}
+              ratingValue={providerShareRatingValue}
+              brandingSource={BookitGYLogoTransparent}
+            />
+          </View>
           <TouchableOpacity
             style={[
               styles.actionButton,
@@ -12015,6 +12019,13 @@ cardHeartButton: {
   providerShareButtonDisabled: {
     opacity: 0.65,
   },
+  providerSharePreviewWrap: {
+    width: "100%",
+    aspectRatio: 1.9,
+    alignSelf: "center",
+    padding: 0,
+    overflow: "visible",
+  },
   providerShareCaptureLayer: {
     position: "absolute",
     opacity: 0,
@@ -12022,12 +12033,12 @@ cardHeartButton: {
     top: -9999,
   },
   providerShareCaptureCardWrap: {
-    width: "100%",
-    maxWidth: 420,
+    width: 600,
     aspectRatio: 1.9,
     alignSelf: "center",
     padding: 0,
     backgroundColor: "transparent",
+    overflow: "visible",
   },
   logoutButton: {
     backgroundColor: "transparent",
