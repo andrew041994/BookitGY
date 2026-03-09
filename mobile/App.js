@@ -2371,8 +2371,22 @@ function ProfileScreen({ authLoading, setToken, showFlash, token }) {
   }, [loadMyBookings, loadProfile, showBookings]);
 
   const providerShareProfessions = useMemo(() => {
-    const fromUser = Array.isArray(user?.professions) ? user.professions : [];
-    return fromUser.filter((item) => String(item || "").trim().length > 0);
+    const rawProfessions = Array.isArray(user?.professions)
+      ? user.professions
+      : Array.isArray(user?.provider_profile?.professions)
+      ? user.provider_profile.professions
+      : [];
+
+    return rawProfessions
+      .map((entry) => {
+        if (typeof entry === "string") return entry;
+        if (entry && typeof entry === "object") {
+          return entry.name || entry.title || "";
+        }
+        return "";
+      })
+      .map((value) => String(value || "").trim())
+      .filter(Boolean);
   }, [user]);
   const providerShareRatingValue = Number(user?.avg_rating || 0);
   const providerShareRatingCount = Number(user?.rating_count || 0);
@@ -2519,6 +2533,8 @@ function ProfileScreen({ authLoading, setToken, showFlash, token }) {
       const imageUri = await captureRef(providerShareCardRef.current, {
         format: "png",
         quality: 1,
+        width: 1080,
+        height: 1350,
       });
 
       await Share.share({
@@ -11973,6 +11989,7 @@ cardHeartButton: {
   },
   providerShareCaptureCardWrap: {
     width: 1080,
+    minHeight: 1350,
     padding: 40,
     backgroundColor: colors.background,
   },

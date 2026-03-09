@@ -23,7 +23,7 @@ export default function ProviderShareCard({
         <Text style={styles.brandMeta}>Provider Card</Text>
       </View>
 
-      <View style={styles.profileRow}>
+      <View style={styles.profileContent}>
         {avatarUrl ? (
           <Image source={{ uri: avatarUrl }} style={styles.avatar} />
         ) : (
@@ -32,15 +32,13 @@ export default function ProviderShareCard({
           </View>
         )}
 
-        <View style={styles.profileTextWrap}>
-          <Text numberOfLines={2} style={styles.username}>@{safeUsername.replace(/^@/, "")}</Text>
-          <Text numberOfLines={2} style={styles.rating}>{ratingLabel || "★ New on BookitGY"}</Text>
-          <Text style={styles.professions}>{professionText}</Text>
-        </View>
+        <Text numberOfLines={2} style={styles.username}>@{safeUsername.replace(/^@/, "")}</Text>
+        <Text numberOfLines={1} style={styles.rating}>{ratingLabel || "★ New on BookitGY"}</Text>
+        <Text numberOfLines={2} style={styles.professions}>{professionText}</Text>
       </View>
 
       <View style={styles.footer}>
-        <Text style={styles.cta}>Download BookitGY to schedule your appointment</Text>
+        <Text style={styles.cta}>Download BookitGY to schedule an appointment</Text>
         {brandingSource ? <Image source={brandingSource} style={styles.logo} resizeMode="contain" /> : null}
       </View>
     </View>
@@ -50,11 +48,13 @@ export default function ProviderShareCard({
 const styles = StyleSheet.create({
   card: {
     width: "100%",
+    minHeight: 620,
     borderRadius: 22,
     borderWidth: 1,
     borderColor: "rgba(77,163,255,0.45)",
     backgroundColor: "#121826",
-    padding: 16,
+    paddingHorizontal: 42,
+    paddingVertical: 36,
     shadowColor: "#4DA3FF",
     shadowOpacity: 0.2,
     shadowRadius: 14,
@@ -65,83 +65,86 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 14,
+    marginBottom: 28,
   },
   brandName: {
     color: colors.text,
+    fontSize: 28,
     fontWeight: "700",
-    letterSpacing: 0.5,
+    letterSpacing: 0.8,
   },
   brandMeta: {
     color: colors.textSecondary,
-    fontSize: 12,
+    fontSize: 18,
   },
-  profileRow: {
-    flexDirection: "row",
-    alignItems: "flex-start",
+  profileContent: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
   },
   avatar: {
-    width: 74,
-    height: 74,
-    borderRadius: 37,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.25)",
+    width: 170,
+    height: 170,
+    borderRadius: 85,
+    borderWidth: 2,
+    borderColor: "rgba(255,255,255,0.35)",
   },
   avatarFallback: {
-    width: 74,
-    height: 74,
-    borderRadius: 37,
+    width: 170,
+    height: 170,
+    borderRadius: 85,
     backgroundColor: "#202B45",
     alignItems: "center",
     justifyContent: "center",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.25)",
+    borderWidth: 2,
+    borderColor: "rgba(255,255,255,0.35)",
   },
   avatarInitial: {
     color: colors.text,
     fontWeight: "700",
-    fontSize: 26,
-  },
-  profileTextWrap: {
-    flex: 1,
-    marginLeft: 12,
-    minWidth: 0,
+    fontSize: 58,
   },
   username: {
+    marginTop: 24,
     color: colors.text,
-    fontSize: 21,
+    fontSize: 56,
     fontWeight: "700",
+    textAlign: "center",
   },
   rating: {
-    marginTop: 2,
+    marginTop: 12,
     color: "#F4D03F",
     fontWeight: "600",
+    fontSize: 28,
   },
   professions: {
-    marginTop: 8,
+    marginTop: 14,
     color: colors.textSecondary,
-    lineHeight: 20,
+    fontSize: 30,
+    lineHeight: 40,
+    textAlign: "center",
+    maxWidth: "90%",
   },
   footer: {
-    marginTop: 16,
+    marginTop: 28,
     borderTopWidth: 1,
     borderTopColor: "rgba(255,255,255,0.12)",
-    paddingTop: 10,
+    paddingTop: 20,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: 8,
+    gap: 16,
   },
   cta: {
     color: colors.text,
-    fontSize: 12,
-    lineHeight: 16,
+    fontSize: 26,
+    lineHeight: 34,
     fontWeight: "600",
     flex: 1,
   },
   logo: {
-    width: 56,
-    height: 24,
-    opacity: 0.9,
+    width: 120,
+    height: 52,
+    opacity: 0.82,
   },
 });
