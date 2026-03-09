@@ -20,6 +20,8 @@ export default function ProviderShareCard({
   const professionText = normalizedProfessions.length
     ? normalizedProfessions.join(" • ")
     : "BookitGY Provider";
+  const normalizedRating = String(ratingLabel || "").trim();
+  const ratingText = normalizedRating ? `★ ${normalizedRating}` : "★ New Provider";
 
   return (
     <View style={styles.card}>
@@ -38,10 +40,12 @@ export default function ProviderShareCard({
         )}
 
         <View style={styles.contentCol}>
-          <Text numberOfLines={1} ellipsizeMode="tail" style={styles.username}>
-            @{safeUsername.replace(/^@/, "")}
-          </Text>
-          <Text numberOfLines={1} style={styles.rating}>{ratingLabel || "★ New on BookitGY"}</Text>
+          <View style={styles.identityRow}>
+            <Text numberOfLines={1} ellipsizeMode="tail" style={styles.username}>
+              @{safeUsername.replace(/^@/, "")}
+            </Text>
+            <Text numberOfLines={1} style={styles.rating}>{ratingText}</Text>
+          </View>
           <Text numberOfLines={2} ellipsizeMode="tail" style={styles.professions}>{professionText}</Text>
         </View>
       </View>
@@ -119,13 +123,19 @@ const styles = StyleSheet.create({
     flex: 1,
     marginLeft: 14,
   },
+  identityRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    minWidth: 0,
+  },
   username: {
     color: colors.text,
-    fontSize: 22,
+    fontSize: 20,
     fontWeight: "700",
+    flex: 1,
+    marginRight: 10,
   },
   rating: {
-    marginTop: 4,
     color: "#F4D03F",
     fontWeight: "600",
     fontSize: 14,
@@ -137,7 +147,7 @@ const styles = StyleSheet.create({
     lineHeight: 19,
   },
   footer: {
-    marginTop: 12,
+    marginTop: "auto",
     borderTopWidth: 1,
     borderTopColor: "rgba(255,255,255,0.12)",
     paddingTop: 10,
