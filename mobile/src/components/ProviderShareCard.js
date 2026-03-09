@@ -85,7 +85,7 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   brandName: {
-    color: colors.text,
+    color: "#E6EDF6",
     fontSize: 18,
     fontWeight: "700",
     letterSpacing: 0.5,
@@ -131,26 +131,26 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   username: {
-    color: colors.text,
+    color: "#FFFFFF",
     fontSize: 20,
     fontWeight: "700",
     flex: 1,
     marginRight: 10,
   },
   rating: {
-    color: "#F4D03F",
+    color: "#FFD700",
     fontWeight: "600",
     fontSize: 14,
   },
   professions: {
     marginTop: 6,
-    color: colors.textSecondary,
+    color: "#C9D4E3",
     fontSize: 14,
     lineHeight: 19,
   },
   footer: {
     borderTopWidth: 1,
-    borderTopColor: "rgba(255,255,255,0.12)",
+    borderTopColor: "rgba(255,255,255,0.15)",
     paddingTop: 10,
     flexDirection: "row",
     alignItems: "center",
@@ -158,7 +158,7 @@ const styles = StyleSheet.create({
     gap: 16,
   },
   cta: {
-    color: colors.text,
+    color: "#E6EDF6",
     fontSize: 13,
     lineHeight: 18,
     fontWeight: "600",
