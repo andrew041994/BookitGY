@@ -3626,6 +3626,7 @@ function BookingChatModal({
   onClose,
   booking,
   currentUserId,
+  currentUserIsProvider = false,
   showFlash,
 }) {
   const [messages, setMessages] = useState([]);
@@ -3642,8 +3643,8 @@ function BookingChatModal({
   const bookingId = booking?.id || booking?.booking_id;
   const chatReadOnlyReason = getBookingChatReadOnlyReason(booking);
   const isChatReadOnly = Boolean(chatReadOnlyReason);
-  const chatParticipant = useMemo(() => {
-    if (!booking) return { name: "Chat", avatarUrl: null };
+  const headerParticipant = useMemo(() => {
+    if (!booking) return { username: "Chat", avatar_url: null };
 
     const toComparableId = (value) => {
       if (value == null) return null;
@@ -3651,122 +3652,71 @@ function BookingChatModal({
       return str.length ? str : null;
     };
 
-    const collectIds = (...values) => {
-      const ids = new Set();
-      for (const value of values) {
-        if (value == null) continue;
-        if (Array.isArray(value)) {
-          value.forEach((item) => {
-            const normalized = toComparableId(item);
-            if (normalized) ids.add(normalized);
-          });
-          continue;
-        }
-        if (typeof value === "object") {
-          collectIds(
-            value?.id,
-            value?.user_id,
-            value?.provider_id,
-            value?.provider_user_id,
-            value?.client_id,
-            value?.client_user_id,
-            value?.customer_id,
-            value?.customer_user_id
-          ).forEach((id) => ids.add(id));
-          continue;
-        }
-        const normalized = toComparableId(value);
-        if (normalized) ids.add(normalized);
+    const normalizeParticipant = (participant, fallback) => ({
+      ...participant,
+      username:
+        participant?.username ||
+        participant?.name ||
+        fallback?.username ||
+        fallback?.name ||
+        "Chat",
+      avatar_url:
+        resolveImageUrl(participant?.avatar_url) ||
+        resolveImageUrl(participant?.profile_photo_url) ||
+        resolveImageUrl(participant?.profile_image_url) ||
+        resolveImageUrl(fallback?.avatar_url) ||
+        resolveImageUrl(fallback?.profile_photo_url) ||
+        resolveImageUrl(fallback?.profile_image_url) ||
+        null,
+    });
+
+    const loggedInUserId = toComparableId(currentUserId);
+    const providerAuthUserId = toComparableId(
+      booking?.provider?.user_id || booking?.provider_user_id || chatUsers?.provider?.user_id
+    );
+    const clientAuthUserId = toComparableId(
+      booking?.client?.user_id ||
+        booking?.customer?.user_id ||
+        booking?.client_user_id ||
+        booking?.customer_user_id ||
+        chatUsers?.client?.user_id
+    );
+
+    const provider = normalizeParticipant(chatUsers?.provider || booking?.provider || {}, {
+      username: booking?.provider_username || booking?.provider_name,
+      avatar_url:
+        booking?.provider_avatar_url ||
+        booking?.provider_profile_photo_url ||
+        booking?.provider_profile_image_url,
+    });
+
+    const client = normalizeParticipant(
+      chatUsers?.client || booking?.client || booking?.customer || {},
+      {
+        username:
+          booking?.client_username ||
+          booking?.client_name ||
+          booking?.customer_username ||
+          booking?.customer_name,
+        avatar_url:
+          booking?.client_avatar_url ||
+          booking?.customer_avatar_url ||
+          booking?.client_profile_photo_url ||
+          booking?.customer_profile_photo_url ||
+          booking?.client_profile_image_url ||
+          booking?.customer_profile_image_url,
       }
-      return ids;
-    };
-
-    const pickFirstImageUrl = (...values) => {
-      for (const value of values) {
-        const resolved = resolveImageUrl(value);
-        if (resolved) return resolved;
-      }
-      return null;
-    };
-
-    const resolveUserAvatar = (userLike, ...extraValues) =>
-      pickFirstImageUrl(
-        ...extraValues,
-        userLike?.avatar_url,
-        userLike?.profile_photo_url,
-        userLike?.profile_image_url,
-        userLike?.profile_photo,
-        userLike?.profile_image,
-        userLike?.image_url,
-        userLike?.avatar
-      );
-
-    const currentUserComparableId = toComparableId(currentUserId);
-    const providerIds = collectIds(
-      booking?.provider,
-      chatUsers?.provider,
-      booking?.provider_id,
-      booking?.provider_user_id
-    );
-    const clientIds = collectIds(
-      booking?.client,
-      booking?.customer,
-      chatUsers?.client,
-      booking?.client_id,
-      booking?.client_user_id,
-      booking?.customer_id,
-      booking?.customer_user_id
     );
 
-    const isCurrentUserProvider =
-      currentUserComparableId != null && providerIds.has(currentUserComparableId);
-    const isCurrentUserClient =
-      currentUserComparableId != null && clientIds.has(currentUserComparableId);
+    if (loggedInUserId && providerAuthUserId && loggedInUserId === providerAuthUserId) {
+      return client;
+    }
+    if (loggedInUserId && clientAuthUserId && loggedInUserId === clientAuthUserId) {
+      return provider;
+    }
 
-    const providerAvatar = resolveUserAvatar(
-      booking?.provider,
-      booking?.provider_avatar_url,
-      booking?.provider_profile_photo_url,
-      booking?.provider_profile_image_url,
-      booking?.provider_profile_photo,
-      booking?.provider_profile_image,
-      booking?.provider_image_url
-    );
-
-    const clientAvatar = resolveUserAvatar(
-      booking?.customer || booking?.client,
-      booking?.customer_avatar_url,
-      booking?.client_avatar_url,
-      booking?.customer_profile_photo_url,
-      booking?.client_profile_photo_url,
-      booking?.customer_profile_image_url,
-      booking?.client_profile_image_url,
-      booking?.customer_profile_photo,
-      booking?.client_profile_photo,
-      booking?.customer_profile_image,
-      booking?.client_profile_image,
-      booking?.customer_image_url,
-      booking?.client_image_url
-    );
-
-    const otherParticipantName = isCurrentUserProvider
-      ? chatUsers?.client?.username || booking?.customer_username || booking?.customer_name || booking?.client_username || booking?.client_name
-      : isCurrentUserClient
-        ? chatUsers?.provider?.username || booking?.provider_username || booking?.provider_name
-        : chatUsers?.provider?.username || booking?.provider_username || booking?.provider_name || chatUsers?.client?.username || booking?.customer_username || booking?.customer_name || booking?.client_username || booking?.client_name;
-
-    const avatarUrlRaw =
-      isCurrentUserProvider
-        ? resolveImageUrl(chatUsers?.client?.avatar_url) || clientAvatar
-        : isCurrentUserClient
-        ? resolveImageUrl(chatUsers?.provider?.avatar_url) || providerAvatar
-        : resolveImageUrl(chatUsers?.provider?.avatar_url) || providerAvatar || resolveImageUrl(chatUsers?.client?.avatar_url) || clientAvatar;
-
-    return {
-      name: String(otherParticipantName || "").trim() || "Chat",
-      avatarUrl: avatarUrlRaw,
-    };
-  }, [booking, currentUserId, chatUsers]);
+    return currentUserIsProvider ? client : provider;
+  }, [booking, currentUserId, currentUserIsProvider, chatUsers]);
 
   const logImageMessageShapeSummary = useCallback((context, details) => {
     console.log("[chat-image-debug] shape-summary", {
@@ -4057,21 +4007,21 @@ function BookingChatModal({
               <Text style={styles.chatCloseText}>Close</Text>
             </TouchableOpacity>
             <View style={styles.chatHeaderParticipant}>
-              {chatParticipant?.avatarUrl ? (
+              {headerParticipant?.avatar_url ? (
                 <Image
-                  source={{ uri: chatParticipant.avatarUrl }}
+                  source={{ uri: headerParticipant.avatar_url }}
                   style={styles.chatHeaderAvatar}
                   resizeMode="cover"
                 />
               ) : (
                 <View style={styles.chatHeaderAvatarFallback}>
                   <Text style={styles.chatHeaderAvatarInitial}>
-                    {(chatParticipant?.name || "Chat").charAt(0).toUpperCase()}
+                    {(headerParticipant?.username || "Chat").charAt(0).toUpperCase()}
                   </Text>
                 </View>
               )}
               <Text style={styles.chatHeaderTitle} numberOfLines={1} ellipsizeMode="tail">
-                {chatParticipant?.name || "Chat"}
+                {headerParticipant?.username || "Chat"}
               </Text>
             </View>
             <View style={{ width: 46 }} />
@@ -4696,6 +4646,7 @@ function AppointmentsScreen({ token, showFlash, pendingChatConversationId, clear
     onClose={() => setChatBooking(null)}
     booking={chatBooking}
     currentUserId={token?.userId}
+    currentUserIsProvider={Boolean(token?.isProvider ?? token?.is_provider)}
     showFlash={showFlash}
   />
 
@@ -7919,6 +7870,7 @@ const loadProviderSummary = async () => {
         onClose={() => setChatBooking(null)}
         booking={chatBooking}
         currentUserId={token?.userId}
+        currentUserIsProvider={Boolean(token?.isProvider ?? token?.is_provider)}
         showFlash={showFlash}
       />
     </View>
