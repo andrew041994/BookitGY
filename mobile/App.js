@@ -4390,7 +4390,7 @@ function BookingChatModal({
           <View
             style={[
               styles.chatComposer,
-              { paddingBottom: 8 + (insets.bottom > 0 ? 4 : 0) },
+              { paddingBottom: Math.max(insets.bottom, 12) },
             ]}
           >
             {selectedImage?.uri ? (
