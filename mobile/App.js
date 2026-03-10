@@ -6247,6 +6247,7 @@ function ProviderDashboardScreen({
     100,
     Math.min(120, Math.round(windowWidth * 0.3))
   );
+  const [providerDashboardHeaderHeight, setProviderDashboardHeaderHeight] = useState(0);
 
   // const providerLabel = profile?.full_name || "Provider";
   const [services, setServices] = useState([]);
@@ -7443,39 +7444,51 @@ const loadProviderSummary = async () => {
         </View>
       )}
 
+      <View
+        onLayout={(event) => {
+          const measuredHeight = Math.ceil(event.nativeEvent.layout.height || 0);
+          if (measuredHeight && measuredHeight !== providerDashboardHeaderHeight) {
+            setProviderDashboardHeaderHeight(measuredHeight);
+          }
+        }}
+        style={[
+          styles.providerDashboardPinnedHeader,
+          styles.providerDashboardTopSection,
+          { paddingTop: insets.top + 12 },
+        ]}
+      >
+        <View style={styles.providerDashboardLogoWrap}>
+          <Image
+            source={BookitGYLogoTransparent}
+            style={{
+              width: providerDashboardLogoSize,
+              height: providerDashboardLogoSize,
+            }}
+            resizeMode="contain"
+          />
+        </View>
+        <View style={styles.providerDashboardIntro}>
+          <Text style={styles.homeGreeting}>Provider dashboard</Text>
+          <Text style={styles.homeSubtitle}>Welcome, {providerLabel}</Text>
+          <Text style={styles.providerDashboardRatingText}>
+            {providerRatingSummary.hasRatings
+              ? `★ ${providerRatingSummary.ratingValue.toFixed(1)}${providerRatingSummary.ratingCount > 0 ? ` (${providerRatingSummary.ratingCount} rating${providerRatingSummary.ratingCount === 1 ? "" : "s"})` : ""}`
+              : "No ratings"}
+          </Text>
+        </View>
+      </View>
+
       <ScrollView
-        contentContainerStyle={styles.providerScroll}
+        contentContainerStyle={[
+          styles.providerScroll,
+          {
+            paddingTop: providerDashboardHeaderHeight + 8,
+          },
+        ]}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
         }
       >
-        <View
-          style={[
-            styles.providerDashboardTopSection,
-            { paddingTop: insets.top + 12 },
-          ]}
-        >
-          <View style={styles.providerDashboardLogoWrap}>
-            <Image
-              source={BookitGYLogoTransparent}
-              style={{
-                width: providerDashboardLogoSize,
-                height: providerDashboardLogoSize,
-              }}
-              resizeMode="contain"
-            />
-          </View>
-          <View style={styles.providerDashboardIntro}>
-            <Text style={styles.homeGreeting}>Provider dashboard</Text>
-            <Text style={styles.homeSubtitle}>Welcome, {providerLabel}</Text>
-            <Text style={styles.providerDashboardRatingText}>
-              {providerRatingSummary.hasRatings
-                ? `★ ${providerRatingSummary.ratingValue.toFixed(1)}${providerRatingSummary.ratingCount > 0 ? ` (${providerRatingSummary.ratingCount} rating${providerRatingSummary.ratingCount === 1 ? "" : "s"})` : ""}`
-                : "No ratings"}
-            </Text>
-          </View>
-        </View>
-    
         {/*Account Info */}
         {providerSummary && (
           <View style={styles.providerSummaryCard}>
@@ -11747,6 +11760,15 @@ const styles = StyleSheet.create({
     alignItems: "center",
     paddingHorizontal: 16,
     paddingBottom: 8,
+  },
+  providerDashboardPinnedHeader: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 10,
+    elevation: 10,
+    backgroundColor: "#0B1220",
   },
   providerDashboardLogoWrap: {
     width: "100%",
