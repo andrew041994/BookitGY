@@ -6256,9 +6256,9 @@ function ProviderDashboardScreen({
   const [adding, setAdding] = useState(false);
   const [newName, setNewName] = useState("");
   const [newPrice, setNewPrice] = useState("");
-  const [newDurationDays, setNewDurationDays] = useState("0");
-  const [newDurationHours, setNewDurationHours] = useState("0");
-  const [newDurationMinutes, setNewDurationMinutes] = useState("30");
+  const [newDurationDays, setNewDurationDays] = useState("");
+  const [newDurationHours, setNewDurationHours] = useState("");
+  const [newDurationMinutes, setNewDurationMinutes] = useState("");
   const [newDescription, setNewDescription] = useState("");
   const [isSavingService, setIsSavingService] = useState(false);
   const [bookings, setBookings] = useState([]);
@@ -6471,9 +6471,9 @@ const handleShareProfileLink = async () => {
 const resetForm = () => {
     setNewName("");
     setNewPrice("");
-    setNewDurationDays("0");
-    setNewDurationHours("0");
-    setNewDurationMinutes("30");
+    setNewDurationDays("");
+    setNewDurationHours("");
+    setNewDurationMinutes("");
     setNewDescription("");
   };
 
@@ -7708,7 +7708,7 @@ const loadProviderSummary = async () => {
                   styles.input,
                   serviceErrors.duration ? styles.inputError : null,
                 ]}
-                placeholder="Duration days"
+                placeholder="Duration days (if applicable)"
                 placeholderTextColor={colors.textSecondary}
                 value={newDurationDays}
                 onChangeText={setNewDurationDays}
@@ -7719,7 +7719,7 @@ const loadProviderSummary = async () => {
                   styles.input,
                   serviceErrors.duration ? styles.inputError : null,
                 ]}
-                placeholder="Duration hours"
+                placeholder="Duration hours (if applicable)"
                 placeholderTextColor={colors.textSecondary}
                 value={newDurationHours}
                 onChangeText={setNewDurationHours}
@@ -11769,17 +11769,13 @@ const styles = StyleSheet.create({
   },
   providerDashboardPinnedHeaderContent: {
     width: "100%",
-    height: ".5%",
-    paddingBottom: 2,
+    paddingBottom: 6,
   },
   providerDashboardLogoWrap: {
-  position: "absolute",
-  left: 0,
-  right: 0,
-  marginTop: -60,
-  alignItems: "center",
-  zIndex: 20,
-},
+    width: "100%",
+    alignItems: "center",
+    justifyContent: "center",
+  },
   providerDashboardIntro: {
     width: "100%",
     alignItems: "flex-start",
