@@ -3849,6 +3849,27 @@ function BookingChatModal({
       return str.length ? str : null;
     };
 
+    const resolveParticipantAvatar = (participant, fallback) =>
+      resolveImageUrl(participant?.avatar_url) ||
+      resolveImageUrl(participant?.profile_photo_url) ||
+      resolveImageUrl(participant?.profile_image_url) ||
+      resolveImageUrl(participant?.user?.avatar_url) ||
+      resolveImageUrl(participant?.user?.profile_photo_url) ||
+      resolveImageUrl(participant?.user?.profile_image_url) ||
+      resolveImageUrl(participant?.provider?.avatar_url) ||
+      resolveImageUrl(participant?.provider?.profile_photo_url) ||
+      resolveImageUrl(participant?.provider?.profile_image_url) ||
+      resolveImageUrl(participant?.client?.avatar_url) ||
+      resolveImageUrl(participant?.client?.profile_photo_url) ||
+      resolveImageUrl(participant?.client?.profile_image_url) ||
+      resolveImageUrl(fallback?.avatar_url) ||
+      resolveImageUrl(fallback?.profile_photo_url) ||
+      resolveImageUrl(fallback?.profile_image_url) ||
+      resolveImageUrl(fallback?.user?.avatar_url) ||
+      resolveImageUrl(fallback?.user?.profile_photo_url) ||
+      resolveImageUrl(fallback?.user?.profile_image_url) ||
+      null;
+
     const normalizeParticipant = (participant, fallback) => ({
       ...participant,
       username:
@@ -3857,14 +3878,7 @@ function BookingChatModal({
         fallback?.username ||
         fallback?.name ||
         "Chat",
-      avatar_url:
-        resolveImageUrl(participant?.avatar_url) ||
-        resolveImageUrl(participant?.profile_photo_url) ||
-        resolveImageUrl(participant?.profile_image_url) ||
-        resolveImageUrl(fallback?.avatar_url) ||
-        resolveImageUrl(fallback?.profile_photo_url) ||
-        resolveImageUrl(fallback?.profile_image_url) ||
-        null,
+      avatar_url: resolveParticipantAvatar(participant, fallback),
     });
 
     const loggedInUserId = toComparableId(currentUserId);

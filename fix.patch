@@ -1,256 +1,97 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
 diff --git a/mobile/App.js b/mobile/App.js
-index 073041d5d3fabefffc0722c8192ba3f0ff9c0687..308740e9c9052fd090bffb4485232be254ac09fd 100644
+index 308740e9c9052fd090bffb4485232be254ac09fd..f43c70d6d80ac8888fd45b90f9e3db5ec5af9fe4 100644
 --- a/mobile/App.js
 +++ b/mobile/App.js
-@@ -1906,50 +1906,51 @@ function ProfileScreen({ authLoading, setToken, showFlash, token }) {
-   const [showEdit, setShowEdit] = useState(false);
-   const [editSaving, setEditSaving] = useState(false);
-   const [editProfile, setEditProfile] = useState({
-     full_name: "",
-     username: "",
-     phone: "",
-     whatsapp: "",
-     location: "",
-   });
-   // NEW state for "My bookings"
-   const [showBookings, setShowBookings] = useState(false);
-   const [bookings, setBookings] = useState([]);
-   const [bookingsLoading, setBookingsLoading] = useState(false);
-   const [bookingsError, setBookingsError] = useState("");
-   const [avatarUrl, setAvatarUrl] = useState(null);
+@@ -3827,66 +3827,80 @@ function BookingChatModal({
+   showFlash,
+ }) {
+   const [messages, setMessages] = useState([]);
+   const [loading, setLoading] = useState(false);
    const [refreshing, setRefreshing] = useState(false);
-   const [isProviderUser, setIsProviderUser] = useState(null);
-   const canUseClipboard = Boolean(Clipboard?.setStringAsync);
-   const [deleteModalVisible, setDeleteModalVisible] = useState(false);
-   const [deletePassword, setDeletePassword] = useState("");
-   const [deleteLoading, setDeleteLoading] = useState(false);
-   const providerShareCardRef = useRef(null);
-   const [shareCardVisible, setShareCardVisible] = useState(false);
-   const [sharingProviderCard, setSharingProviderCard] = useState(false);
-   const [providerProfile, setProviderProfile] = useState(null);
-+  const [previewScale, setPreviewScale] = useState(1);
+   const [sending, setSending] = useState(false);
+   const [text, setText] = useState("");
+   const [selectedImage, setSelectedImage] = useState(null);
+   const [viewerImage, setViewerImage] = useState(null);
+   const [chatUsers, setChatUsers] = useState({ provider: null, client: null });
+   const listRef = useRef(null);
+   const insets = useSafeAreaInsets();
  
-   const forceLogout = useCallback(
-     async (flashMessage) => {
-       try {
-         await clearAllAuthTokens();
-       } catch (err) {
-         console.log("Error clearing token", err?.message || err);
-       }
-       try {
-         await AsyncStorage.removeItem(LEGACY_ACCESS_TOKEN_KEY);
-       } catch (err) {
-         console.log("Error clearing legacy token", err?.message || err);
-       }
-       setUser(null);
-       setAvatarUrl(null);
-       if (setToken) {
-         setToken(null);
-       }
-       if (flashMessage && showFlash) {
-         showFlash("success", flashMessage);
-       }
-     },
-     [setToken, showFlash]
-   );
+   const bookingId = booking?.id || booking?.booking_id;
+   const chatReadOnlyReason = getBookingChatReadOnlyReason(booking);
+   const isChatReadOnly = Boolean(chatReadOnlyReason);
+   const headerParticipant = useMemo(() => {
+     if (!booking) return { username: "Chat", avatar_url: null };
  
-@@ -2374,50 +2375,57 @@ function ProfileScreen({ authLoading, setToken, showFlash, token }) {
-       await loadMyBookings();
-     }
-   }, [loadMyBookings, loadProfile, showBookings]);
+     const toComparableId = (value) => {
+       if (value == null) return null;
+       const str = String(value).trim();
+       return str.length ? str : null;
+     };
  
-   const providerShareProfessions = useMemo(() => {
-     const candidateSources = [
-       providerProfile?.professions,
-       user?.provider_profile?.professions,
-       user?.professions,
-     ];
- 
-     const rawProfessions =
-       candidateSources.find((source) => Array.isArray(source) && source.length > 0) || [];
- 
-     return rawProfessions
-       .map((entry) => {
-         if (typeof entry === "string") return entry;
-         if (entry && typeof entry === "object") {
-           return entry.name || entry.title || entry.label || entry.profession || "";
-         }
-         return "";
-       })
-       .map((value) => String(value || "").trim())
-       .filter(Boolean);
-   }, [providerProfile?.professions, user]);
-+  const handleProviderSharePreviewLayout = useCallback((event) => {
-+    const containerWidth = event?.nativeEvent?.layout?.width || 0;
-+    if (containerWidth <= 0) return;
-+    const scale = containerWidth / 600;
-+    setPreviewScale(scale);
-+  }, []);
++    const resolveParticipantAvatar = (participant, fallback) =>
++      resolveImageUrl(participant?.avatar_url) ||
++      resolveImageUrl(participant?.profile_photo_url) ||
++      resolveImageUrl(participant?.profile_image_url) ||
++      resolveImageUrl(participant?.user?.avatar_url) ||
++      resolveImageUrl(participant?.user?.profile_photo_url) ||
++      resolveImageUrl(participant?.user?.profile_image_url) ||
++      resolveImageUrl(participant?.provider?.avatar_url) ||
++      resolveImageUrl(participant?.provider?.profile_photo_url) ||
++      resolveImageUrl(participant?.provider?.profile_image_url) ||
++      resolveImageUrl(participant?.client?.avatar_url) ||
++      resolveImageUrl(participant?.client?.profile_photo_url) ||
++      resolveImageUrl(participant?.client?.profile_image_url) ||
++      resolveImageUrl(fallback?.avatar_url) ||
++      resolveImageUrl(fallback?.profile_photo_url) ||
++      resolveImageUrl(fallback?.profile_image_url) ||
++      resolveImageUrl(fallback?.user?.avatar_url) ||
++      resolveImageUrl(fallback?.user?.profile_photo_url) ||
++      resolveImageUrl(fallback?.user?.profile_image_url) ||
++      null;
 +
-   const providerShareRatingValue = useMemo(() => {
-     const ratingCandidates = [
-       providerProfile?.avg_rating,
-       providerProfile?.rating,
-       user?.provider_profile?.avg_rating,
-       user?.provider_profile?.rating,
-       user?.avg_rating,
-       user?.rating,
-     ];
+     const normalizeParticipant = (participant, fallback) => ({
+       ...participant,
+       username:
+         participant?.username ||
+         participant?.name ||
+         fallback?.username ||
+         fallback?.name ||
+         "Chat",
+-      avatar_url:
+-        resolveImageUrl(participant?.avatar_url) ||
+-        resolveImageUrl(participant?.profile_photo_url) ||
+-        resolveImageUrl(participant?.profile_image_url) ||
+-        resolveImageUrl(fallback?.avatar_url) ||
+-        resolveImageUrl(fallback?.profile_photo_url) ||
+-        resolveImageUrl(fallback?.profile_image_url) ||
+-        null,
++      avatar_url: resolveParticipantAvatar(participant, fallback),
+     });
  
-     const resolvedRating = ratingCandidates
-       .map((value) => Number(value))
-       .find((value) => Number.isFinite(value));
+     const loggedInUserId = toComparableId(currentUserId);
+     const providerAuthUserId = toComparableId(
+       booking?.provider?.user_id || booking?.provider_user_id || chatUsers?.provider?.user_id
+     );
+     const clientAuthUserId = toComparableId(
+       booking?.client?.user_id ||
+         booking?.customer?.user_id ||
+         booking?.client_user_id ||
+         booking?.customer_user_id ||
+         chatUsers?.client?.user_id
+     );
  
-     return resolvedRating > 0 ? Number(resolvedRating.toFixed(1)) : 0;
-   }, [
-     providerProfile?.avg_rating,
-     providerProfile?.rating,
-     user?.provider_profile?.avg_rating,
-     user?.provider_profile?.rating,
-     user?.avg_rating,
-     user?.rating,
-   ]);
+     const provider = normalizeParticipant(chatUsers?.provider || booking?.provider || {}, {
+       username: booking?.provider_username || booking?.provider_name,
+       avatar_url:
+         booking?.provider_avatar_url ||
+         booking?.provider_profile_photo_url ||
+         booking?.provider_profile_image_url,
+     });
  
-   console.log("[provider-share-rating]", {
-@@ -2783,58 +2791,68 @@ function ProfileScreen({ authLoading, setToken, showFlash, token }) {
-       {hasContactDetails && (
-         <View style={styles.card}>
-           <Text style={styles.sectionTitle}>Contact</Text>
-           {user.phone && (
-             <>
-               <Text style={styles.label}>Phone</Text>
-               <Text style={styles.value}>{user.phone}</Text>
-             </>
-           )}
- 
-           {user.location && (
-             <>
-               <Text style={[styles.label, { marginTop: 12 }]}>Location</Text>
-               <Text style={styles.value}>{user.location}</Text>
-             </>
-           )}
-         </View>
-       )}
- 
-       {isProvider && (
-         <View style={styles.card}>
-           <Text style={styles.sectionTitle}>Share your provider card</Text>
-           <Text style={styles.hoursHelp}>
-             Create a polished card image to share on WhatsApp, Facebook, Instagram, and Stories.
-           </Text>
--          <View style={styles.providerSharePreviewWrap}>
--            <ProviderShareCard
--              avatarUrl={displayAvatarUrl}
--              username={user.username || user.full_name || "bookitgy_provider"}
--              professions={providerShareProfessions}
--              ratingValue={providerShareRatingValue}
--              brandingSource={BookitGYLogoTransparent}
--            />
-+          <View
-+            style={styles.providerSharePreviewWrap}
-+            onLayout={handleProviderSharePreviewLayout}
-+          >
-+            <View
-+              style={[
-+                styles.providerSharePreviewCardWrap,
-+                { transform: [{ scale: previewScale }] },
-+              ]}
-+            >
-+              <ProviderShareCard
-+                avatarUrl={displayAvatarUrl}
-+                username={user.username || user.full_name || "bookitgy_provider"}
-+                professions={providerShareProfessions}
-+                ratingValue={providerShareRatingValue}
-+                brandingSource={BookitGYLogoTransparent}
-+              />
-+            </View>
-           </View>
-           <TouchableOpacity
-             style={[
-               styles.actionButton,
-               styles.providerShareButton,
-               sharingProviderCard && styles.providerShareButtonDisabled,
-             ]}
-             onPress={handleShareProviderCard}
-             disabled={sharingProviderCard}
-           >
-             <Text style={styles.actionButtonText}>
-               {sharingProviderCard ? "Generating card..." : "Share card image"}
-             </Text>
-           </TouchableOpacity>
-         </View>
-       )}
- 
-       <View style={styles.profileSection}>
-         <Text style={styles.profileSectionTitle}>Account</Text>
-         <View style={styles.sectionCard}>
-           <ListRow
-             title={showEdit ? "Hide edit profile" : "Edit profile"}
-             icon="person-outline"
-             onPress={toggleEditProfile}
-           />
-@@ -12000,53 +12018,57 @@ cardHeartButton: {
-     backgroundColor: "transparent",
-     paddingVertical: 10,
-     paddingHorizontal: 12,
-     borderRadius: 999,
-     borderWidth: 1,
-     borderColor: colors.border,
-     marginBottom: 10,
-     alignItems: "center",
-   },
-   actionButtonText: {
-     fontSize: 15,
-     fontWeight: "500",
-     color: colors.textPrimary,
-   },
-   providerShareButton: {
-     marginTop: 14,
-     borderColor: colors.primary,
-     backgroundColor: colors.primarySoft,
-   },
-   providerShareButtonDisabled: {
-     opacity: 0.65,
-   },
-   providerSharePreviewWrap: {
-     width: "100%",
-     aspectRatio: 1.9,
--    alignSelf: "center",
--    padding: 0,
--    overflow: "visible",
-+    alignItems: "center",
-+    justifyContent: "center",
-+    overflow: "hidden",
-+  },
-+  providerSharePreviewCardWrap: {
-+    width: 600,
-+    aspectRatio: 1.9,
-   },
-   providerShareCaptureLayer: {
-     position: "absolute",
-     opacity: 0,
-     left: -9999,
-     top: -9999,
-   },
-   providerShareCaptureCardWrap: {
-     width: 600,
-     aspectRatio: 1.9,
-     alignSelf: "center",
-     padding: 0,
-     backgroundColor: "transparent",
-     overflow: "visible",
-   },
-   logoutButton: {
-     backgroundColor: "transparent",
-     borderColor: colors.error,
-     marginTop: 10,
-   },
-   logoutButtonText: {
-     color: colors.error,
-   },
-   logoutRow: {
-     marginTop: 8,
+     const client = normalizeParticipant(
+       chatUsers?.client || booking?.client || booking?.customer || {},
+       {
  
 EOF
 )
