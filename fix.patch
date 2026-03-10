@@ -1,102 +1,283 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
-diff --git a/mobile/src/components/ProviderShareCard.js b/mobile/src/components/ProviderShareCard.js
-index 65afd83d4a2eb5f2735a54244cac5aaf983c5e5e..9b16117f3429b5d785b1bf07f22bcb9d97692cf4 100644
---- a/mobile/src/components/ProviderShareCard.js
-+++ b/mobile/src/components/ProviderShareCard.js
-@@ -1,80 +1,91 @@
- import React from "react";
- import { LinearGradient } from "expo-linear-gradient";
- import { Image, StyleSheet, Text, View } from "react-native";
- import { theme } from "../theme";
+diff --git a/mobile/App.js b/mobile/App.js
+index 0bf4421be341ca82f8ce90f7717d54d3b2324b85..b0601c2b93de015a75e9ea73e69a211819339a02 100644
+--- a/mobile/App.js
++++ b/mobile/App.js
+@@ -1906,54 +1906,50 @@ function ProfileScreen({ authLoading, setToken, showFlash, token }) {
+    // NEW state for editing profile
+   const [showEdit, setShowEdit] = useState(false);
+   const [editSaving, setEditSaving] = useState(false);
+   const [editProfile, setEditProfile] = useState({
+     full_name: "",
+     username: "",
+     phone: "",
+     whatsapp: "",
+     location: "",
+   });
+   // NEW state for "My bookings"
+   const [showBookings, setShowBookings] = useState(false);
+   const [bookings, setBookings] = useState([]);
+   const [bookingsLoading, setBookingsLoading] = useState(false);
+   const [bookingsError, setBookingsError] = useState("");
+   const [avatarUrl, setAvatarUrl] = useState(null);
+   const [refreshing, setRefreshing] = useState(false);
+   const [isProviderUser, setIsProviderUser] = useState(null);
+   const canUseClipboard = Boolean(Clipboard?.setStringAsync);
+   const [deleteModalVisible, setDeleteModalVisible] = useState(false);
+   const [deletePassword, setDeletePassword] = useState("");
+   const [deleteLoading, setDeleteLoading] = useState(false);
+   const providerShareCardRef = useRef(null);
+   const [shareCardVisible, setShareCardVisible] = useState(false);
+   const [sharingProviderCard, setSharingProviderCard] = useState(false);
+-  const [shareAvatarReady, setShareAvatarReady] = useState(false);
+-  const [shareBrandingReady, setShareBrandingReady] = useState(false);
+-  const shareAvatarReadyRef = useRef(false);
+-  const shareBrandingReadyRef = useRef(false);
+   const [providerProfile, setProviderProfile] = useState(null);
+   const [previewScale, setPreviewScale] = useState(1);
  
- const colors = theme.colors;
+   const forceLogout = useCallback(
+     async (flashMessage) => {
+       try {
+         await clearAllAuthTokens();
+       } catch (err) {
+         console.log("Error clearing token", err?.message || err);
+       }
+       try {
+         await AsyncStorage.removeItem(LEGACY_ACCESS_TOKEN_KEY);
+       } catch (err) {
+         console.log("Error clearing legacy token", err?.message || err);
+       }
+       setUser(null);
+       setAvatarUrl(null);
+       if (setToken) {
+         setToken(null);
+       }
+       if (flashMessage && showFlash) {
+         showFlash("success", flashMessage);
+       }
+     },
+     [setToken, showFlash]
+@@ -2541,74 +2537,60 @@ function ProfileScreen({ authLoading, setToken, showFlash, token }) {
+   const displayAvatarUrl = resolveImageUrl(avatarUrl || user?.avatar_url);
+   const isProviderPublic =
+     user?.is_provider === true || token?.is_provider === true;
+   const providerPublicLink = buildProviderPublicLink(user?.username);
+   const isProfileValid = Boolean(String(editProfile.username || "").trim());
+   const isSaveDisabled = editSaving || !isProfileValid;
  
- export default function ProviderShareCard({
-   avatarUrl,
-   username,
-   professions = [],
-   ratingValue,
-   brandingSource,
-+  onAvatarLoadEnd,
-+  onBrandingLoadEnd,
- }) {
-   const safeUsername = String(username || "").trim().replace(/^@/, "");
-   const normalizedProfessions = Array.isArray(professions)
-     ? professions
-         .map((value) => String(value || "").trim())
-         .filter(Boolean)
-     : [];
-   const professionText = normalizedProfessions.length
-     ? normalizedProfessions.join(" • ")
-     : "BookitGY Provider";
-   const parsedRating = Number(ratingValue);
-   const hasNumericRating = Number.isFinite(parsedRating);
-   const normalizedRating = hasNumericRating ? parsedRating.toFixed(1) : "0.0";
+   const handleShareProviderCard = async () => {
+     const hasViewShot = Boolean(ViewShot);
+     const hasCaptureRef = typeof captureRef === "function";
+     const hasCardRef = Boolean(providerShareCardRef.current);
+ 
+     console.log("[ProviderShareCard] share preflight", {
+       hasViewShot,
+       hasCaptureRef,
+       hasCardRef,
+     });
+ 
+     if (!hasViewShot || !hasCaptureRef) {
+       showFlash?.("error", "Sharing is not available in this build yet.");
+       return;
+     }
+ 
+     try {
+       setSharingProviderCard(true);
+-      shareAvatarReadyRef.current = false;
+-      shareBrandingReadyRef.current = false;
+-      setShareAvatarReady(false);
+-      setShareBrandingReady(false);
+       setShareCardVisible(true);
+ 
+       await new Promise((resolve) => {
+         requestAnimationFrame(() => {
+           requestAnimationFrame(() => {
+             requestAnimationFrame(resolve);
+           });
+         });
+       });
+ 
+-      const captureWaitStart = Date.now();
+-      const captureWaitTimeoutMs = 1600;
+-      // Android can capture the off-screen card before nested images finish rendering.
+-      while (Date.now() - captureWaitStart < captureWaitTimeoutMs) {
+-        if ((shareAvatarReady && shareBrandingReady) || (shareAvatarReadyRef.current && shareBrandingReadyRef.current)) {
+-          break;
+-        }
+-        await new Promise((resolve) => setTimeout(resolve, 60));
+-      }
+-
+       if (!providerShareCardRef.current) {
+         showFlash?.("error", "Sharing is not available in this build yet.");
+         return;
+       }
+ 
+       const imageUri = await captureRef(providerShareCardRef.current, {
+         format: "png",
+         quality: 1,
+         width: 1200,
+         height: Math.round(1200 / 1.9),
+       });
+ 
+       if (!imageUri) {
+         showFlash?.("error", "Could not generate your provider card image.");
+         return;
+       }
+ 
+       const isNativeShareAvailable = await Sharing.isAvailableAsync();
+       if (!isNativeShareAvailable) {
+         showFlash?.("error", "Sharing is not available on this device.");
+         return;
+       }
+ 
+       await Sharing.shareAsync(imageUri, {
+         mimeType: "image/png",
+@@ -2668,75 +2650,72 @@ function ProfileScreen({ authLoading, setToken, showFlash, token }) {
+ 
+   const handleTestProviderLink = async () => {
+     if (!providerPublicLink) {
+       if (showFlash) {
+         showFlash("error", "Set a username to enable your profile link.");
+       }
+       return;
+     }
+ 
+     try {
+       const supported = await Linking.canOpenURL(providerPublicLink);
+       if (!supported) {
+         throw new Error("Unsupported URL");
+       }
+       await Linking.openURL(providerPublicLink);
+     } catch (err) {
+       console.log("Error opening provider link", err?.message || err);
+       if (showFlash) {
+         showFlash("error", "Could not open your profile link.");
+       }
+     }
+   };
  
    return (
-     <View style={styles.card}>
-       <LinearGradient
-         colors={["rgba(255,255,255,0.08)", "rgba(255,255,255,0.03)", "transparent"]}
-         start={{ x: 0, y: 0 }}
-         end={{ x: 0, y: 0.65 }}
-         style={styles.glassHighlight}
-       />
-       <View style={styles.contentWrap}>
-         <View style={styles.topRow}>
-           <View style={styles.topLeft}>
-           {avatarUrl ? (
--            <Image source={{ uri: avatarUrl }} style={styles.avatar} />
-+            <Image
-+              source={{ uri: avatarUrl }}
-+              style={styles.avatar}
-+              onLoadEnd={onAvatarLoadEnd}
-+            />
-           ) : (
-             <View style={styles.avatarFallback}>
-               <Text style={styles.avatarInitial}>{safeUsername.charAt(0).toUpperCase()}</Text>
-             </View>
-           )}
-           </View>
-           <View style={styles.topRight}>
-             <Text numberOfLines={1} style={styles.rating}>⭐️ {normalizedRating}</Text>
-           </View>
+     <>
+-      {shareCardVisible && ViewShot ? (
+-        <View style={styles.providerShareCaptureLayer} pointerEvents="none">
++      <Modal
++        animationType="none"
++        transparent
++        visible={shareCardVisible && Boolean(ViewShot)}
++        statusBarTranslucent
++      >
++        <View style={styles.providerShareCaptureOverlay} pointerEvents="none">
+           <ViewShot
+             ref={providerShareCardRef}
+             options={{ format: "png", quality: 1 }}
+             style={styles.providerShareCaptureCardWrap}
+           >
+             <ProviderShareCard
+               avatarUrl={displayAvatarUrl}
+               username={user.username || user.full_name || "bookitgy_provider"}
+               professions={providerShareProfessions}
+               ratingValue={providerShareRatingValue}
+               brandingSource={BookitGYLogoTransparent}
+-              onAvatarLoadEnd={() => {
+-                shareAvatarReadyRef.current = true;
+-                setShareAvatarReady(true);
+-              }}
+-              onBrandingLoadEnd={() => {
+-                shareBrandingReadyRef.current = true;
+-                setShareBrandingReady(true);
+-              }}
+             />
+           </ViewShot>
          </View>
+-      ) : null}
++      </Modal>
  
-         <View style={styles.middleSection}>
-           <View style={styles.logoWrap}>
-             {brandingSource ? (
--              <Image source={brandingSource} style={styles.logo} resizeMode="contain" />
-+              <Image
-+                source={brandingSource}
-+                style={styles.logo}
-+                resizeMode="contain"
-+                onLoadEnd={onBrandingLoadEnd}
-+              />
-             ) : null}
-           </View>
-           <Text numberOfLines={1} ellipsizeMode="tail" style={styles.username}>
-             {safeUsername}
-           </Text>
-           <Text numberOfLines={2} ellipsizeMode="tail" style={styles.professions}>{professionText}</Text>
-         </View>
- 
-         <View style={styles.footer}>
-           <View style={styles.divider} />
-           <Text numberOfLines={2} ellipsizeMode="tail" style={styles.cta}>Download BookitGY to schedule an appointment</Text>
-         </View>
-       </View>
-     </View>
-   );
- }
- 
- const styles = StyleSheet.create({
-   card: {
+       <ScrollView
+       contentContainerStyle={styles.profileScroll}
+       refreshControl={
+         <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+       }
+     >
+       <View style={styles.profileHeaderCard}>
+         <View style={styles.profileIdentityRow}>
+           <View style={styles.profileAvatarColumn}>
+             <Pressable onPress={pickClientAvatar} style={styles.profileAvatarWrapper}>
+               {displayAvatarUrl ? (
+                 <Image
+                   source={{ uri: displayAvatarUrl }}
+                   style={styles.profileAvatarImage}
+                   resizeMode="cover"
+                 />
+               ) : (
+                 <View style={styles.profileAvatarFallback}>
+                   <Text style={styles.profileAvatarInitial}>
+                     {(user.full_name || user.email || "C").charAt(0).toUpperCase()}
+                   </Text>
+                 </View>
+               )}
+             </Pressable>
+@@ -12197,55 +12176,55 @@ cardHeartButton: {
+   },
+   actionButtonText: {
+     fontSize: 15,
+     fontWeight: "500",
+     color: colors.textPrimary,
+   },
+   providerShareButton: {
+     marginTop: 14,
+     borderColor: colors.primary,
+     backgroundColor: colors.primarySoft,
+   },
+   providerShareButtonDisabled: {
+     opacity: 0.65,
+   },
+   providerSharePreviewWrap: {
      width: "100%",
-     alignSelf: "center",
      aspectRatio: 1.9,
-     borderRadius: 22,
+     alignItems: "center",
+     justifyContent: "center",
+     overflow: "hidden",
+   },
+   providerSharePreviewCardWrap: {
+     width: 600,
+     aspectRatio: 1.9,
+   },
+-  providerShareCaptureLayer: {
+-    position: "absolute",
+-    opacity: 0,
+-    left: -9999,
+-    top: -9999,
++  providerShareCaptureOverlay: {
++    flex: 1,
++    alignItems: "center",
++    justifyContent: "center",
++    backgroundColor: "rgba(0,0,0,0.28)",
+   },
+   providerShareCaptureCardWrap: {
+     width: 600,
+     aspectRatio: 1.9,
+     alignSelf: "center",
+     padding: 0,
+     backgroundColor: "transparent",
+     overflow: "visible",
+   },
+   logoutButton: {
+     backgroundColor: "transparent",
+     borderColor: colors.error,
+     marginTop: 10,
+   },
+   logoutButtonText: {
+     color: colors.error,
+   },
+   logoutRow: {
+     marginTop: 8,
+     paddingVertical: 12,
+     borderRadius: 12,
      borderWidth: 1,
-     borderColor: "rgba(77,163,255,0.45)",
+     borderColor: colors.error,
+     backgroundColor: colors.surface,
+     alignItems: "center",
  
 EOF
 )

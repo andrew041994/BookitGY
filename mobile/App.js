@@ -1928,10 +1928,6 @@ function ProfileScreen({ authLoading, setToken, showFlash, token }) {
   const providerShareCardRef = useRef(null);
   const [shareCardVisible, setShareCardVisible] = useState(false);
   const [sharingProviderCard, setSharingProviderCard] = useState(false);
-  const [shareAvatarReady, setShareAvatarReady] = useState(false);
-  const [shareBrandingReady, setShareBrandingReady] = useState(false);
-  const shareAvatarReadyRef = useRef(false);
-  const shareBrandingReadyRef = useRef(false);
   const [providerProfile, setProviderProfile] = useState(null);
   const [previewScale, setPreviewScale] = useState(1);
 
@@ -2563,10 +2559,6 @@ function ProfileScreen({ authLoading, setToken, showFlash, token }) {
 
     try {
       setSharingProviderCard(true);
-      shareAvatarReadyRef.current = false;
-      shareBrandingReadyRef.current = false;
-      setShareAvatarReady(false);
-      setShareBrandingReady(false);
       setShareCardVisible(true);
 
       await new Promise((resolve) => {
@@ -2576,16 +2568,6 @@ function ProfileScreen({ authLoading, setToken, showFlash, token }) {
           });
         });
       });
-
-      const captureWaitStart = Date.now();
-      const captureWaitTimeoutMs = 1600;
-      // Android can capture the off-screen card before nested images finish rendering.
-      while (Date.now() - captureWaitStart < captureWaitTimeoutMs) {
-        if ((shareAvatarReady && shareBrandingReady) || (shareAvatarReadyRef.current && shareBrandingReadyRef.current)) {
-          break;
-        }
-        await new Promise((resolve) => setTimeout(resolve, 60));
-      }
 
       if (!providerShareCardRef.current) {
         showFlash?.("error", "Sharing is not available in this build yet.");
@@ -2690,8 +2672,13 @@ function ProfileScreen({ authLoading, setToken, showFlash, token }) {
 
   return (
     <>
-      {shareCardVisible && ViewShot ? (
-        <View style={styles.providerShareCaptureLayer} pointerEvents="none">
+      <Modal
+        animationType="none"
+        transparent
+        visible={shareCardVisible && Boolean(ViewShot)}
+        statusBarTranslucent
+      >
+        <View style={styles.providerShareCaptureOverlay} pointerEvents="none">
           <ViewShot
             ref={providerShareCardRef}
             options={{ format: "png", quality: 1 }}
@@ -2703,18 +2690,10 @@ function ProfileScreen({ authLoading, setToken, showFlash, token }) {
               professions={providerShareProfessions}
               ratingValue={providerShareRatingValue}
               brandingSource={BookitGYLogoTransparent}
-              onAvatarLoadEnd={() => {
-                shareAvatarReadyRef.current = true;
-                setShareAvatarReady(true);
-              }}
-              onBrandingLoadEnd={() => {
-                shareBrandingReadyRef.current = true;
-                setShareBrandingReady(true);
-              }}
             />
           </ViewShot>
         </View>
-      ) : null}
+      </Modal>
 
       <ScrollView
       contentContainerStyle={styles.profileScroll}
@@ -12219,11 +12198,11 @@ cardHeartButton: {
     width: 600,
     aspectRatio: 1.9,
   },
-  providerShareCaptureLayer: {
-    position: "absolute",
-    opacity: 0,
-    left: -9999,
-    top: -9999,
+  providerShareCaptureOverlay: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(0,0,0,0.28)",
   },
   providerShareCaptureCardWrap: {
     width: 600,
