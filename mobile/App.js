@@ -2581,11 +2581,20 @@ function ProfileScreen({ authLoading, setToken, showFlash, token }) {
         height: Math.round(1200 / 1.9),
       });
 
-      await Share.share({
-        title: "My BookitGY provider card",
-        message: "Book with me on BookitGY",
-        url: imageUri,
-      });
+      const sharePayload =
+        Platform.OS === "android"
+          ? {
+              title: "My BookitGY provider card",
+              // Android treats a mixed text+file share as text-first, so omit message to ensure the image file is shared.
+              url: imageUri,
+            }
+          : {
+              title: "My BookitGY provider card",
+              message: "Book with me on BookitGY",
+              url: imageUri,
+            };
+
+      await Share.share(sharePayload);
     } catch (err) {
       console.log("Error sharing provider card", err?.message || err);
       showFlash?.("error", "Could not generate your provider card image.");

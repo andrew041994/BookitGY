@@ -1,61 +1,78 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
 diff --git a/mobile/App.js b/mobile/App.js
-index 9acbb33f5f1d56a44aec1d434433cdeb136f5f92..37f3e00343d24c7032ae1a29cecda8ac7db476fb 100644
+index 37f3e00343d24c7032ae1a29cecda8ac7db476fb..20aa1b003db4727f8038f204e485192dcf92cbdd 100644
 --- a/mobile/App.js
 +++ b/mobile/App.js
-@@ -4368,51 +4368,51 @@ function BookingChatModal({
+@@ -2559,55 +2559,64 @@ function ProfileScreen({ authLoading, setToken, showFlash, token }) {
+     try {
+       setSharingProviderCard(true);
+       setShareCardVisible(true);
  
-           {loading ? (
-             <View style={styles.loadingRow}>
-               <ActivityIndicator />
-               <Text style={styles.serviceMeta}>Loading messages…</Text>
-             </View>
-           ) : (
-             <FlatList
-               ref={listRef}
-               data={messages}
-               keyExtractor={(item) => `${item.id}`}
-               renderItem={renderItem}
-               style={styles.chatList}
-               contentContainerStyle={styles.chatListContent}
-               onRefresh={() => loadMessages(true)}
-               refreshing={refreshing}
-               ListEmptyComponent={
-                 <Text style={styles.serviceMeta}>Send a message about this booking</Text>
-               }
-             />
-           )}
+       await new Promise((resolve) => {
+         requestAnimationFrame(() => {
+           requestAnimationFrame(() => {
+             requestAnimationFrame(resolve);
+           });
+         });
+       });
+       await new Promise((resolve) => setTimeout(resolve, 900));
  
-           <View
-             style={[
-               styles.chatComposer,
--              { paddingBottom: 8 + (insets.bottom > 0 ? 4 : 0) },
-+              { paddingBottom: Math.max(insets.bottom, 12) },
-             ]}
-           >
-             {selectedImage?.uri ? (
-               <View style={styles.chatSelectedImageWrap}>
-                 <Image source={{ uri: selectedImage.uri }} style={styles.chatSelectedImage} />
-                 <TouchableOpacity onPress={() => setSelectedImage(null)}>
-                   <Text style={styles.chatRemoveImageText}>Remove</Text>
-                 </TouchableOpacity>
-               </View>
-             ) : null}
+       if (!providerShareCardRef.current) {
+         showFlash?.("error", "Sharing is not available in this build yet.");
+         return;
+       }
  
-             <View style={styles.chatComposerRow}>
-               <TouchableOpacity
-                 style={styles.chatAttachButton}
-                 onPress={handlePickImage}
-                 disabled={sending || isChatReadOnly}
-               >
-                 <Ionicons name="image-outline" size={20} color={colors.textPrimary} />
-               </TouchableOpacity>
+       const imageUri = await captureRef(providerShareCardRef.current, {
+         format: "png",
+         quality: 1,
+         width: 1200,
+         height: Math.round(1200 / 1.9),
+       });
  
-               <TextInput
-                 value={text}
-                 onChangeText={setText}
-                 placeholder="Type a message"
-                 placeholderTextColor={colors.textMuted}
+-      await Share.share({
+-        title: "My BookitGY provider card",
+-        message: "Book with me on BookitGY",
+-        url: imageUri,
+-      });
++      const sharePayload =
++        Platform.OS === "android"
++          ? {
++              title: "My BookitGY provider card",
++              // Android treats a mixed text+file share as text-first, so omit message to ensure the image file is shared.
++              url: imageUri,
++            }
++          : {
++              title: "My BookitGY provider card",
++              message: "Book with me on BookitGY",
++              url: imageUri,
++            };
++
++      await Share.share(sharePayload);
+     } catch (err) {
+       console.log("Error sharing provider card", err?.message || err);
+       showFlash?.("error", "Could not generate your provider card image.");
+     } finally {
+       setSharingProviderCard(false);
+       setShareCardVisible(false);
+     }
+   };
+ 
+   const handleShareProviderLink = async () => {
+     if (!providerPublicLink) {
+       if (showFlash) {
+         showFlash("error", "Set a username to enable your profile link.");
+       }
+       return;
+     }
+ 
+     try {
+       await Share.share({
+         message: `Book with me on BookitGY:`,
+         url: providerPublicLink,
+       });
+     } catch (err) {
+       console.log("Error sharing provider link", err?.message || err);
+       if (showFlash) {
  
 EOF
 )
