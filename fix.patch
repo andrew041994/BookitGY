@@ -1,73 +1,9 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
 diff --git a/mobile/App.js b/mobile/App.js
-index b0601c2b93de015a75e9ea73e69a211819339a02..7af14ea62c9fe3b46cab5970391766c61f69dc12 100644
+index 7af14ea62c9fe3b46cab5970391766c61f69dc12..bddd5ce99a9f9e17bd521b82b7ebcc9dfc384c37 100644
 --- a/mobile/App.js
 +++ b/mobile/App.js
-@@ -1906,53 +1906,59 @@ function ProfileScreen({ authLoading, setToken, showFlash, token }) {
-    // NEW state for editing profile
-   const [showEdit, setShowEdit] = useState(false);
-   const [editSaving, setEditSaving] = useState(false);
-   const [editProfile, setEditProfile] = useState({
-     full_name: "",
-     username: "",
-     phone: "",
-     whatsapp: "",
-     location: "",
-   });
-   // NEW state for "My bookings"
-   const [showBookings, setShowBookings] = useState(false);
-   const [bookings, setBookings] = useState([]);
-   const [bookingsLoading, setBookingsLoading] = useState(false);
-   const [bookingsError, setBookingsError] = useState("");
-   const [avatarUrl, setAvatarUrl] = useState(null);
-   const [refreshing, setRefreshing] = useState(false);
-   const [isProviderUser, setIsProviderUser] = useState(null);
-   const canUseClipboard = Boolean(Clipboard?.setStringAsync);
-   const [deleteModalVisible, setDeleteModalVisible] = useState(false);
-   const [deletePassword, setDeletePassword] = useState("");
-   const [deleteLoading, setDeleteLoading] = useState(false);
-   const providerShareCardRef = useRef(null);
-   const [shareCardVisible, setShareCardVisible] = useState(false);
-   const [sharingProviderCard, setSharingProviderCard] = useState(false);
-+  const [isShareBrandingReady, setIsShareBrandingReady] = useState(false);
-+  const isShareBrandingReadyRef = useRef(false);
-   const [providerProfile, setProviderProfile] = useState(null);
-   const [previewScale, setPreviewScale] = useState(1);
- 
-+  useEffect(() => {
-+    isShareBrandingReadyRef.current = isShareBrandingReady;
-+  }, [isShareBrandingReady]);
-+
-   const forceLogout = useCallback(
-     async (flashMessage) => {
-       try {
-         await clearAllAuthTokens();
-       } catch (err) {
-         console.log("Error clearing token", err?.message || err);
-       }
-       try {
-         await AsyncStorage.removeItem(LEGACY_ACCESS_TOKEN_KEY);
-       } catch (err) {
-         console.log("Error clearing legacy token", err?.message || err);
-       }
-       setUser(null);
-       setAvatarUrl(null);
-       if (setToken) {
-         setToken(null);
-       }
-       if (flashMessage && showFlash) {
-         showFlash("success", flashMessage);
-       }
-     },
-     [setToken, showFlash]
-   );
- 
- 
-@@ -2537,65 +2543,86 @@ function ProfileScreen({ authLoading, setToken, showFlash, token }) {
-   const displayAvatarUrl = resolveImageUrl(avatarUrl || user?.avatar_url);
-   const isProviderPublic =
-     user?.is_provider === true || token?.is_provider === true;
-   const providerPublicLink = buildProviderPublicLink(user?.username);
+@@ -2547,50 +2547,64 @@ function ProfileScreen({ authLoading, setToken, showFlash, token }) {
    const isProfileValid = Boolean(String(editProfile.username || "").trim());
    const isSaveDisabled = editSaving || !isProfileValid;
  
@@ -89,10 +25,24 @@ index b0601c2b93de015a75e9ea73e69a211819339a02..7af14ea62c9fe3b46cab5970391766c6
  
      try {
        setSharingProviderCard(true);
-+      isShareBrandingReadyRef.current = false;
-+      setIsShareBrandingReady(false);
+       isShareBrandingReadyRef.current = false;
+       setIsShareBrandingReady(false);
        setShareCardVisible(true);
  
++      // The modal ViewShot ref may not exist immediately after making the modal visible, so wait briefly for mount before capture.
++      await new Promise((resolve) => {
++        const startedAt = Date.now();
++        const waitForModalMount = () => {
++          if (providerShareCardRef.current || Date.now() - startedAt >= 325) {
++            resolve();
++            return;
++          }
++          requestAnimationFrame(waitForModalMount);
++        };
++
++        waitForModalMount();
++      });
++
        await new Promise((resolve) => {
          requestAnimationFrame(() => {
            requestAnimationFrame(() => {
@@ -106,105 +56,18 @@ index b0601c2b93de015a75e9ea73e69a211819339a02..7af14ea62c9fe3b46cab5970391766c6
          return;
        }
  
-+      // iOS can capture the visible modal card before the branding image finishes painting.
-+      await new Promise((resolve) => {
-+        if (isShareBrandingReadyRef.current) {
-+          resolve();
-+          return;
-+        }
-+
-+        const startedAt = Date.now();
-+        const waitForBranding = () => {
-+          if (isShareBrandingReadyRef.current || Date.now() - startedAt >= 325) {
-+            resolve();
-+            return;
-+          }
-+          requestAnimationFrame(waitForBranding);
-+        };
-+
-+        waitForBranding();
-+      });
-+
-       const imageUri = await captureRef(providerShareCardRef.current, {
-         format: "png",
-         quality: 1,
-         width: 1200,
-         height: Math.round(1200 / 1.9),
-       });
+       // iOS can capture the visible modal card before the branding image finishes painting.
+       await new Promise((resolve) => {
+         if (isShareBrandingReadyRef.current) {
+           resolve();
+           return;
+         }
  
-       if (!imageUri) {
-         showFlash?.("error", "Could not generate your provider card image.");
-         return;
-       }
- 
-       const isNativeShareAvailable = await Sharing.isAvailableAsync();
-       if (!isNativeShareAvailable) {
-         showFlash?.("error", "Sharing is not available on this device.");
-         return;
-       }
- 
-       await Sharing.shareAsync(imageUri, {
-         mimeType: "image/png",
-         UTI: "public.png",
-         dialogTitle: "My BookitGY provider card",
-       });
-     } catch (err) {
-       console.log("Error sharing provider card", err?.message || err);
-@@ -2668,50 +2695,54 @@ function ProfileScreen({ authLoading, setToken, showFlash, token }) {
-         showFlash("error", "Could not open your profile link.");
-       }
-     }
-   };
- 
-   return (
-     <>
-       <Modal
-         animationType="none"
-         transparent
-         visible={shareCardVisible && Boolean(ViewShot)}
-         statusBarTranslucent
-       >
-         <View style={styles.providerShareCaptureOverlay} pointerEvents="none">
-           <ViewShot
-             ref={providerShareCardRef}
-             options={{ format: "png", quality: 1 }}
-             style={styles.providerShareCaptureCardWrap}
-           >
-             <ProviderShareCard
-               avatarUrl={displayAvatarUrl}
-               username={user.username || user.full_name || "bookitgy_provider"}
-               professions={providerShareProfessions}
-               ratingValue={providerShareRatingValue}
-               brandingSource={BookitGYLogoTransparent}
-+              onBrandingLoadEnd={() => {
-+                isShareBrandingReadyRef.current = true;
-+                setIsShareBrandingReady(true);
-+              }}
-             />
-           </ViewShot>
-         </View>
-       </Modal>
- 
-       <ScrollView
-       contentContainerStyle={styles.profileScroll}
-       refreshControl={
-         <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-       }
-     >
-       <View style={styles.profileHeaderCard}>
-         <View style={styles.profileIdentityRow}>
-           <View style={styles.profileAvatarColumn}>
-             <Pressable onPress={pickClientAvatar} style={styles.profileAvatarWrapper}>
-               {displayAvatarUrl ? (
-                 <Image
-                   source={{ uri: displayAvatarUrl }}
-                   style={styles.profileAvatarImage}
-                   resizeMode="cover"
-                 />
-               ) : (
-                 <View style={styles.profileAvatarFallback}>
-                   <Text style={styles.profileAvatarInitial}>
-                     {(user.full_name || user.email || "C").charAt(0).toUpperCase()}
+         const startedAt = Date.now();
+         const waitForBranding = () => {
+           if (isShareBrandingReadyRef.current || Date.now() - startedAt >= 325) {
+             resolve();
+             return;
  
 EOF
 )

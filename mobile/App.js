@@ -2569,6 +2569,20 @@ function ProfileScreen({ authLoading, setToken, showFlash, token }) {
       setIsShareBrandingReady(false);
       setShareCardVisible(true);
 
+      // The modal ViewShot ref may not exist immediately after making the modal visible, so wait briefly for mount before capture.
+      await new Promise((resolve) => {
+        const startedAt = Date.now();
+        const waitForModalMount = () => {
+          if (providerShareCardRef.current || Date.now() - startedAt >= 325) {
+            resolve();
+            return;
+          }
+          requestAnimationFrame(waitForModalMount);
+        };
+
+        waitForModalMount();
+      });
+
       await new Promise((resolve) => {
         requestAnimationFrame(() => {
           requestAnimationFrame(() => {
