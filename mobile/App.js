@@ -11740,7 +11740,7 @@ const styles = StyleSheet.create({
     overflow: "visible",
   },
   providerDashboardLogoSafeArea: {
-    marginTop: -70,
+    marginTop: -5,
     marginBottom: -10,
   },
   homeHeader: {
