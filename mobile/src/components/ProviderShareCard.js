@@ -73,7 +73,6 @@ export default function ProviderShareCard({
 const styles = StyleSheet.create({
   card: {
     width: "100%",
-    maxWidth: 560,
     alignSelf: "center",
     aspectRatio: 1.9,
     borderRadius: 22,
@@ -116,9 +115,9 @@ const styles = StyleSheet.create({
   },
   middleSection: {
     alignItems: "center",
-    paddingTop: 14,
+    paddingTop: 5,
     paddingBottom: 0,
-    marginTop: 4,
+    marginTop: -80,
   },
   avatar: {
     width: 106,
@@ -187,13 +186,13 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
   logo: {
-    width: "100%",
-    height: "100%",
+    width: "160%",
+    height: "160%",
     opacity: 0.92,
   },
   logoWrap: {
-    width: 240,
-    height: 72,
+    width: 300,
+    height: 100,
     alignItems: "center",
     justifyContent: "center",
     overflow: "hidden",
