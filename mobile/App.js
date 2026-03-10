@@ -1928,6 +1928,7 @@ function ProfileScreen({ authLoading, setToken, showFlash, token }) {
   const [shareCardVisible, setShareCardVisible] = useState(false);
   const [sharingProviderCard, setSharingProviderCard] = useState(false);
   const [providerProfile, setProviderProfile] = useState(null);
+  const [previewScale, setPreviewScale] = useState(1);
 
   const forceLogout = useCallback(
     async (flashMessage) => {
@@ -2396,6 +2397,13 @@ function ProfileScreen({ authLoading, setToken, showFlash, token }) {
       .map((value) => String(value || "").trim())
       .filter(Boolean);
   }, [providerProfile?.professions, user]);
+  const handleProviderSharePreviewLayout = useCallback((event) => {
+    const containerWidth = event?.nativeEvent?.layout?.width || 0;
+    if (containerWidth <= 0) return;
+    const scale = containerWidth / 600;
+    setPreviewScale(scale);
+  }, []);
+
   const providerShareRatingValue = useMemo(() => {
     const ratingCandidates = [
       providerProfile?.avg_rating,
@@ -2805,14 +2813,24 @@ function ProfileScreen({ authLoading, setToken, showFlash, token }) {
           <Text style={styles.hoursHelp}>
             Create a polished card image to share on WhatsApp, Facebook, Instagram, and Stories.
           </Text>
-          <View style={styles.providerSharePreviewWrap}>
-            <ProviderShareCard
-              avatarUrl={displayAvatarUrl}
-              username={user.username || user.full_name || "bookitgy_provider"}
-              professions={providerShareProfessions}
-              ratingValue={providerShareRatingValue}
-              brandingSource={BookitGYLogoTransparent}
-            />
+          <View
+            style={styles.providerSharePreviewWrap}
+            onLayout={handleProviderSharePreviewLayout}
+          >
+            <View
+              style={[
+                styles.providerSharePreviewCardWrap,
+                { transform: [{ scale: previewScale }] },
+              ]}
+            >
+              <ProviderShareCard
+                avatarUrl={displayAvatarUrl}
+                username={user.username || user.full_name || "bookitgy_provider"}
+                professions={providerShareProfessions}
+                ratingValue={providerShareRatingValue}
+                brandingSource={BookitGYLogoTransparent}
+              />
+            </View>
           </View>
           <TouchableOpacity
             style={[
@@ -12022,9 +12040,13 @@ cardHeartButton: {
   providerSharePreviewWrap: {
     width: "100%",
     aspectRatio: 1.9,
-    alignSelf: "center",
-    padding: 0,
-    overflow: "visible",
+    alignItems: "center",
+    justifyContent: "center",
+    overflow: "hidden",
+  },
+  providerSharePreviewCardWrap: {
+    width: 600,
+    aspectRatio: 1.9,
   },
   providerShareCaptureLayer: {
     position: "absolute",

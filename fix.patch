@@ -1,163 +1,256 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
-diff --git a/mobile/src/components/ProviderShareCard.js b/mobile/src/components/ProviderShareCard.js
-index c68b8c8535c499082da34a9fb9c52946422bac9b..2cad3e0eab7b60c98eb8c3533f6427dc4504cab2 100644
---- a/mobile/src/components/ProviderShareCard.js
-+++ b/mobile/src/components/ProviderShareCard.js
-@@ -28,51 +28,55 @@ export default function ProviderShareCard({
-   return (
-     <View style={styles.card}>
-       <LinearGradient
-         colors={["rgba(255,255,255,0.08)", "rgba(255,255,255,0.03)", "transparent"]}
-         start={{ x: 0, y: 0 }}
-         end={{ x: 0, y: 0.65 }}
-         style={styles.glassHighlight}
-       />
-       <View style={styles.contentWrap}>
-         <View style={styles.topRow}>
-           <View style={styles.topLeft}>
-           {avatarUrl ? (
-             <Image source={{ uri: avatarUrl }} style={styles.avatar} />
-           ) : (
-             <View style={styles.avatarFallback}>
-               <Text style={styles.avatarInitial}>{safeUsername.charAt(0).toUpperCase()}</Text>
-             </View>
-           )}
-           </View>
-           <View style={styles.topRight}>
-             <Text numberOfLines={1} style={styles.rating}>⭐️ {normalizedRating}</Text>
-           </View>
-         </View>
+diff --git a/mobile/App.js b/mobile/App.js
+index 073041d5d3fabefffc0722c8192ba3f0ff9c0687..308740e9c9052fd090bffb4485232be254ac09fd 100644
+--- a/mobile/App.js
++++ b/mobile/App.js
+@@ -1906,50 +1906,51 @@ function ProfileScreen({ authLoading, setToken, showFlash, token }) {
+   const [showEdit, setShowEdit] = useState(false);
+   const [editSaving, setEditSaving] = useState(false);
+   const [editProfile, setEditProfile] = useState({
+     full_name: "",
+     username: "",
+     phone: "",
+     whatsapp: "",
+     location: "",
+   });
+   // NEW state for "My bookings"
+   const [showBookings, setShowBookings] = useState(false);
+   const [bookings, setBookings] = useState([]);
+   const [bookingsLoading, setBookingsLoading] = useState(false);
+   const [bookingsError, setBookingsError] = useState("");
+   const [avatarUrl, setAvatarUrl] = useState(null);
+   const [refreshing, setRefreshing] = useState(false);
+   const [isProviderUser, setIsProviderUser] = useState(null);
+   const canUseClipboard = Boolean(Clipboard?.setStringAsync);
+   const [deleteModalVisible, setDeleteModalVisible] = useState(false);
+   const [deletePassword, setDeletePassword] = useState("");
+   const [deleteLoading, setDeleteLoading] = useState(false);
+   const providerShareCardRef = useRef(null);
+   const [shareCardVisible, setShareCardVisible] = useState(false);
+   const [sharingProviderCard, setSharingProviderCard] = useState(false);
+   const [providerProfile, setProviderProfile] = useState(null);
++  const [previewScale, setPreviewScale] = useState(1);
  
-         <View style={styles.middleSection}>
--          {brandingSource ? <Image source={brandingSource} style={styles.logo} resizeMode="contain" /> : null}
-+          <View style={styles.logoWrap}>
-+            {brandingSource ? (
-+              <Image source={brandingSource} style={styles.logo} resizeMode="contain" />
-+            ) : null}
-+          </View>
-           <Text numberOfLines={1} ellipsizeMode="tail" style={styles.username}>
-             {safeUsername}
-           </Text>
-           <Text numberOfLines={2} ellipsizeMode="tail" style={styles.professions}>{professionText}</Text>
-         </View>
- 
-         <View style={styles.footer}>
-           <View style={styles.divider} />
-           <Text numberOfLines={2} ellipsizeMode="tail" style={styles.cta}>Download BookitGY to schedule an appointment</Text>
-         </View>
-       </View>
-     </View>
+   const forceLogout = useCallback(
+     async (flashMessage) => {
+       try {
+         await clearAllAuthTokens();
+       } catch (err) {
+         console.log("Error clearing token", err?.message || err);
+       }
+       try {
+         await AsyncStorage.removeItem(LEGACY_ACCESS_TOKEN_KEY);
+       } catch (err) {
+         console.log("Error clearing legacy token", err?.message || err);
+       }
+       setUser(null);
+       setAvatarUrl(null);
+       if (setToken) {
+         setToken(null);
+       }
+       if (flashMessage && showFlash) {
+         showFlash("success", flashMessage);
+       }
+     },
+     [setToken, showFlash]
    );
- }
  
- const styles = StyleSheet.create({
-   card: {
-     width: "100%",
-     maxWidth: 560,
-     alignSelf: "center",
-     aspectRatio: 1.9,
-     borderRadius: 22,
+@@ -2374,50 +2375,57 @@ function ProfileScreen({ authLoading, setToken, showFlash, token }) {
+       await loadMyBookings();
+     }
+   }, [loadMyBookings, loadProfile, showBookings]);
+ 
+   const providerShareProfessions = useMemo(() => {
+     const candidateSources = [
+       providerProfile?.professions,
+       user?.provider_profile?.professions,
+       user?.professions,
+     ];
+ 
+     const rawProfessions =
+       candidateSources.find((source) => Array.isArray(source) && source.length > 0) || [];
+ 
+     return rawProfessions
+       .map((entry) => {
+         if (typeof entry === "string") return entry;
+         if (entry && typeof entry === "object") {
+           return entry.name || entry.title || entry.label || entry.profession || "";
+         }
+         return "";
+       })
+       .map((value) => String(value || "").trim())
+       .filter(Boolean);
+   }, [providerProfile?.professions, user]);
++  const handleProviderSharePreviewLayout = useCallback((event) => {
++    const containerWidth = event?.nativeEvent?.layout?.width || 0;
++    if (containerWidth <= 0) return;
++    const scale = containerWidth / 600;
++    setPreviewScale(scale);
++  }, []);
++
+   const providerShareRatingValue = useMemo(() => {
+     const ratingCandidates = [
+       providerProfile?.avg_rating,
+       providerProfile?.rating,
+       user?.provider_profile?.avg_rating,
+       user?.provider_profile?.rating,
+       user?.avg_rating,
+       user?.rating,
+     ];
+ 
+     const resolvedRating = ratingCandidates
+       .map((value) => Number(value))
+       .find((value) => Number.isFinite(value));
+ 
+     return resolvedRating > 0 ? Number(resolvedRating.toFixed(1)) : 0;
+   }, [
+     providerProfile?.avg_rating,
+     providerProfile?.rating,
+     user?.provider_profile?.avg_rating,
+     user?.provider_profile?.rating,
+     user?.avg_rating,
+     user?.rating,
+   ]);
+ 
+   console.log("[provider-share-rating]", {
+@@ -2783,58 +2791,68 @@ function ProfileScreen({ authLoading, setToken, showFlash, token }) {
+       {hasContactDetails && (
+         <View style={styles.card}>
+           <Text style={styles.sectionTitle}>Contact</Text>
+           {user.phone && (
+             <>
+               <Text style={styles.label}>Phone</Text>
+               <Text style={styles.value}>{user.phone}</Text>
+             </>
+           )}
+ 
+           {user.location && (
+             <>
+               <Text style={[styles.label, { marginTop: 12 }]}>Location</Text>
+               <Text style={styles.value}>{user.location}</Text>
+             </>
+           )}
+         </View>
+       )}
+ 
+       {isProvider && (
+         <View style={styles.card}>
+           <Text style={styles.sectionTitle}>Share your provider card</Text>
+           <Text style={styles.hoursHelp}>
+             Create a polished card image to share on WhatsApp, Facebook, Instagram, and Stories.
+           </Text>
+-          <View style={styles.providerSharePreviewWrap}>
+-            <ProviderShareCard
+-              avatarUrl={displayAvatarUrl}
+-              username={user.username || user.full_name || "bookitgy_provider"}
+-              professions={providerShareProfessions}
+-              ratingValue={providerShareRatingValue}
+-              brandingSource={BookitGYLogoTransparent}
+-            />
++          <View
++            style={styles.providerSharePreviewWrap}
++            onLayout={handleProviderSharePreviewLayout}
++          >
++            <View
++              style={[
++                styles.providerSharePreviewCardWrap,
++                { transform: [{ scale: previewScale }] },
++              ]}
++            >
++              <ProviderShareCard
++                avatarUrl={displayAvatarUrl}
++                username={user.username || user.full_name || "bookitgy_provider"}
++                professions={providerShareProfessions}
++                ratingValue={providerShareRatingValue}
++                brandingSource={BookitGYLogoTransparent}
++              />
++            </View>
+           </View>
+           <TouchableOpacity
+             style={[
+               styles.actionButton,
+               styles.providerShareButton,
+               sharingProviderCard && styles.providerShareButtonDisabled,
+             ]}
+             onPress={handleShareProviderCard}
+             disabled={sharingProviderCard}
+           >
+             <Text style={styles.actionButtonText}>
+               {sharingProviderCard ? "Generating card..." : "Share card image"}
+             </Text>
+           </TouchableOpacity>
+         </View>
+       )}
+ 
+       <View style={styles.profileSection}>
+         <Text style={styles.profileSectionTitle}>Account</Text>
+         <View style={styles.sectionCard}>
+           <ListRow
+             title={showEdit ? "Hide edit profile" : "Edit profile"}
+             icon="person-outline"
+             onPress={toggleEditProfile}
+           />
+@@ -12000,53 +12018,57 @@ cardHeartButton: {
+     backgroundColor: "transparent",
+     paddingVertical: 10,
+     paddingHorizontal: 12,
+     borderRadius: 999,
      borderWidth: 1,
-     borderColor: "rgba(77,163,255,0.45)",
-     backgroundColor: "#121826",
-@@ -90,53 +94,53 @@ const styles = StyleSheet.create({
-   contentWrap: {
-     flex: 1,
-   },
-   glassHighlight: {
-     ...StyleSheet.absoluteFillObject,
-     borderRadius: 24,
-   },
-   topRow: {
-     flexDirection: "row",
-     justifyContent: "space-between",
-     alignItems: "flex-start",
-     minHeight: 108,
-   },
-   topLeft: {
-     width: 108,
-     alignItems: "flex-start",
-     justifyContent: "flex-start",
-   },
-   topRight: {
-     minWidth: 120,
-     alignItems: "flex-end",
-     justifyContent: "flex-start",
-   },
-   middleSection: {
+     borderColor: colors.border,
+     marginBottom: 10,
      alignItems: "center",
--    paddingTop: 18,
-+    paddingTop: 14,
-     paddingBottom: 0,
--    marginTop: 8,
-+    marginTop: 4,
    },
-   avatar: {
-     width: 106,
-     height: 106,
-     borderRadius: 53,
-     borderWidth: 2,
-     borderColor: "rgba(255,255,255,0.35)",
+   actionButtonText: {
+     fontSize: 15,
+     fontWeight: "500",
+     color: colors.textPrimary,
    },
-   avatarFallback: {
-     width: 106,
-     height: 106,
-     borderRadius: 53,
-     backgroundColor: "#202B45",
-     alignItems: "center",
-     justifyContent: "center",
-     borderWidth: 2,
-     borderColor: "rgba(255,255,255,0.35)",
+   providerShareButton: {
+     marginTop: 14,
+     borderColor: colors.primary,
+     backgroundColor: colors.primarySoft,
    },
-   avatarInitial: {
-     color: colors.text,
-     fontWeight: "700",
-     fontSize: 36,
+   providerShareButtonDisabled: {
+     opacity: 0.65,
    },
-   username: {
-     color: "#FFFFFF",
-@@ -161,30 +165,37 @@ const styles = StyleSheet.create({
+   providerSharePreviewWrap: {
      width: "100%",
-     paddingHorizontal: 22,
-   },
-   footer: {
-     marginTop: "auto",
-     minHeight: 52,
-     paddingTop: 0,
-     alignItems: "center",
-     justifyContent: "flex-start",
-   },
-   divider: {
-     width: "100%",
-     height: 1,
-     backgroundColor: "rgba(255,255,255,0.15)",
-     marginBottom: 12,
-   },
-   cta: {
-     color: "#E6EDF6",
-     fontSize: 16,
-     lineHeight: 22,
-     fontWeight: "700",
-     width: "96%",
-     textAlign: "center",
-   },
-   logo: {
--  width: 340,
--  height: 105,
--  opacity: 0.92,
--},
-+    width: "100%",
-+    height: "100%",
-+    opacity: 0.92,
-+  },
-+  logoWrap: {
-+    width: 240,
-+    height: 72,
+     aspectRatio: 1.9,
+-    alignSelf: "center",
+-    padding: 0,
+-    overflow: "visible",
 +    alignItems: "center",
 +    justifyContent: "center",
 +    overflow: "hidden",
 +  },
- });
++  providerSharePreviewCardWrap: {
++    width: 600,
++    aspectRatio: 1.9,
+   },
+   providerShareCaptureLayer: {
+     position: "absolute",
+     opacity: 0,
+     left: -9999,
+     top: -9999,
+   },
+   providerShareCaptureCardWrap: {
+     width: 600,
+     aspectRatio: 1.9,
+     alignSelf: "center",
+     padding: 0,
+     backgroundColor: "transparent",
+     overflow: "visible",
+   },
+   logoutButton: {
+     backgroundColor: "transparent",
+     borderColor: colors.error,
+     marginTop: 10,
+   },
+   logoutButtonText: {
+     color: colors.error,
+   },
+   logoutRow: {
+     marginTop: 8,
  
 EOF
 )
