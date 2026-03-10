@@ -2570,7 +2570,7 @@ function ProfileScreen({ authLoading, setToken, showFlash, token }) {
         format: "png",
         quality: 1,
         width: 1200,
-        height: 700,
+        height: Math.round(1200 / 1.9),
       });
 
       await Share.share({
