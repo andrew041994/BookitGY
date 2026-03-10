@@ -1,9 +1,61 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
 diff --git a/mobile/App.js b/mobile/App.js
-index 37f3e00343d24c7032ae1a29cecda8ac7db476fb..20aa1b003db4727f8038f204e485192dcf92cbdd 100644
+index 20aa1b003db4727f8038f204e485192dcf92cbdd..c9816f31c27f4d7b60efb3b0825abe6677d28c0e 100644
 --- a/mobile/App.js
 +++ b/mobile/App.js
-@@ -2559,55 +2559,64 @@ function ProfileScreen({ authLoading, setToken, showFlash, token }) {
+@@ -6,50 +6,51 @@ import {
+   StyleSheet,
+   TextInput,
+   Button,
+   Alert,
+   ActivityIndicator,
+   ScrollView,
+   TouchableOpacity,
+   Switch,
+   Linking,
+   Platform,
+   Image,
+   KeyboardAvoidingView,
+   TouchableWithoutFeedback,
+   Keyboard,
+   Pressable,
+   RefreshControl,
+   Share,
+   Modal,
+   FlatList,
+   AppState,
+ } from "react-native";
+ import * as ExpoLinking from "expo-linking";
+ import * as AuthSession from "expo-auth-session";
+ import * as Google from "expo-auth-session/providers/google";
+ import * as WebBrowser from "expo-web-browser";
++import * as Sharing from "expo-sharing";
+ 
+ import {
+   NavigationContainer,
+   CommonActions,
+   useFocusEffect,
+   useIsFocused,
+ } from "@react-navigation/native";
+ import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
+ import { enableScreens } from "react-native-screens";
+ import AsyncStorage from "@react-native-async-storage/async-storage";
+ import {
+   clearAllAuthTokens,
+   loadToken,
+   saveRefreshToken,
+   saveToken,
+ } from "./src/components/tokenStorage";
+ import ProviderCard from "./src/components/ProviderCard";
+ import ProviderShareCard from "./src/components/ProviderShareCard";
+ import * as Location from "expo-location";
+ import Constants from "expo-constants";
+ import * as ImagePicker from "expo-image-picker";
+ import * as Notifications from "expo-notifications";
+ import { Ionicons } from "@expo/vector-icons";
+ import {
+   CalendarProvider,
+@@ -2559,64 +2560,66 @@ function ProfileScreen({ authLoading, setToken, showFlash, token }) {
      try {
        setSharingProviderCard(true);
        setShareCardVisible(true);
@@ -29,25 +81,35 @@ index 37f3e00343d24c7032ae1a29cecda8ac7db476fb..20aa1b003db4727f8038f204e485192d
          height: Math.round(1200 / 1.9),
        });
  
--      await Share.share({
--        title: "My BookitGY provider card",
--        message: "Book with me on BookitGY",
--        url: imageUri,
--      });
-+      const sharePayload =
-+        Platform.OS === "android"
-+          ? {
-+              title: "My BookitGY provider card",
-+              // Android treats a mixed text+file share as text-first, so omit message to ensure the image file is shared.
-+              url: imageUri,
-+            }
-+          : {
-+              title: "My BookitGY provider card",
-+              message: "Book with me on BookitGY",
-+              url: imageUri,
-+            };
+-      const sharePayload =
+-        Platform.OS === "android"
+-          ? {
+-              title: "My BookitGY provider card",
+-              // Android treats a mixed text+file share as text-first, so omit message to ensure the image file is shared.
+-              url: imageUri,
+-            }
+-          : {
+-              title: "My BookitGY provider card",
+-              message: "Book with me on BookitGY",
+-              url: imageUri,
+-            };
++      if (!imageUri) {
++        showFlash?.("error", "Could not generate your provider card image.");
++        return;
++      }
+ 
+-      await Share.share(sharePayload);
++      const isNativeShareAvailable = await Sharing.isAvailableAsync();
++      if (!isNativeShareAvailable) {
++        showFlash?.("error", "Sharing is not available on this device.");
++        return;
++      }
 +
-+      await Share.share(sharePayload);
++      await Sharing.shareAsync(imageUri, {
++        mimeType: "image/png",
++        UTI: "public.png",
++        dialogTitle: "My BookitGY provider card",
++      });
      } catch (err) {
        console.log("Error sharing provider card", err?.message || err);
        showFlash?.("error", "Could not generate your provider card image.");

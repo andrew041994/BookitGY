@@ -28,6 +28,7 @@ import * as ExpoLinking from "expo-linking";
 import * as AuthSession from "expo-auth-session";
 import * as Google from "expo-auth-session/providers/google";
 import * as WebBrowser from "expo-web-browser";
+import * as Sharing from "expo-sharing";
 
 import {
   NavigationContainer,
@@ -2581,20 +2582,22 @@ function ProfileScreen({ authLoading, setToken, showFlash, token }) {
         height: Math.round(1200 / 1.9),
       });
 
-      const sharePayload =
-        Platform.OS === "android"
-          ? {
-              title: "My BookitGY provider card",
-              // Android treats a mixed text+file share as text-first, so omit message to ensure the image file is shared.
-              url: imageUri,
-            }
-          : {
-              title: "My BookitGY provider card",
-              message: "Book with me on BookitGY",
-              url: imageUri,
-            };
+      if (!imageUri) {
+        showFlash?.("error", "Could not generate your provider card image.");
+        return;
+      }
 
-      await Share.share(sharePayload);
+      const isNativeShareAvailable = await Sharing.isAvailableAsync();
+      if (!isNativeShareAvailable) {
+        showFlash?.("error", "Sharing is not available on this device.");
+        return;
+      }
+
+      await Sharing.shareAsync(imageUri, {
+        mimeType: "image/png",
+        UTI: "public.png",
+        dialogTitle: "My BookitGY provider card",
+      });
     } catch (err) {
       console.log("Error sharing provider card", err?.message || err);
       showFlash?.("error", "Could not generate your provider card image.");
