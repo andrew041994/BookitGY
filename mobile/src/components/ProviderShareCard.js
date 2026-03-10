@@ -50,7 +50,11 @@ export default function ProviderShareCard({
         </View>
 
         <View style={styles.middleSection}>
-          {brandingSource ? <Image source={brandingSource} style={styles.logo} resizeMode="contain" /> : null}
+          <View style={styles.logoWrap}>
+            {brandingSource ? (
+              <Image source={brandingSource} style={styles.logo} resizeMode="contain" />
+            ) : null}
+          </View>
           <Text numberOfLines={1} ellipsizeMode="tail" style={styles.username}>
             {safeUsername}
           </Text>
@@ -112,9 +116,9 @@ const styles = StyleSheet.create({
   },
   middleSection: {
     alignItems: "center",
-    paddingTop: 18,
+    paddingTop: 14,
     paddingBottom: 0,
-    marginTop: 8,
+    marginTop: 4,
   },
   avatar: {
     width: 106,
@@ -183,8 +187,15 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
   logo: {
-  width: 340,
-  height: 105,
-  opacity: 0.92,
-},
+    width: "100%",
+    height: "100%",
+    opacity: 0.92,
+  },
+  logoWrap: {
+    width: 240,
+    height: 72,
+    alignItems: "center",
+    justifyContent: "center",
+    overflow: "hidden",
+  },
 });
