@@ -1,18 +1,61 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
 diff --git a/mobile/App.js b/mobile/App.js
-index 782abdadc9d388efc26a9ddef8db764e09ee3f4a..346cb269a9b403f0a6c5ba0b17c20f86906db501 100644
+index 346cb269a9b403f0a6c5ba0b17c20f86906db501..28f3d0f5f445f6a8b55e240154b6f7554306b4d3 100644
 --- a/mobile/App.js
 +++ b/mobile/App.js
-@@ -11707,56 +11707,58 @@ const styles = StyleSheet.create({
-     borderWidth: 1,
-     zIndex: 100,
-     shadowColor: "#000",
-     shadowOpacity: 0.1,
-     shadowRadius: 6,
-     shadowOffset: { width: 0, height: 3 },
-     elevation: 4,
-   },
+@@ -7427,50 +7427,51 @@ const loadProviderSummary = async () => {
  
+   return (
+     <View style={styles.homeWrapper}>
+       {hoursFlash && (
+         <View
+           style={[
+             styles.hoursFlashGlobal,
+             hoursFlash.type === "error"
+               ? styles.hoursFlashError
+               : styles.hoursFlashSuccess,
+           ]}
+         >
+           <Text style={styles.hoursFlashText}>{hoursFlash.message}</Text>
+         </View>
+       )}
+ 
+       <View
+         style={[
+           styles.pinnedHeader,
+           // headerMinHeight ? { minHeight: headerMinHeight } : null,
+         ]}
+       >
+         <View
+           style={[
+             styles.pinnedHeaderSafeArea,
++            styles.providerDashboardLogoSafeArea,
+             {
+               paddingTop: 0,
+               paddingBottom: headerPaddingVertical,
+             },
+           ]}
+         >
+           <Image
+             source={BookitGYLogoTransparent}
+             style={styles.headerLogo}
+             resizeMode="contain"
+           />
+         </View>
+       </View>
+       <ScrollView
+         contentContainerStyle={styles.providerScroll}
+         refreshControl={
+           <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
+         }
+       >
+         <View style={styles.homeHeader}>
+           <Text style={styles.homeGreeting}>Provider dashboard</Text>
+           <Text style={styles.homeSubtitle}>Welcome, {providerLabel}</Text>
+           <Text style={styles.providerDashboardRatingText}>
+             {providerRatingSummary.hasRatings
+               ? `★ ${providerRatingSummary.ratingValue.toFixed(1)}${providerRatingSummary.ratingCount > 0 ? ` (${providerRatingSummary.ratingCount} rating${providerRatingSummary.ratingCount === 1 ? "" : "s"})` : ""}`
+@@ -11716,50 +11717,54 @@ const styles = StyleSheet.create({
     homeScroll: {
      flexGrow: 1,
      backgroundColor: colors.background,
@@ -29,16 +72,19 @@ index 782abdadc9d388efc26a9ddef8db764e09ee3f4a..346cb269a9b403f0a6c5ba0b17c20f86
    },
    pinnedHeader: {
      backgroundColor: "#0B1220",
-+    overflow: "visible",
+     overflow: "visible",
    },
    pinnedHeaderSafeArea: {
      alignItems: "center",
      justifyContent: "flex-start",
--    marginTop: -60,
-+    marginTop: -52,
+     marginTop: -52,
      marginBottom: -18,
-+    overflow: "visible",
+     overflow: "visible",
    },
++  providerDashboardLogoSafeArea: {
++    marginTop: -44,
++    marginBottom: -10,
++  },
    homeHeader: {
      marginBottom: 20,
    },
@@ -63,6 +109,7 @@ index 782abdadc9d388efc26a9ddef8db764e09ee3f4a..346cb269a9b403f0a6c5ba0b17c20f86
      fontWeight: "600",
    },
    searchBar: {
+     flexDirection: "row",
  
 EOF
 )

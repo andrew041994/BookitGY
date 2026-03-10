@@ -7449,6 +7449,7 @@ const loadProviderSummary = async () => {
         <View
           style={[
             styles.pinnedHeaderSafeArea,
+            styles.providerDashboardLogoSafeArea,
             {
               paddingTop: 0,
               paddingBottom: headerPaddingVertical,
@@ -11737,6 +11738,10 @@ const styles = StyleSheet.create({
     marginTop: -52,
     marginBottom: -18,
     overflow: "visible",
+  },
+  providerDashboardLogoSafeArea: {
+    marginTop: -44,
+    marginBottom: -10,
   },
   homeHeader: {
     marginBottom: 20,
