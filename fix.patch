@@ -1,48 +1,12 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
 diff --git a/mobile/App.js b/mobile/App.js
-index 7af14ea62c9fe3b46cab5970391766c61f69dc12..bddd5ce99a9f9e17bd521b82b7ebcc9dfc384c37 100644
+index bddd5ce99a9f9e17bd521b82b7ebcc9dfc384c37..de2fc54acd198ca1b9133d54595ac07646ab2bd7 100644
 --- a/mobile/App.js
 +++ b/mobile/App.js
-@@ -2547,50 +2547,64 @@ function ProfileScreen({ authLoading, setToken, showFlash, token }) {
-   const isProfileValid = Boolean(String(editProfile.username || "").trim());
-   const isSaveDisabled = editSaving || !isProfileValid;
+@@ -2583,60 +2583,71 @@ function ProfileScreen({ authLoading, setToken, showFlash, token }) {
+         waitForModalMount();
+       });
  
-   const handleShareProviderCard = async () => {
-     const hasViewShot = Boolean(ViewShot);
-     const hasCaptureRef = typeof captureRef === "function";
-     const hasCardRef = Boolean(providerShareCardRef.current);
- 
-     console.log("[ProviderShareCard] share preflight", {
-       hasViewShot,
-       hasCaptureRef,
-       hasCardRef,
-     });
- 
-     if (!hasViewShot || !hasCaptureRef) {
-       showFlash?.("error", "Sharing is not available in this build yet.");
-       return;
-     }
- 
-     try {
-       setSharingProviderCard(true);
-       isShareBrandingReadyRef.current = false;
-       setIsShareBrandingReady(false);
-       setShareCardVisible(true);
- 
-+      // The modal ViewShot ref may not exist immediately after making the modal visible, so wait briefly for mount before capture.
-+      await new Promise((resolve) => {
-+        const startedAt = Date.now();
-+        const waitForModalMount = () => {
-+          if (providerShareCardRef.current || Date.now() - startedAt >= 325) {
-+            resolve();
-+            return;
-+          }
-+          requestAnimationFrame(waitForModalMount);
-+        };
-+
-+        waitForModalMount();
-+      });
-+
        await new Promise((resolve) => {
          requestAnimationFrame(() => {
            requestAnimationFrame(() => {
@@ -65,9 +29,53 @@ index 7af14ea62c9fe3b46cab5970391766c61f69dc12..bddd5ce99a9f9e17bd521b82b7ebcc9d
  
          const startedAt = Date.now();
          const waitForBranding = () => {
-           if (isShareBrandingReadyRef.current || Date.now() - startedAt >= 325) {
+-          if (isShareBrandingReadyRef.current || Date.now() - startedAt >= 325) {
++          if (isShareBrandingReadyRef.current || Date.now() - startedAt >= 850) {
              resolve();
              return;
+           }
+           requestAnimationFrame(waitForBranding);
+         };
+ 
+         waitForBranding();
+       });
+ 
++      await new Promise((resolve) => {
++        requestAnimationFrame(() => {
++          requestAnimationFrame(resolve);
++        });
++      });
++
++      console.log("[ProviderShareCard] capture state", {
++        hasCardRef: Boolean(providerShareCardRef.current),
++        isShareBrandingReady: isShareBrandingReadyRef.current,
++      });
++
+       const imageUri = await captureRef(providerShareCardRef.current, {
+         format: "png",
+         quality: 1,
+         width: 1200,
+         height: Math.round(1200 / 1.9),
+       });
+ 
+       if (!imageUri) {
+         showFlash?.("error", "Could not generate your provider card image.");
+         return;
+       }
+ 
+       const isNativeShareAvailable = await Sharing.isAvailableAsync();
+       if (!isNativeShareAvailable) {
+         showFlash?.("error", "Sharing is not available on this device.");
+         return;
+       }
+ 
+       await Sharing.shareAsync(imageUri, {
+         mimeType: "image/png",
+         UTI: "public.png",
+         dialogTitle: "My BookitGY provider card",
+       });
+     } catch (err) {
+       console.log("Error sharing provider card", err?.message || err);
  
 EOF
 )

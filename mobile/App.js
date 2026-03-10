@@ -2605,7 +2605,7 @@ function ProfileScreen({ authLoading, setToken, showFlash, token }) {
 
         const startedAt = Date.now();
         const waitForBranding = () => {
-          if (isShareBrandingReadyRef.current || Date.now() - startedAt >= 325) {
+          if (isShareBrandingReadyRef.current || Date.now() - startedAt >= 850) {
             resolve();
             return;
           }
@@ -2613,6 +2613,17 @@ function ProfileScreen({ authLoading, setToken, showFlash, token }) {
         };
 
         waitForBranding();
+      });
+
+      await new Promise((resolve) => {
+        requestAnimationFrame(() => {
+          requestAnimationFrame(resolve);
+        });
+      });
+
+      console.log("[ProviderShareCard] capture state", {
+        hasCardRef: Boolean(providerShareCardRef.current),
+        isShareBrandingReady: isShareBrandingReadyRef.current,
       });
 
       const imageUri = await captureRef(providerShareCardRef.current, {
