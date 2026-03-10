@@ -7444,12 +7444,12 @@ const loadProviderSummary = async () => {
       )}
 
       <View style={styles.providerDashboardPinnedHeader}>
-        <View
-          style={[
-            styles.providerDashboardLogoWrap,
-            { top: insets.top - 2 },
-          ]}
-        >
+          <View
+            style={[
+              styles.providerDashboardLogoWrap,
+              { top: -104,},
+            ]}
+          >
           <Image
             source={BookitGYLogoTransparent}
             style={{
