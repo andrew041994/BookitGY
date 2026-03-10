@@ -3936,6 +3936,18 @@ function BookingChatModal({
     });
   }, []);
 
+  const getResolvedAvatarFromEntity = useCallback((entity) => {
+    return (
+      resolveImageUrl(entity?.avatar_url) ||
+      resolveImageUrl(entity?.profile_photo_url) ||
+      resolveImageUrl(entity?.profile_image_url) ||
+      resolveImageUrl(entity?.user?.avatar_url) ||
+      resolveImageUrl(entity?.user?.profile_photo_url) ||
+      resolveImageUrl(entity?.user?.profile_image_url) ||
+      null
+    );
+  }, []);
+
   const loadMessages = useCallback(
     async (useRefresh = false) => {
       if (!bookingId) return;
@@ -3944,9 +3956,68 @@ function BookingChatModal({
         else setLoading(true);
 
         const res = await apiClient.get(`/bookings/${bookingId}/messages`);
+        let providerFromMessages = res?.data?.provider || null;
+        const providerAvatarFromMessages = getResolvedAvatarFromEntity(providerFromMessages);
+
+        console.log("[booking-chat-avatar-debug] provider avatar in messages payload", {
+          booking_id: bookingId,
+          has_provider: Boolean(providerFromMessages),
+          has_avatar: Boolean(providerAvatarFromMessages),
+        });
+
+        if (!providerAvatarFromMessages) {
+          try {
+            const providersRes = await apiClient.get(`/providers`);
+            const providers = Array.isArray(providersRes?.data)
+              ? providersRes.data
+              : providersRes?.data?.providers || [];
+
+            const candidateIds = [
+              booking?.provider?.id,
+              booking?.provider_id,
+              res?.data?.provider?.id,
+              res?.data?.provider?.provider_id,
+            ]
+              .map((value) => (value == null ? null : String(value).trim()))
+              .filter(Boolean);
+
+            const matchedProvider = providers.find((provider) => {
+              const providerIds = [provider?.id, provider?.provider_id]
+                .map((value) => (value == null ? null : String(value).trim()))
+                .filter(Boolean);
+              return providerIds.some((id) => candidateIds.includes(id));
+            });
+
+            const fallbackAvatar = getResolvedAvatarFromEntity(matchedProvider);
+            if (fallbackAvatar) {
+              providerFromMessages = {
+                ...(matchedProvider || {}),
+                ...(providerFromMessages || {}),
+                avatar_url:
+                  providerFromMessages?.avatar_url ||
+                  providerFromMessages?.profile_photo_url ||
+                  providerFromMessages?.profile_image_url ||
+                  fallbackAvatar,
+              };
+            }
+
+            console.log("[booking-chat-avatar-debug] provider fallback lookup result", {
+              booking_id: bookingId,
+              candidates_count: candidateIds.length,
+              matched: Boolean(matchedProvider),
+              has_fallback_avatar: Boolean(fallbackAvatar),
+            });
+          } catch (fallbackErr) {
+            console.log(
+              "[booking-chat-avatar-debug] provider fallback lookup failed",
+              fallbackErr?.message || fallbackErr
+            );
+          }
+        }
+
         const rows = Array.isArray(res?.data?.messages) ? res.data.messages : [];
         setChatUsers({
-          provider: res?.data?.provider || null,
+          provider: providerFromMessages,
           client: res?.data?.client || null,
         });
         const imageRows = rows.filter(
@@ -3986,7 +4057,7 @@ function BookingChatModal({
         setRefreshing(false);
       }
     },
-    [bookingId, showFlash]
+    [bookingId, showFlash, booking, getResolvedAvatarFromEntity]
   );
 
   useEffect(() => {
