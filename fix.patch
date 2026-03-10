@@ -1,10 +1,98 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
 diff --git a/mobile/App.js b/mobile/App.js
-index 346cb269a9b403f0a6c5ba0b17c20f86906db501..28f3d0f5f445f6a8b55e240154b6f7554306b4d3 100644
+index 8db6feac0aa6527445ae26f3785c17722c5e0d29..bb9690982f4ac9045b8e5f5eb2ed93bd50def0d9 100644
 --- a/mobile/App.js
 +++ b/mobile/App.js
-@@ -7427,50 +7427,51 @@ const loadProviderSummary = async () => {
+@@ -6295,51 +6295,57 @@ const [providerLocation, setProviderLocation] = useState(null);
+ const [focusedHoursField, setFocusedHoursField] = useState(null);
+ const [avatarUrl, setAvatarUrl] = useState(null);
+ // Catalog (portfolio images)
+ const [catalog, setCatalog] = useState([]);
+ const [catalogLoading, setCatalogLoading] = useState(false);
+ const [catalogError, setCatalogError] = useState("");
+ const [catalogUploading, setCatalogUploading] = useState(false);
+ const isProviderUser = token?.isProvider || token?.is_provider;
+ const providerUsername =
+   provider?.user?.username ||
+   profile?.username ||
+   token?.user?.username ||
+   token?.username;
+ const providerProfileLink = buildProviderPublicLink(providerUsername);
+ const providerRatingSummary = getRatingSummary(
+   {
+     ...(providerSummary || {}),
+     ...(provider || {}),
+     ...(profile || {}),
+   },
+   "No ratings"
+ );
  
+ useLayoutEffect(() => {
+   navigation.setOptions({
+-    headerTitle: "",
++    headerTitle: () => (
++      <Image
++        source={BookitGYLogoTransparent}
++        style={styles.providerDashboardHeaderLogo}
++        resizeMode="contain"
++      />
++    ),
+     headerRight: () => (
+       <NotificationBell
+         unreadCount={unreadNotificationCount}
+         onPress={onPressNotifications || (() => navigation.navigate('Notifications'))}
+       />
+     ),
+   });
+ }, [navigation, onPressNotifications, unreadNotificationCount]);
+ 
+ const parseServiceNumber = useCallback((value) => {
+   const normalized = String(value || "").replace(/[,\s]/g, "");
+   const numberValue = Number(normalized);
+   return Number.isFinite(numberValue) ? numberValue : null;
+ }, []);
+ 
+ const validateServiceFields = useCallback((name, price, durationParts) => {
+   const errors = { name: "", price: "", duration: "" };
+   const trimmedName = String(name || "").trim();
+   const priceNumber = parseServiceNumber(price);
+   const durationError = validateDurationParts(durationParts);
+ 
+   if (!trimmedName) {
+     errors.name = "Service name is required.";
+   }
+ 
+@@ -7398,93 +7404,65 @@ const loadProviderLocation = async () => {
+ 
+ const loadProviderSummary = async () => {
+   try {
+     const authToken = await getAuthToken(token);
+     if (!authToken) return;
+ 
+     const res = await apiClient.get(`/providers/me/summary`);
+     setProviderSummary(res.data);
+   } catch (err) {
+     console.log(
+       "Error loading provider summary",
+       err.response?.data || err.message
+     );
+   }
+ };
+ 
+   useEffect(() => {
+     if (!pendingChatConversationId || !bookings?.length) return;
+     const match = bookings.find((b) => Number(b?.conversation_id) === Number(pendingChatConversationId));
+     if (match) {
+       setChatBooking(match);
+       clearPendingChatConversationId?.();
+     }
+   }, [bookings, clearPendingChatConversationId, pendingChatConversationId]);
+ 
+-  const insets = useSafeAreaInsets();
+-  // const headerMinHeight =
+-  //   insets.top + HEADER_LOGO_HEIGHT + HEADER_VERTICAL_PADDING * 2;
+-  const headerPaddingVertical = HEADER_VERTICAL_PADDING;
+-
    return (
      <View style={styles.homeWrapper}>
        {hoursFlash && (
@@ -20,29 +108,29 @@ index 346cb269a9b403f0a6c5ba0b17c20f86906db501..28f3d0f5f445f6a8b55e240154b6f755
          </View>
        )}
  
-       <View
-         style={[
-           styles.pinnedHeader,
-           // headerMinHeight ? { minHeight: headerMinHeight } : null,
-         ]}
-       >
-         <View
-           style={[
-             styles.pinnedHeaderSafeArea,
-+            styles.providerDashboardLogoSafeArea,
-             {
-               paddingTop: 0,
-               paddingBottom: headerPaddingVertical,
-             },
-           ]}
-         >
-           <Image
-             source={BookitGYLogoTransparent}
-             style={styles.headerLogo}
-             resizeMode="contain"
-           />
-         </View>
-       </View>
+-      <View
+-        style={[
+-          styles.pinnedHeader,
+-          // headerMinHeight ? { minHeight: headerMinHeight } : null,
+-        ]}
+-      >
+-        <View
+-          style={[
+-            styles.pinnedHeaderSafeArea,
+-            styles.providerDashboardLogoSafeArea,
+-            {
+-              paddingTop: 0,
+-              paddingBottom: headerPaddingVertical,
+-            },
+-          ]}
+-        >
+-          <Image
+-            source={BookitGYLogoTransparent}
+-            style={styles.headerLogo}
+-            resizeMode="contain"
+-          />
+-        </View>
+-      </View>
        <ScrollView
          contentContainerStyle={styles.providerScroll}
          refreshControl={
@@ -55,7 +143,20 @@ index 346cb269a9b403f0a6c5ba0b17c20f86906db501..28f3d0f5f445f6a8b55e240154b6f755
            <Text style={styles.providerDashboardRatingText}>
              {providerRatingSummary.hasRatings
                ? `★ ${providerRatingSummary.ratingValue.toFixed(1)}${providerRatingSummary.ratingCount > 0 ? ` (${providerRatingSummary.ratingCount} rating${providerRatingSummary.ratingCount === 1 ? "" : "s"})` : ""}`
-@@ -11716,50 +11717,54 @@ const styles = StyleSheet.create({
+               : "No ratings"}
+           </Text>
+         </View>
+     
+         {/*Account Info */}
+         {providerSummary && (
+           <View style={styles.providerSummaryCard}>
+             <Text style={styles.providerSummaryLabel}>Account number</Text>
+             <Text style={styles.providerSummaryValue}>
+               {providerSummary.account_number || "N/A"}
+             </Text>
+           </View>
+         )}
+@@ -11717,61 +11695,61 @@ const styles = StyleSheet.create({
     homeScroll: {
      flexGrow: 1,
      backgroundColor: colors.background,
@@ -81,10 +182,10 @@ index 346cb269a9b403f0a6c5ba0b17c20f86906db501..28f3d0f5f445f6a8b55e240154b6f755
      marginBottom: -18,
      overflow: "visible",
    },
-+  providerDashboardLogoSafeArea: {
-+    marginTop: -44,
-+    marginBottom: -10,
-+  },
+-  providerDashboardLogoSafeArea: {
+-    marginTop: -5,
+-    marginBottom: -10,
+-  },
    homeHeader: {
      marginBottom: 20,
    },
@@ -92,6 +193,10 @@ index 346cb269a9b403f0a6c5ba0b17c20f86906db501..28f3d0f5f445f6a8b55e240154b6f755
      width: HEADER_LOGO_WIDTH,
      height: HEADER_LOGO_HEIGHT,
    },
++  providerDashboardHeaderLogo: {
++    width: 120,
++    height: 48,
++  },
    homeGreeting: {
      fontSize: 26,
      fontWeight: "700",
@@ -110,6 +215,13 @@ index 346cb269a9b403f0a6c5ba0b17c20f86906db501..28f3d0f5f445f6a8b55e240154b6f755
    },
    searchBar: {
      flexDirection: "row",
+     alignItems: "center",
+     gap: 10,
+     backgroundColor: colors.surfaceElevated,
+     borderRadius: 16,
+     paddingHorizontal: 14,
+     paddingVertical: 12,
+     borderWidth: 1,
  
 EOF
 )

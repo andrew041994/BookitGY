@@ -6317,7 +6317,13 @@ const providerRatingSummary = getRatingSummary(
 
 useLayoutEffect(() => {
   navigation.setOptions({
-    headerTitle: "",
+    headerTitle: () => (
+      <Image
+        source={BookitGYLogoTransparent}
+        style={styles.providerDashboardHeaderLogo}
+        resizeMode="contain"
+      />
+    ),
     headerRight: () => (
       <NotificationBell
         unreadCount={unreadNotificationCount}
@@ -7420,11 +7426,6 @@ const loadProviderSummary = async () => {
     }
   }, [bookings, clearPendingChatConversationId, pendingChatConversationId]);
 
-  const insets = useSafeAreaInsets();
-  // const headerMinHeight =
-  //   insets.top + HEADER_LOGO_HEIGHT + HEADER_VERTICAL_PADDING * 2;
-  const headerPaddingVertical = HEADER_VERTICAL_PADDING;
-
   return (
     <View style={styles.homeWrapper}>
       {hoursFlash && (
@@ -7440,29 +7441,6 @@ const loadProviderSummary = async () => {
         </View>
       )}
 
-      <View
-        style={[
-          styles.pinnedHeader,
-          // headerMinHeight ? { minHeight: headerMinHeight } : null,
-        ]}
-      >
-        <View
-          style={[
-            styles.pinnedHeaderSafeArea,
-            styles.providerDashboardLogoSafeArea,
-            {
-              paddingTop: 0,
-              paddingBottom: headerPaddingVertical,
-            },
-          ]}
-        >
-          <Image
-            source={BookitGYLogoTransparent}
-            style={styles.headerLogo}
-            resizeMode="contain"
-          />
-        </View>
-      </View>
       <ScrollView
         contentContainerStyle={styles.providerScroll}
         refreshControl={
@@ -11739,16 +11717,16 @@ const styles = StyleSheet.create({
     marginBottom: -18,
     overflow: "visible",
   },
-  providerDashboardLogoSafeArea: {
-    marginTop: -5,
-    marginBottom: -10,
-  },
   homeHeader: {
     marginBottom: 20,
   },
   headerLogo: {
     width: HEADER_LOGO_WIDTH,
     height: HEADER_LOGO_HEIGHT,
+  },
+  providerDashboardHeaderLogo: {
+    width: 120,
+    height: 48,
   },
   homeGreeting: {
     fontSize: 26,
