@@ -1,9 +1,9 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
 diff --git a/mobile/App.js b/mobile/App.js
-index 0bf4421be341ca82f8ce90f7717d54d3b2324b85..b0601c2b93de015a75e9ea73e69a211819339a02 100644
+index b0601c2b93de015a75e9ea73e69a211819339a02..7af14ea62c9fe3b46cab5970391766c61f69dc12 100644
 --- a/mobile/App.js
 +++ b/mobile/App.js
-@@ -1906,54 +1906,50 @@ function ProfileScreen({ authLoading, setToken, showFlash, token }) {
+@@ -1906,53 +1906,59 @@ function ProfileScreen({ authLoading, setToken, showFlash, token }) {
     // NEW state for editing profile
    const [showEdit, setShowEdit] = useState(false);
    const [editSaving, setEditSaving] = useState(false);
@@ -29,13 +29,15 @@ index 0bf4421be341ca82f8ce90f7717d54d3b2324b85..b0601c2b93de015a75e9ea73e69a2118
    const providerShareCardRef = useRef(null);
    const [shareCardVisible, setShareCardVisible] = useState(false);
    const [sharingProviderCard, setSharingProviderCard] = useState(false);
--  const [shareAvatarReady, setShareAvatarReady] = useState(false);
--  const [shareBrandingReady, setShareBrandingReady] = useState(false);
--  const shareAvatarReadyRef = useRef(false);
--  const shareBrandingReadyRef = useRef(false);
++  const [isShareBrandingReady, setIsShareBrandingReady] = useState(false);
++  const isShareBrandingReadyRef = useRef(false);
    const [providerProfile, setProviderProfile] = useState(null);
    const [previewScale, setPreviewScale] = useState(1);
  
++  useEffect(() => {
++    isShareBrandingReadyRef.current = isShareBrandingReady;
++  }, [isShareBrandingReady]);
++
    const forceLogout = useCallback(
      async (flashMessage) => {
        try {
@@ -58,7 +60,10 @@ index 0bf4421be341ca82f8ce90f7717d54d3b2324b85..b0601c2b93de015a75e9ea73e69a2118
        }
      },
      [setToken, showFlash]
-@@ -2541,74 +2537,60 @@ function ProfileScreen({ authLoading, setToken, showFlash, token }) {
+   );
+ 
+ 
+@@ -2537,65 +2543,86 @@ function ProfileScreen({ authLoading, setToken, showFlash, token }) {
    const displayAvatarUrl = resolveImageUrl(avatarUrl || user?.avatar_url);
    const isProviderPublic =
      user?.is_provider === true || token?.is_provider === true;
@@ -84,10 +89,8 @@ index 0bf4421be341ca82f8ce90f7717d54d3b2324b85..b0601c2b93de015a75e9ea73e69a2118
  
      try {
        setSharingProviderCard(true);
--      shareAvatarReadyRef.current = false;
--      shareBrandingReadyRef.current = false;
--      setShareAvatarReady(false);
--      setShareBrandingReady(false);
++      isShareBrandingReadyRef.current = false;
++      setIsShareBrandingReady(false);
        setShareCardVisible(true);
  
        await new Promise((resolve) => {
@@ -98,21 +101,30 @@ index 0bf4421be341ca82f8ce90f7717d54d3b2324b85..b0601c2b93de015a75e9ea73e69a2118
          });
        });
  
--      const captureWaitStart = Date.now();
--      const captureWaitTimeoutMs = 1600;
--      // Android can capture the off-screen card before nested images finish rendering.
--      while (Date.now() - captureWaitStart < captureWaitTimeoutMs) {
--        if ((shareAvatarReady && shareBrandingReady) || (shareAvatarReadyRef.current && shareBrandingReadyRef.current)) {
--          break;
--        }
--        await new Promise((resolve) => setTimeout(resolve, 60));
--      }
--
        if (!providerShareCardRef.current) {
          showFlash?.("error", "Sharing is not available in this build yet.");
          return;
        }
  
++      // iOS can capture the visible modal card before the branding image finishes painting.
++      await new Promise((resolve) => {
++        if (isShareBrandingReadyRef.current) {
++          resolve();
++          return;
++        }
++
++        const startedAt = Date.now();
++        const waitForBranding = () => {
++          if (isShareBrandingReadyRef.current || Date.now() - startedAt >= 325) {
++            resolve();
++            return;
++          }
++          requestAnimationFrame(waitForBranding);
++        };
++
++        waitForBranding();
++      });
++
        const imageUri = await captureRef(providerShareCardRef.current, {
          format: "png",
          quality: 1,
@@ -133,25 +145,12 @@ index 0bf4421be341ca82f8ce90f7717d54d3b2324b85..b0601c2b93de015a75e9ea73e69a2118
  
        await Sharing.shareAsync(imageUri, {
          mimeType: "image/png",
-@@ -2668,75 +2650,72 @@ function ProfileScreen({ authLoading, setToken, showFlash, token }) {
- 
-   const handleTestProviderLink = async () => {
-     if (!providerPublicLink) {
-       if (showFlash) {
-         showFlash("error", "Set a username to enable your profile link.");
-       }
-       return;
-     }
- 
-     try {
-       const supported = await Linking.canOpenURL(providerPublicLink);
-       if (!supported) {
-         throw new Error("Unsupported URL");
-       }
-       await Linking.openURL(providerPublicLink);
+         UTI: "public.png",
+         dialogTitle: "My BookitGY provider card",
+       });
      } catch (err) {
-       console.log("Error opening provider link", err?.message || err);
-       if (showFlash) {
+       console.log("Error sharing provider card", err?.message || err);
+@@ -2668,50 +2695,54 @@ function ProfileScreen({ authLoading, setToken, showFlash, token }) {
          showFlash("error", "Could not open your profile link.");
        }
      }
@@ -159,15 +158,13 @@ index 0bf4421be341ca82f8ce90f7717d54d3b2324b85..b0601c2b93de015a75e9ea73e69a2118
  
    return (
      <>
--      {shareCardVisible && ViewShot ? (
--        <View style={styles.providerShareCaptureLayer} pointerEvents="none">
-+      <Modal
-+        animationType="none"
-+        transparent
-+        visible={shareCardVisible && Boolean(ViewShot)}
-+        statusBarTranslucent
-+      >
-+        <View style={styles.providerShareCaptureOverlay} pointerEvents="none">
+       <Modal
+         animationType="none"
+         transparent
+         visible={shareCardVisible && Boolean(ViewShot)}
+         statusBarTranslucent
+       >
+         <View style={styles.providerShareCaptureOverlay} pointerEvents="none">
            <ViewShot
              ref={providerShareCardRef}
              options={{ format: "png", quality: 1 }}
@@ -179,19 +176,14 @@ index 0bf4421be341ca82f8ce90f7717d54d3b2324b85..b0601c2b93de015a75e9ea73e69a2118
                professions={providerShareProfessions}
                ratingValue={providerShareRatingValue}
                brandingSource={BookitGYLogoTransparent}
--              onAvatarLoadEnd={() => {
--                shareAvatarReadyRef.current = true;
--                setShareAvatarReady(true);
--              }}
--              onBrandingLoadEnd={() => {
--                shareBrandingReadyRef.current = true;
--                setShareBrandingReady(true);
--              }}
++              onBrandingLoadEnd={() => {
++                isShareBrandingReadyRef.current = true;
++                setIsShareBrandingReady(true);
++              }}
              />
            </ViewShot>
          </View>
--      ) : null}
-+      </Modal>
+       </Modal>
  
        <ScrollView
        contentContainerStyle={styles.profileScroll}
@@ -213,71 +205,6 @@ index 0bf4421be341ca82f8ce90f7717d54d3b2324b85..b0601c2b93de015a75e9ea73e69a2118
                  <View style={styles.profileAvatarFallback}>
                    <Text style={styles.profileAvatarInitial}>
                      {(user.full_name || user.email || "C").charAt(0).toUpperCase()}
-                   </Text>
-                 </View>
-               )}
-             </Pressable>
-@@ -12197,55 +12176,55 @@ cardHeartButton: {
-   },
-   actionButtonText: {
-     fontSize: 15,
-     fontWeight: "500",
-     color: colors.textPrimary,
-   },
-   providerShareButton: {
-     marginTop: 14,
-     borderColor: colors.primary,
-     backgroundColor: colors.primarySoft,
-   },
-   providerShareButtonDisabled: {
-     opacity: 0.65,
-   },
-   providerSharePreviewWrap: {
-     width: "100%",
-     aspectRatio: 1.9,
-     alignItems: "center",
-     justifyContent: "center",
-     overflow: "hidden",
-   },
-   providerSharePreviewCardWrap: {
-     width: 600,
-     aspectRatio: 1.9,
-   },
--  providerShareCaptureLayer: {
--    position: "absolute",
--    opacity: 0,
--    left: -9999,
--    top: -9999,
-+  providerShareCaptureOverlay: {
-+    flex: 1,
-+    alignItems: "center",
-+    justifyContent: "center",
-+    backgroundColor: "rgba(0,0,0,0.28)",
-   },
-   providerShareCaptureCardWrap: {
-     width: 600,
-     aspectRatio: 1.9,
-     alignSelf: "center",
-     padding: 0,
-     backgroundColor: "transparent",
-     overflow: "visible",
-   },
-   logoutButton: {
-     backgroundColor: "transparent",
-     borderColor: colors.error,
-     marginTop: 10,
-   },
-   logoutButtonText: {
-     color: colors.error,
-   },
-   logoutRow: {
-     marginTop: 8,
-     paddingVertical: 12,
-     borderRadius: 12,
-     borderWidth: 1,
-     borderColor: colors.error,
-     backgroundColor: colors.surface,
-     alignItems: "center",
  
 EOF
 )

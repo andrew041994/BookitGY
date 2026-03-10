@@ -1928,8 +1928,14 @@ function ProfileScreen({ authLoading, setToken, showFlash, token }) {
   const providerShareCardRef = useRef(null);
   const [shareCardVisible, setShareCardVisible] = useState(false);
   const [sharingProviderCard, setSharingProviderCard] = useState(false);
+  const [isShareBrandingReady, setIsShareBrandingReady] = useState(false);
+  const isShareBrandingReadyRef = useRef(false);
   const [providerProfile, setProviderProfile] = useState(null);
   const [previewScale, setPreviewScale] = useState(1);
+
+  useEffect(() => {
+    isShareBrandingReadyRef.current = isShareBrandingReady;
+  }, [isShareBrandingReady]);
 
   const forceLogout = useCallback(
     async (flashMessage) => {
@@ -2559,6 +2565,8 @@ function ProfileScreen({ authLoading, setToken, showFlash, token }) {
 
     try {
       setSharingProviderCard(true);
+      isShareBrandingReadyRef.current = false;
+      setIsShareBrandingReady(false);
       setShareCardVisible(true);
 
       await new Promise((resolve) => {
@@ -2573,6 +2581,25 @@ function ProfileScreen({ authLoading, setToken, showFlash, token }) {
         showFlash?.("error", "Sharing is not available in this build yet.");
         return;
       }
+
+      // iOS can capture the visible modal card before the branding image finishes painting.
+      await new Promise((resolve) => {
+        if (isShareBrandingReadyRef.current) {
+          resolve();
+          return;
+        }
+
+        const startedAt = Date.now();
+        const waitForBranding = () => {
+          if (isShareBrandingReadyRef.current || Date.now() - startedAt >= 325) {
+            resolve();
+            return;
+          }
+          requestAnimationFrame(waitForBranding);
+        };
+
+        waitForBranding();
+      });
 
       const imageUri = await captureRef(providerShareCardRef.current, {
         format: "png",
@@ -2690,6 +2717,10 @@ function ProfileScreen({ authLoading, setToken, showFlash, token }) {
               professions={providerShareProfessions}
               ratingValue={providerShareRatingValue}
               brandingSource={BookitGYLogoTransparent}
+              onBrandingLoadEnd={() => {
+                isShareBrandingReadyRef.current = true;
+                setIsShareBrandingReady(true);
+              }}
             />
           </ViewShot>
         </View>
