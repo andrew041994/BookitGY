@@ -1,81 +1,327 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
 diff --git a/mobile/App.js b/mobile/App.js
-index bddd5ce99a9f9e17bd521b82b7ebcc9dfc384c37..de2fc54acd198ca1b9133d54595ac07646ab2bd7 100644
+index de2fc54acd198ca1b9133d54595ac07646ab2bd7..a704c44a4b74181ace8a5b1c035c180ab5c1cb41 100644
 --- a/mobile/App.js
 +++ b/mobile/App.js
-@@ -2583,60 +2583,71 @@ function ProfileScreen({ authLoading, setToken, showFlash, token }) {
-         waitForModalMount();
-       });
+@@ -119,52 +119,52 @@ const CLOUDINARY_CLOUD_NAME =
  
-       await new Promise((resolve) => {
-         requestAnimationFrame(() => {
-           requestAnimationFrame(() => {
-             requestAnimationFrame(resolve);
-           });
-         });
-       });
+ const CLOUDINARY_UPLOAD_PRESET =
+   process.env.EXPO_PUBLIC_CLOUDINARY_UPLOAD_PRESET ||
+   Constants.expoConfig?.extra?.CLOUDINARY_UPLOAD_PRESET ||
+   Constants.manifest?.extra?.CLOUDINARY_UPLOAD_PRESET ||
+   "";
  
-       if (!providerShareCardRef.current) {
-         showFlash?.("error", "Sharing is not available in this build yet.");
-         return;
-       }
+ const CLOUDINARY_BOOKING_MESSAGES_FOLDER =
+   process.env.EXPO_PUBLIC_CLOUDINARY_BOOKING_MESSAGES_FOLDER ||
+   Constants.expoConfig?.extra?.CLOUDINARY_BOOKING_MESSAGES_FOLDER ||
+   Constants.manifest?.extra?.CLOUDINARY_BOOKING_MESSAGES_FOLDER ||
+   "bookitgy/booking_messages";
  
-       // iOS can capture the visible modal card before the branding image finishes painting.
-       await new Promise((resolve) => {
-         if (isShareBrandingReadyRef.current) {
-           resolve();
-           return;
+ console.log("### API base URL =", API);
+ 
+ 
+ Notifications.setNotificationHandler({
+   handleNotification: async () => ({
+     shouldShowAlert: true,
+     shouldPlaySound: true,
+     shouldSetBadge: false,
+   }),
+ });
+ 
+ const colors = theme.colors;
+-const HEADER_LOGO_WIDTH = 120;
+-const HEADER_LOGO_HEIGHT = 120;
++const HEADER_LOGO_WIDTH = 96;
++const HEADER_LOGO_HEIGHT = 96;
+ const HEADER_VERTICAL_PADDING = 0;
+ 
+ // status color mapping
+ const getAppointmentStatusThemeKey = (statusValue) => {
+   const normalized = `${statusValue || ""}`.trim().toLowerCase();
+   if (normalized.includes("cancel")) return "cancelled";
+   if (normalized.includes("complete")) return "completed";
+   return "scheduled";
+ };
+ 
+ const APPOINTMENT_STATUS_THEME = {
+   scheduled: {
+     accent: "#4DA3FF",
+     bgTint: "rgba(77,163,255,0.10)",
+     border: "rgba(77,163,255,0.35)",
+   },
+   completed: {
+     accent: "#2ECC71",
+     bgTint: "rgba(46,204,113,0.10)",
+     border: "rgba(46,204,113,0.35)",
+   },
+   cancelled: {
+     accent: "#FF4D4F",
+     bgTint: "rgba(255,77,79,0.10)",
+     border: "rgba(255,77,79,0.35)",
+@@ -6295,50 +6295,51 @@ const [providerLocation, setProviderLocation] = useState(null);
+ const [focusedHoursField, setFocusedHoursField] = useState(null);
+ const [avatarUrl, setAvatarUrl] = useState(null);
+ // Catalog (portfolio images)
+ const [catalog, setCatalog] = useState([]);
+ const [catalogLoading, setCatalogLoading] = useState(false);
+ const [catalogError, setCatalogError] = useState("");
+ const [catalogUploading, setCatalogUploading] = useState(false);
+ const isProviderUser = token?.isProvider || token?.is_provider;
+ const providerUsername =
+   provider?.user?.username ||
+   profile?.username ||
+   token?.user?.username ||
+   token?.username;
+ const providerProfileLink = buildProviderPublicLink(providerUsername);
+ const providerRatingSummary = getRatingSummary(
+   {
+     ...(providerSummary || {}),
+     ...(provider || {}),
+     ...(profile || {}),
+   },
+   "No ratings"
+ );
+ 
+ useLayoutEffect(() => {
+   navigation.setOptions({
++    headerTitle: "",
+     headerRight: () => (
+       <NotificationBell
+         unreadCount={unreadNotificationCount}
+         onPress={onPressNotifications || (() => navigation.navigate('Notifications'))}
+       />
+     ),
+   });
+ }, [navigation, onPressNotifications, unreadNotificationCount]);
+ 
+ const parseServiceNumber = useCallback((value) => {
+   const normalized = String(value || "").replace(/[,\s]/g, "");
+   const numberValue = Number(normalized);
+   return Number.isFinite(numberValue) ? numberValue : null;
+ }, []);
+ 
+ const validateServiceFields = useCallback((name, price, durationParts) => {
+   const errors = { name: "", price: "", duration: "" };
+   const trimmedName = String(name || "").trim();
+   const priceNumber = parseServiceNumber(price);
+   const durationError = validateDurationParts(durationParts);
+ 
+   if (!trimmedName) {
+     errors.name = "Service name is required.";
+   }
+ 
+@@ -7427,51 +7428,51 @@ const loadProviderSummary = async () => {
+   return (
+     <View style={styles.homeWrapper}>
+       {hoursFlash && (
+         <View
+           style={[
+             styles.hoursFlashGlobal,
+             hoursFlash.type === "error"
+               ? styles.hoursFlashError
+               : styles.hoursFlashSuccess,
+           ]}
+         >
+           <Text style={styles.hoursFlashText}>{hoursFlash.message}</Text>
+         </View>
+       )}
+ 
+       <View
+         style={[
+           styles.pinnedHeader,
+           // headerMinHeight ? { minHeight: headerMinHeight } : null,
+         ]}
+       >
+         <View
+           style={[
+             styles.pinnedHeaderSafeArea,
+             {
+-              paddingTop: Platform.OS === "ios" ? 6 : 6,
++              paddingTop: 0,
+               paddingBottom: headerPaddingVertical,
+             },
+           ]}
+         >
+           <Image
+             source={BookitGYLogoTransparent}
+             style={styles.headerLogo}
+             resizeMode="contain"
+           />
+         </View>
+       </View>
+       <ScrollView
+         contentContainerStyle={styles.providerScroll}
+         refreshControl={
+           <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
          }
+       >
+         <View style={styles.homeHeader}>
+           <Text style={styles.homeGreeting}>Provider dashboard</Text>
+           <Text style={styles.homeSubtitle}>Welcome, {providerLabel}</Text>
+           <Text style={styles.providerDashboardRatingText}>
+             {providerRatingSummary.hasRatings
+               ? `★ ${providerRatingSummary.ratingValue.toFixed(1)}${providerRatingSummary.ratingCount > 0 ? ` (${providerRatingSummary.ratingCount} rating${providerRatingSummary.ratingCount === 1 ? "" : "s"})` : ""}`
+               : "No ratings"}
+           </Text>
+@@ -11910,51 +11911,51 @@ cardHeartButton: {
+     fontSize: 13,
+     color: colors.textSecondary,
+     fontWeight: "600",
+     textAlign: "center",
+   },
  
-         const startedAt = Date.now();
-         const waitForBranding = () => {
--          if (isShareBrandingReadyRef.current || Date.now() - startedAt >= 325) {
-+          if (isShareBrandingReadyRef.current || Date.now() - startedAt >= 850) {
-             resolve();
-             return;
-           }
-           requestAnimationFrame(waitForBranding);
-         };
+   flashText: {
+     textAlign: "center",
+     fontSize: 14,
+     fontWeight: "500",
+   },
  
-         waitForBranding();
-       });
+     center: {
+     flex: 1,
+     backgroundColor: colors.background,
+     justifyContent: "center",
+     alignItems: "center",
+     padding: 20,
+   },
  
-+      await new Promise((resolve) => {
-+        requestAnimationFrame(() => {
-+          requestAnimationFrame(resolve);
-+        });
-+      });
-+
-+      console.log("[ProviderShareCard] capture state", {
-+        hasCardRef: Boolean(providerShareCardRef.current),
-+        isShareBrandingReady: isShareBrandingReadyRef.current,
-+      });
-+
-       const imageUri = await captureRef(providerShareCardRef.current, {
-         format: "png",
-         quality: 1,
-         width: 1200,
-         height: Math.round(1200 / 1.9),
-       });
+    homeScroll: {
+     flexGrow: 1,
+     backgroundColor: colors.background,
+     paddingHorizontal: 20,
+     paddingBottom: 32,
+-    paddingTop: 16,
++    paddingTop: 8,
+   },
+   homeCard: {
+     width: "100%",
+   },
  
-       if (!imageUri) {
-         showFlash?.("error", "Could not generate your provider card image.");
-         return;
-       }
+   loadingText: {
+     marginTop: 12,
+     fontSize: 16,
+     color: colors.textSecondary,
+   },
+   errorText: {
+     fontSize: 16,
+     color: colors.error,
+     textAlign: "center",
+   },
+   profileScroll: {
+     flexGrow: 1,
+     backgroundColor: colors.background,
+     padding: 20,
+     paddingTop: 32,
+   },
+   profileHeaderCard: {
+     backgroundColor: colors.surface,
+     borderRadius: 16,
+     padding: 16,
+@@ -12405,51 +12406,51 @@ cardHeartButton: {
+     elevation: 3,
+   },
+   toggleCardPressed: {
+     opacity: 0.9,
+   },
+   toggleTextGroup: {
+     flex: 1,
+     marginRight: 12,
+   },
+   toggleLabel: {
+     fontSize: 17,
+     fontWeight: "700",
+     color: colors.textPrimary,
+   },
+   toggleHelper: {
+     marginTop: 4,
+     fontSize: 13,
+     color: colors.textSecondary,
+   },
  
-       const isNativeShareAvailable = await Sharing.isAvailableAsync();
-       if (!isNativeShareAvailable) {
-         showFlash?.("error", "Sharing is not available on this device.");
-         return;
-       }
+     providerScroll: {
+     flexGrow: 1,
+     backgroundColor: colors.background,
+     paddingHorizontal: 20,
+     paddingBottom: 32,
+-    paddingTop: 16,
++    paddingTop: 8,
+   },
+   subtitleSmall: {
+     fontSize: 14,
+     color: colors.textSecondary,
+     marginBottom: 16,
+   },
+   serviceRow: {
+     flexDirection: "row",
+     justifyContent: "space-between",
+     alignItems: "center",
+     paddingVertical: 8,
+     borderBottomWidth: 1,
+     borderBottomColor: colors.border,
+   },
  
-       await Sharing.shareAsync(imageUri, {
-         mimeType: "image/png",
-         UTI: "public.png",
-         dialogTitle: "My BookitGY provider card",
-       });
-     } catch (err) {
-       console.log("Error sharing provider card", err?.message || err);
+ favoriteToggleButton: {
+     padding: 8,
+     borderRadius: 999,
+     backgroundColor: colors.surfaceElevated,
+     alignItems: "center",
+     justifyContent: "center",
+   },
+ 
+   serviceName: {
+     fontSize: 15,
+@@ -12897,51 +12898,51 @@ skeletonAvatar: {
+   borderRadius: 24,
+   backgroundColor: colors.surfaceElevated,
+ },
+ skeletonDetails: {
+   flex: 1,
+   marginLeft: 12,
+ },
+ skeletonLine: {
+   height: 12,
+   borderRadius: 6,
+   backgroundColor: colors.surfaceElevated,
+   marginBottom: 8,
+ },
+ skeletonLineShort: {
+   height: 10,
+   width: "60%",
+   borderRadius: 6,
+   backgroundColor: colors.surfaceElevated,
+ },
+ 
+   providerScroll: {
+     flexGrow: 1,
+     backgroundColor: colors.background,
+     paddingHorizontal: 20,
+     paddingBottom: 32,
+-    paddingTop: 16,
++    paddingTop: 8,
+   },
+   card: {
+     backgroundColor: colors.surface,
+     borderRadius: 12,
+     padding: 16,
+     marginBottom: 16,
+     shadowColor: "#000",
+     shadowOpacity: 0.06,
+     shadowRadius: 4,
+     shadowOffset: { width: 0, height: 2 },
+     elevation: 2,
+   },
+   profileTitle: {
+     fontSize: 24,
+     fontWeight: "700",
+     color: colors.textPrimary,
+     marginBottom: 4,
+   },
+   subtitleSmall: {
+     fontSize: 14,
+     color: colors.textSecondary,
+     marginBottom: 16,
+   },
+   sectionTitle: {
+     fontSize: 16,
  
 EOF
 )

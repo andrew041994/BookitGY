@@ -141,8 +141,8 @@ Notifications.setNotificationHandler({
 });
 
 const colors = theme.colors;
-const HEADER_LOGO_WIDTH = 120;
-const HEADER_LOGO_HEIGHT = 120;
+const HEADER_LOGO_WIDTH = 96;
+const HEADER_LOGO_HEIGHT = 96;
 const HEADER_VERTICAL_PADDING = 0;
 
 // status color mapping
@@ -6317,6 +6317,7 @@ const providerRatingSummary = getRatingSummary(
 
 useLayoutEffect(() => {
   navigation.setOptions({
+    headerTitle: "",
     headerRight: () => (
       <NotificationBell
         unreadCount={unreadNotificationCount}
@@ -7449,7 +7450,7 @@ const loadProviderSummary = async () => {
           style={[
             styles.pinnedHeaderSafeArea,
             {
-              paddingTop: Platform.OS === "ios" ? 6 : 6,
+              paddingTop: 0,
               paddingBottom: headerPaddingVertical,
             },
           ]}
@@ -11932,7 +11933,7 @@ cardHeartButton: {
     backgroundColor: colors.background,
     paddingHorizontal: 20,
     paddingBottom: 32,
-    paddingTop: 16,
+    paddingTop: 8,
   },
   homeCard: {
     width: "100%",
@@ -12427,7 +12428,7 @@ cardHeartButton: {
     backgroundColor: colors.background,
     paddingHorizontal: 20,
     paddingBottom: 32,
-    paddingTop: 16,
+    paddingTop: 8,
   },
   subtitleSmall: {
     fontSize: 14,
@@ -12919,7 +12920,7 @@ skeletonLineShort: {
     backgroundColor: colors.background,
     paddingHorizontal: 20,
     paddingBottom: 32,
-    paddingTop: 16,
+    paddingTop: 8,
   },
   card: {
     backgroundColor: colors.surface,
