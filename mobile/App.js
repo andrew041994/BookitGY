@@ -7447,7 +7447,7 @@ const loadProviderSummary = async () => {
           <View
             style={[
               styles.providerDashboardLogoWrap,
-              { top: -104,},
+              { top: -86,},
             ]}
           >
           <Image
@@ -7465,7 +7465,7 @@ const loadProviderSummary = async () => {
         contentContainerStyle={[
           styles.providerScroll,
           {
-            paddingTop: insets.top + providerDashboardLogoSize + 6,
+            paddingTop: insets.top + providerDashboardLogoSize -30,
           },
         ]}
         refreshControl={
@@ -11754,6 +11754,7 @@ const styles = StyleSheet.create({
     top: 0,
     left: 0,
     right: 0,
+    height: 40,
     alignItems: "center",
     zIndex: 10,
     elevation: 10,
