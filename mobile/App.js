@@ -11729,12 +11729,14 @@ const styles = StyleSheet.create({
   },
   pinnedHeader: {
     backgroundColor: "#0B1220",
+    overflow: "visible",
   },
   pinnedHeaderSafeArea: {
     alignItems: "center",
     justifyContent: "flex-start",
-    marginTop: -60,
+    marginTop: -52,
     marginBottom: -18,
+    overflow: "visible",
   },
   homeHeader: {
     marginBottom: 20,

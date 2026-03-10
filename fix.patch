@@ -1,9 +1,13 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
 diff --git a/mobile/App.js b/mobile/App.js
-index 76f83db800a4ac0831ba89cd56349be74644404e..ca95ace0dc78acc028973efe7841e2418e4867cf 100644
+index 782abdadc9d388efc26a9ddef8db764e09ee3f4a..346cb269a9b403f0a6c5ba0b17c20f86906db501 100644
 --- a/mobile/App.js
 +++ b/mobile/App.js
-@@ -11711,50 +11711,52 @@ const styles = StyleSheet.create({
+@@ -11707,56 +11707,58 @@ const styles = StyleSheet.create({
+     borderWidth: 1,
+     zIndex: 100,
+     shadowColor: "#000",
+     shadowOpacity: 0.1,
      shadowRadius: 6,
      shadowOffset: { width: 0, height: 3 },
      elevation: 4,
@@ -25,12 +29,15 @@ index 76f83db800a4ac0831ba89cd56349be74644404e..ca95ace0dc78acc028973efe7841e241
    },
    pinnedHeader: {
      backgroundColor: "#0B1220",
++    overflow: "visible",
    },
    pinnedHeaderSafeArea: {
      alignItems: "center",
      justifyContent: "flex-start",
-+    marginTop: -12,
-+    marginBottom: -18,
+-    marginTop: -60,
++    marginTop: -52,
+     marginBottom: -18,
++    overflow: "visible",
    },
    homeHeader: {
      marginBottom: 20,
