@@ -7453,8 +7453,8 @@ const loadProviderSummary = async () => {
         }}
         style={[
           styles.providerDashboardPinnedHeader,
-          styles.providerDashboardTopSection,
-          { paddingTop: insets.top + 12 },
+          styles.providerDashboardPinnedHeaderContent,
+          { paddingTop: insets.top + 6 },
         ]}
       >
         <View style={styles.providerDashboardLogoWrap}>
@@ -11757,26 +11757,29 @@ const styles = StyleSheet.create({
     width: HEADER_LOGO_WIDTH,
     height: HEADER_LOGO_HEIGHT,
   },
-  providerDashboardTopSection: {
-    alignItems: "center",
-    paddingHorizontal: 16,
-    paddingBottom: 8,
-  },
   providerDashboardPinnedHeader: {
     position: "absolute",
     top: 0,
     left: 0,
     right: 0,
+    alignItems: "center",
     zIndex: 10,
     elevation: 10,
     backgroundColor: "#0B1220",
   },
-  providerDashboardLogoWrap: {
+  providerDashboardPinnedHeaderContent: {
     width: "100%",
-    alignItems: "center",
-    justifyContent: "center",
-    paddingBottom: 6,
+    height: ".5%",
+    paddingBottom: 2,
   },
+  providerDashboardLogoWrap: {
+  position: "absolute",
+  left: 0,
+  right: 0,
+  marginTop: -60,
+  alignItems: "center",
+  zIndex: 20,
+},
   providerDashboardIntro: {
     width: "100%",
     alignItems: "flex-start",
