@@ -11759,6 +11759,7 @@ const styles = StyleSheet.create({
     zIndex: 10,
     elevation: 10,
     backgroundColor: "#0B1220",
+    overflow: "visible",
   },
   providerDashboardLogoWrap: {
     position: "absolute",
