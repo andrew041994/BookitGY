@@ -1,9 +1,70 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
 diff --git a/mobile/App.js b/mobile/App.js
-index 5f8b9c392b9ebef77cc7a513b8bddd8af82d37b1..ffa5fdf60238a716920fa05d05faacffd83cc9b8 100644
+index 94d41584c8def8eb33cb8eb8d9cdd43b9486fdc6..fa4d337af4d2216a682d0962366d6a0e409095d4 100644
 --- a/mobile/App.js
 +++ b/mobile/App.js
-@@ -7431,51 +7431,51 @@ const loadProviderSummary = async () => {
+@@ -6225,51 +6225,50 @@ function SearchScreen({ token, showFlash, navigation, route, toggleFavorite, isF
+               </ScrollView>
+               </SafeAreaView>
+          );
+       }
+ 
+ 
+ 
+ 
+ 
+ 
+ function ProviderDashboardScreen({
+   navigation,
+   token,
+   showFlash,
+   unreadNotificationCount = 0,
+   onPressNotifications,
+   pendingChatConversationId,
+   clearPendingChatConversationId,
+ }) {
+   const insets = useSafeAreaInsets();
+   const { width: windowWidth } = useWindowDimensions();
+   const providerDashboardLogoSize = Math.max(
+     100,
+     Math.min(120, Math.round(windowWidth * 0.3))
+   );
+-  const [providerDashboardHeaderHeight, setProviderDashboardHeaderHeight] = useState(0);
+ 
+   // const providerLabel = profile?.full_name || "Provider";
+   const [services, setServices] = useState([]);
+   const [loading, setLoading] = useState(true);
+   const [servicesError, setServicesError] = useState("");
+   const [adding, setAdding] = useState(false);
+   const [newName, setNewName] = useState("");
+   const [newPrice, setNewPrice] = useState("");
+   const [newDurationDays, setNewDurationDays] = useState("");
+   const [newDurationHours, setNewDurationHours] = useState("");
+   const [newDurationMinutes, setNewDurationMinutes] = useState("");
+   const [newDescription, setNewDescription] = useState("");
+   const [isSavingService, setIsSavingService] = useState(false);
+   const [bookings, setBookings] = useState([]);
+   const [bookingsLoading, setBookingsLoading] = useState(true);
+   const [bookingsError, setBookingsError] = useState("");
+   const [workingHours, setWorkingHours] = useState([]);
+   const [hoursLoading, setHoursLoading] = useState(false);
+   const [hoursError, setHoursError] = useState("");
+   const [showHours, setShowHours] = useState(false);
+   const [hoursFlash, setHoursFlash] = useState(null);
+   const [refreshing, setRefreshing] = useState(false);
+   const [chatBooking, setChatBooking] = useState(null);
+   const [showProfileEditor, setShowProfileEditor] = useState(false);
+   const [profileLoading, setProfileLoading] = useState(false);
+@@ -7422,80 +7421,73 @@ const loadProviderSummary = async () => {
+ 
+   useEffect(() => {
+     if (!pendingChatConversationId || !bookings?.length) return;
+     const match = bookings.find((b) => Number(b?.conversation_id) === Number(pendingChatConversationId));
+     if (match) {
+       setChatBooking(match);
+       clearPendingChatConversationId?.();
+     }
+   }, [bookings, clearPendingChatConversationId, pendingChatConversationId]);
  
    return (
      <View style={styles.homeWrapper}>
@@ -20,21 +81,27 @@ index 5f8b9c392b9ebef77cc7a513b8bddd8af82d37b1..ffa5fdf60238a716920fa05d05faacff
          </View>
        )}
  
-       <View
-         onLayout={(event) => {
-           const measuredHeight = Math.ceil(event.nativeEvent.layout.height || 0);
-           if (measuredHeight && measuredHeight !== providerDashboardHeaderHeight) {
-             setProviderDashboardHeaderHeight(measuredHeight);
-           }
-         }}
-         style={[
-           styles.providerDashboardPinnedHeader,
--          styles.providerDashboardTopSection,
-+          styles.providerDashboardPinnedHeaderContent,
-           { paddingTop: insets.top + 12 },
-         ]}
-       >
-         <View style={styles.providerDashboardLogoWrap}>
+-      <View
+-        onLayout={(event) => {
+-          const measuredHeight = Math.ceil(event.nativeEvent.layout.height || 0);
+-          if (measuredHeight && measuredHeight !== providerDashboardHeaderHeight) {
+-            setProviderDashboardHeaderHeight(measuredHeight);
+-          }
+-        }}
+-        style={[
+-          styles.providerDashboardPinnedHeader,
+-          styles.providerDashboardPinnedHeaderContent,
+-          { paddingTop: insets.top + 6 },
+-        ]}
+-      >
+-        <View style={styles.providerDashboardLogoWrap}>
++      <View style={styles.providerDashboardPinnedHeader}>
++        <View
++          style={[
++            styles.providerDashboardLogoWrap,
++            { top: insets.top - 2 },
++          ]}
++        >
            <Image
              source={BookitGYLogoTransparent}
              style={{
@@ -50,23 +117,34 @@ index 5f8b9c392b9ebef77cc7a513b8bddd8af82d37b1..ffa5fdf60238a716920fa05d05faacff
          contentContainerStyle={[
            styles.providerScroll,
            {
-             paddingTop: providerDashboardHeaderHeight + 8,
+-            paddingTop: providerDashboardHeaderHeight + 8,
++            paddingTop: insets.top + providerDashboardLogoSize + 6,
            },
          ]}
          refreshControl={
            <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
          }
-@@ -11735,69 +11735,68 @@ const styles = StyleSheet.create({
-   homeCard: {
-     width: "100%",
-   },
-   homeWrapper: {
-     flex: 1,
-     backgroundColor: "#0B1220",
-   },
-   pinnedHeader: {
-     backgroundColor: "#0B1220",
-     overflow: "visible",
+       >
+         <View style={styles.providerDashboardIntro}>
+           <Text style={styles.homeGreeting}>Provider dashboard</Text>
+           <Text style={styles.homeSubtitle}>Welcome, {providerLabel}</Text>
+           <Text style={styles.providerDashboardRatingText}>
+             {providerRatingSummary.hasRatings
+               ? `★ ${providerRatingSummary.ratingValue.toFixed(1)}${providerRatingSummary.ratingCount > 0 ? ` (${providerRatingSummary.ratingCount} rating${providerRatingSummary.ratingCount === 1 ? "" : "s"})` : ""}`
+               : "No ratings"}
+           </Text>
+         </View>
+ 
+         {/*Account Info */}
+         {providerSummary && (
+           <View style={styles.providerSummaryCard}>
+             <Text style={styles.providerSummaryLabel}>Account number</Text>
+             <Text style={styles.providerSummaryValue}>
+               {providerSummary.account_number || "N/A"}
+             </Text>
+           </View>
+         )}
+@@ -11745,58 +11737,56 @@ const styles = StyleSheet.create({
    },
    pinnedHeaderSafeArea: {
      alignItems: "center",
@@ -82,30 +160,28 @@ index 5f8b9c392b9ebef77cc7a513b8bddd8af82d37b1..ffa5fdf60238a716920fa05d05faacff
      width: HEADER_LOGO_WIDTH,
      height: HEADER_LOGO_HEIGHT,
    },
--  providerDashboardTopSection: {
--    alignItems: "center",
--    paddingHorizontal: 16,
--    paddingBottom: 8,
--  },
    providerDashboardPinnedHeader: {
      position: "absolute",
      top: 0,
      left: 0,
      right: 0,
-+    alignItems: "center",
+     alignItems: "center",
      zIndex: 10,
      elevation: 10,
      backgroundColor: "#0B1220",
    },
-+  providerDashboardPinnedHeaderContent: {
-+    width: "100%",
-+    paddingBottom: 6,
-+  },
-   providerDashboardLogoWrap: {
-     width: "100%",
-     alignItems: "center",
-     justifyContent: "center",
+-  providerDashboardPinnedHeaderContent: {
+-    width: "100%",
 -    paddingBottom: 6,
+-  },
+   providerDashboardLogoWrap: {
+-    width: "100%",
++    position: "absolute",
++    left: 0,
++    right: 0,
+     alignItems: "center",
+-    justifyContent: "center",
++    zIndex: 20,
    },
    providerDashboardIntro: {
      width: "100%",

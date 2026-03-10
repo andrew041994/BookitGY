@@ -6247,7 +6247,6 @@ function ProviderDashboardScreen({
     100,
     Math.min(120, Math.round(windowWidth * 0.3))
   );
-  const [providerDashboardHeaderHeight, setProviderDashboardHeaderHeight] = useState(0);
 
   // const providerLabel = profile?.full_name || "Provider";
   const [services, setServices] = useState([]);
@@ -7444,20 +7443,13 @@ const loadProviderSummary = async () => {
         </View>
       )}
 
-      <View
-        onLayout={(event) => {
-          const measuredHeight = Math.ceil(event.nativeEvent.layout.height || 0);
-          if (measuredHeight && measuredHeight !== providerDashboardHeaderHeight) {
-            setProviderDashboardHeaderHeight(measuredHeight);
-          }
-        }}
-        style={[
-          styles.providerDashboardPinnedHeader,
-          styles.providerDashboardPinnedHeaderContent,
-          { paddingTop: insets.top + 6 },
-        ]}
-      >
-        <View style={styles.providerDashboardLogoWrap}>
+      <View style={styles.providerDashboardPinnedHeader}>
+        <View
+          style={[
+            styles.providerDashboardLogoWrap,
+            { top: insets.top - 2 },
+          ]}
+        >
           <Image
             source={BookitGYLogoTransparent}
             style={{
@@ -7473,7 +7465,7 @@ const loadProviderSummary = async () => {
         contentContainerStyle={[
           styles.providerScroll,
           {
-            paddingTop: providerDashboardHeaderHeight + 8,
+            paddingTop: insets.top + providerDashboardLogoSize + 6,
           },
         ]}
         refreshControl={
@@ -11767,14 +11759,12 @@ const styles = StyleSheet.create({
     elevation: 10,
     backgroundColor: "#0B1220",
   },
-  providerDashboardPinnedHeaderContent: {
-    width: "100%",
-    paddingBottom: 6,
-  },
   providerDashboardLogoWrap: {
-    width: "100%",
+    position: "absolute",
+    left: 0,
+    right: 0,
     alignItems: "center",
-    justifyContent: "center",
+    zIndex: 20,
   },
   providerDashboardIntro: {
     width: "100%",
