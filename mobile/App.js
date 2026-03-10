@@ -11733,7 +11733,7 @@ const styles = StyleSheet.create({
   pinnedHeaderSafeArea: {
     alignItems: "center",
     justifyContent: "flex-start",
-    marginTop: -12,
+    marginTop: -60,
     marginBottom: -18,
   },
   homeHeader: {
