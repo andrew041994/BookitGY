@@ -3972,20 +3972,71 @@ function BookingChatModal({
               ? providersRes.data
               : providersRes?.data?.providers || [];
 
+            const normalizeId = (value) => (value == null ? null : String(value).trim());
+            const normalizeText = (value) =>
+              value == null ? null : String(value).trim().toLowerCase();
+
             const candidateIds = [
               booking?.provider?.id,
               booking?.provider_id,
+              booking?.provider?.provider_id,
+              booking?.provider?.user_id,
+              booking?.provider?.user?.id,
               res?.data?.provider?.id,
               res?.data?.provider?.provider_id,
+              res?.data?.provider?.user_id,
+              res?.data?.provider?.user?.id,
             ]
-              .map((value) => (value == null ? null : String(value).trim()))
+              .map(normalizeId)
               .filter(Boolean);
 
+            const candidateUsernames = [
+              booking?.provider?.username,
+              booking?.provider_username,
+              booking?.provider?.user?.username,
+              res?.data?.provider?.username,
+              res?.data?.provider?.user?.username,
+            ]
+              .map(normalizeText)
+              .filter(Boolean);
+
+            const candidateNames = [
+              booking?.provider?.name,
+              booking?.provider_name,
+              res?.data?.provider?.name,
+            ]
+              .map(normalizeText)
+              .filter(Boolean);
+
+            console.log("[booking-chat-avatar-debug] provider fallback candidate summary", {
+              booking_id: bookingId,
+              provider_from_messages: res?.data?.provider || null,
+              candidate_ids_count: candidateIds.length,
+              candidate_usernames_count: candidateUsernames.length,
+              candidate_names_count: candidateNames.length,
+            });
+
             const matchedProvider = providers.find((provider) => {
-              const providerIds = [provider?.id, provider?.provider_id]
-                .map((value) => (value == null ? null : String(value).trim()))
+              const providerIds = [
+                provider?.id,
+                provider?.provider_id,
+                provider?.user_id,
+                provider?.user?.id,
+              ]
+                .map(normalizeId)
                 .filter(Boolean);
-              return providerIds.some((id) => candidateIds.includes(id));
+
+              const providerUsernames = [provider?.username, provider?.user?.username]
+                .map(normalizeText)
+                .filter(Boolean);
+
+              const providerName = normalizeText(provider?.name);
+
+              return (
+                providerIds.some((id) => candidateIds.includes(id)) ||
+                providerUsernames.some((username) => candidateUsernames.includes(username)) ||
+                (providerName && candidateNames.includes(providerName))
+              );
             });
 
             const fallbackAvatar = getResolvedAvatarFromEntity(matchedProvider);
@@ -3993,17 +4044,15 @@ function BookingChatModal({
               providerFromMessages = {
                 ...(matchedProvider || {}),
                 ...(providerFromMessages || {}),
-                avatar_url:
-                  providerFromMessages?.avatar_url ||
-                  providerFromMessages?.profile_photo_url ||
-                  providerFromMessages?.profile_image_url ||
-                  fallbackAvatar,
+                avatar_url: fallbackAvatar,
+                profile_photo_url: fallbackAvatar,
               };
             }
 
             console.log("[booking-chat-avatar-debug] provider fallback lookup result", {
               booking_id: bookingId,
-              candidates_count: candidateIds.length,
+              candidates_count:
+                candidateIds.length + candidateUsernames.length + candidateNames.length,
               matched: Boolean(matchedProvider),
               has_fallback_avatar: Boolean(fallbackAvatar),
             });

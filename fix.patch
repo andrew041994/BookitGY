@@ -1,46 +1,10 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
 diff --git a/mobile/App.js b/mobile/App.js
-index f43c70d6d80ac8888fd45b90f9e3db5ec5af9fe4..76c9f23382f81d77e7be3a9e85729831568ca3cb 100644
+index 76c9f23382f81d77e7be3a9e85729831568ca3cb..9acbb33f5f1d56a44aec1d434433cdeb136f5f92 100644
 --- a/mobile/App.js
 +++ b/mobile/App.js
-@@ -3914,101 +3914,172 @@ function BookingChatModal({
-           booking?.customer_avatar_url ||
-           booking?.client_profile_photo_url ||
-           booking?.customer_profile_photo_url ||
-           booking?.client_profile_image_url ||
-           booking?.customer_profile_image_url,
-       }
-     );
+@@ -3950,82 +3950,131 @@ function BookingChatModal({
  
-     if (loggedInUserId && providerAuthUserId && loggedInUserId === providerAuthUserId) {
-       return client;
-     }
-     if (loggedInUserId && clientAuthUserId && loggedInUserId === clientAuthUserId) {
-       return provider;
-     }
- 
-     return currentUserIsProvider ? client : provider;
-   }, [booking, currentUserId, currentUserIsProvider, chatUsers]);
- 
-   const logImageMessageShapeSummary = useCallback((context, details) => {
-     console.log("[chat-image-debug] shape-summary", {
-       context,
-       ...details,
-     });
-   }, []);
- 
-+  const getResolvedAvatarFromEntity = useCallback((entity) => {
-+    return (
-+      resolveImageUrl(entity?.avatar_url) ||
-+      resolveImageUrl(entity?.profile_photo_url) ||
-+      resolveImageUrl(entity?.profile_image_url) ||
-+      resolveImageUrl(entity?.user?.avatar_url) ||
-+      resolveImageUrl(entity?.user?.profile_photo_url) ||
-+      resolveImageUrl(entity?.user?.profile_image_url) ||
-+      null
-+    );
-+  }, []);
-+
    const loadMessages = useCallback(
      async (useRefresh = false) => {
        if (!bookingId) return;
@@ -49,69 +13,127 @@ index f43c70d6d80ac8888fd45b90f9e3db5ec5af9fe4..76c9f23382f81d77e7be3a9e85729831
          else setLoading(true);
  
          const res = await apiClient.get(`/bookings/${bookingId}/messages`);
-+        let providerFromMessages = res?.data?.provider || null;
-+        const providerAvatarFromMessages = getResolvedAvatarFromEntity(providerFromMessages);
+         let providerFromMessages = res?.data?.provider || null;
+         const providerAvatarFromMessages = getResolvedAvatarFromEntity(providerFromMessages);
+ 
+         console.log("[booking-chat-avatar-debug] provider avatar in messages payload", {
+           booking_id: bookingId,
+           has_provider: Boolean(providerFromMessages),
+           has_avatar: Boolean(providerAvatarFromMessages),
+         });
+ 
+         if (!providerAvatarFromMessages) {
+           try {
+             const providersRes = await apiClient.get(`/providers`);
+             const providers = Array.isArray(providersRes?.data)
+               ? providersRes.data
+               : providersRes?.data?.providers || [];
+ 
++            const normalizeId = (value) => (value == null ? null : String(value).trim());
++            const normalizeText = (value) =>
++              value == null ? null : String(value).trim().toLowerCase();
 +
-+        console.log("[booking-chat-avatar-debug] provider avatar in messages payload", {
-+          booking_id: bookingId,
-+          has_provider: Boolean(providerFromMessages),
-+          has_avatar: Boolean(providerAvatarFromMessages),
-+        });
-+
-+        if (!providerAvatarFromMessages) {
-+          try {
-+            const providersRes = await apiClient.get(`/providers`);
-+            const providers = Array.isArray(providersRes?.data)
-+              ? providersRes.data
-+              : providersRes?.data?.providers || [];
-+
-+            const candidateIds = [
-+              booking?.provider?.id,
-+              booking?.provider_id,
-+              res?.data?.provider?.id,
-+              res?.data?.provider?.provider_id,
+             const candidateIds = [
+               booking?.provider?.id,
+               booking?.provider_id,
++              booking?.provider?.provider_id,
++              booking?.provider?.user_id,
++              booking?.provider?.user?.id,
+               res?.data?.provider?.id,
+               res?.data?.provider?.provider_id,
++              res?.data?.provider?.user_id,
++              res?.data?.provider?.user?.id,
 +            ]
-+              .map((value) => (value == null ? null : String(value).trim()))
++              .map(normalizeId)
 +              .filter(Boolean);
 +
-+            const matchedProvider = providers.find((provider) => {
-+              const providerIds = [provider?.id, provider?.provider_id]
-+                .map((value) => (value == null ? null : String(value).trim()))
-+                .filter(Boolean);
-+              return providerIds.some((id) => candidateIds.includes(id));
-+            });
++            const candidateUsernames = [
++              booking?.provider?.username,
++              booking?.provider_username,
++              booking?.provider?.user?.username,
++              res?.data?.provider?.username,
++              res?.data?.provider?.user?.username,
+             ]
+-              .map((value) => (value == null ? null : String(value).trim()))
++              .map(normalizeText)
+               .filter(Boolean);
+ 
++            const candidateNames = [
++              booking?.provider?.name,
++              booking?.provider_name,
++              res?.data?.provider?.name,
++            ]
++              .map(normalizeText)
++              .filter(Boolean);
 +
-+            const fallbackAvatar = getResolvedAvatarFromEntity(matchedProvider);
-+            if (fallbackAvatar) {
-+              providerFromMessages = {
-+                ...(matchedProvider || {}),
-+                ...(providerFromMessages || {}),
-+                avatar_url:
-+                  providerFromMessages?.avatar_url ||
-+                  providerFromMessages?.profile_photo_url ||
-+                  providerFromMessages?.profile_image_url ||
-+                  fallbackAvatar,
-+              };
-+            }
-+
-+            console.log("[booking-chat-avatar-debug] provider fallback lookup result", {
++            console.log("[booking-chat-avatar-debug] provider fallback candidate summary", {
 +              booking_id: bookingId,
-+              candidates_count: candidateIds.length,
-+              matched: Boolean(matchedProvider),
-+              has_fallback_avatar: Boolean(fallbackAvatar),
++              provider_from_messages: res?.data?.provider || null,
++              candidate_ids_count: candidateIds.length,
++              candidate_usernames_count: candidateUsernames.length,
++              candidate_names_count: candidateNames.length,
 +            });
-+          } catch (fallbackErr) {
-+            console.log(
-+              "[booking-chat-avatar-debug] provider fallback lookup failed",
-+              fallbackErr?.message || fallbackErr
-+            );
-+          }
-+        }
 +
+             const matchedProvider = providers.find((provider) => {
+-              const providerIds = [provider?.id, provider?.provider_id]
+-                .map((value) => (value == null ? null : String(value).trim()))
++              const providerIds = [
++                provider?.id,
++                provider?.provider_id,
++                provider?.user_id,
++                provider?.user?.id,
++              ]
++                .map(normalizeId)
++                .filter(Boolean);
++
++              const providerUsernames = [provider?.username, provider?.user?.username]
++                .map(normalizeText)
+                 .filter(Boolean);
+-              return providerIds.some((id) => candidateIds.includes(id));
++
++              const providerName = normalizeText(provider?.name);
++
++              return (
++                providerIds.some((id) => candidateIds.includes(id)) ||
++                providerUsernames.some((username) => candidateUsernames.includes(username)) ||
++                (providerName && candidateNames.includes(providerName))
++              );
+             });
+ 
+             const fallbackAvatar = getResolvedAvatarFromEntity(matchedProvider);
+             if (fallbackAvatar) {
+               providerFromMessages = {
+                 ...(matchedProvider || {}),
+                 ...(providerFromMessages || {}),
+-                avatar_url:
+-                  providerFromMessages?.avatar_url ||
+-                  providerFromMessages?.profile_photo_url ||
+-                  providerFromMessages?.profile_image_url ||
+-                  fallbackAvatar,
++                avatar_url: fallbackAvatar,
++                profile_photo_url: fallbackAvatar,
+               };
+             }
+ 
+             console.log("[booking-chat-avatar-debug] provider fallback lookup result", {
+               booking_id: bookingId,
+-              candidates_count: candidateIds.length,
++              candidates_count:
++                candidateIds.length + candidateUsernames.length + candidateNames.length,
+               matched: Boolean(matchedProvider),
+               has_fallback_avatar: Boolean(fallbackAvatar),
+             });
+           } catch (fallbackErr) {
+             console.log(
+               "[booking-chat-avatar-debug] provider fallback lookup failed",
+               fallbackErr?.message || fallbackErr
+             );
+           }
+         }
+ 
          const rows = Array.isArray(res?.data?.messages) ? res.data.messages : [];
          setChatUsers({
--          provider: res?.data?.provider || null,
-+          provider: providerFromMessages,
+           provider: providerFromMessages,
            client: res?.data?.client || null,
          });
          const imageRows = rows.filter(
@@ -123,61 +145,6 @@ index f43c70d6d80ac8888fd45b90f9e3db5ec5af9fe4..76c9f23382f81d77e7be3a9e85729831
              booking_id: bookingId,
              status: res?.status,
              image_message_count: imageRows.length,
-             image_messages: imageRows.map((row) => {
-               const attachment = row?.attachment || null;
-               const resolvedImageUrl = resolveImageUrl(attachment?.file_url);
-               return {
-                 id: row?.id,
-                 text: row?.text,
-                 attachment,
-                 renderer_inputs: {
-                   attachment_file_url: attachment?.file_url ?? null,
-                   resolved_image_url: resolvedImageUrl,
-                   will_render_image: Boolean(resolvedImageUrl),
-                 },
-               };
-             }),
-           });
-         }
- 
-         setMessages(rows);
- 
-         await apiClient.post(`/bookings/messages/read`, { booking_id: bookingId });
-       } catch (err) {
-         const msg = getCleanApiErrorMessage(err, "Could not load chat messages.");
-         showFlash && showFlash("error", msg);
-       } finally {
-         setLoading(false);
-         setRefreshing(false);
-       }
-     },
--    [bookingId, showFlash]
-+    [bookingId, showFlash, booking, getResolvedAvatarFromEntity]
-   );
- 
-   useEffect(() => {
-     if (visible) return;
-     setChatUsers({ provider: null, client: null });
-   }, [visible, bookingId]);
- 
-   useEffect(() => {
-     if (!visible || !bookingId) return;
-     loadMessages();
-     const interval = setInterval(() => {
-       loadMessages(true);
-     }, 15000);
-     return () => clearInterval(interval);
-   }, [visible, bookingId, loadMessages]);
- 
-   useEffect(() => {
-     if (!visible || !messages.length) return;
-     requestAnimationFrame(() => {
-       listRef.current?.scrollToEnd?.({ animated: true });
-     });
-   }, [messages, visible]);
- 
-   const handlePickImage = useCallback(async () => {
-     try {
  
 EOF
 )
