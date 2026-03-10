@@ -7467,15 +7467,6 @@ const loadProviderSummary = async () => {
             resizeMode="contain"
           />
         </View>
-        <View style={styles.providerDashboardIntro}>
-          <Text style={styles.homeGreeting}>Provider dashboard</Text>
-          <Text style={styles.homeSubtitle}>Welcome, {providerLabel}</Text>
-          <Text style={styles.providerDashboardRatingText}>
-            {providerRatingSummary.hasRatings
-              ? `★ ${providerRatingSummary.ratingValue.toFixed(1)}${providerRatingSummary.ratingCount > 0 ? ` (${providerRatingSummary.ratingCount} rating${providerRatingSummary.ratingCount === 1 ? "" : "s"})` : ""}`
-              : "No ratings"}
-          </Text>
-        </View>
       </View>
 
       <ScrollView
@@ -7489,6 +7480,16 @@ const loadProviderSummary = async () => {
           <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
         }
       >
+        <View style={styles.providerDashboardIntro}>
+          <Text style={styles.homeGreeting}>Provider dashboard</Text>
+          <Text style={styles.homeSubtitle}>Welcome, {providerLabel}</Text>
+          <Text style={styles.providerDashboardRatingText}>
+            {providerRatingSummary.hasRatings
+              ? `★ ${providerRatingSummary.ratingValue.toFixed(1)}${providerRatingSummary.ratingCount > 0 ? ` (${providerRatingSummary.ratingCount} rating${providerRatingSummary.ratingCount === 1 ? "" : "s"})` : ""}`
+              : "No ratings"}
+          </Text>
+        </View>
+
         {/*Account Info */}
         {providerSummary && (
           <View style={styles.providerSummaryCard}>
