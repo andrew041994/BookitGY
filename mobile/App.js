@@ -23,6 +23,7 @@ import {
   Modal,
   FlatList,
   AppState,
+  useWindowDimensions,
 } from "react-native";
 import * as ExpoLinking from "expo-linking";
 import * as AuthSession from "expo-auth-session";
@@ -6240,6 +6241,13 @@ function ProviderDashboardScreen({
   pendingChatConversationId,
   clearPendingChatConversationId,
 }) {
+  const insets = useSafeAreaInsets();
+  const { width: windowWidth } = useWindowDimensions();
+  const providerDashboardLogoSize = Math.max(
+    100,
+    Math.min(120, Math.round(windowWidth * 0.3))
+  );
+
   // const providerLabel = profile?.full_name || "Provider";
   const [services, setServices] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -6317,13 +6325,7 @@ const providerRatingSummary = getRatingSummary(
 
 useLayoutEffect(() => {
   navigation.setOptions({
-    headerTitle: () => (
-      <Image
-        source={BookitGYLogoTransparent}
-        style={styles.providerDashboardHeaderLogo}
-        resizeMode="contain"
-      />
-    ),
+    headerTitle: "",
     headerRight: () => (
       <NotificationBell
         unreadCount={unreadNotificationCount}
@@ -7447,14 +7449,31 @@ const loadProviderSummary = async () => {
           <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
         }
       >
-        <View style={styles.homeHeader}>
-          <Text style={styles.homeGreeting}>Provider dashboard</Text>
-          <Text style={styles.homeSubtitle}>Welcome, {providerLabel}</Text>
-          <Text style={styles.providerDashboardRatingText}>
-            {providerRatingSummary.hasRatings
-              ? `★ ${providerRatingSummary.ratingValue.toFixed(1)}${providerRatingSummary.ratingCount > 0 ? ` (${providerRatingSummary.ratingCount} rating${providerRatingSummary.ratingCount === 1 ? "" : "s"})` : ""}`
-              : "No ratings"}
-          </Text>
+        <View
+          style={[
+            styles.providerDashboardTopSection,
+            { paddingTop: insets.top + 12 },
+          ]}
+        >
+          <View style={styles.providerDashboardLogoWrap}>
+            <Image
+              source={BookitGYLogoTransparent}
+              style={{
+                width: providerDashboardLogoSize,
+                height: providerDashboardLogoSize,
+              }}
+              resizeMode="contain"
+            />
+          </View>
+          <View style={styles.providerDashboardIntro}>
+            <Text style={styles.homeGreeting}>Provider dashboard</Text>
+            <Text style={styles.homeSubtitle}>Welcome, {providerLabel}</Text>
+            <Text style={styles.providerDashboardRatingText}>
+              {providerRatingSummary.hasRatings
+                ? `★ ${providerRatingSummary.ratingValue.toFixed(1)}${providerRatingSummary.ratingCount > 0 ? ` (${providerRatingSummary.ratingCount} rating${providerRatingSummary.ratingCount === 1 ? "" : "s"})` : ""}`
+                : "No ratings"}
+            </Text>
+          </View>
         </View>
     
         {/*Account Info */}
@@ -11724,10 +11743,21 @@ const styles = StyleSheet.create({
     width: HEADER_LOGO_WIDTH,
     height: HEADER_LOGO_HEIGHT,
   },
-  providerDashboardHeaderLogo: {
-    width: 120,
-    height: 120,
-    marginTop: -50,
+  providerDashboardTopSection: {
+    alignItems: "center",
+    paddingHorizontal: 16,
+    paddingBottom: 8,
+  },
+  providerDashboardLogoWrap: {
+    width: "100%",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingBottom: 6,
+  },
+  providerDashboardIntro: {
+    width: "100%",
+    alignItems: "flex-start",
+    marginBottom: 20,
   },
   homeGreeting: {
     fontSize: 26,

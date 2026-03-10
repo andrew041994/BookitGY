@@ -1,9 +1,119 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
 diff --git a/mobile/App.js b/mobile/App.js
-index 8db6feac0aa6527445ae26f3785c17722c5e0d29..bb9690982f4ac9045b8e5f5eb2ed93bd50def0d9 100644
+index e81a999548ff1cb9c6c1a216cd174fa4057f10dd..36e9698b4b73372505418abbd36d802b98353631 100644
 --- a/mobile/App.js
 +++ b/mobile/App.js
-@@ -6295,51 +6295,57 @@ const [providerLocation, setProviderLocation] = useState(null);
+@@ -1,50 +1,51 @@
+ import React, { useState, useEffect, useCallback, useMemo, useRef, useLayoutEffect } from "react";
+ 
+ import {
+   Text,
+   View,
+   StyleSheet,
+   TextInput,
+   Button,
+   Alert,
+   ActivityIndicator,
+   ScrollView,
+   TouchableOpacity,
+   Switch,
+   Linking,
+   Platform,
+   Image,
+   KeyboardAvoidingView,
+   TouchableWithoutFeedback,
+   Keyboard,
+   Pressable,
+   RefreshControl,
+   Share,
+   Modal,
+   FlatList,
+   AppState,
++  useWindowDimensions,
+ } from "react-native";
+ import * as ExpoLinking from "expo-linking";
+ import * as AuthSession from "expo-auth-session";
+ import * as Google from "expo-auth-session/providers/google";
+ import * as WebBrowser from "expo-web-browser";
+ import * as Sharing from "expo-sharing";
+ 
+ import {
+   NavigationContainer,
+   CommonActions,
+   useFocusEffect,
+   useIsFocused,
+ } from "@react-navigation/native";
+ import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
+ import { enableScreens } from "react-native-screens";
+ import AsyncStorage from "@react-native-async-storage/async-storage";
+ import {
+   clearAllAuthTokens,
+   loadToken,
+   saveRefreshToken,
+   saveToken,
+ } from "./src/components/tokenStorage";
+ import ProviderCard from "./src/components/ProviderCard";
+ import ProviderShareCard from "./src/components/ProviderShareCard";
+ import * as Location from "expo-location";
+@@ -6218,50 +6219,57 @@ function SearchScreen({ token, showFlash, navigation, route, toggleFavorite, isF
+                       <Text style={styles.bookButtonLabel}>
+                         {bookingLoading ? "Booking..." : "Book Appointment"}
+                       </Text>
+                     </TouchableOpacity>
+                   </View>
+                 )}
+               </ScrollView>
+               </SafeAreaView>
+          );
+       }
+ 
+ 
+ 
+ 
+ 
+ 
+ function ProviderDashboardScreen({
+   navigation,
+   token,
+   showFlash,
+   unreadNotificationCount = 0,
+   onPressNotifications,
+   pendingChatConversationId,
+   clearPendingChatConversationId,
+ }) {
++  const insets = useSafeAreaInsets();
++  const { width: windowWidth } = useWindowDimensions();
++  const providerDashboardLogoSize = Math.max(
++    100,
++    Math.min(120, Math.round(windowWidth * 0.3))
++  );
++
+   // const providerLabel = profile?.full_name || "Provider";
+   const [services, setServices] = useState([]);
+   const [loading, setLoading] = useState(true);
+   const [servicesError, setServicesError] = useState("");
+   const [adding, setAdding] = useState(false);
+   const [newName, setNewName] = useState("");
+   const [newPrice, setNewPrice] = useState("");
+   const [newDurationDays, setNewDurationDays] = useState("0");
+   const [newDurationHours, setNewDurationHours] = useState("0");
+   const [newDurationMinutes, setNewDurationMinutes] = useState("30");
+   const [newDescription, setNewDescription] = useState("");
+   const [isSavingService, setIsSavingService] = useState(false);
+   const [bookings, setBookings] = useState([]);
+   const [bookingsLoading, setBookingsLoading] = useState(true);
+   const [bookingsError, setBookingsError] = useState("");
+   const [workingHours, setWorkingHours] = useState([]);
+   const [hoursLoading, setHoursLoading] = useState(false);
+   const [hoursError, setHoursError] = useState("");
+   const [showHours, setShowHours] = useState(false);
+   const [hoursFlash, setHoursFlash] = useState(null);
+   const [refreshing, setRefreshing] = useState(false);
+   const [chatBooking, setChatBooking] = useState(null);
+   const [showProfileEditor, setShowProfileEditor] = useState(false);
+   const [profileLoading, setProfileLoading] = useState(false);
+   const [profileError, setProfileError] = useState("");
+@@ -6295,57 +6303,51 @@ const [providerLocation, setProviderLocation] = useState(null);
  const [focusedHoursField, setFocusedHoursField] = useState(null);
  const [avatarUrl, setAvatarUrl] = useState(null);
  // Catalog (portfolio images)
@@ -29,14 +139,14 @@ index 8db6feac0aa6527445ae26f3785c17722c5e0d29..bb9690982f4ac9045b8e5f5eb2ed93bd
  
  useLayoutEffect(() => {
    navigation.setOptions({
--    headerTitle: "",
-+    headerTitle: () => (
-+      <Image
-+        source={BookitGYLogoTransparent}
-+        style={styles.providerDashboardHeaderLogo}
-+        resizeMode="contain"
-+      />
-+    ),
+-    headerTitle: () => (
+-      <Image
+-        source={BookitGYLogoTransparent}
+-        style={styles.providerDashboardHeaderLogo}
+-        resizeMode="contain"
+-      />
+-    ),
++    headerTitle: "",
      headerRight: () => (
        <NotificationBell
          unreadCount={unreadNotificationCount}
@@ -62,37 +172,11 @@ index 8db6feac0aa6527445ae26f3785c17722c5e0d29..bb9690982f4ac9045b8e5f5eb2ed93bd
      errors.name = "Service name is required.";
    }
  
-@@ -7398,93 +7404,65 @@ const loadProviderLocation = async () => {
- 
- const loadProviderSummary = async () => {
-   try {
-     const authToken = await getAuthToken(token);
-     if (!authToken) return;
- 
-     const res = await apiClient.get(`/providers/me/summary`);
-     setProviderSummary(res.data);
-   } catch (err) {
-     console.log(
-       "Error loading provider summary",
-       err.response?.data || err.message
-     );
-   }
- };
- 
-   useEffect(() => {
-     if (!pendingChatConversationId || !bookings?.length) return;
-     const match = bookings.find((b) => Number(b?.conversation_id) === Number(pendingChatConversationId));
-     if (match) {
-       setChatBooking(match);
+@@ -7425,58 +7427,75 @@ const loadProviderSummary = async () => {
        clearPendingChatConversationId?.();
      }
    }, [bookings, clearPendingChatConversationId, pendingChatConversationId]);
  
--  const insets = useSafeAreaInsets();
--  // const headerMinHeight =
--  //   insets.top + HEADER_LOGO_HEIGHT + HEADER_VERTICAL_PADDING * 2;
--  const headerPaddingVertical = HEADER_VERTICAL_PADDING;
--
    return (
      <View style={styles.homeWrapper}>
        {hoursFlash && (
@@ -108,43 +192,45 @@ index 8db6feac0aa6527445ae26f3785c17722c5e0d29..bb9690982f4ac9045b8e5f5eb2ed93bd
          </View>
        )}
  
--      <View
--        style={[
--          styles.pinnedHeader,
--          // headerMinHeight ? { minHeight: headerMinHeight } : null,
--        ]}
--      >
--        <View
--          style={[
--            styles.pinnedHeaderSafeArea,
--            styles.providerDashboardLogoSafeArea,
--            {
--              paddingTop: 0,
--              paddingBottom: headerPaddingVertical,
--            },
--          ]}
--        >
--          <Image
--            source={BookitGYLogoTransparent}
--            style={styles.headerLogo}
--            resizeMode="contain"
--          />
--        </View>
--      </View>
        <ScrollView
          contentContainerStyle={styles.providerScroll}
          refreshControl={
            <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
          }
        >
-         <View style={styles.homeHeader}>
-           <Text style={styles.homeGreeting}>Provider dashboard</Text>
-           <Text style={styles.homeSubtitle}>Welcome, {providerLabel}</Text>
-           <Text style={styles.providerDashboardRatingText}>
-             {providerRatingSummary.hasRatings
-               ? `★ ${providerRatingSummary.ratingValue.toFixed(1)}${providerRatingSummary.ratingCount > 0 ? ` (${providerRatingSummary.ratingCount} rating${providerRatingSummary.ratingCount === 1 ? "" : "s"})` : ""}`
-               : "No ratings"}
-           </Text>
+-        <View style={styles.homeHeader}>
+-          <Text style={styles.homeGreeting}>Provider dashboard</Text>
+-          <Text style={styles.homeSubtitle}>Welcome, {providerLabel}</Text>
+-          <Text style={styles.providerDashboardRatingText}>
+-            {providerRatingSummary.hasRatings
+-              ? `★ ${providerRatingSummary.ratingValue.toFixed(1)}${providerRatingSummary.ratingCount > 0 ? ` (${providerRatingSummary.ratingCount} rating${providerRatingSummary.ratingCount === 1 ? "" : "s"})` : ""}`
+-              : "No ratings"}
+-          </Text>
++        <View
++          style={[
++            styles.providerDashboardTopSection,
++            { paddingTop: insets.top + 12 },
++          ]}
++        >
++          <View style={styles.providerDashboardLogoWrap}>
++            <Image
++              source={BookitGYLogoTransparent}
++              style={{
++                width: providerDashboardLogoSize,
++                height: providerDashboardLogoSize,
++              }}
++              resizeMode="contain"
++            />
++          </View>
++          <View style={styles.providerDashboardIntro}>
++            <Text style={styles.homeGreeting}>Provider dashboard</Text>
++            <Text style={styles.homeSubtitle}>Welcome, {providerLabel}</Text>
++            <Text style={styles.providerDashboardRatingText}>
++              {providerRatingSummary.hasRatings
++                ? `★ ${providerRatingSummary.ratingValue.toFixed(1)}${providerRatingSummary.ratingCount > 0 ? ` (${providerRatingSummary.ratingCount} rating${providerRatingSummary.ratingCount === 1 ? "" : "s"})` : ""}`
++                : "No ratings"}
++            </Text>
++          </View>
          </View>
      
          {/*Account Info */}
@@ -156,14 +242,21 @@ index 8db6feac0aa6527445ae26f3785c17722c5e0d29..bb9690982f4ac9045b8e5f5eb2ed93bd
              </Text>
            </View>
          )}
-@@ -11717,61 +11695,61 @@ const styles = StyleSheet.create({
-    homeScroll: {
-     flexGrow: 1,
-     backgroundColor: colors.background,
-     paddingHorizontal: 20,
-     paddingBottom: 32,
-     paddingTop: 0
-   },
+ 
+         {/* TODAY overview */}
+         <View style={styles.card}>
+           <Text style={styles.label}>TODAY</Text>
+ 
+           {todayLoading && (
+             <View style={{ paddingVertical: 10 }}>
+               <ActivityIndicator />
+               <Text style={styles.serviceMeta}>Loading today&apos;s bookings…</Text>
+             </View>
+           )}
+ 
+           {!todayLoading && todayError ? (
+             <Text style={styles.errorText}>{todayError}</Text>
+@@ -11702,54 +11721,65 @@ const styles = StyleSheet.create({
    homeCard: {
      width: "100%",
    },
@@ -182,10 +275,6 @@ index 8db6feac0aa6527445ae26f3785c17722c5e0d29..bb9690982f4ac9045b8e5f5eb2ed93bd
      marginBottom: -18,
      overflow: "visible",
    },
--  providerDashboardLogoSafeArea: {
--    marginTop: -5,
--    marginBottom: -10,
--  },
    homeHeader: {
      marginBottom: 20,
    },
@@ -193,10 +282,26 @@ index 8db6feac0aa6527445ae26f3785c17722c5e0d29..bb9690982f4ac9045b8e5f5eb2ed93bd
      width: HEADER_LOGO_WIDTH,
      height: HEADER_LOGO_HEIGHT,
    },
-+  providerDashboardHeaderLogo: {
-+    width: 120,
-+    height: 48,
+-  providerDashboardHeaderLogo: {
+-    width: 120,
+-    height: 120,
+-    marginTop: -50,
++  providerDashboardTopSection: {
++    alignItems: "center",
++    paddingHorizontal: 16,
++    paddingBottom: 8,
 +  },
++  providerDashboardLogoWrap: {
++    width: "100%",
++    alignItems: "center",
++    justifyContent: "center",
++    paddingBottom: 6,
++  },
++  providerDashboardIntro: {
++    width: "100%",
++    alignItems: "flex-start",
++    marginBottom: 20,
+   },
    homeGreeting: {
      fontSize: 26,
      fontWeight: "700",
@@ -221,7 +326,6 @@ index 8db6feac0aa6527445ae26f3785c17722c5e0d29..bb9690982f4ac9045b8e5f5eb2ed93bd
      borderRadius: 16,
      paddingHorizontal: 14,
      paddingVertical: 12,
-     borderWidth: 1,
  
 EOF
 )
