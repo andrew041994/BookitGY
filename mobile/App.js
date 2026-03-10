@@ -1928,6 +1928,10 @@ function ProfileScreen({ authLoading, setToken, showFlash, token }) {
   const providerShareCardRef = useRef(null);
   const [shareCardVisible, setShareCardVisible] = useState(false);
   const [sharingProviderCard, setSharingProviderCard] = useState(false);
+  const [shareAvatarReady, setShareAvatarReady] = useState(false);
+  const [shareBrandingReady, setShareBrandingReady] = useState(false);
+  const shareAvatarReadyRef = useRef(false);
+  const shareBrandingReadyRef = useRef(false);
   const [providerProfile, setProviderProfile] = useState(null);
   const [previewScale, setPreviewScale] = useState(1);
 
@@ -2559,6 +2563,10 @@ function ProfileScreen({ authLoading, setToken, showFlash, token }) {
 
     try {
       setSharingProviderCard(true);
+      shareAvatarReadyRef.current = false;
+      shareBrandingReadyRef.current = false;
+      setShareAvatarReady(false);
+      setShareBrandingReady(false);
       setShareCardVisible(true);
 
       await new Promise((resolve) => {
@@ -2568,7 +2576,16 @@ function ProfileScreen({ authLoading, setToken, showFlash, token }) {
           });
         });
       });
-      await new Promise((resolve) => setTimeout(resolve, 900));
+
+      const captureWaitStart = Date.now();
+      const captureWaitTimeoutMs = 1600;
+      // Android can capture the off-screen card before nested images finish rendering.
+      while (Date.now() - captureWaitStart < captureWaitTimeoutMs) {
+        if ((shareAvatarReady && shareBrandingReady) || (shareAvatarReadyRef.current && shareBrandingReadyRef.current)) {
+          break;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 60));
+      }
 
       if (!providerShareCardRef.current) {
         showFlash?.("error", "Sharing is not available in this build yet.");
@@ -2686,6 +2703,14 @@ function ProfileScreen({ authLoading, setToken, showFlash, token }) {
               professions={providerShareProfessions}
               ratingValue={providerShareRatingValue}
               brandingSource={BookitGYLogoTransparent}
+              onAvatarLoadEnd={() => {
+                shareAvatarReadyRef.current = true;
+                setShareAvatarReady(true);
+              }}
+              onBrandingLoadEnd={() => {
+                shareBrandingReadyRef.current = true;
+                setShareBrandingReady(true);
+              }}
             />
           </ViewShot>
         </View>

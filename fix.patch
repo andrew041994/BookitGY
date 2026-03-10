@@ -1,140 +1,102 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
-diff --git a/mobile/App.js b/mobile/App.js
-index 20aa1b003db4727f8038f204e485192dcf92cbdd..c9816f31c27f4d7b60efb3b0825abe6677d28c0e 100644
---- a/mobile/App.js
-+++ b/mobile/App.js
-@@ -6,50 +6,51 @@ import {
-   StyleSheet,
-   TextInput,
-   Button,
-   Alert,
-   ActivityIndicator,
-   ScrollView,
-   TouchableOpacity,
-   Switch,
-   Linking,
-   Platform,
-   Image,
-   KeyboardAvoidingView,
-   TouchableWithoutFeedback,
-   Keyboard,
-   Pressable,
-   RefreshControl,
-   Share,
-   Modal,
-   FlatList,
-   AppState,
- } from "react-native";
- import * as ExpoLinking from "expo-linking";
- import * as AuthSession from "expo-auth-session";
- import * as Google from "expo-auth-session/providers/google";
- import * as WebBrowser from "expo-web-browser";
-+import * as Sharing from "expo-sharing";
+diff --git a/mobile/src/components/ProviderShareCard.js b/mobile/src/components/ProviderShareCard.js
+index 65afd83d4a2eb5f2735a54244cac5aaf983c5e5e..9b16117f3429b5d785b1bf07f22bcb9d97692cf4 100644
+--- a/mobile/src/components/ProviderShareCard.js
++++ b/mobile/src/components/ProviderShareCard.js
+@@ -1,80 +1,91 @@
+ import React from "react";
+ import { LinearGradient } from "expo-linear-gradient";
+ import { Image, StyleSheet, Text, View } from "react-native";
+ import { theme } from "../theme";
  
- import {
-   NavigationContainer,
-   CommonActions,
-   useFocusEffect,
-   useIsFocused,
- } from "@react-navigation/native";
- import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
- import { enableScreens } from "react-native-screens";
- import AsyncStorage from "@react-native-async-storage/async-storage";
- import {
-   clearAllAuthTokens,
-   loadToken,
-   saveRefreshToken,
-   saveToken,
- } from "./src/components/tokenStorage";
- import ProviderCard from "./src/components/ProviderCard";
- import ProviderShareCard from "./src/components/ProviderShareCard";
- import * as Location from "expo-location";
- import Constants from "expo-constants";
- import * as ImagePicker from "expo-image-picker";
- import * as Notifications from "expo-notifications";
- import { Ionicons } from "@expo/vector-icons";
- import {
-   CalendarProvider,
-@@ -2559,64 +2560,66 @@ function ProfileScreen({ authLoading, setToken, showFlash, token }) {
-     try {
-       setSharingProviderCard(true);
-       setShareCardVisible(true);
+ const colors = theme.colors;
  
-       await new Promise((resolve) => {
-         requestAnimationFrame(() => {
-           requestAnimationFrame(() => {
-             requestAnimationFrame(resolve);
-           });
-         });
-       });
-       await new Promise((resolve) => setTimeout(resolve, 900));
+ export default function ProviderShareCard({
+   avatarUrl,
+   username,
+   professions = [],
+   ratingValue,
+   brandingSource,
++  onAvatarLoadEnd,
++  onBrandingLoadEnd,
+ }) {
+   const safeUsername = String(username || "").trim().replace(/^@/, "");
+   const normalizedProfessions = Array.isArray(professions)
+     ? professions
+         .map((value) => String(value || "").trim())
+         .filter(Boolean)
+     : [];
+   const professionText = normalizedProfessions.length
+     ? normalizedProfessions.join(" • ")
+     : "BookitGY Provider";
+   const parsedRating = Number(ratingValue);
+   const hasNumericRating = Number.isFinite(parsedRating);
+   const normalizedRating = hasNumericRating ? parsedRating.toFixed(1) : "0.0";
  
-       if (!providerShareCardRef.current) {
-         showFlash?.("error", "Sharing is not available in this build yet.");
-         return;
-       }
+   return (
+     <View style={styles.card}>
+       <LinearGradient
+         colors={["rgba(255,255,255,0.08)", "rgba(255,255,255,0.03)", "transparent"]}
+         start={{ x: 0, y: 0 }}
+         end={{ x: 0, y: 0.65 }}
+         style={styles.glassHighlight}
+       />
+       <View style={styles.contentWrap}>
+         <View style={styles.topRow}>
+           <View style={styles.topLeft}>
+           {avatarUrl ? (
+-            <Image source={{ uri: avatarUrl }} style={styles.avatar} />
++            <Image
++              source={{ uri: avatarUrl }}
++              style={styles.avatar}
++              onLoadEnd={onAvatarLoadEnd}
++            />
+           ) : (
+             <View style={styles.avatarFallback}>
+               <Text style={styles.avatarInitial}>{safeUsername.charAt(0).toUpperCase()}</Text>
+             </View>
+           )}
+           </View>
+           <View style={styles.topRight}>
+             <Text numberOfLines={1} style={styles.rating}>⭐️ {normalizedRating}</Text>
+           </View>
+         </View>
  
-       const imageUri = await captureRef(providerShareCardRef.current, {
-         format: "png",
-         quality: 1,
-         width: 1200,
-         height: Math.round(1200 / 1.9),
-       });
+         <View style={styles.middleSection}>
+           <View style={styles.logoWrap}>
+             {brandingSource ? (
+-              <Image source={brandingSource} style={styles.logo} resizeMode="contain" />
++              <Image
++                source={brandingSource}
++                style={styles.logo}
++                resizeMode="contain"
++                onLoadEnd={onBrandingLoadEnd}
++              />
+             ) : null}
+           </View>
+           <Text numberOfLines={1} ellipsizeMode="tail" style={styles.username}>
+             {safeUsername}
+           </Text>
+           <Text numberOfLines={2} ellipsizeMode="tail" style={styles.professions}>{professionText}</Text>
+         </View>
  
--      const sharePayload =
--        Platform.OS === "android"
--          ? {
--              title: "My BookitGY provider card",
--              // Android treats a mixed text+file share as text-first, so omit message to ensure the image file is shared.
--              url: imageUri,
--            }
--          : {
--              title: "My BookitGY provider card",
--              message: "Book with me on BookitGY",
--              url: imageUri,
--            };
-+      if (!imageUri) {
-+        showFlash?.("error", "Could not generate your provider card image.");
-+        return;
-+      }
+         <View style={styles.footer}>
+           <View style={styles.divider} />
+           <Text numberOfLines={2} ellipsizeMode="tail" style={styles.cta}>Download BookitGY to schedule an appointment</Text>
+         </View>
+       </View>
+     </View>
+   );
+ }
  
--      await Share.share(sharePayload);
-+      const isNativeShareAvailable = await Sharing.isAvailableAsync();
-+      if (!isNativeShareAvailable) {
-+        showFlash?.("error", "Sharing is not available on this device.");
-+        return;
-+      }
-+
-+      await Sharing.shareAsync(imageUri, {
-+        mimeType: "image/png",
-+        UTI: "public.png",
-+        dialogTitle: "My BookitGY provider card",
-+      });
-     } catch (err) {
-       console.log("Error sharing provider card", err?.message || err);
-       showFlash?.("error", "Could not generate your provider card image.");
-     } finally {
-       setSharingProviderCard(false);
-       setShareCardVisible(false);
-     }
-   };
- 
-   const handleShareProviderLink = async () => {
-     if (!providerPublicLink) {
-       if (showFlash) {
-         showFlash("error", "Set a username to enable your profile link.");
-       }
-       return;
-     }
- 
-     try {
-       await Share.share({
-         message: `Book with me on BookitGY:`,
-         url: providerPublicLink,
-       });
-     } catch (err) {
-       console.log("Error sharing provider link", err?.message || err);
-       if (showFlash) {
+ const styles = StyleSheet.create({
+   card: {
+     width: "100%",
+     alignSelf: "center",
+     aspectRatio: 1.9,
+     borderRadius: 22,
+     borderWidth: 1,
+     borderColor: "rgba(77,163,255,0.45)",
  
 EOF
 )

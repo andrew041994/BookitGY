@@ -11,6 +11,8 @@ export default function ProviderShareCard({
   professions = [],
   ratingValue,
   brandingSource,
+  onAvatarLoadEnd,
+  onBrandingLoadEnd,
 }) {
   const safeUsername = String(username || "").trim().replace(/^@/, "");
   const normalizedProfessions = Array.isArray(professions)
@@ -37,7 +39,11 @@ export default function ProviderShareCard({
         <View style={styles.topRow}>
           <View style={styles.topLeft}>
           {avatarUrl ? (
-            <Image source={{ uri: avatarUrl }} style={styles.avatar} />
+            <Image
+              source={{ uri: avatarUrl }}
+              style={styles.avatar}
+              onLoadEnd={onAvatarLoadEnd}
+            />
           ) : (
             <View style={styles.avatarFallback}>
               <Text style={styles.avatarInitial}>{safeUsername.charAt(0).toUpperCase()}</Text>
@@ -52,7 +58,12 @@ export default function ProviderShareCard({
         <View style={styles.middleSection}>
           <View style={styles.logoWrap}>
             {brandingSource ? (
-              <Image source={brandingSource} style={styles.logo} resizeMode="contain" />
+              <Image
+                source={brandingSource}
+                style={styles.logo}
+                resizeMode="contain"
+                onLoadEnd={onBrandingLoadEnd}
+              />
             ) : null}
           </View>
           <Text numberOfLines={1} ellipsizeMode="tail" style={styles.username}>
