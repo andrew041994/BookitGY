@@ -141,8 +141,8 @@ Notifications.setNotificationHandler({
 });
 
 const colors = theme.colors;
-const HEADER_LOGO_WIDTH = 96;
-const HEADER_LOGO_HEIGHT = 96;
+const HEADER_LOGO_WIDTH = 120;
+const HEADER_LOGO_HEIGHT = 120;
 const HEADER_VERTICAL_PADDING = 0;
 
 // status color mapping
