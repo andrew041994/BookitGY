@@ -11726,7 +11726,8 @@ const styles = StyleSheet.create({
   },
   providerDashboardHeaderLogo: {
     width: 120,
-    height: 48,
+    height: 120,
+    marginTop: -50,
   },
   homeGreeting: {
     fontSize: 26,
