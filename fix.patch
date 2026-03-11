@@ -1,44 +1,216 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
 diff --git a/mobile/App.js b/mobile/App.js
-index 4c4887a7cfa4886ee5b176e3bf4ce6f103a362b9..982e84b1606826369b04625bf149bd320d3685a3 100644
+index 2dcaed6658ffb85e8aa007ab12baa9ddbd994b70..06e88a070299fbf30ef73d359b42f361f0ee0d29 100644
 --- a/mobile/App.js
 +++ b/mobile/App.js
-@@ -6210,50 +6210,79 @@ function SearchScreen({ token, showFlash, navigation, route, toggleFavorite, isF
-                   <View style={{ marginTop: 12, marginBottom: 20 }}>
-                     <TouchableOpacity
-                       style={[
-                         styles.bookButton,
-                         (!selectedSlot || bookingLoading) && styles.bookButtonDisabled,
-                       ]}
-                       disabled={!selectedSlot || bookingLoading}
-                       onPress={handleBookAppointment}
-                     >
-                       <Text style={styles.bookButtonLabel}>
-                         {bookingLoading ? "Booking..." : "Book Appointment"}
-                       </Text>
-                     </TouchableOpacity>
-                   </View>
-                 )}
-               </ScrollView>
-               </SafeAreaView>
-          );
-       }
+@@ -3177,78 +3177,90 @@ function ProfileScreen({ authLoading, setToken, showFlash, token }) {
+             </TouchableWithoutFeedback>
+           </View>
+         </TouchableWithoutFeedback>
+       </Modal>
+ 
+     </ScrollView>
+     </>
+   );
+ }
  
  
  
+ function ClientHomeScreen({
+   navigation,
+   token,
+   unreadNotificationCount = 0,
+   onPressNotifications,
+   favoriteProviders,
+   favoriteIds,
+   favoritesLoading,
+   toggleFavorite,
+   isFavorite,
+   syncFavoritesFromList,
+   refreshFavoriteProviders,
+   }) {
++  const { width: windowWidth } = useWindowDimensions();
+  const [nearbyProviders, setNearbyProviders] = useState([]);
+   const [currentProvider, setCurrentProvider] = useState(null);
+   const [nearbyLoading, setNearbyLoading] = useState(true);
+   const [nearbyError, setNearbyError] = useState("");
+   const [clientLocation, setClientLocation] = useState(null);
+   const [locationDenied, setLocationDenied] = useState(false);
+   const [refreshing, setRefreshing] = useState(false);
+   const [searchText, setSearchText] = useState("");
+   const insets = useSafeAreaInsets();
+-  const headerPaddingVertical = HEADER_VERTICAL_PADDING;
+-  // const headerMinHeight =
+-  //   insets.top + HEADER_LOGO_HEIGHT + HEADER_VERTICAL_PADDING * 2;
++  const clientHomeLogoSize = Math.max(
++    100,
++    Math.min(120, Math.round(windowWidth * 0.3))
++  );
  
+   const quickCategories = useMemo(
+     () => ["Barber", "Hair", "Nails", "Massage", "Makeup", "Lash", "Tutor"],
+     []
+   );
  
+   useLayoutEffect(() => {
+     navigation.setOptions({
+-      headerRight: () => (
+-        <NotificationBell
+-          unreadCount={unreadNotificationCount}
+-          onPress={onPressNotifications || (() => navigation.navigate('Notifications'))}
++      header: () => (
++        <ClientHomeNavHeader
++          insets={insets}
++          logoSize={clientHomeLogoSize}
++          unreadNotificationCount={unreadNotificationCount}
++          onPressNotifications={
++            onPressNotifications || (() => navigation.navigate("Notifications"))
++          }
+         />
+       ),
+     });
+-  }, [navigation, onPressNotifications, unreadNotificationCount]);
++  }, [
++    clientHomeLogoSize,
++    insets,
++    navigation,
++    onPressNotifications,
++    unreadNotificationCount,
++  ]);
  
-+function ProviderDashboardNavHeader({
+   // adding console log
+   console.log("[home] token username fields", {
+     tokenUsername: token?.username,
+     tokenEmail: token?.email,
+     tokenKeys: token ? Object.keys(token) : null,
+     tokenUserKeys: token?.user ? Object.keys(token.user) : null,
+   });
+   const greetingName = useMemo(() => {
+     const username = token?.user?.username || token?.username;
+     if (username?.trim()) return username.trim();
+     const emailPrefix = token?.email?.split("@")?.[0];
+     return emailPrefix?.trim() || "";
+   }, [token?.email, token?.user?.username, token?.username]);
+ 
+   const greetingText = greetingName ? `Hi, ${greetingName}` : "Hi";
+ 
+   const haversineKm = (lat1, lon1, lat2, lon2) => {
+     if (
+       lat1 == null ||
+       lon1 == null ||
+       lat2 == null ||
+       lon2 == null
+     ) {
+       return null;
+@@ -3604,72 +3616,50 @@ function ClientHomeScreen({
+       <ProviderCard
+         key={providerId}
+         provider={provider}
+         avatarUrl={avatar}
+         profession={professionLabel}
+         distanceKm={distanceKm}
+         isFavorite={saved}
+         onFavoriteToggle={() => toggleFavorite(provider)}
+         onPress={() => handleProviderPress(provider)}
+         ctaLabel={null}
+         style={styles.providerCardCarousel}
+       />
+     );
+   });
+ 
+   if (!favoritesHasDistance && favoriteProviders.length) {
+     console.log("[distance] favorites list missing distances", {
+       clientCoords,
+       providerCoords: favoritesLastProviderCoords,
+       distanceKm: favoritesLastDistanceKm,
+     });
+   }
+ 
+   return (
+     <View style={styles.homeWrapper}>
+-        <View
+-          style={[
+-            styles.pinnedHeader,
+-            // headerMinHeight ? { minHeight: headerMinHeight } : null,
+-          ]}
+-        >
+-          <View
+-            style={[
+-              styles.pinnedHeaderSafeArea,
+-              {
+-                paddingTop: Platform.OS === "ios" ? 6 : 6,
+-                paddingBottom: 1,
+-              },
+-            ]}
+-          >
+-            <Image
+-              source={BookitGYLogoTransparent}
+-              style={styles.headerLogo}
+-              resizeMode="contain"
+-            />
+-          </View>
+-        </View>
+       <ScrollView
+         contentContainerStyle={styles.homeScroll}
+         refreshControl={
+           <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
+         }
+       >
+         <View style={styles.homeHeader}>
+           <Text style={styles.homeGreeting}>{greetingText}</Text>
+           <Text style={styles.homeSubtitle}>
+             What are you looking for today?
+           </Text>
+         </View>
+ 
+         <Pressable
+           style={styles.searchBar}
+           onPress={() => handleSearchNavigate(searchText)}
+           >
+           <Ionicons name="search-outline" size={20} color={colors.textMuted} />
+           <TextInput
+             pointerEvents="none"
+             style={styles.searchInput}
+             placeholder="Search by profession, provider, or service"
+             placeholderTextColor={colors.textSecondary}
+             value={searchText}
+             editable={false}
+@@ -4502,50 +4492,78 @@ function BookingChatModal({
+                 disabled={sending || isChatReadOnly || (!text.trim() && !selectedImage)}
+               >
+                 <Text style={styles.chatSendButtonText}>{sending ? "..." : "Send"}</Text>
+               </TouchableOpacity>
+             </View>
+           </View>
+         </KeyboardAvoidingView>
+       </SafeAreaView>
+ 
+       <Modal
+         visible={!!viewerImage}
+         transparent={true}
+         animationType="fade"
+         onRequestClose={() => setViewerImage(null)}
+       >
+         <Pressable style={styles.chatViewerBackdrop} onPress={() => setViewerImage(null)}>
+           {viewerImage ? (
+             <Image source={{ uri: viewerImage }} style={styles.chatViewerImage} resizeMode="contain" />
+           ) : null}
+         </Pressable>
+       </Modal>
+     </Modal>
+   );
+ }
+ 
++function ClientHomeNavHeader({
 +  insets,
 +  logoSize,
 +  unreadNotificationCount,
 +  onPressNotifications,
 +}) {
 +  return (
-+    <View style={[styles.providerDashboardNavHeader, { paddingTop: insets.top }]}>
-+      <View style={styles.providerDashboardNavHeaderInner}>
-+        <View style={styles.providerDashboardNavHeaderCenter}>
++    <View style={[styles.clientHomeNavHeader, { paddingTop: insets.top }]}>
++      <View style={styles.clientHomeNavHeaderInner}>
++        <View style={styles.clientHomeNavHeaderCenter}>
 +          <Image
 +            source={BookitGYLogoTransparent}
 +            style={{ width: logoSize, height: logoSize }}
@@ -46,7 +218,7 @@ index 4c4887a7cfa4886ee5b176e3bf4ce6f103a362b9..982e84b1606826369b04625bf149bd32
 +          />
 +        </View>
 +
-+        <View style={styles.providerDashboardNavHeaderRight}>
++        <View style={styles.clientHomeNavHeaderRight}>
 +          <NotificationBell
 +            unreadCount={unreadNotificationCount}
 +            onPress={onPressNotifications}
@@ -57,131 +229,89 @@ index 4c4887a7cfa4886ee5b176e3bf4ce6f103a362b9..982e84b1606826369b04625bf149bd32
 +  );
 +}
 +
-+
- function ProviderDashboardScreen({
-   navigation,
-   token,
-   showFlash,
-   unreadNotificationCount = 0,
-   onPressNotifications,
-   pendingChatConversationId,
-   clearPendingChatConversationId,
- }) {
-   const insets = useSafeAreaInsets();
-   const { width: windowWidth } = useWindowDimensions();
-   const providerDashboardLogoSize = Math.max(
-     100,
-     Math.min(120, Math.round(windowWidth * 0.3))
-   );
- 
-   // const providerLabel = profile?.full_name || "Provider";
-   const [services, setServices] = useState([]);
+ function AppointmentsScreen({ token, showFlash, pendingChatConversationId, clearPendingChatConversationId }) {
+   const [bookings, setBookings] = useState([]);
    const [loading, setLoading] = useState(true);
-   const [servicesError, setServicesError] = useState("");
-   const [adding, setAdding] = useState(false);
-   const [newName, setNewName] = useState("");
-   const [newPrice, setNewPrice] = useState("");
-   const [newDurationDays, setNewDurationDays] = useState("");
-   const [newDurationHours, setNewDurationHours] = useState("");
-@@ -6301,84 +6330,68 @@ const [upcomingLoading, setUpcomingLoading] = useState(false);
- const [upcomingError, setUpcomingError] = useState("");
- const [providerLocation, setProviderLocation] = useState(null);
- const [focusedHoursField, setFocusedHoursField] = useState(null);
- const [avatarUrl, setAvatarUrl] = useState(null);
- // Catalog (portfolio images)
- const [catalog, setCatalog] = useState([]);
- const [catalogLoading, setCatalogLoading] = useState(false);
- const [catalogError, setCatalogError] = useState("");
- const [catalogUploading, setCatalogUploading] = useState(false);
- const isProviderUser = token?.isProvider || token?.is_provider;
- const providerUsername =
-   provider?.user?.username ||
-   profile?.username ||
-   token?.user?.username ||
-   token?.username;
- const providerProfileLink = buildProviderPublicLink(providerUsername);
- const providerRatingSummary = getRatingSummary(
-   {
-     ...(providerSummary || {}),
-     ...(provider || {}),
-     ...(profile || {}),
+   const [error, setError] = useState("");
+   const [refreshing, setRefreshing] = useState(false);
+   const [chatBooking, setChatBooking] = useState(null);
+   const [ratingBooking, setRatingBooking] = useState(null);
+   const [ratingStars, setRatingStars] = useState(0);
+   const [ratingSubmitting, setRatingSubmitting] = useState(false);
+ 
+   // Booking datetimes are stored/served as Guyana-local wall time (UTC-4, no DST).
+   // Parse naive strings explicitly as Guyana so device timezone does not affect logic.
+   const GUYANA_UTC_OFFSET_HOURS = 4;
+   const parseGuyanaDateMs = (value) => {
+     if (!value) return null;
+     if (value instanceof Date) {
+       const t = value.getTime();
+       return Number.isNaN(t) ? null : t;
+     }
+ 
+     const raw = String(value).trim();
+     if (!raw) return null;
+ 
+     // Respect explicit timezone payloads (Z / +/-HH:MM) as absolute instants.
+     if (/z$|[+-]\d{2}:?\d{2}$/i.test(raw)) {
+@@ -11710,103 +11728,105 @@ const styles = StyleSheet.create({
+     color: colors.textSecondary,
+     textDecorationLine: "underline",
+     textAlign: "center",
+     flexShrink: 1,
    },
-   "No ratings"
- );
+   subtitle: { fontSize: 22, color: colors.textSecondary, marginTop: 20, textAlign: "center" },
+   text: { fontSize: 18, color: colors.textSecondary, marginTop: 15, textAlign: "center" },
  
--const providerNavHeaderHeight =
--  insets.top + providerDashboardLogoSize + 12 || 150;
--
- useLayoutEffect(() => {
-   navigation.setOptions({
--    headerTitleAlign: "center",
--    headerTitle: () => (
--      <Image
--        source={BookitGYLogoTransparent}
--        style={{
--          width: providerDashboardLogoSize,
--          height: providerDashboardLogoSize,
--        }}
--        resizeMode="contain"
--      />
--    ),
--    headerStyle: {
--      backgroundColor: "#0B1220",
--      height: providerNavHeaderHeight,
--    },
--    headerTintColor: colors.textPrimary,
--    headerShadowVisible: false,
--    headerRight: () => (
--      <NotificationBell
--        unreadCount={unreadNotificationCount}
--        onPress={onPressNotifications || (() => navigation.navigate('Notifications'))}
-+    header: () => (
-+      <ProviderDashboardNavHeader
-+        insets={insets}
-+        logoSize={providerDashboardLogoSize}
-+        unreadNotificationCount={unreadNotificationCount}
-+        onPressNotifications={
-+          onPressNotifications || (() => navigation.navigate("Notifications"))
-+        }
-       />
-     ),
-   });
- }, [
-+  insets,
-   navigation,
-   onPressNotifications,
-   providerDashboardLogoSize,
--  providerNavHeaderHeight,
-   unreadNotificationCount,
- ]);
- 
- const parseServiceNumber = useCallback((value) => {
-   const normalized = String(value || "").replace(/[,\s]/g, "");
-   const numberValue = Number(normalized);
-   return Number.isFinite(numberValue) ? numberValue : null;
- }, []);
- 
- const validateServiceFields = useCallback((name, price, durationParts) => {
-   const errors = { name: "", price: "", duration: "" };
-   const trimmedName = String(name || "").trim();
-   const priceNumber = parseServiceNumber(price);
-   const durationError = validateDurationParts(durationParts);
- 
-   if (!trimmedName) {
-     errors.name = "Service name is required.";
-   }
- 
-   if (!priceNumber || priceNumber <= 0) {
-     errors.price = "Enter a price greater than 0.";
-   }
- 
-   if (durationError) {
-     errors.duration = durationError;
-@@ -11750,50 +11763,74 @@ const styles = StyleSheet.create({
-   headerLogo: {
-     width: HEADER_LOGO_WIDTH,
-     height: HEADER_LOGO_HEIGHT,
+     flashContainer: {
+     position: "absolute",
+     top: 40,
+     left: 20,
+     right: 20,
+     paddingVertical: 10,
+     paddingHorizontal: 12,
+     borderRadius: 8,
+     borderWidth: 1,
+     zIndex: 100,
+     shadowColor: "#000",
+     shadowOpacity: 0.1,
+     shadowRadius: 6,
+     shadowOffset: { width: 0, height: 3 },
+     elevation: 4,
    },
+ 
+-   homeScroll: {
+-    flexGrow: 1,
+-    backgroundColor: colors.background,
+-    paddingHorizontal: 20,
+-    paddingBottom: 32,
+-    paddingTop: 0
+-  },
+   homeCard: {
+     width: "100%",
+   },
+   homeWrapper: {
+     flex: 1,
+     backgroundColor: "#0B1220",
+   },
+-  pinnedHeader: {
+-    backgroundColor: "#0B1220",
+-    overflow: "visible",
+-  },
+-  pinnedHeaderSafeArea: {
+-    alignItems: "center",
+-    justifyContent: "flex-start",
+-    marginTop: -52,
+-    marginBottom: -18,
+-    overflow: "visible",
+-  },
+   homeHeader: {
+     marginBottom: 20,
+   },
+-  headerLogo: {
+-    width: HEADER_LOGO_WIDTH,
+-    height: HEADER_LOGO_HEIGHT,
+-  },
    providerDashboardIntro: {
      width: "100%",
      alignItems: "flex-start",
@@ -203,55 +333,108 @@ index 4c4887a7cfa4886ee5b176e3bf4ce6f103a362b9..982e84b1606826369b04625bf149bd32
      color: colors.textMuted,
      fontWeight: "600",
    },
-+  providerDashboardNavHeader: {
++  clientHomeNavHeader: {
 +    backgroundColor: "#0B1220",
 +    overflow: "visible",
 +  },
-+  providerDashboardNavHeaderInner: {
++  clientHomeNavHeaderInner: {
 +    height: 112,
 +    justifyContent: "center",
 +    alignItems: "center",
 +    position: "relative",
 +  },
-+  providerDashboardNavHeaderCenter: {
++  clientHomeNavHeaderCenter: {
 +    position: "absolute",
 +    left: 0,
 +    right: 0,
 +    alignItems: "center",
 +    justifyContent: "center",
 +  },
-+  providerDashboardNavHeaderRight: {
++  clientHomeNavHeaderRight: {
 +    position: "absolute",
 +    right: 16,
-+    top: 18,
++    top: 14,
 +    justifyContent: "center",
 +    alignItems: "center",
 +  },
-   searchBar: {
-     flexDirection: "row",
+   providerDashboardNavHeader: {
+     backgroundColor: "#0B1220",
+     overflow: "visible",
+   },
+   providerDashboardNavHeaderInner: {
+     height: 70,
+     justifyContent: "center",
      alignItems: "center",
-     gap: 10,
-     backgroundColor: colors.surfaceElevated,
-     borderRadius: 16,
-     paddingHorizontal: 14,
-     paddingVertical: 12,
-     borderWidth: 1,
-     borderColor: colors.border,
-     shadowColor: "#0f172a",
-     shadowOpacity: 0.06,
-     shadowRadius: 6,
-     shadowOffset: { width: 0, height: 3 },
-     elevation: 2,
+     position: "relative",
    },
-   searchInput: {
+   providerDashboardNavHeaderCenter: {
+     position: "absolute",
+     left: 0,
+     right: 0,
+     top: -40,
+     alignItems: "center",
+     justifyContent: "center",
+   },
+   providerDashboardNavHeaderRight: {
+     position: "absolute",
+     right: 16,
+     top: 10,
+     justifyContent: "center",
+     alignItems: "center",
+   },
+@@ -11964,51 +11984,51 @@ cardHeartButton: {
+     fontSize: 13,
+     color: colors.textSecondary,
+     fontWeight: "600",
+     textAlign: "center",
+   },
+ 
+   flashText: {
+     textAlign: "center",
+     fontSize: 14,
+     fontWeight: "500",
+   },
+ 
+     center: {
      flex: 1,
-     fontSize: 15,
-     color: colors.textPrimary,
+     backgroundColor: colors.background,
+     justifyContent: "center",
+     alignItems: "center",
+     padding: 20,
    },
-   quickCategorySection: {
-     marginTop: 20,
-     marginBottom: 8,
+ 
+    homeScroll: {
+     flexGrow: 1,
+     backgroundColor: colors.background,
+     paddingHorizontal: 20,
+     paddingBottom: 32,
+-    paddingTop: 8,
++    paddingTop: 0,
    },
+   homeCard: {
+     width: "100%",
+   },
+ 
+   loadingText: {
+     marginTop: 12,
+     fontSize: 16,
+     color: colors.textSecondary,
+   },
+   errorText: {
+     fontSize: 16,
+     color: colors.error,
+     textAlign: "center",
+   },
+   profileScroll: {
+     flexGrow: 1,
+     backgroundColor: colors.background,
+     padding: 20,
+     paddingTop: 32,
+   },
+   profileHeaderCard: {
+     backgroundColor: colors.surface,
+     borderRadius: 16,
+     padding: 16,
  
 EOF
 )

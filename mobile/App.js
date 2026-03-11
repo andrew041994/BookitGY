@@ -3199,6 +3199,7 @@ function ClientHomeScreen({
   syncFavoritesFromList,
   refreshFavoriteProviders,
   }) {
+  const { width: windowWidth } = useWindowDimensions();
  const [nearbyProviders, setNearbyProviders] = useState([]);
   const [currentProvider, setCurrentProvider] = useState(null);
   const [nearbyLoading, setNearbyLoading] = useState(true);
@@ -3208,9 +3209,10 @@ function ClientHomeScreen({
   const [refreshing, setRefreshing] = useState(false);
   const [searchText, setSearchText] = useState("");
   const insets = useSafeAreaInsets();
-  const headerPaddingVertical = HEADER_VERTICAL_PADDING;
-  // const headerMinHeight =
-  //   insets.top + HEADER_LOGO_HEIGHT + HEADER_VERTICAL_PADDING * 2;
+  const clientHomeLogoSize = Math.max(
+    100,
+    Math.min(120, Math.round(windowWidth * 0.3))
+  );
 
   const quickCategories = useMemo(
     () => ["Barber", "Hair", "Nails", "Massage", "Makeup", "Lash", "Tutor"],
@@ -3219,14 +3221,24 @@ function ClientHomeScreen({
 
   useLayoutEffect(() => {
     navigation.setOptions({
-      headerRight: () => (
-        <NotificationBell
-          unreadCount={unreadNotificationCount}
-          onPress={onPressNotifications || (() => navigation.navigate('Notifications'))}
+      header: () => (
+        <ClientHomeNavHeader
+          insets={insets}
+          logoSize={clientHomeLogoSize}
+          unreadNotificationCount={unreadNotificationCount}
+          onPressNotifications={
+            onPressNotifications || (() => navigation.navigate("Notifications"))
+          }
         />
       ),
     });
-  }, [navigation, onPressNotifications, unreadNotificationCount]);
+  }, [
+    clientHomeLogoSize,
+    insets,
+    navigation,
+    onPressNotifications,
+    unreadNotificationCount,
+  ]);
 
   // adding console log
   console.log("[home] token username fields", {
@@ -3626,28 +3638,6 @@ function ClientHomeScreen({
 
   return (
     <View style={styles.homeWrapper}>
-        <View
-          style={[
-            styles.pinnedHeader,
-            // headerMinHeight ? { minHeight: headerMinHeight } : null,
-          ]}
-        >
-          <View
-            style={[
-              styles.pinnedHeaderSafeArea,
-              {
-                paddingTop: Platform.OS === "ios" ? 6 : 6,
-                paddingBottom: 1,
-              },
-            ]}
-          >
-            <Image
-              source={BookitGYLogoTransparent}
-              style={styles.headerLogo}
-              resizeMode="contain"
-            />
-          </View>
-        </View>
       <ScrollView
         contentContainerStyle={styles.homeScroll}
         refreshControl={
@@ -4521,6 +4511,34 @@ function BookingChatModal({
         </Pressable>
       </Modal>
     </Modal>
+  );
+}
+
+function ClientHomeNavHeader({
+  insets,
+  logoSize,
+  unreadNotificationCount,
+  onPressNotifications,
+}) {
+  return (
+    <View style={[styles.clientHomeNavHeader, { paddingTop: insets.top }]}>
+      <View style={styles.clientHomeNavHeaderInner}>
+        <View style={styles.clientHomeNavHeaderCenter}>
+          <Image
+            source={BookitGYLogoTransparent}
+            style={{ width: logoSize, height: logoSize }}
+            resizeMode="contain"
+          />
+        </View>
+
+        <View style={styles.clientHomeNavHeaderRight}>
+          <NotificationBell
+            unreadCount={unreadNotificationCount}
+            onPress={onPressNotifications}
+          />
+        </View>
+      </View>
+    </View>
   );
 }
 
@@ -11732,13 +11750,6 @@ const styles = StyleSheet.create({
     elevation: 4,
   },
 
-   homeScroll: {
-    flexGrow: 1,
-    backgroundColor: colors.background,
-    paddingHorizontal: 20,
-    paddingBottom: 32,
-    paddingTop: 0
-  },
   homeCard: {
     width: "100%",
   },
@@ -11746,23 +11757,8 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: "#0B1220",
   },
-  pinnedHeader: {
-    backgroundColor: "#0B1220",
-    overflow: "visible",
-  },
-  pinnedHeaderSafeArea: {
-    alignItems: "center",
-    justifyContent: "flex-start",
-    marginTop: -52,
-    marginBottom: -18,
-    overflow: "visible",
-  },
   homeHeader: {
     marginBottom: 20,
-  },
-  headerLogo: {
-    width: HEADER_LOGO_WIDTH,
-    height: HEADER_LOGO_HEIGHT,
   },
   providerDashboardIntro: {
     width: "100%",
@@ -11784,6 +11780,30 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: colors.textMuted,
     fontWeight: "600",
+  },
+  clientHomeNavHeader: {
+    backgroundColor: "#0B1220",
+    overflow: "visible",
+  },
+  clientHomeNavHeaderInner: {
+    height: 112,
+    justifyContent: "center",
+    alignItems: "center",
+    position: "relative",
+  },
+  clientHomeNavHeaderCenter: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  clientHomeNavHeaderRight: {
+    position: "absolute",
+    right: 16,
+    top: 14,
+    justifyContent: "center",
+    alignItems: "center",
   },
   providerDashboardNavHeader: {
     backgroundColor: "#0B1220",
@@ -11986,7 +12006,7 @@ cardHeartButton: {
     backgroundColor: colors.background,
     paddingHorizontal: 20,
     paddingBottom: 32,
-    paddingTop: 8,
+    paddingTop: 0,
   },
   homeCard: {
     width: "100%",
