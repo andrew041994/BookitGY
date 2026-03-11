@@ -6232,6 +6232,35 @@ function SearchScreen({ token, showFlash, navigation, route, toggleFavorite, isF
 
 
 
+function ProviderDashboardNavHeader({
+  insets,
+  logoSize,
+  unreadNotificationCount,
+  onPressNotifications,
+}) {
+  return (
+    <View style={[styles.providerDashboardNavHeader, { paddingTop: insets.top }]}>
+      <View style={styles.providerDashboardNavHeaderInner}>
+        <View style={styles.providerDashboardNavHeaderCenter}>
+          <Image
+            source={BookitGYLogoTransparent}
+            style={{ width: logoSize, height: logoSize }}
+            resizeMode="contain"
+          />
+        </View>
+
+        <View style={styles.providerDashboardNavHeaderRight}>
+          <NotificationBell
+            unreadCount={unreadNotificationCount}
+            onPress={onPressNotifications}
+          />
+        </View>
+      </View>
+    </View>
+  );
+}
+
+
 function ProviderDashboardScreen({
   navigation,
   token,
@@ -6323,40 +6352,24 @@ const providerRatingSummary = getRatingSummary(
   "No ratings"
 );
 
-const providerNavHeaderHeight =
-  insets.top + providerDashboardLogoSize + 12 || 150;
-
 useLayoutEffect(() => {
   navigation.setOptions({
-    headerTitleAlign: "center",
-    headerTitle: () => (
-      <Image
-        source={BookitGYLogoTransparent}
-        style={{
-          width: providerDashboardLogoSize,
-          height: providerDashboardLogoSize,
-        }}
-        resizeMode="contain"
-      />
-    ),
-    headerStyle: {
-      backgroundColor: "#0B1220",
-      height: providerNavHeaderHeight,
-    },
-    headerTintColor: colors.textPrimary,
-    headerShadowVisible: false,
-    headerRight: () => (
-      <NotificationBell
-        unreadCount={unreadNotificationCount}
-        onPress={onPressNotifications || (() => navigation.navigate('Notifications'))}
+    header: () => (
+      <ProviderDashboardNavHeader
+        insets={insets}
+        logoSize={providerDashboardLogoSize}
+        unreadNotificationCount={unreadNotificationCount}
+        onPressNotifications={
+          onPressNotifications || (() => navigation.navigate("Notifications"))
+        }
       />
     ),
   });
 }, [
+  insets,
   navigation,
   onPressNotifications,
   providerDashboardLogoSize,
-  providerNavHeaderHeight,
   unreadNotificationCount,
 ]);
 
@@ -11771,6 +11784,30 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: colors.textMuted,
     fontWeight: "600",
+  },
+  providerDashboardNavHeader: {
+    backgroundColor: "#0B1220",
+    overflow: "visible",
+  },
+  providerDashboardNavHeaderInner: {
+    height: 112,
+    justifyContent: "center",
+    alignItems: "center",
+    position: "relative",
+  },
+  providerDashboardNavHeaderCenter: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  providerDashboardNavHeaderRight: {
+    position: "absolute",
+    right: 16,
+    top: 18,
+    justifyContent: "center",
+    alignItems: "center",
   },
   searchBar: {
     flexDirection: "row",
