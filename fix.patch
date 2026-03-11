@@ -1,61 +1,98 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
 diff --git a/mobile/App.js b/mobile/App.js
-index 94d41584c8def8eb33cb8eb8d9cdd43b9486fdc6..fa4d337af4d2216a682d0962366d6a0e409095d4 100644
+index 44f0adbe9affd8cf385f78493015c15c12a33abf..4c4887a7cfa4886ee5b176e3bf4ce6f103a362b9 100644
 --- a/mobile/App.js
 +++ b/mobile/App.js
-@@ -6225,51 +6225,50 @@ function SearchScreen({ token, showFlash, navigation, route, toggleFavorite, isF
-               </ScrollView>
-               </SafeAreaView>
-          );
-       }
+@@ -6301,61 +6301,86 @@ const [upcomingLoading, setUpcomingLoading] = useState(false);
+ const [upcomingError, setUpcomingError] = useState("");
+ const [providerLocation, setProviderLocation] = useState(null);
+ const [focusedHoursField, setFocusedHoursField] = useState(null);
+ const [avatarUrl, setAvatarUrl] = useState(null);
+ // Catalog (portfolio images)
+ const [catalog, setCatalog] = useState([]);
+ const [catalogLoading, setCatalogLoading] = useState(false);
+ const [catalogError, setCatalogError] = useState("");
+ const [catalogUploading, setCatalogUploading] = useState(false);
+ const isProviderUser = token?.isProvider || token?.is_provider;
+ const providerUsername =
+   provider?.user?.username ||
+   profile?.username ||
+   token?.user?.username ||
+   token?.username;
+ const providerProfileLink = buildProviderPublicLink(providerUsername);
+ const providerRatingSummary = getRatingSummary(
+   {
+     ...(providerSummary || {}),
+     ...(provider || {}),
+     ...(profile || {}),
+   },
+   "No ratings"
+ );
  
++const providerNavHeaderHeight =
++  insets.top + providerDashboardLogoSize + 12 || 150;
++
+ useLayoutEffect(() => {
+   navigation.setOptions({
+-    headerTitle: "",
++    headerTitleAlign: "center",
++    headerTitle: () => (
++      <Image
++        source={BookitGYLogoTransparent}
++        style={{
++          width: providerDashboardLogoSize,
++          height: providerDashboardLogoSize,
++        }}
++        resizeMode="contain"
++      />
++    ),
++    headerStyle: {
++      backgroundColor: "#0B1220",
++      height: providerNavHeaderHeight,
++    },
++    headerTintColor: colors.textPrimary,
++    headerShadowVisible: false,
+     headerRight: () => (
+       <NotificationBell
+         unreadCount={unreadNotificationCount}
+         onPress={onPressNotifications || (() => navigation.navigate('Notifications'))}
+       />
+     ),
+   });
+-}, [navigation, onPressNotifications, unreadNotificationCount]);
++}, [
++  navigation,
++  onPressNotifications,
++  providerDashboardLogoSize,
++  providerNavHeaderHeight,
++  unreadNotificationCount,
++]);
  
+ const parseServiceNumber = useCallback((value) => {
+   const normalized = String(value || "").replace(/[,\s]/g, "");
+   const numberValue = Number(normalized);
+   return Number.isFinite(numberValue) ? numberValue : null;
+ }, []);
  
+ const validateServiceFields = useCallback((name, price, durationParts) => {
+   const errors = { name: "", price: "", duration: "" };
+   const trimmedName = String(name || "").trim();
+   const priceNumber = parseServiceNumber(price);
+   const durationError = validateDurationParts(durationParts);
  
+   if (!trimmedName) {
+     errors.name = "Service name is required.";
+   }
  
+   if (!priceNumber || priceNumber <= 0) {
+     errors.price = "Enter a price greater than 0.";
+   }
  
- function ProviderDashboardScreen({
-   navigation,
-   token,
-   showFlash,
-   unreadNotificationCount = 0,
-   onPressNotifications,
-   pendingChatConversationId,
-   clearPendingChatConversationId,
- }) {
-   const insets = useSafeAreaInsets();
-   const { width: windowWidth } = useWindowDimensions();
-   const providerDashboardLogoSize = Math.max(
-     100,
-     Math.min(120, Math.round(windowWidth * 0.3))
-   );
--  const [providerDashboardHeaderHeight, setProviderDashboardHeaderHeight] = useState(0);
+   if (durationError) {
+     errors.duration = durationError;
+   }
  
-   // const providerLabel = profile?.full_name || "Provider";
-   const [services, setServices] = useState([]);
-   const [loading, setLoading] = useState(true);
-   const [servicesError, setServicesError] = useState("");
-   const [adding, setAdding] = useState(false);
-   const [newName, setNewName] = useState("");
-   const [newPrice, setNewPrice] = useState("");
-   const [newDurationDays, setNewDurationDays] = useState("");
-   const [newDurationHours, setNewDurationHours] = useState("");
-   const [newDurationMinutes, setNewDurationMinutes] = useState("");
-   const [newDescription, setNewDescription] = useState("");
-   const [isSavingService, setIsSavingService] = useState(false);
-   const [bookings, setBookings] = useState([]);
-   const [bookingsLoading, setBookingsLoading] = useState(true);
-   const [bookingsError, setBookingsError] = useState("");
-   const [workingHours, setWorkingHours] = useState([]);
-   const [hoursLoading, setHoursLoading] = useState(false);
-   const [hoursError, setHoursError] = useState("");
-   const [showHours, setShowHours] = useState(false);
-   const [hoursFlash, setHoursFlash] = useState(null);
-   const [refreshing, setRefreshing] = useState(false);
-   const [chatBooking, setChatBooking] = useState(null);
-   const [showProfileEditor, setShowProfileEditor] = useState(false);
-   const [profileLoading, setProfileLoading] = useState(false);
-@@ -7422,80 +7421,73 @@ const loadProviderSummary = async () => {
+@@ -7421,75 +7446,52 @@ const loadProviderSummary = async () => {
  
    useEffect(() => {
      if (!pendingChatConversationId || !bookings?.length) return;
@@ -81,46 +118,32 @@ index 94d41584c8def8eb33cb8eb8d9cdd43b9486fdc6..fa4d337af4d2216a682d0962366d6a0e
          </View>
        )}
  
--      <View
--        onLayout={(event) => {
--          const measuredHeight = Math.ceil(event.nativeEvent.layout.height || 0);
--          if (measuredHeight && measuredHeight !== providerDashboardHeaderHeight) {
--            setProviderDashboardHeaderHeight(measuredHeight);
--          }
--        }}
--        style={[
--          styles.providerDashboardPinnedHeader,
--          styles.providerDashboardPinnedHeaderContent,
--          { paddingTop: insets.top + 6 },
--        ]}
--      >
--        <View style={styles.providerDashboardLogoWrap}>
-+      <View style={styles.providerDashboardPinnedHeader}>
-+        <View
-+          style={[
-+            styles.providerDashboardLogoWrap,
-+            { top: insets.top - 2 },
-+          ]}
-+        >
-           <Image
-             source={BookitGYLogoTransparent}
-             style={{
-               width: providerDashboardLogoSize,
-               height: providerDashboardLogoSize,
-             }}
-             resizeMode="contain"
-           />
-         </View>
-       </View>
- 
+-      <View style={styles.providerDashboardPinnedHeader}>
+-          <View
+-            style={[
+-              styles.providerDashboardLogoWrap,
+-              { top: -86,},
+-            ]}
+-          >
+-          <Image
+-            source={BookitGYLogoTransparent}
+-            style={{
+-              width: providerDashboardLogoSize,
+-              height: providerDashboardLogoSize,
+-            }}
+-            resizeMode="contain"
+-          />
+-        </View>
+-      </View>
+-
        <ScrollView
-         contentContainerStyle={[
-           styles.providerScroll,
-           {
--            paddingTop: providerDashboardHeaderHeight + 8,
-+            paddingTop: insets.top + providerDashboardLogoSize + 6,
-           },
-         ]}
+-        contentContainerStyle={[
+-          styles.providerScroll,
+-          {
+-            paddingTop: insets.top + providerDashboardLogoSize -30,
+-          },
+-        ]}
++        contentContainerStyle={styles.providerScroll}
          refreshControl={
            <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
          }
@@ -144,7 +167,19 @@ index 94d41584c8def8eb33cb8eb8d9cdd43b9486fdc6..fa4d337af4d2216a682d0962366d6a0e
              </Text>
            </View>
          )}
-@@ -11745,58 +11737,56 @@ const styles = StyleSheet.create({
+ 
+         {/* TODAY overview */}
+@@ -11727,69 +11729,50 @@ const styles = StyleSheet.create({
+   homeCard: {
+     width: "100%",
+   },
+   homeWrapper: {
+     flex: 1,
+     backgroundColor: "#0B1220",
+   },
+   pinnedHeader: {
+     backgroundColor: "#0B1220",
+     overflow: "visible",
    },
    pinnedHeaderSafeArea: {
      alignItems: "center",
@@ -160,29 +195,25 @@ index 94d41584c8def8eb33cb8eb8d9cdd43b9486fdc6..fa4d337af4d2216a682d0962366d6a0e
      width: HEADER_LOGO_WIDTH,
      height: HEADER_LOGO_HEIGHT,
    },
-   providerDashboardPinnedHeader: {
-     position: "absolute",
-     top: 0,
-     left: 0,
-     right: 0,
-     alignItems: "center",
-     zIndex: 10,
-     elevation: 10,
-     backgroundColor: "#0B1220",
-   },
--  providerDashboardPinnedHeaderContent: {
--    width: "100%",
--    paddingBottom: 6,
+-  providerDashboardPinnedHeader: {
+-    position: "absolute",
+-    top: 0,
+-    left: 0,
+-    right: 0,
+-    height: 40,
+-    alignItems: "center",
+-    zIndex: 10,
+-    elevation: 10,
+-    backgroundColor: "#0B1220",
+-    overflow: "visible",
 -  },
-   providerDashboardLogoWrap: {
--    width: "100%",
-+    position: "absolute",
-+    left: 0,
-+    right: 0,
-     alignItems: "center",
--    justifyContent: "center",
-+    zIndex: 20,
-   },
+-  providerDashboardLogoWrap: {
+-    position: "absolute",
+-    left: 0,
+-    right: 0,
+-    alignItems: "center",
+-    zIndex: 20,
+-  },
    providerDashboardIntro: {
      width: "100%",
      alignItems: "flex-start",
@@ -207,6 +238,7 @@ index 94d41584c8def8eb33cb8eb8d9cdd43b9486fdc6..fa4d337af4d2216a682d0962366d6a0e
    searchBar: {
      flexDirection: "row",
      alignItems: "center",
+     gap: 10,
  
 EOF
 )

@@ -6323,9 +6323,28 @@ const providerRatingSummary = getRatingSummary(
   "No ratings"
 );
 
+const providerNavHeaderHeight =
+  insets.top + providerDashboardLogoSize + 12 || 150;
+
 useLayoutEffect(() => {
   navigation.setOptions({
-    headerTitle: "",
+    headerTitleAlign: "center",
+    headerTitle: () => (
+      <Image
+        source={BookitGYLogoTransparent}
+        style={{
+          width: providerDashboardLogoSize,
+          height: providerDashboardLogoSize,
+        }}
+        resizeMode="contain"
+      />
+    ),
+    headerStyle: {
+      backgroundColor: "#0B1220",
+      height: providerNavHeaderHeight,
+    },
+    headerTintColor: colors.textPrimary,
+    headerShadowVisible: false,
     headerRight: () => (
       <NotificationBell
         unreadCount={unreadNotificationCount}
@@ -6333,7 +6352,13 @@ useLayoutEffect(() => {
       />
     ),
   });
-}, [navigation, onPressNotifications, unreadNotificationCount]);
+}, [
+  navigation,
+  onPressNotifications,
+  providerDashboardLogoSize,
+  providerNavHeaderHeight,
+  unreadNotificationCount,
+]);
 
 const parseServiceNumber = useCallback((value) => {
   const normalized = String(value || "").replace(/[,\s]/g, "");
@@ -7443,31 +7468,8 @@ const loadProviderSummary = async () => {
         </View>
       )}
 
-      <View style={styles.providerDashboardPinnedHeader}>
-          <View
-            style={[
-              styles.providerDashboardLogoWrap,
-              { top: -86,},
-            ]}
-          >
-          <Image
-            source={BookitGYLogoTransparent}
-            style={{
-              width: providerDashboardLogoSize,
-              height: providerDashboardLogoSize,
-            }}
-            resizeMode="contain"
-          />
-        </View>
-      </View>
-
       <ScrollView
-        contentContainerStyle={[
-          styles.providerScroll,
-          {
-            paddingTop: insets.top + providerDashboardLogoSize -30,
-          },
-        ]}
+        contentContainerStyle={styles.providerScroll}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
         }
@@ -11748,25 +11750,6 @@ const styles = StyleSheet.create({
   headerLogo: {
     width: HEADER_LOGO_WIDTH,
     height: HEADER_LOGO_HEIGHT,
-  },
-  providerDashboardPinnedHeader: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    height: 40,
-    alignItems: "center",
-    zIndex: 10,
-    elevation: 10,
-    backgroundColor: "#0B1220",
-    overflow: "visible",
-  },
-  providerDashboardLogoWrap: {
-    position: "absolute",
-    left: 0,
-    right: 0,
-    alignItems: "center",
-    zIndex: 20,
   },
   providerDashboardIntro: {
     width: "100%",
