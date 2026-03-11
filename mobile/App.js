@@ -11786,7 +11786,7 @@ const styles = StyleSheet.create({
     overflow: "visible",
   },
   clientHomeNavHeaderInner: {
-    height: 112,
+    height: 70,
     justifyContent: "center",
     alignItems: "center",
     position: "relative",
@@ -11795,6 +11795,7 @@ const styles = StyleSheet.create({
     position: "absolute",
     left: 0,
     right: 0,
+    top: -40,
     alignItems: "center",
     justifyContent: "center",
   },
