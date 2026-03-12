@@ -545,6 +545,33 @@ class AdminProviderRetentionOut(BaseModel):
     providers: List[ProviderRetentionRow] = []
 
 
+class DailyBookingAppointmentRow(BaseModel):
+    booking_id: int
+    start_at: datetime
+    client_id: int
+    client_username: Optional[str] = None
+    client_name: Optional[str] = None
+    service_id: int
+    service_name: Optional[str] = None
+    price: Optional[float] = None
+    status: str
+
+
+class DailyBookingProviderRow(BaseModel):
+    provider_id: int
+    provider_username: Optional[str] = None
+    provider_name: Optional[str] = None
+    profession: Optional[str] = None
+    appointment_count: int
+    total_value: Optional[float] = None
+    appointments: List[DailyBookingAppointmentRow] = []
+
+
+class AdminProviderDailyBookingsOut(BaseModel):
+    date: date
+    providers: List[DailyBookingProviderRow] = []
+
+
 class AdminLowActivityOut(BaseModel):
     month: str
     threshold: int

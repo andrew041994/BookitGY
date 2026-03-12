@@ -80,6 +80,23 @@ const parseDateInput = (value) => {
   return parsed
 }
 
+const formatTimeDisplay = (value) => {
+  if (!value) return '—'
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return '—'
+  return date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+}
+
+const formatCurrencyGYD = (value) => {
+  if (typeof value !== 'number' || Number.isNaN(value)) return '—'
+  return `${value.toFixed(2)} GYD`
+}
+
+const appointmentStatusClass = (status) => {
+  if (status === 'completed' || status === 'confirmed') return 'paid'
+  return 'unpaid'
+}
+
 const loadStoredServiceCharge = () => {
   const stored = localStorage.getItem(SERVICE_CHARGE_STORAGE_KEY)
   if (stored === null) return null
@@ -1599,6 +1616,40 @@ function App() {
       { value: 'pending', label: 'Pending' },
     ]
 
+    const loadDailyBookings = React.useCallback(async (selectedDate) => {
+      const normalizedDate = selectedDate || dailyBookingsDate
+      if (!normalizedDate) return
+
+      const requestId = dailyBookingsRequestIdRef.current + 1
+      dailyBookingsRequestIdRef.current = requestId
+      setDailyBookingsLoading(true)
+      setDailyBookingsError('')
+
+      try {
+        const res = await apiClient.get('/admin/reports/provider-performance/daily-bookings', {
+          params: { date: normalizedDate },
+        })
+        if (dailyBookingsRequestIdRef.current !== requestId) {
+          return
+        }
+
+        const nextProviders = Array.isArray(res?.data?.providers) ? res.data.providers : []
+        setDailyBookingsProviders(nextProviders)
+        setExpandedDailyProviders({})
+      } catch (err) {
+        if (dailyBookingsRequestIdRef.current !== requestId) {
+          return
+        }
+        logApiError(err)
+        setDailyBookingsProviders([])
+        setDailyBookingsError('Unable to load daily bookings. Please try again.')
+      } finally {
+        if (dailyBookingsRequestIdRef.current === requestId) {
+          setDailyBookingsLoading(false)
+        }
+      }
+    }, [dailyBookingsDate])
+
     const loadProfessions = React.useCallback(async () => {
       setLoadingProfessions(true)
       try {
@@ -1814,6 +1865,13 @@ function App() {
     const [providersOffset, setProvidersOffset] = React.useState(0)
     const providersLimit = 50
 
+    const [dailyBookingsDate, setDailyBookingsDate] = React.useState(() => formatDateInput(new Date()))
+    const [dailyBookingsProviders, setDailyBookingsProviders] = React.useState([])
+    const [dailyBookingsLoading, setDailyBookingsLoading] = React.useState(false)
+    const [dailyBookingsError, setDailyBookingsError] = React.useState('')
+    const [expandedDailyProviders, setExpandedDailyProviders] = React.useState({})
+    const dailyBookingsRequestIdRef = React.useRef(0)
+
     const statusOptions = [
       { value: 'all', label: 'All' },
       { value: 'completed', label: 'Completed' },
@@ -1843,6 +1901,40 @@ function App() {
         setProvidersLoading(false)
       }
     }, [providersOffset, providersSearch])
+
+    const loadDailyBookings = React.useCallback(async (selectedDate) => {
+      const normalizedDate = selectedDate || dailyBookingsDate
+      if (!normalizedDate) return
+
+      const requestId = dailyBookingsRequestIdRef.current + 1
+      dailyBookingsRequestIdRef.current = requestId
+      setDailyBookingsLoading(true)
+      setDailyBookingsError('')
+
+      try {
+        const res = await apiClient.get('/admin/reports/provider-performance/daily-bookings', {
+          params: { date: normalizedDate },
+        })
+        if (dailyBookingsRequestIdRef.current !== requestId) {
+          return
+        }
+
+        const nextProviders = Array.isArray(res?.data?.providers) ? res.data.providers : []
+        setDailyBookingsProviders(nextProviders)
+        setExpandedDailyProviders({})
+      } catch (err) {
+        if (dailyBookingsRequestIdRef.current !== requestId) {
+          return
+        }
+        logApiError(err)
+        setDailyBookingsProviders([])
+        setDailyBookingsError('Unable to load daily bookings. Please try again.')
+      } finally {
+        if (dailyBookingsRequestIdRef.current === requestId) {
+          setDailyBookingsLoading(false)
+        }
+      }
+    }, [dailyBookingsDate])
 
     const loadProfessions = React.useCallback(async () => {
       setLoadingProfessions(true)
@@ -1917,6 +2009,12 @@ function App() {
       }
     }, [activeTab, loadProviders])
 
+    React.useEffect(() => {
+      if (activeTab === 'daily-bookings') {
+        loadDailyBookings(dailyBookingsDate)
+      }
+    }, [activeTab, dailyBookingsDate, loadDailyBookings])
+
     const handleProviderSearchSubmit = (event) => {
       event.preventDefault()
       setProvidersOffset(0)
@@ -1927,6 +2025,13 @@ function App() {
       setProvidersSearchInput('')
       setProvidersSearch('')
       setProvidersOffset(0)
+    }
+
+    const toggleDailyProviderExpansion = (providerId) => {
+      setExpandedDailyProviders((current) => ({
+        ...current,
+        [providerId]: !current[providerId],
+      }))
     }
 
     const showRevenue = summary?.revenue_supported
@@ -1957,6 +2062,13 @@ function App() {
               onClick={() => setActiveTab('providers')}
             >
               Providers List
+            </button>
+            <button
+              type="button"
+              className={`admin-tab ${activeTab === 'daily-bookings' ? 'active' : ''}`}
+              onClick={() => setActiveTab('daily-bookings')}
+            >
+              Daily Bookings
             </button>
           </div>
 
@@ -2211,7 +2323,7 @@ function App() {
                 </div>
               </div>
             </>
-          ) : (
+          ) : activeTab === 'providers' ? (
             <>
               <form className="providers-list-search" onSubmit={handleProviderSearchSubmit}>
                 <input
@@ -2282,6 +2394,85 @@ function App() {
                   Next
                 </button>
               </div>
+            </>
+          ) : (
+            <>
+              <div className="report-section daily-bookings-filter">
+                <div className="form-grid single">
+                  <label className="form-field">
+                    <span>Date</span>
+                    <input
+                      type="date"
+                      value={dailyBookingsDate}
+                      onChange={(e) => setDailyBookingsDate(e.target.value)}
+                    />
+                  </label>
+                </div>
+              </div>
+
+              {dailyBookingsError && <p className="form-error">{dailyBookingsError}</p>}
+              {dailyBookingsLoading && !dailyBookingsError && <p className="muted">Loading daily bookings…</p>}
+
+              {!dailyBookingsLoading && !dailyBookingsError && dailyBookingsProviders.length === 0 ? (
+                <p className="muted">No appointments found for this date.</p>
+              ) : (
+                <div className="daily-bookings-list">
+                  {dailyBookingsProviders.map((provider) => {
+                    const providerName = provider.provider_name || provider.provider_username || `Provider #${provider.provider_id}`
+                    const isExpanded = !!expandedDailyProviders[provider.provider_id]
+                    return (
+                      <div className="daily-bookings-provider-card" key={provider.provider_id}>
+                        <button
+                          type="button"
+                          className="daily-bookings-provider-header"
+                          onClick={() => toggleDailyProviderExpansion(provider.provider_id)}
+                        >
+                          <div>
+                            <p className="daily-bookings-provider-name">{providerName}</p>
+                            <p className="muted">{provider.profession || '—'}</p>
+                          </div>
+                          <div className="daily-bookings-provider-meta">
+                            <span>{provider.appointment_count} appointment{provider.appointment_count === 1 ? '' : 's'}</span>
+                            <span>{formatCurrencyGYD(provider.total_value)}</span>
+                            <span className="muted">{isExpanded ? 'Collapse' : 'Expand'}</span>
+                          </div>
+                        </button>
+
+                        {isExpanded && (
+                          <div className="provider-missing-table daily-bookings-table">
+                            <table>
+                              <thead>
+                                <tr>
+                                  <th>Time</th>
+                                  <th>Client</th>
+                                  <th>Service</th>
+                                  <th>Price</th>
+                                  <th>Status</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {provider.appointments.map((appointment) => (
+                                  <tr key={appointment.booking_id}>
+                                    <td>{formatTimeDisplay(appointment.start_at)}</td>
+                                    <td>{appointment.client_name || appointment.client_username || '—'}</td>
+                                    <td>{appointment.service_name || '—'}</td>
+                                    <td>{formatCurrencyGYD(appointment.price)}</td>
+                                    <td>
+                                      <span className={`status-pill ${appointmentStatusClass(appointment.status)}`}>
+                                        {appointment.status || '—'}
+                                      </span>
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
             </>
           )}
         </div>

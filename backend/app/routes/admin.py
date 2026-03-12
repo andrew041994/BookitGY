@@ -5,7 +5,7 @@ from typing import List, Optional
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query
 from sqlalchemy import and_, case, func, literal
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, aliased
 
 from app import crud, schemas, models
 from app.utils.email import send_billing_paid_email, send_provider_suspension_email
@@ -729,6 +729,98 @@ def get_provider_retention(
 
     return {
         "months": months,
+        "providers": providers,
+    }
+
+
+@router.get(
+    "/reports/provider-performance/daily-bookings",
+    response_model=schemas.AdminProviderDailyBookingsOut,
+)
+def get_provider_daily_bookings(
+    date: date = Query(...),
+    db: Session = Depends(get_db),
+    _: models.User = Depends(_require_admin),
+):
+    start_ts = datetime.combine(date, time.min)
+    end_ts_exclusive = datetime.combine(date + timedelta(days=1), time.min)
+    profession_label_expr = _profession_label_expression(db)
+    provider_user = aliased(models.User)
+    client_user = aliased(models.User)
+
+    rows = (
+        db.query(
+            models.Provider.id.label("provider_id"),
+            provider_user.username.label("provider_username"),
+            provider_user.username.label("provider_name"),
+            profession_label_expr.label("profession"),
+            models.Booking.id.label("booking_id"),
+            models.Booking.start_time.label("start_at"),
+            models.Booking.status.label("status"),
+            models.Service.id.label("service_id"),
+            models.Service.name.label("service_name"),
+            models.Service.price_gyd.label("price"),
+            client_user.id.label("client_id"),
+            client_user.username.label("client_username"),
+        )
+        .join(models.Service, models.Booking.service_id == models.Service.id)
+        .join(models.Provider, models.Service.provider_id == models.Provider.id)
+        .join(provider_user, models.Provider.user_id == provider_user.id)
+        .join(client_user, models.Booking.customer_id == client_user.id)
+        .filter(models.Booking.start_time >= start_ts)
+        .filter(models.Booking.start_time < end_ts_exclusive)
+        .order_by(models.Provider.id.asc(), models.Booking.start_time.asc())
+        .all()
+    )
+
+    providers_map = {}
+    for row in rows:
+        provider_payload = providers_map.setdefault(
+            row.provider_id,
+            {
+                "provider_id": row.provider_id,
+                "provider_username": row.provider_username,
+                "provider_name": row.provider_name,
+                "profession": row.profession,
+                "appointment_count": 0,
+                "total_value": 0.0,
+                "appointments": [],
+            },
+        )
+
+        provider_payload["appointment_count"] += 1
+        provider_payload["appointments"].append(
+            {
+                "booking_id": row.booking_id,
+                "start_at": row.start_at,
+                "client_id": row.client_id,
+                "client_username": row.client_username,
+                "client_name": row.client_username,
+                "service_id": row.service_id,
+                "service_name": row.service_name,
+                "price": float(row.price) if row.price is not None else None,
+                "status": row.status,
+            }
+        )
+
+        if row.price is not None:
+            provider_payload["total_value"] += float(row.price)
+
+    providers = list(providers_map.values())
+    for provider in providers:
+        provider["appointments"].sort(key=lambda appt: appt["start_at"])
+        provider["total_value"] = round(provider["total_value"], 2)
+
+    providers.sort(
+        key=lambda provider: (
+            -(provider.get("appointment_count") or 0),
+            provider.get("appointments", [{}])[0].get("start_at") if provider.get("appointments") else datetime.max,
+            (provider.get("provider_name") or provider.get("provider_username") or "").lower(),
+        )
+    )
+
+    return {
+        "date": date,
         "providers": providers,
     }
 

@@ -1,440 +1,578 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
-diff --git a/mobile/App.js b/mobile/App.js
-index 2dcaed6658ffb85e8aa007ab12baa9ddbd994b70..06e88a070299fbf30ef73d359b42f361f0ee0d29 100644
---- a/mobile/App.js
-+++ b/mobile/App.js
-@@ -3177,78 +3177,90 @@ function ProfileScreen({ authLoading, setToken, showFlash, token }) {
-             </TouchableWithoutFeedback>
-           </View>
-         </TouchableWithoutFeedback>
-       </Modal>
- 
-     </ScrollView>
-     </>
-   );
- }
- 
- 
- 
- function ClientHomeScreen({
-   navigation,
-   token,
-   unreadNotificationCount = 0,
-   onPressNotifications,
-   favoriteProviders,
-   favoriteIds,
-   favoritesLoading,
-   toggleFavorite,
-   isFavorite,
-   syncFavoritesFromList,
-   refreshFavoriteProviders,
-   }) {
-+  const { width: windowWidth } = useWindowDimensions();
-  const [nearbyProviders, setNearbyProviders] = useState([]);
-   const [currentProvider, setCurrentProvider] = useState(null);
-   const [nearbyLoading, setNearbyLoading] = useState(true);
-   const [nearbyError, setNearbyError] = useState("");
-   const [clientLocation, setClientLocation] = useState(null);
-   const [locationDenied, setLocationDenied] = useState(false);
-   const [refreshing, setRefreshing] = useState(false);
-   const [searchText, setSearchText] = useState("");
-   const insets = useSafeAreaInsets();
--  const headerPaddingVertical = HEADER_VERTICAL_PADDING;
--  // const headerMinHeight =
--  //   insets.top + HEADER_LOGO_HEIGHT + HEADER_VERTICAL_PADDING * 2;
-+  const clientHomeLogoSize = Math.max(
-+    100,
-+    Math.min(120, Math.round(windowWidth * 0.3))
-+  );
- 
-   const quickCategories = useMemo(
-     () => ["Barber", "Hair", "Nails", "Massage", "Makeup", "Lash", "Tutor"],
-     []
-   );
- 
-   useLayoutEffect(() => {
-     navigation.setOptions({
--      headerRight: () => (
--        <NotificationBell
--          unreadCount={unreadNotificationCount}
--          onPress={onPressNotifications || (() => navigation.navigate('Notifications'))}
-+      header: () => (
-+        <ClientHomeNavHeader
-+          insets={insets}
-+          logoSize={clientHomeLogoSize}
-+          unreadNotificationCount={unreadNotificationCount}
-+          onPressNotifications={
-+            onPressNotifications || (() => navigation.navigate("Notifications"))
-+          }
-         />
-       ),
-     });
--  }, [navigation, onPressNotifications, unreadNotificationCount]);
-+  }, [
-+    clientHomeLogoSize,
-+    insets,
-+    navigation,
-+    onPressNotifications,
-+    unreadNotificationCount,
-+  ]);
- 
-   // adding console log
-   console.log("[home] token username fields", {
-     tokenUsername: token?.username,
-     tokenEmail: token?.email,
-     tokenKeys: token ? Object.keys(token) : null,
-     tokenUserKeys: token?.user ? Object.keys(token.user) : null,
-   });
-   const greetingName = useMemo(() => {
-     const username = token?.user?.username || token?.username;
-     if (username?.trim()) return username.trim();
-     const emailPrefix = token?.email?.split("@")?.[0];
-     return emailPrefix?.trim() || "";
-   }, [token?.email, token?.user?.username, token?.username]);
- 
-   const greetingText = greetingName ? `Hi, ${greetingName}` : "Hi";
- 
-   const haversineKm = (lat1, lon1, lat2, lon2) => {
-     if (
-       lat1 == null ||
-       lon1 == null ||
-       lat2 == null ||
-       lon2 == null
-     ) {
-       return null;
-@@ -3604,72 +3616,50 @@ function ClientHomeScreen({
-       <ProviderCard
-         key={providerId}
-         provider={provider}
-         avatarUrl={avatar}
-         profession={professionLabel}
-         distanceKm={distanceKm}
-         isFavorite={saved}
-         onFavoriteToggle={() => toggleFavorite(provider)}
-         onPress={() => handleProviderPress(provider)}
-         ctaLabel={null}
-         style={styles.providerCardCarousel}
-       />
-     );
-   });
- 
-   if (!favoritesHasDistance && favoriteProviders.length) {
-     console.log("[distance] favorites list missing distances", {
-       clientCoords,
-       providerCoords: favoritesLastProviderCoords,
-       distanceKm: favoritesLastDistanceKm,
-     });
+diff --git a/frontend/src/main.jsx b/frontend/src/main.jsx
+index 9810e2dae66a94a0d0c1c99f6a1e229758c9bc0d..8afb87126f6cdd6f689e1fd6928c1df548cf5cff 100644
+--- a/frontend/src/main.jsx
++++ b/frontend/src/main.jsx
+@@ -58,50 +58,67 @@ const loadLeaflet = () => {
+       document.body.appendChild(script)
+     })
    }
  
-   return (
-     <View style={styles.homeWrapper}>
--        <View
--          style={[
--            styles.pinnedHeader,
--            // headerMinHeight ? { minHeight: headerMinHeight } : null,
--          ]}
--        >
--          <View
--            style={[
--              styles.pinnedHeaderSafeArea,
--              {
--                paddingTop: Platform.OS === "ios" ? 6 : 6,
--                paddingBottom: 1,
--              },
--            ]}
--          >
--            <Image
--              source={BookitGYLogoTransparent}
--              style={styles.headerLogo}
--              resizeMode="contain"
--            />
--          </View>
--        </View>
-       <ScrollView
-         contentContainerStyle={styles.homeScroll}
-         refreshControl={
-           <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
-         }
-       >
-         <View style={styles.homeHeader}>
-           <Text style={styles.homeGreeting}>{greetingText}</Text>
-           <Text style={styles.homeSubtitle}>
-             What are you looking for today?
-           </Text>
-         </View>
- 
-         <Pressable
-           style={styles.searchBar}
-           onPress={() => handleSearchNavigate(searchText)}
-           >
-           <Ionicons name="search-outline" size={20} color={colors.textMuted} />
-           <TextInput
-             pointerEvents="none"
-             style={styles.searchInput}
-             placeholder="Search by profession, provider, or service"
-             placeholderTextColor={colors.textSecondary}
-             value={searchText}
-             editable={false}
-@@ -4502,50 +4492,78 @@ function BookingChatModal({
-                 disabled={sending || isChatReadOnly || (!text.trim() && !selectedImage)}
-               >
-                 <Text style={styles.chatSendButtonText}>{sending ? "..." : "Send"}</Text>
-               </TouchableOpacity>
-             </View>
-           </View>
-         </KeyboardAvoidingView>
-       </SafeAreaView>
- 
-       <Modal
-         visible={!!viewerImage}
-         transparent={true}
-         animationType="fade"
-         onRequestClose={() => setViewerImage(null)}
-       >
-         <Pressable style={styles.chatViewerBackdrop} onPress={() => setViewerImage(null)}>
-           {viewerImage ? (
-             <Image source={{ uri: viewerImage }} style={styles.chatViewerImage} resizeMode="contain" />
-           ) : null}
-         </Pressable>
-       </Modal>
-     </Modal>
-   );
+   return leafletLoaderPromise
  }
  
-+function ClientHomeNavHeader({
-+  insets,
-+  logoSize,
-+  unreadNotificationCount,
-+  onPressNotifications,
-+}) {
-+  return (
-+    <View style={[styles.clientHomeNavHeader, { paddingTop: insets.top }]}>
-+      <View style={styles.clientHomeNavHeaderInner}>
-+        <View style={styles.clientHomeNavHeaderCenter}>
-+          <Image
-+            source={BookitGYLogoTransparent}
-+            style={{ width: logoSize, height: logoSize }}
-+            resizeMode="contain"
-+          />
-+        </View>
-+
-+        <View style={styles.clientHomeNavHeaderRight}>
-+          <NotificationBell
-+            unreadCount={unreadNotificationCount}
-+            onPress={onPressNotifications}
-+          />
-+        </View>
-+      </View>
-+    </View>
-+  );
+ const normalizeServiceCharge = (value) => Math.max(0, Math.min(100, Number(value) || 0))
+ 
+ const formatDateInput = (date) => {
+   const year = date.getFullYear()
+   const month = String(date.getMonth() + 1).padStart(2, '0')
+   const day = String(date.getDate()).padStart(2, '0')
+   return `${year}-${month}-${day}`
+ }
+ 
+ const parseDateInput = (value) => {
+   if (!value) return null
+   const [year, month, day] = value.split('-').map(Number)
+   if (!year || !month || !day) return null
+   const parsed = new Date(year, month - 1, day)
+   if (Number.isNaN(parsed.getTime())) return null
+   return parsed
+ }
+ 
++const formatTimeDisplay = (value) => {
++  if (!value) return '—'
++  const date = new Date(value)
++  if (Number.isNaN(date.getTime())) return '—'
++  return date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
 +}
 +
- function AppointmentsScreen({ token, showFlash, pendingChatConversationId, clearPendingChatConversationId }) {
-   const [bookings, setBookings] = useState([]);
-   const [loading, setLoading] = useState(true);
-   const [error, setError] = useState("");
-   const [refreshing, setRefreshing] = useState(false);
-   const [chatBooking, setChatBooking] = useState(null);
-   const [ratingBooking, setRatingBooking] = useState(null);
-   const [ratingStars, setRatingStars] = useState(0);
-   const [ratingSubmitting, setRatingSubmitting] = useState(false);
++const formatCurrencyGYD = (value) => {
++  if (typeof value !== 'number' || Number.isNaN(value)) return '—'
++  return `${value.toFixed(2)} GYD`
++}
++
++const appointmentStatusClass = (status) => {
++  if (status === 'completed' || status === 'confirmed') return 'paid'
++  return 'unpaid'
++}
++
+ const loadStoredServiceCharge = () => {
+   const stored = localStorage.getItem(SERVICE_CHARGE_STORAGE_KEY)
+   if (stored === null) return null
+   return normalizeServiceCharge(stored)
+ }
  
-   // Booking datetimes are stored/served as Guyana-local wall time (UTC-4, no DST).
-   // Parse naive strings explicitly as Guyana so device timezone does not affect logic.
-   const GUYANA_UTC_OFFSET_HOURS = 4;
-   const parseGuyanaDateMs = (value) => {
-     if (!value) return null;
-     if (value instanceof Date) {
-       const t = value.getTime();
-       return Number.isNaN(t) ? null : t;
+ const persistServiceCharge = (rate) => {
+   localStorage.setItem(SERVICE_CHARGE_STORAGE_KEY, String(rate))
+ }
+ 
+ function App() {
+   const [token, setToken] = React.useState(localStorage.getItem('token') || '')
+ 
+   React.useEffect(() => {
+     if (token) {
+       apiClient.defaults.headers.common.Authorization = `Bearer ${token}`
+     } else {
+       delete apiClient.defaults.headers.common.Authorization
+     }
+   }, [token])
+ 
+   const Login = () => {
+     const [email, setEmail] = React.useState('customer@guyana.com')
+     const [password, setPassword] = React.useState('pass')
+     const [loading, setLoading] = React.useState(false)
+@@ -1577,50 +1594,84 @@ function App() {
+ 
+   const AdminBookingMetrics = () => {
+     const [startDate, setStartDate] = React.useState(() => {
+       const today = new Date()
+       const start = new Date()
+       start.setDate(today.getDate() - 6)
+       return formatDateInput(start)
+     })
+     const [endDate, setEndDate] = React.useState(() => formatDateInput(new Date()))
+     const [status, setStatus] = React.useState('all')
+     const [profession, setProfession] = React.useState('all')
+     const [professions, setProfessions] = React.useState([])
+     const [report, setReport] = React.useState(null)
+     const [loading, setLoading] = React.useState(false)
+     const [error, setError] = React.useState('')
+     const [loadingProfessions, setLoadingProfessions] = React.useState(false)
+ 
+     const statusOptions = [
+       { value: 'all', label: 'All' },
+       { value: 'completed', label: 'Completed' },
+       { value: 'cancelled', label: 'Cancelled' },
+       { value: 'confirmed', label: 'Confirmed' },
+       { value: 'pending', label: 'Pending' },
+     ]
+ 
++    const loadDailyBookings = React.useCallback(async (selectedDate) => {
++      const normalizedDate = selectedDate || dailyBookingsDate
++      if (!normalizedDate) return
++
++      const requestId = dailyBookingsRequestIdRef.current + 1
++      dailyBookingsRequestIdRef.current = requestId
++      setDailyBookingsLoading(true)
++      setDailyBookingsError('')
++
++      try {
++        const res = await apiClient.get('/admin/reports/provider-performance/daily-bookings', {
++          params: { date: normalizedDate },
++        })
++        if (dailyBookingsRequestIdRef.current !== requestId) {
++          return
++        }
++
++        const nextProviders = Array.isArray(res?.data?.providers) ? res.data.providers : []
++        setDailyBookingsProviders(nextProviders)
++        setExpandedDailyProviders({})
++      } catch (err) {
++        if (dailyBookingsRequestIdRef.current !== requestId) {
++          return
++        }
++        logApiError(err)
++        setDailyBookingsProviders([])
++        setDailyBookingsError('Unable to load daily bookings. Please try again.')
++      } finally {
++        if (dailyBookingsRequestIdRef.current === requestId) {
++          setDailyBookingsLoading(false)
++        }
++      }
++    }, [dailyBookingsDate])
++
+     const loadProfessions = React.useCallback(async () => {
+       setLoadingProfessions(true)
+       try {
+         const res = await apiClient.get('/admin/reports/professions')
+         setProfessions(res.data.professions || [])
+       } catch (err) {
+         logApiError(err)
+         setError('Unable to load professions. Please try again.')
+       } finally {
+         setLoadingProfessions(false)
+       }
+     }, [])
+ 
+     const runReport = React.useCallback(async () => {
+       const parsedStart = parseDateInput(startDate)
+       const parsedEnd = parseDateInput(endDate)
+ 
+       if (!parsedStart || !parsedEnd) {
+         setError('Start and end dates are required.')
+         return
+       }
+ 
+       if (parsedStart > parsedEnd) {
+         setError('Start date must be on or before end date.')
+         return
+@@ -1792,80 +1843,121 @@ function App() {
+     const [activeTab, setActiveTab] = React.useState('performance')
+     const [startDate, setStartDate] = React.useState(() => {
+       const today = new Date()
+       const start = new Date()
+       start.setDate(today.getDate() - 29)
+       return formatDateInput(start)
+     })
+     const [endDate, setEndDate] = React.useState(() => formatDateInput(new Date()))
+     const [status, setStatus] = React.useState('all')
+     const [profession, setProfession] = React.useState('all')
+     const [professions, setProfessions] = React.useState([])
+     const [summary, setSummary] = React.useState(null)
+     const [retention, setRetention] = React.useState(null)
+     const [loading, setLoading] = React.useState(false)
+     const [loadingProfessions, setLoadingProfessions] = React.useState(false)
+     const [error, setError] = React.useState('')
+ 
+     const [providers, setProviders] = React.useState([])
+     const [providersLoading, setProvidersLoading] = React.useState(false)
+     const [providersError, setProvidersError] = React.useState('')
+     const [providersSearchInput, setProvidersSearchInput] = React.useState('')
+     const [providersSearch, setProvidersSearch] = React.useState('')
+     const [providersOffset, setProvidersOffset] = React.useState(0)
+     const providersLimit = 50
+ 
++    const [dailyBookingsDate, setDailyBookingsDate] = React.useState(() => formatDateInput(new Date()))
++    const [dailyBookingsProviders, setDailyBookingsProviders] = React.useState([])
++    const [dailyBookingsLoading, setDailyBookingsLoading] = React.useState(false)
++    const [dailyBookingsError, setDailyBookingsError] = React.useState('')
++    const [expandedDailyProviders, setExpandedDailyProviders] = React.useState({})
++    const dailyBookingsRequestIdRef = React.useRef(0)
++
+     const statusOptions = [
+       { value: 'all', label: 'All' },
+       { value: 'completed', label: 'Completed' },
+       { value: 'cancelled', label: 'Cancelled' },
+       { value: 'confirmed', label: 'Confirmed' },
+       { value: 'pending', label: 'Pending' },
+     ]
+ 
+     const loadProviders = React.useCallback(async () => {
+       setProvidersLoading(true)
+       setProvidersError('')
+       try {
+         const params = {
+           limit: providersLimit,
+           offset: providersOffset,
+         }
+         if (providersSearch.trim()) {
+           params.search = providersSearch.trim()
+         }
+         const res = await apiClient.get('/admin/providers/list', { params })
+         setProviders(Array.isArray(res.data) ? res.data : [])
+       } catch (err) {
+         logApiError(err)
+         setProviders([])
+         setProvidersError('Unable to load providers list. Please try again.')
+       } finally {
+         setProvidersLoading(false)
+       }
+     }, [providersOffset, providersSearch])
+ 
++    const loadDailyBookings = React.useCallback(async (selectedDate) => {
++      const normalizedDate = selectedDate || dailyBookingsDate
++      if (!normalizedDate) return
++
++      const requestId = dailyBookingsRequestIdRef.current + 1
++      dailyBookingsRequestIdRef.current = requestId
++      setDailyBookingsLoading(true)
++      setDailyBookingsError('')
++
++      try {
++        const res = await apiClient.get('/admin/reports/provider-performance/daily-bookings', {
++          params: { date: normalizedDate },
++        })
++        if (dailyBookingsRequestIdRef.current !== requestId) {
++          return
++        }
++
++        const nextProviders = Array.isArray(res?.data?.providers) ? res.data.providers : []
++        setDailyBookingsProviders(nextProviders)
++        setExpandedDailyProviders({})
++      } catch (err) {
++        if (dailyBookingsRequestIdRef.current !== requestId) {
++          return
++        }
++        logApiError(err)
++        setDailyBookingsProviders([])
++        setDailyBookingsError('Unable to load daily bookings. Please try again.')
++      } finally {
++        if (dailyBookingsRequestIdRef.current === requestId) {
++          setDailyBookingsLoading(false)
++        }
++      }
++    }, [dailyBookingsDate])
++
+     const loadProfessions = React.useCallback(async () => {
+       setLoadingProfessions(true)
+       try {
+         const res = await apiClient.get('/admin/reports/professions')
+         setProfessions(res.data.professions || [])
+       } catch (err) {
+         logApiError(err)
+         setError('Unable to load professions. Please try again.')
+       } finally {
+         setLoadingProfessions(false)
+       }
+     }, [])
+ 
+     const runReport = React.useCallback(async () => {
+       const parsedStart = parseDateInput(startDate)
+       const parsedEnd = parseDateInput(endDate)
+ 
+       if (!parsedStart || !parsedEnd) {
+         setError('Start and end dates are required.')
+         return
+       }
+ 
+       if (parsedStart > parsedEnd) {
+         setError('Start date must be on or before end date.')
+         return
+@@ -1895,91 +1987,111 @@ function App() {
+         setRetention(retentionRes.data)
+       } catch (err) {
+         logApiError(err)
+         setError('Unable to load provider performance reports. Please try again.')
+         setSummary(null)
+         setRetention(null)
+       } finally {
+         setLoading(false)
+       }
+     }, [endDate, profession, startDate, status])
+ 
+     React.useEffect(() => {
+       loadProfessions()
+     }, [loadProfessions])
+ 
+     React.useEffect(() => {
+       runReport()
+     }, [runReport])
+ 
+     React.useEffect(() => {
+       if (activeTab === 'providers') {
+         loadProviders()
+       }
+     }, [activeTab, loadProviders])
+ 
++    React.useEffect(() => {
++      if (activeTab === 'daily-bookings') {
++        loadDailyBookings(dailyBookingsDate)
++      }
++    }, [activeTab, dailyBookingsDate, loadDailyBookings])
++
+     const handleProviderSearchSubmit = (event) => {
+       event.preventDefault()
+       setProvidersOffset(0)
+       setProvidersSearch(providersSearchInput)
      }
  
-     const raw = String(value).trim();
-     if (!raw) return null;
+     const handleClearProviderSearch = () => {
+       setProvidersSearchInput('')
+       setProvidersSearch('')
+       setProvidersOffset(0)
+     }
  
-     // Respect explicit timezone payloads (Z / +/-HH:MM) as absolute instants.
-     if (/z$|[+-]\d{2}:?\d{2}$/i.test(raw)) {
-@@ -11710,103 +11728,105 @@ const styles = StyleSheet.create({
-     color: colors.textSecondary,
-     textDecorationLine: "underline",
-     textAlign: "center",
-     flexShrink: 1,
-   },
-   subtitle: { fontSize: 22, color: colors.textSecondary, marginTop: 20, textAlign: "center" },
-   text: { fontSize: 18, color: colors.textSecondary, marginTop: 15, textAlign: "center" },
++    const toggleDailyProviderExpansion = (providerId) => {
++      setExpandedDailyProviders((current) => ({
++        ...current,
++        [providerId]: !current[providerId],
++      }))
++    }
++
+     const showRevenue = summary?.revenue_supported
+     const retentionMonths = retention?.months?.length || 0
  
-     flashContainer: {
-     position: "absolute",
-     top: 40,
-     left: 20,
-     right: 20,
-     paddingVertical: 10,
-     paddingHorizontal: 12,
-     borderRadius: 8,
-     borderWidth: 1,
-     zIndex: 100,
-     shadowColor: "#000",
-     shadowOpacity: 0.1,
-     shadowRadius: 6,
-     shadowOffset: { width: 0, height: 3 },
-     elevation: 4,
-   },
+     return (
+       <div className="admin-page">
+         <div className="admin-header">
+           <div>
+             <p className="eyebrow">Reports</p>
+             <h1>Provider Performance Reports</h1>
+             <p className="header-subtitle">Understand which providers drive value and who needs help.</p>
+           </div>
+         </div>
  
--   homeScroll: {
--    flexGrow: 1,
--    backgroundColor: colors.background,
--    paddingHorizontal: 20,
--    paddingBottom: 32,
--    paddingTop: 0
--  },
-   homeCard: {
-     width: "100%",
-   },
-   homeWrapper: {
-     flex: 1,
-     backgroundColor: "#0B1220",
-   },
--  pinnedHeader: {
--    backgroundColor: "#0B1220",
--    overflow: "visible",
--  },
--  pinnedHeaderSafeArea: {
--    alignItems: "center",
--    justifyContent: "flex-start",
--    marginTop: -52,
--    marginBottom: -18,
--    overflow: "visible",
--  },
-   homeHeader: {
-     marginBottom: 20,
-   },
--  headerLogo: {
--    width: HEADER_LOGO_WIDTH,
--    height: HEADER_LOGO_HEIGHT,
--  },
-   providerDashboardIntro: {
-     width: "100%",
-     alignItems: "flex-start",
-     marginBottom: 20,
-   },
-   homeGreeting: {
-     fontSize: 26,
-     fontWeight: "700",
-     color: colors.textPrimary,
-   },
-   homeSubtitle: {
-     fontSize: 16,
-     color: colors.textSecondary,
-     marginTop: 6,
-   },
-   providerDashboardRatingText: {
-     marginTop: 4,
-     fontSize: 13,
-     color: colors.textMuted,
-     fontWeight: "600",
-   },
-+  clientHomeNavHeader: {
-+    backgroundColor: "#0B1220",
-+    overflow: "visible",
-+  },
-+  clientHomeNavHeaderInner: {
-+    height: 112,
-+    justifyContent: "center",
-+    alignItems: "center",
-+    position: "relative",
-+  },
-+  clientHomeNavHeaderCenter: {
-+    position: "absolute",
-+    left: 0,
-+    right: 0,
-+    alignItems: "center",
-+    justifyContent: "center",
-+  },
-+  clientHomeNavHeaderRight: {
-+    position: "absolute",
-+    right: 16,
-+    top: 14,
-+    justifyContent: "center",
-+    alignItems: "center",
-+  },
-   providerDashboardNavHeader: {
-     backgroundColor: "#0B1220",
-     overflow: "visible",
-   },
-   providerDashboardNavHeaderInner: {
-     height: 70,
-     justifyContent: "center",
-     alignItems: "center",
-     position: "relative",
-   },
-   providerDashboardNavHeaderCenter: {
-     position: "absolute",
-     left: 0,
-     right: 0,
-     top: -40,
-     alignItems: "center",
-     justifyContent: "center",
-   },
-   providerDashboardNavHeaderRight: {
-     position: "absolute",
-     right: 16,
-     top: 10,
-     justifyContent: "center",
-     alignItems: "center",
-   },
-@@ -11964,51 +11984,51 @@ cardHeartButton: {
-     fontSize: 13,
-     color: colors.textSecondary,
-     fontWeight: "600",
-     textAlign: "center",
-   },
+         <div className="admin-card">
+           <div className="admin-tabs" role="tablist" aria-label="Provider reports tabs">
+             <button
+               type="button"
+               className={`admin-tab ${activeTab === 'performance' ? 'active' : ''}`}
+               onClick={() => setActiveTab('performance')}
+             >
+               Performance
+             </button>
+             <button
+               type="button"
+               className={`admin-tab ${activeTab === 'providers' ? 'active' : ''}`}
+               onClick={() => setActiveTab('providers')}
+             >
+               Providers List
+             </button>
++            <button
++              type="button"
++              className={`admin-tab ${activeTab === 'daily-bookings' ? 'active' : ''}`}
++              onClick={() => setActiveTab('daily-bookings')}
++            >
++              Daily Bookings
++            </button>
+           </div>
  
-   flashText: {
-     textAlign: "center",
-     fontSize: 14,
-     fontWeight: "500",
-   },
+           {activeTab === 'performance' ? (
+             <>
+               <div className="form-grid">
+                 <label className="form-field">
+                   <span>Start date</span>
+                   <input
+                     type="date"
+                     value={startDate}
+                     onChange={(e) => setStartDate(e.target.value)}
+                   />
+                 </label>
+                 <label className="form-field">
+                   <span>End date</span>
+                   <input
+                     type="date"
+                     value={endDate}
+                     onChange={(e) => setEndDate(e.target.value)}
+                   />
+                 </label>
+                 <label className="form-field">
+                   <span>Profession</span>
+                   <select value={profession} onChange={(e) => setProfession(e.target.value)}>
+                     <option value="all">All</option>
+@@ -2189,51 +2301,51 @@ function App() {
+                         <th>Total bookings</th>
+                         <th>Cancellation %</th>
+                       </tr>
+                     </thead>
+                     <tbody>
+                       {summary?.high_cancellation_rates?.length ? (
+                         summary.high_cancellation_rates.map((row) => (
+                           <tr key={row.provider_id}>
+                             <td>{row.provider_name || '—'}</td>
+                             <td>{row.profession || '—'}</td>
+                             <td>{row.cancelled}</td>
+                             <td>{row.total_bookings}</td>
+                             <td>{(row.cancellation_rate * 100).toFixed(1)}%</td>
+                           </tr>
+                         ))
+                       ) : (
+                         <tr>
+                           <td colSpan={5}>{loading ? 'Loading…' : 'No cancellation data found.'}</td>
+                         </tr>
+                       )}
+                     </tbody>
+                   </table>
+                 </div>
+               </div>
+             </>
+-          ) : (
++          ) : activeTab === 'providers' ? (
+             <>
+               <form className="providers-list-search" onSubmit={handleProviderSearchSubmit}>
+                 <input
+                   type="text"
+                   placeholder="Search username or WhatsApp"
+                   value={providersSearchInput}
+                   onChange={(e) => setProvidersSearchInput(e.target.value)}
+                 />
+                 <button className="primary-btn" type="submit" disabled={providersLoading}>
+                   Search
+                 </button>
+                 <button className="secondary-btn" type="button" onClick={handleClearProviderSearch} disabled={providersLoading}>
+                   Clear
+                 </button>
+               </form>
  
-     center: {
-     flex: 1,
-     backgroundColor: colors.background,
-     justifyContent: "center",
-     alignItems: "center",
-     padding: 20,
-   },
+               {providersError && <p className="form-error">{providersError}</p>}
+               {providersLoading && <p className="muted">Loading providers…</p>}
  
-    homeScroll: {
-     flexGrow: 1,
-     backgroundColor: colors.background,
-     paddingHorizontal: 20,
-     paddingBottom: 32,
--    paddingTop: 8,
-+    paddingTop: 0,
-   },
-   homeCard: {
-     width: "100%",
-   },
+               <div className="provider-missing-table">
+                 <table>
+                   <thead>
+                     <tr>
+                       <th>ID</th>
+                       <th>Username</th>
+@@ -2261,50 +2373,129 @@ function App() {
+                       ))
+                     )}
+                   </tbody>
+                 </table>
+               </div>
  
-   loadingText: {
-     marginTop: 12,
-     fontSize: 16,
-     color: colors.textSecondary,
-   },
-   errorText: {
-     fontSize: 16,
-     color: colors.error,
-     textAlign: "center",
-   },
-   profileScroll: {
-     flexGrow: 1,
-     backgroundColor: colors.background,
-     padding: 20,
-     paddingTop: 32,
-   },
-   profileHeaderCard: {
-     backgroundColor: colors.surface,
-     borderRadius: 16,
-     padding: 16,
+               <div className="button-row providers-pagination-row">
+                 <button
+                   className="secondary-btn"
+                   type="button"
+                   onClick={() => setProvidersOffset((current) => Math.max(0, current - providersLimit))}
+                   disabled={providersLoading || providersOffset === 0}
+                 >
+                   Previous
+                 </button>
+                 <button
+                   className="secondary-btn"
+                   type="button"
+                   onClick={() => setProvidersOffset((current) => current + providersLimit)}
+                   disabled={providersLoading || providers.length < providersLimit}
+                 >
+                   Next
+                 </button>
+               </div>
+             </>
++          ) : (
++            <>
++              <div className="report-section daily-bookings-filter">
++                <div className="form-grid single">
++                  <label className="form-field">
++                    <span>Date</span>
++                    <input
++                      type="date"
++                      value={dailyBookingsDate}
++                      onChange={(e) => setDailyBookingsDate(e.target.value)}
++                    />
++                  </label>
++                </div>
++              </div>
++
++              {dailyBookingsError && <p className="form-error">{dailyBookingsError}</p>}
++              {dailyBookingsLoading && !dailyBookingsError && <p className="muted">Loading daily bookings…</p>}
++
++              {!dailyBookingsLoading && !dailyBookingsError && dailyBookingsProviders.length === 0 ? (
++                <p className="muted">No appointments found for this date.</p>
++              ) : (
++                <div className="daily-bookings-list">
++                  {dailyBookingsProviders.map((provider) => {
++                    const providerName = provider.provider_name || provider.provider_username || `Provider #${provider.provider_id}`
++                    const isExpanded = !!expandedDailyProviders[provider.provider_id]
++                    return (
++                      <div className="daily-bookings-provider-card" key={provider.provider_id}>
++                        <button
++                          type="button"
++                          className="daily-bookings-provider-header"
++                          onClick={() => toggleDailyProviderExpansion(provider.provider_id)}
++                        >
++                          <div>
++                            <p className="daily-bookings-provider-name">{providerName}</p>
++                            <p className="muted">{provider.profession || '—'}</p>
++                          </div>
++                          <div className="daily-bookings-provider-meta">
++                            <span>{provider.appointment_count} appointment{provider.appointment_count === 1 ? '' : 's'}</span>
++                            <span>{formatCurrencyGYD(provider.total_value)}</span>
++                            <span className="muted">{isExpanded ? 'Collapse' : 'Expand'}</span>
++                          </div>
++                        </button>
++
++                        {isExpanded && (
++                          <div className="provider-missing-table daily-bookings-table">
++                            <table>
++                              <thead>
++                                <tr>
++                                  <th>Time</th>
++                                  <th>Client</th>
++                                  <th>Service</th>
++                                  <th>Price</th>
++                                  <th>Status</th>
++                                </tr>
++                              </thead>
++                              <tbody>
++                                {provider.appointments.map((appointment) => (
++                                  <tr key={appointment.booking_id}>
++                                    <td>{formatTimeDisplay(appointment.start_at)}</td>
++                                    <td>{appointment.client_name || appointment.client_username || '—'}</td>
++                                    <td>{appointment.service_name || '—'}</td>
++                                    <td>{formatCurrencyGYD(appointment.price)}</td>
++                                    <td>
++                                      <span className={`status-pill ${appointmentStatusClass(appointment.status)}`}>
++                                        {appointment.status || '—'}
++                                      </span>
++                                    </td>
++                                  </tr>
++                                ))}
++                              </tbody>
++                            </table>
++                          </div>
++                        )}
++                      </div>
++                    )
++                  })}
++                </div>
++              )}
++            </>
+           )}
+         </div>
+       </div>
+     )
+   }
+ 
+   const AdminClientsList = () => {
+     const [clients, setClients] = React.useState([])
+     const [loading, setLoading] = React.useState(false)
+     const [error, setError] = React.useState('')
+     const [searchInput, setSearchInput] = React.useState('')
+     const [search, setSearch] = React.useState('')
+     const [offset, setOffset] = React.useState(0)
+     const limit = 50
+ 
+     const loadClients = React.useCallback(async () => {
+       setLoading(true)
+       setError('')
+       try {
+         const params = { limit, offset }
+         if (search.trim()) {
+           params.search = search.trim()
+         }
+         const res = await apiClient.get('/admin/clients/list', { params })
+         setClients(Array.isArray(res.data) ? res.data : [])
  
 EOF
 )
