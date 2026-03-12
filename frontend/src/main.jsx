@@ -1616,39 +1616,7 @@ function App() {
       { value: 'pending', label: 'Pending' },
     ]
 
-    // const loadDailyBookings = React.useCallback(async (selectedDate) => {
-    //   const normalizedDate = selectedDate || dailyBookingsDate
-    //   if (!normalizedDate) return
-
-    //   const requestId = dailyBookingsRequestIdRef.current + 1
-    //   dailyBookingsRequestIdRef.current = requestId
-    //   setDailyBookingsLoading(true)
-    //   setDailyBookingsError('')
-
-    //   try {
-    //     const res = await apiClient.get('/admin/reports/provider-performance/daily-bookings', {
-    //       params: { date: normalizedDate },
-    //     })
-    //     if (dailyBookingsRequestIdRef.current !== requestId) {
-    //       return
-    //     }
-
-    //     const nextProviders = Array.isArray(res?.data?.providers) ? res.data.providers : []
-    //     setDailyBookingsProviders(nextProviders)
-    //     setExpandedDailyProviders({})
-    //   } catch (err) {
-    //     if (dailyBookingsRequestIdRef.current !== requestId) {
-    //       return
-    //     }
-    //     logApiError(err)
-    //     setDailyBookingsProviders([])
-    //     setDailyBookingsError('Unable to load daily bookings. Please try again.')
-    //   } finally {
-    //     if (dailyBookingsRequestIdRef.current === requestId) {
-    //       setDailyBookingsLoading(false)
-    //     }
-    //   }
-    // }, [dailyBookingsDate])
+  
 
     const loadProfessions = React.useCallback(async () => {
       setLoadingProfessions(true)

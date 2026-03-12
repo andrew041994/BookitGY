@@ -20,12 +20,13 @@ def _current_month_past_time(now: datetime) -> datetime:
 
 
 def _create_provider_graph(session, models):
-    provider_user = models.User(username="provider@example.com", is_provider=True)
-    customer_user = models.User(username="customer@example.com")
+    suffix = session.query(models.User).count() + 1
+    provider_user = models.User(username=f"provider{suffix}@example.com", is_provider=True)
+    customer_user = models.User(username=f"customer{suffix}@example.com")
     session.add_all([provider_user, customer_user])
     session.commit()
 
-    provider = models.Provider(user_id=provider_user.id, account_number="ACC-1")
+    provider = models.Provider(user_id=provider_user.id, account_number=f"ACC-{suffix}")
     session.add(provider)
     session.commit()
     session.refresh(provider)
@@ -41,6 +42,13 @@ def _create_provider_graph(session, models):
     session.refresh(service)
 
     return provider, customer_user, service
+
+
+def _create_real_provider_graph(session, models):
+    while True:
+        provider, customer, service = _create_provider_graph(session, models)
+        if provider.id > 6:
+            return provider, customer, service
 
 
 def _add_booking(session, models, *, customer, service, start_time, end_time, status):
@@ -292,6 +300,113 @@ def test_completed_booking_counts_toward_fees(db_session):
 
     amount_due = crud.get_provider_fees_due(session, provider.id)
     assert amount_due == 100.0  # 10% of the 1000 GYD service price
+
+
+def test_intro_promo_eligible_provider_within_window_has_zero_fee(db_session):
+    session, models, crud = db_session
+    provider, customer, service = _create_real_provider_graph(session, models)
+
+    now = now_guyana()
+    provider.promo_eligible = True
+    provider.promo_started_at = now - timedelta(days=10)
+    provider.promo_ends_at = now + timedelta(days=10)
+    provider.default_platform_fee_pct = Decimal("10.00")
+    session.commit()
+
+    start_time = now - timedelta(hours=2)
+    end_time = start_time + timedelta(hours=1)
+    _add_booking(
+        session,
+        models,
+        customer=customer,
+        service=service,
+        start_time=start_time,
+        end_time=end_time,
+        status="completed",
+    )
+
+    amount_due = crud.get_provider_fees_due(session, provider.id)
+    assert amount_due == 0.0
+
+
+def test_intro_promo_eligible_provider_after_window_uses_default_fee(db_session):
+    session, models, crud = db_session
+    provider, customer, service = _create_real_provider_graph(session, models)
+
+    now = now_guyana()
+    provider.promo_eligible = True
+    provider.promo_started_at = now - timedelta(days=120)
+    provider.promo_ends_at = now - timedelta(days=1)
+    provider.default_platform_fee_pct = Decimal("10.00")
+    session.commit()
+
+    start_time = now - timedelta(hours=2)
+    end_time = start_time + timedelta(hours=1)
+    _add_booking(
+        session,
+        models,
+        customer=customer,
+        service=service,
+        start_time=start_time,
+        end_time=end_time,
+        status="completed",
+    )
+
+    amount_due = crud.get_provider_fees_due(session, provider.id)
+    assert amount_due == 100.0
+
+
+def test_non_eligible_provider_uses_default_fee(db_session):
+    session, models, crud = db_session
+    provider, customer, service = _create_real_provider_graph(session, models)
+
+    now = now_guyana()
+    provider.promo_eligible = False
+    provider.promo_started_at = None
+    provider.promo_ends_at = None
+    provider.default_platform_fee_pct = Decimal("10.00")
+    session.commit()
+
+    start_time = now - timedelta(hours=2)
+    end_time = start_time + timedelta(hours=1)
+    _add_booking(
+        session,
+        models,
+        customer=customer,
+        service=service,
+        start_time=start_time,
+        end_time=end_time,
+        status="completed",
+    )
+
+    amount_due = crud.get_provider_fees_due(session, provider.id)
+    assert amount_due == 100.0
+
+
+def test_billing_uses_appointment_date_not_booking_creation(db_session):
+    session, models, crud = db_session
+    provider, customer, service = _create_real_provider_graph(session, models)
+
+    now = now_guyana()
+    provider.promo_eligible = True
+    provider.promo_started_at = now - timedelta(days=10)
+    provider.promo_ends_at = now - timedelta(days=1)
+    provider.default_platform_fee_pct = Decimal("10.00")
+    session.commit()
+
+    start_time = now - timedelta(hours=2)
+    _add_booking(
+        session,
+        models,
+        customer=customer,
+        service=service,
+        start_time=start_time,
+        end_time=start_time + timedelta(hours=1),
+        status="completed",
+    )
+
+    amount_due = crud.get_provider_fees_due(session, provider.id)
+    assert amount_due == 100.0
 
 
 def test_completion_time_controls_billing_window(db_session):
@@ -934,7 +1049,7 @@ def test_existing_bill_not_modified(db_session):
     session.add(existing)
     session.commit()
 
-    crud.generate_monthly_bills(session, month=billing_month.date())
+    crud.generate_monthly_bills(session, month=billing_month.date(), force_regen=True)
 
     persisted = (
         session.query(models.Bill)
@@ -955,6 +1070,122 @@ def test_existing_bill_not_modified(db_session):
         .count()
         == 1
     )
+
+
+def test_finalized_previous_bill_remains_unchanged_when_new_cycle_runs(db_session):
+    session, models, crud = db_session
+    provider, customer, service = _create_provider_graph(session, models)
+
+    previous_month = datetime(2023, 1, 1)
+    current_month = datetime(2023, 2, 1)
+
+    previous_bill = models.Bill(
+        provider_id=provider.id,
+        month=previous_month.date(),
+        total_gyd=Decimal("1000.00"),
+        fee_gyd=Decimal("100.00"),
+        due_date=datetime(2023, 2, 15, 23, 59),
+        is_paid=False,
+    )
+    previous_cycle = models.BillingCycle(
+        account_number=provider.account_number,
+        cycle_month=previous_month.date(),
+        is_paid=False,
+        credits_applied_gyd=Decimal("0"),
+        finalized_at=datetime(2023, 2, 1, 0, 0),
+    )
+    session.add_all([previous_bill, previous_cycle])
+    session.commit()
+
+    _create_completed_booking_for_month(
+        session,
+        models,
+        customer=customer,
+        service=service,
+        month_start=current_month,
+        day=5,
+        price_gyd=1000,
+    )
+
+    crud.generate_monthly_bills(session, month=current_month.date())
+
+    persisted_previous = (
+        session.query(models.Bill)
+        .filter(
+            models.Bill.provider_id == provider.id,
+            models.Bill.month == previous_month.date(),
+        )
+        .one()
+    )
+    current_bill = (
+        session.query(models.Bill)
+        .filter(
+            models.Bill.provider_id == provider.id,
+            models.Bill.month == current_month.date(),
+        )
+        .one()
+    )
+
+    assert float(persisted_previous.total_gyd) == 1000.0
+    assert float(persisted_previous.fee_gyd) == 100.0
+    assert persisted_previous.due_date == datetime(2023, 2, 15, 23, 59)
+    assert float(current_bill.total_gyd) == 1000.0
+
+
+def test_new_provider_signup_gets_intro_promo_when_slots_available(db_session):
+    session, models, crud = db_session
+
+    for i in range(6):
+        user = models.User(username=f"seed-test-provider-{i}", is_provider=True)
+        session.add(user)
+        session.commit()
+        session.add(models.Provider(user_id=user.id, account_number=f"ACC-SEED-{i}"))
+        session.commit()
+
+    new_user = models.User(username="new-provider-a", is_provider=True)
+    session.add(new_user)
+    session.commit()
+
+    provider = crud.create_provider_for_user(session, new_user)
+
+    assert provider.id > 6
+    assert provider.promo_eligible is True
+    assert provider.promo_started_at is not None
+    assert provider.promo_ends_at is not None
+    assert Decimal(str(provider.default_platform_fee_pct)) == Decimal("10.00")
+
+
+def test_new_provider_signup_does_not_get_intro_promo_after_first_100(db_session):
+    session, models, crud = db_session
+    eligible_assigned = 0
+
+    for i in range(106):
+        user = models.User(username=f"seed-provider-cap-{i}", is_provider=True)
+        session.add(user)
+        session.commit()
+
+        provider = models.Provider(user_id=user.id, account_number=f"ACC-CAP-{i}")
+        session.add(provider)
+        session.commit()
+
+        if provider.id > 6 and eligible_assigned < 100:
+            provider.promo_eligible = True
+            provider.promo_started_at = datetime(2023, 1, 1)
+            provider.promo_ends_at = datetime(2023, 4, 1)
+            provider.default_platform_fee_pct = Decimal("10.00")
+            session.commit()
+            eligible_assigned += 1
+
+    new_user = models.User(username="new-provider-b", is_provider=True)
+    session.add(new_user)
+    session.commit()
+
+    provider = crud.create_provider_for_user(session, new_user)
+
+    assert provider.promo_eligible is False
+    assert provider.promo_started_at is None
+    assert provider.promo_ends_at is None
+    assert Decimal(str(provider.default_platform_fee_pct)) == Decimal("10.00")
 
 
 def test_paid_bills_are_not_overwritten(db_session):

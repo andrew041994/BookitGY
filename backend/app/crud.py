@@ -33,6 +33,9 @@ pwd_context = CryptContext(schemes=["pbkdf2_sha256"], deprecated="auto")
 
 EXPO_PUSH_URL = "https://exp.host/--/api/v2/push/send"
 DEFAULT_SERVICE_CHARGE_PERCENTAGE = Decimal("10.0")
+INTRO_PROMO_REAL_PROVIDER_MIN_ID = 6
+INTRO_PROMO_MAX_ELIGIBLE_PROVIDERS = 100
+INTRO_PROMO_MONTHS = 3
 BILL_CREDIT_KIND_CONSUMED = "billing_credit_consumed"
 SUSPENDED_PROVIDER_MESSAGE = (
     "Provider account is suspended and cannot accept bookings."
@@ -165,14 +168,99 @@ def set_username(
 def get_provider_by_user_id(db: Session, user_id: int):
     return db.query(models.Provider).filter(models.Provider.user_id == user_id).first()
 
+
+def _add_months(value: datetime, months: int) -> datetime:
+    month_index = value.month - 1 + months
+    year = value.year + month_index // 12
+    month = month_index % 12 + 1
+
+    if month == 12:
+        next_month_start = datetime(year + 1, 1, 1)
+    else:
+        next_month_start = datetime(year, month + 1, 1)
+    last_day = (next_month_start - timedelta(days=1)).day
+    day = min(value.day, last_day)
+
+    return value.replace(year=year, month=month, day=day)
+
+
+def _assign_intro_promo_fields(db: Session, provider: models.Provider) -> None:
+    provider.default_platform_fee_pct = Decimal("10.00")
+
+    if provider.id <= INTRO_PROMO_REAL_PROVIDER_MIN_ID:
+        provider.promo_eligible = False
+        provider.promo_started_at = None
+        provider.promo_ends_at = None
+        return
+
+    eligible_count = (
+        db.query(func.count(models.Provider.id))
+        .filter(
+            models.Provider.id > INTRO_PROMO_REAL_PROVIDER_MIN_ID,
+            models.Provider.promo_eligible.is_(True),
+        )
+        .scalar()
+        or 0
+    )
+
+    if eligible_count < INTRO_PROMO_MAX_ELIGIBLE_PROVIDERS:
+        promo_start = provider.created_at or now_guyana()
+        provider.promo_eligible = True
+        provider.promo_started_at = promo_start
+        provider.promo_ends_at = _add_months(promo_start, INTRO_PROMO_MONTHS)
+    else:
+        provider.promo_eligible = False
+        provider.promo_started_at = None
+        provider.promo_ends_at = None
+
+
+def get_effective_platform_fee_pct(
+    provider: models.Provider,
+    appointment_start_at: datetime | None,
+) -> Decimal:
+    if (
+        bool(getattr(provider, "promo_eligible", False))
+        and appointment_start_at is not None
+        and getattr(provider, "promo_ends_at", None) is not None
+        and appointment_start_at < provider.promo_ends_at
+    ):
+        return Decimal("0.00")
+
+    default_pct = getattr(provider, "default_platform_fee_pct", None)
+    if default_pct is None:
+        return Decimal("10.00")
+
+    return Decimal(str(default_pct))
+
+
+def _calculate_platform_fee_from_rows(
+    rows,
+    provider: models.Provider,
+) -> Decimal:
+    total_fee = Decimal("0")
+    for row in rows:
+        if _is_cancelled_status(row.status):
+            continue
+        if normalized_booking_status_value(row.status) != "completed":
+            continue
+
+        service_price = Decimal(str(row.service_price_gyd or 0))
+        effective_pct = get_effective_platform_fee_pct(provider, row.start_time)
+        total_fee += service_price * (effective_pct / Decimal("100"))
+
+    return total_fee.quantize(Decimal("1"))
+
 def create_provider_for_user(db: Session, user: models.User):
     """Create a provider for this user and assign an account number."""
     provider = models.Provider(
         user_id=user.id,
         bio="",
         account_number=generate_account_number_for_email(user.email),
+        created_at=now_guyana(),
     )
     db.add(provider)
+    db.flush()
+    _assign_intro_promo_fields(db, provider)
     db.commit()
     db.refresh(provider)
     return provider
@@ -1989,27 +2077,8 @@ def generate_monthly_bills(
             if prov.account_number:
                 cycle = get_billing_cycle_for_account(db, prov.account_number, start)
 
-            if force_regen and not bool(existing_bill.is_paid):
-                total = (
-                    _billable_bookings_base_query(db, prov.id, as_of=period_end)
-                    .with_entities(func.sum(models.Service.price_gyd))
-                    .filter(
-                        models.Booking.end_time >= start_dt,
-                        models.Booking.end_time < period_end,
-                    )
-                    .scalar()
-                    or 0
-                )
-                service_charge_pct = get_platform_service_charge_percentage(db)
-                fee_rate = service_charge_pct / Decimal("100")
-                fee = fee_rate * Decimal(str(total))
-
-                due = datetime(next_month.year, next_month.month, 15, 23, 59)
-                existing_bill.total_gyd = total
-                existing_bill.fee_gyd = fee
-                existing_bill.due_date = due
-                db.commit()
-                db.refresh(existing_bill)
+            # Preserve immutability for persisted bills: if a bill already exists
+            # for this provider/month, never recompute or overwrite stored totals.
 
             fees_due = Decimal(str(existing_bill.fee_gyd or 0))
             credits_applied = Decimal(str(cycle.credits_applied_gyd or 0)) if cycle else Decimal("0")
@@ -2029,21 +2098,22 @@ def generate_monthly_bills(
             _ensure_consumed_credit_for_cycle(db, provider_id=prov.id, cycle=cycle)
             continue
 
-        total = (
+        rows = (
             _billable_bookings_base_query(db, prov.id, as_of=period_end)
-            .with_entities(func.sum(models.Service.price_gyd))
             .filter(
                 models.Booking.end_time >= start_dt,
                 models.Booking.end_time < period_end,
             )
-            .scalar()
-            or 0
+            .with_entities(
+                models.Booking.start_time,
+                models.Booking.status,
+                models.Service.price_gyd.label("service_price_gyd"),
+            )
+            .all()
         )
+        total = sum(Decimal(str(row.service_price_gyd or 0)) for row in rows)
 
-        # Platform fee on completed bookings using admin-configured percentage
-        service_charge_pct = get_platform_service_charge_percentage(db)
-        fee_rate = service_charge_pct / Decimal("100")
-        fee = fee_rate * Decimal(str(total))
+        fee = _calculate_platform_fee_from_rows(rows, prov)
 
         # If there's nothing to bill and no existing bill, skip
         if total == 0:
@@ -2235,6 +2305,7 @@ def get_provider_fees_due(db: Session, provider_id: int) -> float:
             models.Booking.end_time < period_end,
         )
         .with_entities(
+            models.Booking.start_time,
             models.Booking.end_time,
             models.Booking.status,
             models.Service.price_gyd.label("service_price_gyd"),
@@ -2242,26 +2313,11 @@ def get_provider_fees_due(db: Session, provider_id: int) -> float:
         .all()
     )
 
-    services_total = Decimal("0")
-    for r in rows:
-        end_time = r.end_time
-        if not end_time:
-            continue
-
-        if _is_cancelled_status(r.status):
-            continue
-
-        price = r.service_price_gyd or 0
-        services_total += Decimal(str(price))
-
-    if services_total <= 0:
+    provider = db.query(models.Provider).filter(models.Provider.id == provider_id).first()
+    if not provider:
         return 0.0
 
-    service_charge_pct = get_platform_service_charge_percentage(db)
-    fee_rate = Decimal(str(max(service_charge_pct, 0))) / Decimal("100")
-
-    platform_fee = services_total * fee_rate
-    platform_fee = platform_fee.quantize(Decimal("1"))
+    platform_fee = _calculate_platform_fee_from_rows(rows, provider)
 
     if platform_fee <= 0:
         return 0.0
@@ -2301,6 +2357,7 @@ def get_provider_current_month_due_from_completed_bookings(
             models.Booking.end_time < period_end,
         )
         .with_entities(
+            models.Booking.start_time,
             models.Booking.end_time,
             models.Booking.status,
             models.Service.price_gyd.label("service_price_gyd"),
@@ -2309,24 +2366,11 @@ def get_provider_current_month_due_from_completed_bookings(
         .all()
     )
 
-    services_total = Decimal("0")
-    for r in rows:
-        if _is_cancelled_status(r.status):
-            continue
-        if normalized_booking_status_value(r.status) != "completed":
-            continue
-
-        price = r.service_price_gyd or 0
-        services_total += Decimal(str(price))
-
-    if services_total <= 0:
+    provider = db.query(models.Provider).filter(models.Provider.id == provider_id).first()
+    if not provider:
         return 0.0
 
-    service_charge_pct = get_platform_service_charge_percentage(db)
-    fee_rate = Decimal(str(max(service_charge_pct, 0))) / Decimal("100")
-    platform_fee = services_total * fee_rate
-
-    platform_fee = platform_fee.quantize(Decimal("1"))
+    platform_fee = _calculate_platform_fee_from_rows(rows, provider)
     if platform_fee <= 0:
         return 0.0
 
@@ -2368,6 +2412,7 @@ def get_provider_fees_due_for_cycle(
             models.Booking.end_time < cutoff,
         )
         .with_entities(
+            models.Booking.start_time,
             models.Booking.end_time,
             models.Booking.status,
             models.Service.price_gyd.label("service_price_gyd"),
@@ -2376,28 +2421,14 @@ def get_provider_fees_due_for_cycle(
         .all()
     )
 
-    services_total = Decimal("0")
-    for r in rows:
-        if _is_cancelled_status(r.status):
-            continue
-        if normalized_booking_status_value(r.status) != "completed":
-            continue
-
-        price = r.service_price_gyd or 0
-        services_total += Decimal(str(price))
-
-    if services_total <= 0:
+    provider = db.query(models.Provider).filter(models.Provider.id == provider_id).first()
+    if not provider:
         return 0.0
 
-    service_charge_pct = get_platform_service_charge_percentage(db)
-    fee_rate = Decimal(str(max(service_charge_pct, 0))) / Decimal("100")
-    platform_fee = services_total * fee_rate
-
-    platform_fee = platform_fee.quantize(Decimal("1"))
+    platform_fee = _calculate_platform_fee_from_rows(rows, provider)
     if platform_fee <= 0:
         return 0.0
 
-    provider = db.query(models.Provider).filter(models.Provider.id == provider_id).first()
     credits = Decimal("0")
     if provider and provider.account_number:
         billing_cycle = get_billing_cycle_for_account(db, provider.account_number, cycle_month)
@@ -2440,6 +2471,7 @@ def get_provider_platform_fee_for_cycle(
             models.Booking.end_time < cutoff,
         )
         .with_entities(
+            models.Booking.start_time,
             models.Booking.end_time,
             models.Booking.status,
             models.Service.price_gyd.label("service_price_gyd"),
@@ -2448,24 +2480,11 @@ def get_provider_platform_fee_for_cycle(
         .all()
     )
 
-    services_total = Decimal("0")
-    for r in rows:
-        if _is_cancelled_status(r.status):
-            continue
-        if normalized_booking_status_value(r.status) != "completed":
-            continue
-
-        price = r.service_price_gyd or 0
-        services_total += Decimal(str(price))
-
-    if services_total <= 0:
+    provider = db.query(models.Provider).filter(models.Provider.id == provider_id).first()
+    if not provider:
         return 0.0
 
-    service_charge_pct = get_platform_service_charge_percentage(db)
-    fee_rate = Decimal(str(max(service_charge_pct, 0))) / Decimal("100")
-    platform_fee = services_total * fee_rate
-
-    platform_fee = platform_fee.quantize(Decimal("1"))
+    platform_fee = _calculate_platform_fee_from_rows(rows, provider)
     if platform_fee <= 0:
         return 0.0
 
@@ -2616,8 +2635,6 @@ def list_provider_billing_cycles(
         .all()
     )
 
-    service_charge_pct = get_platform_service_charge_percentage(db)
-    fee_rate = Decimal(str(max(service_charge_pct, 0))) / Decimal("100")
     now = now_guyana()
     now_date = now.date()
     current_cycle_month = _normalize_cycle_month(current_billing_cycle_month(now_date))
@@ -2645,6 +2662,7 @@ def list_provider_billing_cycles(
             )
             .with_entities(
                 models.Booking.status,
+                models.Booking.start_time,
                 models.Service.id.label("service_id"),
                 models.Service.name.label("service_name"),
                 models.Service.price_gyd.label("service_price_gyd"),
@@ -2671,11 +2689,17 @@ def list_provider_billing_cycles(
                     "service_name": row.service_name or "",
                     "qty": 0,
                     "services_total_gyd": Decimal("0"),
+                    "platform_fee_gyd": Decimal("0"),
                 },
             )
             item["qty"] = int(item["qty"]) + 1
             item["services_total_gyd"] = (
                 Decimal(str(item["services_total_gyd"])) + price
+            )
+            effective_pct = get_effective_platform_fee_pct(provider, row.start_time)
+            item["platform_fee_gyd"] = (
+                Decimal(str(item["platform_fee_gyd"]))
+                + (price * (effective_pct / Decimal("100")))
             )
 
         bill_credits = Decimal(str(billing_cycle.credits_applied_gyd or 0))
@@ -2709,7 +2733,7 @@ def list_provider_billing_cycles(
         items = []
         for item in items_map.values():
             item_services_total = Decimal(str(item["services_total_gyd"]))
-            item_platform_fee = (item_services_total * fee_rate).quantize(Decimal("1"))
+            item_platform_fee = Decimal(str(item["platform_fee_gyd"])).quantize(Decimal("1"))
             items.append(
                 {
                     "service_id": int(item["service_id"]),

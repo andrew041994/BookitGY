@@ -106,6 +106,11 @@ class Provider(Base):
     is_locked = Column(Boolean, default=False)
     avg_rating = Column(Float, nullable=True)
     rating_count = Column(Integer, nullable=False, default=0)
+    created_at = Column(DateTime, default=now_guyana, nullable=False)
+    promo_eligible = Column(Boolean, default=False, nullable=False)
+    promo_started_at = Column(DateTime, nullable=True)
+    promo_ends_at = Column(DateTime, nullable=True)
+    default_platform_fee_pct = Column(Numeric(5, 2), default=10.00, nullable=False)
     user = relationship("User")
     booking_ratings = relationship("BookingRating", back_populates="provider")
 
