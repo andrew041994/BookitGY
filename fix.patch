@@ -1,50 +1,60 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
-diff --git a/mobile/package.json b/mobile/package.json
-index 8174e97d9fba45f6fbe831df3dac7e4d27340e32..db444df24786cbcd74a250cab2e93fc439526d9d 100644
---- a/mobile/package.json
-+++ b/mobile/package.json
-@@ -23,39 +23,40 @@
-     "expo": "^54.0.33",
-     "expo-auth-session": "~6.1.0",
-     "expo-build-properties": "~1.0.10",
-     "expo-constants": "^18.0.13",
-     "expo-image-picker": "~17.0.10",
-     "expo-linear-gradient": "~15.0.8",
-     "expo-linking": "^8.0.11",
-     "expo-location": "~19.0.8",
-     "expo-notifications": "~0.32.16",
-     "expo-secure-store": "~15.0.8",
-     "expo-sharing": "~14.0.8",
-     "expo-web-browser": "~15.0.10",
-     "react": "19.1.0",
-     "react-dom": "19.1.0",
-     "react-native": "0.81.5",
-     "react-native-calendars": "^1.1314.0",
-     "react-native-dotenv": "^3.4.11",
-     "react-native-gesture-handler": "~2.28.0",
-     "react-native-keyboard-aware-scroll-view": "^0.9.5",
-     "react-native-maps": "1.20.1",
-     "react-native-safe-area-context": "~5.6.0",
-     "react-native-screens": "~4.16.0",
-     "react-native-view-shot": "4.0.3",
-     "react-native-web": "^0.21.0",
-     "sentry-expo": "~7.0.0",
--    "tslib": "^2.8.1"
-+    "tslib": "^2.8.1",
-+    "react-native-image-viewing": "^0.2.2"
-   },
-   "devDependencies": {
-     "@babel/core": "^7.20.0",
-     "@react-native-community/cli": "^20.1.1",
-     "@types/react": "~19.1.10",
-     "@types/react-dom": "~19.1.7",
-     "typescript": "~5.9.2"
-   },
-   "private": true,
-   "overrides": {
-     "@sentry/react-native": "^6.3.0"
-   }
- }
+diff --git a/mobile/App.js b/mobile/App.js
+index 69f9ca0de4cfb60267d0286f896af004f1932b9f..662e66623b0c06ae8d0f811103706b18f9ef5fe1 100644
+--- a/mobile/App.js
++++ b/mobile/App.js
+@@ -6271,51 +6271,50 @@ function SearchScreen({ token, showFlash, navigation, route, toggleFavorite, isF
+                 {selectedService && selectedDate && (
+                   <View style={{ marginTop: 12, marginBottom: 20 }}>
+                     <TouchableOpacity
+                       style={[
+                         styles.bookButton,
+                         (!selectedSlot || bookingLoading) && styles.bookButtonDisabled,
+                       ]}
+                       disabled={!selectedSlot || bookingLoading}
+                       onPress={handleBookAppointment}
+                     >
+                       <Text style={styles.bookButtonLabel}>
+                         {bookingLoading ? "Booking..." : "Book Appointment"}
+                       </Text>
+                     </TouchableOpacity>
+                   </View>
+                 )}
+               </ScrollView>
+               <ImageView
+                 images={catalogImageUrls.map((uri) => ({ uri }))}
+                 imageIndex={catalogViewerStartIndex}
+                 visible={catalogViewerVisible}
+                 onRequestClose={handleCloseCatalogViewer}
+                 onImageIndexChange={(nextIndex) => {
+                   if (typeof nextIndex === "number") {
+                     setCatalogViewerIndex(nextIndex);
+-                    setCatalogViewerStartIndex(nextIndex);
+                   }
+                 }}
+                 backgroundColor="#000000"
+                 swipeToCloseEnabled={false}
+                 HeaderComponent={({ imageIndex }) => (
+                   <View style={styles.catalogViewerModal}>
+                     <Pressable
+                       onPress={handleCloseCatalogViewer}
+                       style={[
+                         styles.catalogViewerCloseButton,
+                         { top: Math.max(insets.top, 10) + 6 },
+                       ]}
+                       hitSlop={10}
+                     >
+                       <Ionicons name="close" size={28} color="#FFFFFF" />
+                     </Pressable>
+                     {catalogImageUrls.length > 1 ? (
+                       <View
+                         style={[
+                           styles.catalogViewerCounter,
+                           { bottom: Math.max(insets.bottom, 12) + 8 },
+                         ]}
+                       >
+                         <Text style={styles.catalogViewerCounterText}>
+                           {(typeof imageIndex === "number" ? imageIndex : catalogViewerIndex) + 1} / {catalogImageUrls.length}
  
 EOF
 )

@@ -6293,7 +6293,6 @@ function SearchScreen({ token, showFlash, navigation, route, toggleFavorite, isF
                 onImageIndexChange={(nextIndex) => {
                   if (typeof nextIndex === "number") {
                     setCatalogViewerIndex(nextIndex);
-                    setCatalogViewerStartIndex(nextIndex);
                   }
                 }}
                 backgroundColor="#000000"
