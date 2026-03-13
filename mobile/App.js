@@ -5193,6 +5193,8 @@ function AppointmentsScreen({ token, showFlash, pendingChatConversationId, clear
 
 
 function SearchScreen({ token, showFlash, navigation, route, toggleFavorite, isFavorite, syncFavoritesFromList}) {
+  const insets = useSafeAreaInsets();
+  const { width } = useWindowDimensions();
   const incomingUsername = route?.params?.incomingUsername ?? null;
   const deeplinkNonce = route?.params?.deeplinkNonce ?? null;
   const [filteredProviders, setFilteredProviders] = useState([]);
@@ -5212,6 +5214,9 @@ function SearchScreen({ token, showFlash, navigation, route, toggleFavorite, isF
   const [catalogImages, setCatalogImages] = useState([]);
   const [catalogLoading, setCatalogLoading] = useState(false);
   const [catalogError, setCatalogError] = useState("");
+  const [catalogViewerVisible, setCatalogViewerVisible] = useState(false);
+  const [catalogViewerStartIndex, setCatalogViewerStartIndex] = useState(0);
+  const [catalogViewerIndex, setCatalogViewerIndex] = useState(0);
   const [availability, setAvailability] = useState([]);
   const [availabilityLoading, setAvailabilityLoading] = useState(false);
   const [availabilityError, setAvailabilityError] = useState("");
@@ -5230,6 +5235,36 @@ function SearchScreen({ token, showFlash, navigation, route, toggleFavorite, isF
   const initializedNavProviderKeyRef = useRef(null);
   //Radius 
   const distanceChips = [0, 5, 10, 15, 20];
+  const catalogViewerItems = useMemo(
+    () =>
+      catalogImages
+        .map((img) => ({
+          id: img?.id,
+          imageUrl: resolveImageUrl(img?.image_url || img?.url || img?.image),
+        }))
+        .filter((img) => Boolean(img.imageUrl)),
+    [catalogImages]
+  );
+  const catalogImageUrls = useMemo(
+    () => catalogViewerItems.map((img) => img.imageUrl),
+    [catalogViewerItems]
+  );
+
+  const handleOpenCatalogViewer = useCallback(
+    (index) => {
+      if (!catalogImageUrls.length) return;
+      setCatalogViewerStartIndex(index);
+      setCatalogViewerIndex(index);
+      setCatalogViewerVisible(true);
+    },
+    [catalogImageUrls]
+  );
+
+  const handleCloseCatalogViewer = useCallback(() => {
+    setCatalogViewerVisible(false);
+    setCatalogViewerStartIndex(0);
+    setCatalogViewerIndex(0);
+  }, []);
 
   useEffect(() => {
     if (!isFocused) return;
@@ -6039,19 +6074,25 @@ function SearchScreen({ token, showFlash, navigation, route, toggleFavorite, isF
 
                           {!catalogLoading &&
                             !catalogError &&
-                            catalogImages.length > 0 && (
+                            catalogImageUrls.length > 0 && (
                               <ScrollView
                                 horizontal
                                 showsHorizontalScrollIndicator={false}
                                 style={styles.searchCatalogStrip}
                               >
-                                {catalogImages.map((img) => (
-                                  <Image
-                                    key={img.id}
-                                    source={{ uri: img.image_url }}
-                                    style={styles.searchCatalogImage}
-                                  />
-                                ))}
+                                {catalogViewerItems.map((img, index) => {
+                                  return (
+                                  <Pressable
+                                    key={img.id || img.imageUrl}
+                                    onPress={() => handleOpenCatalogViewer(index)}
+                                  >
+                                    <Image
+                                      source={{ uri: img.imageUrl }}
+                                      style={styles.searchCatalogImage}
+                                    />
+                                  </Pressable>
+                                  );
+                                })}
                               </ScrollView>
                             )}
 
@@ -6241,6 +6282,74 @@ function SearchScreen({ token, showFlash, navigation, route, toggleFavorite, isF
                   </View>
                 )}
               </ScrollView>
+              <Modal
+                visible={catalogViewerVisible}
+                animationType="fade"
+                transparent={false}
+                onRequestClose={handleCloseCatalogViewer}
+              >
+                <View style={styles.catalogViewerModal}>
+                  <Pressable
+                    onPress={handleCloseCatalogViewer}
+                    style={[
+                      styles.catalogViewerCloseButton,
+                      { top: Math.max(insets.top, 10) + 6 },
+                    ]}
+                    hitSlop={10}
+                  >
+                    <Ionicons name="close" size={28} color="#FFFFFF" />
+                  </Pressable>
+
+                  <FlatList
+                    data={catalogImageUrls}
+                    keyExtractor={(item, index) => `${item}-${index}`}
+                    horizontal
+                    pagingEnabled
+                    initialScrollIndex={catalogViewerStartIndex}
+                    showsHorizontalScrollIndicator={false}
+                    getItemLayout={(_, index) => ({
+                      length: width,
+                      offset: width * index,
+                      index,
+                    })}
+                    onMomentumScrollEnd={(event) => {
+                      const nextIndex = Math.round(event.nativeEvent.contentOffset.x / width);
+                      setCatalogViewerIndex(nextIndex);
+                    }}
+                    renderItem={({ item }) => (
+                      <View
+                        style={[
+                          styles.catalogViewerSlide,
+                          {
+                            width,
+                            paddingTop: Math.max(insets.top, 10) + 52,
+                            paddingBottom: Math.max(insets.bottom, 12) + 44,
+                          },
+                        ]}
+                      >
+                        <Image
+                          source={{ uri: item }}
+                          style={styles.catalogViewerImage}
+                          resizeMode="contain"
+                        />
+                      </View>
+                    )}
+                  />
+
+                  {catalogImageUrls.length > 1 ? (
+                    <View
+                      style={[
+                        styles.catalogViewerCounter,
+                        { bottom: Math.max(insets.bottom, 12) + 8 },
+                      ]}
+                    >
+                      <Text style={styles.catalogViewerCounterText}>
+                        {catalogViewerIndex + 1} / {catalogImageUrls.length}
+                      </Text>
+                    </View>
+                  ) : null}
+                </View>
+              </Modal>
               </SafeAreaView>
          );
       }
@@ -13672,6 +13781,39 @@ signupTextButtonText: {
     borderRadius: 8,
     marginRight: 8,
     backgroundColor: colors.surfaceElevated,
+  },
+
+  catalogViewerModal: {
+    flex: 1,
+    backgroundColor: "#000000",
+  },
+  catalogViewerCloseButton: {
+    position: "absolute",
+    right: 16,
+    zIndex: 2,
+    padding: 6,
+  },
+  catalogViewerSlide: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  catalogViewerImage: {
+    width: "100%",
+    height: "100%",
+  },
+  catalogViewerCounter: {
+    position: "absolute",
+    alignSelf: "center",
+    backgroundColor: "rgba(0,0,0,0.6)",
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+  },
+  catalogViewerCounterText: {
+    color: "#FFFFFF",
+    fontSize: 12,
+    fontWeight: "600",
   },
 
   providerCalendarScreen: {

@@ -1,439 +1,412 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
-diff --git a/backend/tests/test_billing.py b/backend/tests/test_billing.py
-index b0d4e9c19d23da7bbd2fa0d7b9f36e815406f829..f59f9145f59c533cb0da0c0827a65e7e95b1642b 100644
---- a/backend/tests/test_billing.py
-+++ b/backend/tests/test_billing.py
-@@ -1,70 +1,78 @@
- from datetime import datetime, timedelta
- from decimal import Decimal
+diff --git a/mobile/App.js b/mobile/App.js
+index cec4e38e1d627335b01539bb27154382ede1250f..f0338278d6e251374be6ca32d5c5cc40257f0474 100644
+--- a/mobile/App.js
++++ b/mobile/App.js
+@@ -5171,87 +5171,122 @@ function AppointmentsScreen({ token, showFlash, pendingChatConversationId, clear
+                   showFlash("error", detail);
+                 }
+               } finally {
+                 setRatingSubmitting(false);
+               }
+             }}
+           >
+             <Text style={styles.chatSendButtonText}>
+               {ratingSubmitting ? "Submitting..." : "Submit"}
+             </Text>
+           </TouchableOpacity>
+         </View>
+       </View>
+     </View>
+   </Modal>
+   </>
+ );
+ }
  
- import pytest
- from fastapi.testclient import TestClient
- 
- from app.utils.time import now_guyana
- 
- 
- def _current_month_past_time(now: datetime) -> datetime:
-     """Return a timestamp in the current month that is guaranteed to be in the past."""
- 
-     start_time = now - timedelta(hours=1)
-     if start_time.month != now.month:
-         start_time = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-         start_time = start_time + timedelta(minutes=1)
-         if start_time > now:
-             start_time = now - timedelta(minutes=5)
-     return start_time
- 
- 
- def _create_provider_graph(session, models):
--    provider_user = models.User(username="provider@example.com", is_provider=True)
--    customer_user = models.User(username="customer@example.com")
-+    suffix = session.query(models.User).count() + 1
-+    provider_user = models.User(username=f"provider{suffix}@example.com", is_provider=True)
-+    customer_user = models.User(username=f"customer{suffix}@example.com")
-     session.add_all([provider_user, customer_user])
-     session.commit()
- 
--    provider = models.Provider(user_id=provider_user.id, account_number="ACC-1")
-+    provider = models.Provider(user_id=provider_user.id, account_number=f"ACC-{suffix}")
-     session.add(provider)
-     session.commit()
-     session.refresh(provider)
- 
-     service = models.Service(
-         provider_id=provider.id,
-         name="Test Service",
-         price_gyd=1000,
-         duration_minutes=60,
-     )
-     session.add(service)
-     session.commit()
-     session.refresh(service)
- 
-     return provider, customer_user, service
+     
  
  
-+def _create_real_provider_graph(session, models):
-+    while True:
-+        provider, customer, service = _create_provider_graph(session, models)
-+        if provider.id > 6:
-+            return provider, customer, service
-+
-+
- def _add_booking(session, models, *, customer, service, start_time, end_time, status):
-     booking = models.Booking(
-         customer_id=customer.id,
-         service_id=service.id,
-         start_time=start_time,
-         end_time=end_time,
-         status=status,
-     )
-     session.add(booking)
-     session.commit()
-     session.refresh(booking)
-     return booking
  
  
- def _create_completed_booking_for_month(
-     session,
-     models,
-     *,
-     customer,
-     service,
-     month_start: datetime,
-     day: int,
-     price_gyd: float,
- ):
-     billing_service = models.Service(
-@@ -272,50 +280,157 @@ def test_completed_booking_counts_toward_fees(db_session):
-         start_time=future_start,
-         end_time=future_end,
-         status="confirmed",
-     )
+ function SearchScreen({ token, showFlash, navigation, route, toggleFavorite, isFavorite, syncFavoritesFromList}) {
++  const insets = useSafeAreaInsets();
++  const { width } = useWindowDimensions();
+   const incomingUsername = route?.params?.incomingUsername ?? null;
+   const deeplinkNonce = route?.params?.deeplinkNonce ?? null;
+   const [filteredProviders, setFilteredProviders] = useState([]);
+   const [searchQuery, setSearchQuery] = useState("");
+   const [radiusKm, setRadiusKm] = useState(0); // 0 = any distance
+   const [clientLocation, setClientLocation] = useState(null);
+   const [locationError, setLocationError] = useState("");
+   const [providers, setProviders] = useState([]);
+   const [providersLoading, setProvidersLoading] = useState(true);
+   const [providersError, setProvidersError] = useState("");
+   const [selectedProvider, setSelectedProvider] = useState(null);
+   const [selectedProviderId, setSelectedProviderId] = useState(null);
+   const [services, setServices] = useState([]);
+   const [servicesLoading, setServicesLoading] = useState(false);
+   const [servicesError, setServicesError] = useState("");
+   const [selectedService, setSelectedService] = useState(null);
+   const [catalogImages, setCatalogImages] = useState([]);
+   const [catalogLoading, setCatalogLoading] = useState(false);
+   const [catalogError, setCatalogError] = useState("");
++  const [catalogViewerVisible, setCatalogViewerVisible] = useState(false);
++  const [catalogViewerStartIndex, setCatalogViewerStartIndex] = useState(0);
++  const [catalogViewerIndex, setCatalogViewerIndex] = useState(0);
+   const [availability, setAvailability] = useState([]);
+   const [availabilityLoading, setAvailabilityLoading] = useState(false);
+   const [availabilityError, setAvailabilityError] = useState("");
+   const [selectedDate, setSelectedDate] = useState(null);
+   const [selectedSlot, setSelectedSlot] = useState(null); // ISO string
+   const [bookingLoading, setBookingLoading] = useState(false);
+   const [hasSearched, setHasSearched] = useState(false); // 👈 NEW
+   const [refreshing, setRefreshing] = useState(false);
+   const [shouldScrollToResults, setShouldScrollToResults] = useState(false);
+   const [hasRequestedLocation, setHasRequestedLocation] = useState(false);
+   const isFocused = useIsFocused();
+   const scrollRef = useRef(null);
+   const searchInputRef = useRef(null);
+   const resultsOffset = useRef(0);
+   const servicesOffset = useRef(0);
+   const initializedNavProviderKeyRef = useRef(null);
+   //Radius 
+   const distanceChips = [0, 5, 10, 15, 20];
++  const catalogViewerItems = useMemo(
++    () =>
++      catalogImages
++        .map((img) => ({
++          id: img?.id,
++          imageUrl: resolveImageUrl(img?.image_url || img?.url || img?.image),
++        }))
++        .filter((img) => Boolean(img.imageUrl)),
++    [catalogImages]
++  );
++  const catalogImageUrls = useMemo(
++    () => catalogViewerItems.map((img) => img.imageUrl),
++    [catalogViewerItems]
++  );
++
++  const handleOpenCatalogViewer = useCallback(
++    (index) => {
++      if (!catalogImageUrls.length) return;
++      setCatalogViewerStartIndex(index);
++      setCatalogViewerIndex(index);
++      setCatalogViewerVisible(true);
++    },
++    [catalogImageUrls]
++  );
++
++  const handleCloseCatalogViewer = useCallback(() => {
++    setCatalogViewerVisible(false);
++    setCatalogViewerStartIndex(0);
++    setCatalogViewerIndex(0);
++  }, []);
  
-     cancel_start = _current_month_past_time(now) - timedelta(hours=2)
-     cancel_end = cancel_start + timedelta(hours=1)
-     _add_booking(
-         session,
-         models,
-         customer=customer,
-         service=service,
-         start_time=cancel_start,
-         end_time=cancel_end,
-         status="cancelled",
-     )
+   useEffect(() => {
+     if (!isFocused) return;
+     if (!incomingUsername) return;
+     console.log(
+       "[deeplink] consumed in SearchScreen",
+       incomingUsername,
+       deeplinkNonce,
+       "focused",
+       isFocused
+     );
+     setSearchQuery(incomingUsername);
+     setHasSearched(true);
+     setShouldScrollToResults(true);
+   }, [incomingUsername, deeplinkNonce, isFocused]);
  
-     billable = crud.get_billable_bookings_for_provider(session, provider.id, as_of=now)
-     assert len(billable) == 1
-     assert billable[0]["status"] == "completed"
+   const haversineKm = (lat1, lon1, lat2, lon2) => {
+     if (
+       lat1 == null ||
+       lon1 == null ||
+       lat2 == null ||
+       lon2 == null
+     ) {
+       return null;
+     }
+@@ -6017,63 +6052,69 @@ function SearchScreen({ token, showFlash, navigation, route, toggleFavorite, isF
+               displayProviders.length > 0 &&
+               searchCards}
+           </View>
  
-     amount_due = crud.get_provider_fees_due(session, provider.id)
-     assert amount_due == 100.0  # 10% of the 1000 GYD service price
+                         {/* Services list for selected provider */}
+                       {selectedProvider && (
+                         <View style={styles.card} onLayout={handleServicesLayout}>
+                           <Text style={styles.sectionTitle}>
+                             Services by {selectedProvider.name}
+                           </Text>
  
+                           {/* Catalog preview */}
+                           {catalogLoading && (
+                             <View style={{ paddingVertical: 8 }}>
+                               <ActivityIndicator />
+                               <Text style={styles.serviceMeta}>Loading photos…</Text>
+                             </View>
+                           )}
  
-+def test_intro_promo_eligible_provider_within_window_has_zero_fee(db_session):
-+    session, models, crud = db_session
-+    provider, customer, service = _create_real_provider_graph(session, models)
-+
-+    now = now_guyana()
-+    provider.promo_eligible = True
-+    provider.promo_started_at = now - timedelta(days=10)
-+    provider.promo_ends_at = now + timedelta(days=10)
-+    provider.default_platform_fee_pct = Decimal("10.00")
-+    session.commit()
-+
-+    start_time = now - timedelta(hours=2)
-+    end_time = start_time + timedelta(hours=1)
-+    _add_booking(
-+        session,
-+        models,
-+        customer=customer,
-+        service=service,
-+        start_time=start_time,
-+        end_time=end_time,
-+        status="completed",
-+    )
-+
-+    amount_due = crud.get_provider_fees_due(session, provider.id)
-+    assert amount_due == 0.0
-+
-+
-+def test_intro_promo_eligible_provider_after_window_uses_default_fee(db_session):
-+    session, models, crud = db_session
-+    provider, customer, service = _create_real_provider_graph(session, models)
-+
-+    now = now_guyana()
-+    provider.promo_eligible = True
-+    provider.promo_started_at = now - timedelta(days=120)
-+    provider.promo_ends_at = now - timedelta(days=1)
-+    provider.default_platform_fee_pct = Decimal("10.00")
-+    session.commit()
-+
-+    start_time = now - timedelta(hours=2)
-+    end_time = start_time + timedelta(hours=1)
-+    _add_booking(
-+        session,
-+        models,
-+        customer=customer,
-+        service=service,
-+        start_time=start_time,
-+        end_time=end_time,
-+        status="completed",
-+    )
-+
-+    amount_due = crud.get_provider_fees_due(session, provider.id)
-+    assert amount_due == 100.0
-+
-+
-+def test_non_eligible_provider_uses_default_fee(db_session):
-+    session, models, crud = db_session
-+    provider, customer, service = _create_real_provider_graph(session, models)
-+
-+    now = now_guyana()
-+    provider.promo_eligible = False
-+    provider.promo_started_at = None
-+    provider.promo_ends_at = None
-+    provider.default_platform_fee_pct = Decimal("10.00")
-+    session.commit()
-+
-+    start_time = now - timedelta(hours=2)
-+    end_time = start_time + timedelta(hours=1)
-+    _add_booking(
-+        session,
-+        models,
-+        customer=customer,
-+        service=service,
-+        start_time=start_time,
-+        end_time=end_time,
-+        status="completed",
-+    )
-+
-+    amount_due = crud.get_provider_fees_due(session, provider.id)
-+    assert amount_due == 100.0
-+
-+
-+def test_billing_uses_appointment_date_not_booking_creation(db_session):
-+    session, models, crud = db_session
-+    provider, customer, service = _create_real_provider_graph(session, models)
-+
-+    now = now_guyana()
-+    provider.promo_eligible = True
-+    provider.promo_started_at = now - timedelta(days=10)
-+    provider.promo_ends_at = now - timedelta(days=1)
-+    provider.default_platform_fee_pct = Decimal("10.00")
-+    session.commit()
-+
-+    start_time = now - timedelta(hours=2)
-+    _add_booking(
-+        session,
-+        models,
-+        customer=customer,
-+        service=service,
-+        start_time=start_time,
-+        end_time=start_time + timedelta(hours=1),
-+        status="completed",
-+    )
-+
-+    amount_due = crud.get_provider_fees_due(session, provider.id)
-+    assert amount_due == 100.0
-+
-+
- def test_completion_time_controls_billing_window(db_session):
-     session, models, crud = db_session
-     provider, customer, service = _create_provider_graph(session, models)
+                           {!catalogLoading && catalogError ? (
+                             <Text style={styles.errorText}>{catalogError}</Text>
+                           ) : null}
  
-     now = now_guyana()
-     past_start = now - timedelta(days=31)
-     end_time = _current_month_past_time(now)
+                           {!catalogLoading &&
+                             !catalogError &&
+-                            catalogImages.length > 0 && (
++                            catalogImageUrls.length > 0 && (
+                               <ScrollView
+                                 horizontal
+                                 showsHorizontalScrollIndicator={false}
+                                 style={styles.searchCatalogStrip}
+                               >
+-                                {catalogImages.map((img) => (
+-                                  <Image
+-                                    key={img.id}
+-                                    source={{ uri: img.image_url }}
+-                                    style={styles.searchCatalogImage}
+-                                  />
+-                                ))}
++                                {catalogViewerItems.map((img, index) => {
++                                  return (
++                                  <Pressable
++                                    key={img.id || img.imageUrl}
++                                    onPress={() => handleOpenCatalogViewer(index)}
++                                  >
++                                    <Image
++                                      source={{ uri: img.imageUrl }}
++                                      style={styles.searchCatalogImage}
++                                    />
++                                  </Pressable>
++                                  );
++                                })}
+                               </ScrollView>
+                             )}
  
-     booking = _add_booking(
-         session,
-         models,
-         customer=customer,
-         service=service,
-         start_time=past_start,
-         end_time=end_time,
-         status="confirmed",
-     )
- 
-     crud._auto_complete_finished_bookings(session, as_of=now)
- 
-     billable = crud.get_billable_bookings_for_provider(session, provider.id, as_of=now)
-     assert [item["id"] for item in billable] == [booking.id]
- 
-     amount_due = crud.get_provider_fees_due(session, provider.id)
-     assert amount_due == 100.0
-@@ -912,73 +1027,189 @@ def test_existing_bill_not_modified(db_session):
- 
-     billing_month = datetime(2023, 1, 1)
- 
-     _create_completed_booking_for_month(
-         session,
-         models,
-         customer=customer,
-         service=service,
-         month_start=billing_month,
-         day=2,
-         price_gyd=1800,
-     )
- 
-     original_due = datetime(2023, 2, 20, 12, 0)
-     existing = models.Bill(
-         provider_id=provider.id,
-         month=billing_month.date(),
-         total_gyd=Decimal("321.00"),
-         fee_gyd=Decimal("45.00"),
-         due_date=original_due,
-         is_paid=False,
-     )
-     session.add(existing)
-     session.commit()
- 
--    crud.generate_monthly_bills(session, month=billing_month.date())
-+    crud.generate_monthly_bills(session, month=billing_month.date(), force_regen=True)
- 
-     persisted = (
-         session.query(models.Bill)
-         .filter(
-             models.Bill.provider_id == provider.id,
-             models.Bill.month == billing_month.date(),
-         )
-         .one()
-     )
- 
-     assert float(persisted.total_gyd) == 321.0
-     assert float(persisted.fee_gyd) == 45.0
-     assert persisted.due_date == original_due
-     assert persisted.is_paid is False
-     assert (
-         session.query(models.Bill)
-         .filter(models.Bill.provider_id == provider.id, models.Bill.month == billing_month.date())
-         .count()
-         == 1
-     )
+                           {servicesLoading && (
+                             <View style={{ paddingVertical: 10 }}>
+                               <ActivityIndicator />
+                               <Text style={styles.serviceMeta}>Loading services…</Text>
+                             </View>
+                           )}
  
  
-+def test_finalized_previous_bill_remains_unchanged_when_new_cycle_runs(db_session):
-+    session, models, crud = db_session
-+    provider, customer, service = _create_provider_graph(session, models)
-+
-+    previous_month = datetime(2023, 1, 1)
-+    current_month = datetime(2023, 2, 1)
-+
-+    previous_bill = models.Bill(
-+        provider_id=provider.id,
-+        month=previous_month.date(),
-+        total_gyd=Decimal("1000.00"),
-+        fee_gyd=Decimal("100.00"),
-+        due_date=datetime(2023, 2, 15, 23, 59),
-+        is_paid=False,
-+    )
-+    previous_cycle = models.BillingCycle(
-+        account_number=provider.account_number,
-+        cycle_month=previous_month.date(),
-+        is_paid=False,
-+        credits_applied_gyd=Decimal("0"),
-+        finalized_at=datetime(2023, 2, 1, 0, 0),
-+    )
-+    session.add_all([previous_bill, previous_cycle])
-+    session.commit()
-+
-+    _create_completed_booking_for_month(
-+        session,
-+        models,
-+        customer=customer,
-+        service=service,
-+        month_start=current_month,
-+        day=5,
-+        price_gyd=1000,
-+    )
-+
-+    crud.generate_monthly_bills(session, month=current_month.date())
-+
-+    persisted_previous = (
-+        session.query(models.Bill)
-+        .filter(
-+            models.Bill.provider_id == provider.id,
-+            models.Bill.month == previous_month.date(),
-+        )
-+        .one()
-+    )
-+    current_bill = (
-+        session.query(models.Bill)
-+        .filter(
-+            models.Bill.provider_id == provider.id,
-+            models.Bill.month == current_month.date(),
-+        )
-+        .one()
-+    )
-+
-+    assert float(persisted_previous.total_gyd) == 1000.0
-+    assert float(persisted_previous.fee_gyd) == 100.0
-+    assert persisted_previous.due_date == datetime(2023, 2, 15, 23, 59)
-+    assert float(current_bill.total_gyd) == 1000.0
-+
-+
-+def test_new_provider_signup_gets_intro_promo_when_slots_available(db_session):
-+    session, models, crud = db_session
-+
-+    for i in range(6):
-+        user = models.User(username=f"seed-test-provider-{i}", is_provider=True)
-+        session.add(user)
-+        session.commit()
-+        session.add(models.Provider(user_id=user.id, account_number=f"ACC-SEED-{i}"))
-+        session.commit()
-+
-+    new_user = models.User(username="new-provider-a", is_provider=True)
-+    session.add(new_user)
-+    session.commit()
-+
-+    provider = crud.create_provider_for_user(session, new_user)
-+
-+    assert provider.id > 6
-+    assert provider.promo_eligible is True
-+    assert provider.promo_started_at is not None
-+    assert provider.promo_ends_at is not None
-+    assert Decimal(str(provider.default_platform_fee_pct)) == Decimal("10.00")
-+
-+
-+def test_new_provider_signup_does_not_get_intro_promo_after_first_100(db_session):
-+    session, models, crud = db_session
-+    eligible_assigned = 0
-+
-+    for i in range(106):
-+        user = models.User(username=f"seed-provider-cap-{i}", is_provider=True)
-+        session.add(user)
-+        session.commit()
-+
-+        provider = models.Provider(user_id=user.id, account_number=f"ACC-CAP-{i}")
-+        session.add(provider)
-+        session.commit()
-+
-+        if provider.id > 6 and eligible_assigned < 100:
-+            provider.promo_eligible = True
-+            provider.promo_started_at = datetime(2023, 1, 1)
-+            provider.promo_ends_at = datetime(2023, 4, 1)
-+            provider.default_platform_fee_pct = Decimal("10.00")
-+            session.commit()
-+            eligible_assigned += 1
-+
-+    new_user = models.User(username="new-provider-b", is_provider=True)
-+    session.add(new_user)
-+    session.commit()
-+
-+    provider = crud.create_provider_for_user(session, new_user)
-+
-+    assert provider.promo_eligible is False
-+    assert provider.promo_started_at is None
-+    assert provider.promo_ends_at is None
-+    assert Decimal(str(provider.default_platform_fee_pct)) == Decimal("10.00")
-+
-+
- def test_paid_bills_are_not_overwritten(db_session):
-     session, models, crud = db_session
-     provider, customer, service = _create_provider_graph(session, models)
+                     {servicesLoading && (
+                       <View style={{ paddingVertical: 10 }}>
+                         <ActivityIndicator />
+                         <Text style={styles.serviceMeta}>Loading services…</Text>
+                       </View>
+                     )}
  
-     billing_month = datetime(2023, 1, 1)
-     bill = _generate_bill_for_month(
-         session,
-         models,
-         crud,
-         provider,
-         customer,
-         service,
-         billing_month,
-         [1000],
-     )
+                     {!servicesLoading && servicesError ? (
+                       <Text style={styles.errorText}>{servicesError}</Text>
+                     ) : null}
  
-     original_total = float(bill.total_gyd)
-     original_fee = float(bill.fee_gyd)
-     original_due = bill.due_date
+                     {!servicesLoading &&
+                       !servicesError &&
+                       services.length === 0 && (
+@@ -6219,50 +6260,118 @@ function SearchScreen({ token, showFlash, navigation, route, toggleFavorite, isF
+                           );
+                         })}
+                       </View>
+                     )}
+                   </View>
+                 )}
  
-     crud.set_provider_bills_paid_state(session, provider.id, billing_month.date(), True)
-     _create_completed_booking_for_month(
-         session,
-         models,
-         customer=customer,
+                 {/* Book button */}
+                 {selectedService && selectedDate && (
+                   <View style={{ marginTop: 12, marginBottom: 20 }}>
+                     <TouchableOpacity
+                       style={[
+                         styles.bookButton,
+                         (!selectedSlot || bookingLoading) && styles.bookButtonDisabled,
+                       ]}
+                       disabled={!selectedSlot || bookingLoading}
+                       onPress={handleBookAppointment}
+                     >
+                       <Text style={styles.bookButtonLabel}>
+                         {bookingLoading ? "Booking..." : "Book Appointment"}
+                       </Text>
+                     </TouchableOpacity>
+                   </View>
+                 )}
+               </ScrollView>
++              <Modal
++                visible={catalogViewerVisible}
++                animationType="fade"
++                transparent={false}
++                onRequestClose={handleCloseCatalogViewer}
++              >
++                <View style={styles.catalogViewerModal}>
++                  <Pressable
++                    onPress={handleCloseCatalogViewer}
++                    style={[
++                      styles.catalogViewerCloseButton,
++                      { top: Math.max(insets.top, 10) + 6 },
++                    ]}
++                    hitSlop={10}
++                  >
++                    <Ionicons name="close" size={28} color="#FFFFFF" />
++                  </Pressable>
++
++                  <FlatList
++                    data={catalogImageUrls}
++                    keyExtractor={(item, index) => `${item}-${index}`}
++                    horizontal
++                    pagingEnabled
++                    initialScrollIndex={catalogViewerStartIndex}
++                    showsHorizontalScrollIndicator={false}
++                    getItemLayout={(_, index) => ({
++                      length: width,
++                      offset: width * index,
++                      index,
++                    })}
++                    onMomentumScrollEnd={(event) => {
++                      const nextIndex = Math.round(event.nativeEvent.contentOffset.x / width);
++                      setCatalogViewerIndex(nextIndex);
++                    }}
++                    renderItem={({ item }) => (
++                      <View
++                        style={[
++                          styles.catalogViewerSlide,
++                          {
++                            width,
++                            paddingTop: Math.max(insets.top, 10) + 52,
++                            paddingBottom: Math.max(insets.bottom, 12) + 44,
++                          },
++                        ]}
++                      >
++                        <Image
++                          source={{ uri: item }}
++                          style={styles.catalogViewerImage}
++                          resizeMode="contain"
++                        />
++                      </View>
++                    )}
++                  />
++
++                  {catalogImageUrls.length > 1 ? (
++                    <View
++                      style={[
++                        styles.catalogViewerCounter,
++                        { bottom: Math.max(insets.bottom, 12) + 8 },
++                      ]}
++                    >
++                      <Text style={styles.catalogViewerCounterText}>
++                        {catalogViewerIndex + 1} / {catalogImageUrls.length}
++                      </Text>
++                    </View>
++                  ) : null}
++                </View>
++              </Modal>
+               </SafeAreaView>
+          );
+       }
+ 
+ 
+ 
+ 
+ 
+ 
+ function ProviderDashboardNavHeader({
+   insets,
+   logoSize,
+   unreadNotificationCount,
+   onPressNotifications,
+ }) {
+   return (
+     <View style={[styles.providerDashboardNavHeader, { paddingTop: insets.top }]}>
+       <View style={styles.providerDashboardNavHeaderInner}>
+         <View style={styles.providerDashboardNavHeaderCenter}>
+           <Image
+             source={BookitGYLogoTransparent}
+             style={{ width: logoSize, height: logoSize }}
+             resizeMode="contain"
+           />
+         </View>
+@@ -13652,50 +13761,83 @@ signupTextButtonText: {
+     backgroundColor: colors.surfaceElevated,
+   },
+   catalogCaption: {
+     fontSize: 11,
+     color: colors.textSecondary,
+     marginTop: 4,
+   },
+   catalogDeleteText: {
+     fontSize: 11,
+     color: colors.error,
+     marginTop: 2,
+   },
+ 
+     searchCatalogStrip: {
+     marginTop: 8,
+     marginBottom: 8,
+   },
+   searchCatalogImage: {
+     width: 140,
+     height: 180,
+     borderRadius: 8,
+     marginRight: 8,
+     backgroundColor: colors.surfaceElevated,
+   },
+ 
++  catalogViewerModal: {
++    flex: 1,
++    backgroundColor: "#000000",
++  },
++  catalogViewerCloseButton: {
++    position: "absolute",
++    right: 16,
++    zIndex: 2,
++    padding: 6,
++  },
++  catalogViewerSlide: {
++    flex: 1,
++    justifyContent: "center",
++    alignItems: "center",
++  },
++  catalogViewerImage: {
++    width: "100%",
++    height: "100%",
++  },
++  catalogViewerCounter: {
++    position: "absolute",
++    alignSelf: "center",
++    backgroundColor: "rgba(0,0,0,0.6)",
++    borderRadius: 999,
++    paddingHorizontal: 12,
++    paddingVertical: 5,
++  },
++  catalogViewerCounterText: {
++    color: "#FFFFFF",
++    fontSize: 12,
++    fontWeight: "600",
++  },
++
+   providerCalendarScreen: {
+     flex: 1,
+     backgroundColor: colors.background,
+   },
+   providerCalendarContentContainer: {
+     flex: 1,
+     paddingHorizontal: 16,
+     paddingTop: 8,
+     paddingBottom: 12,
+   },
+   providerCalendarModeSwitch: {
+     flexDirection: "row",
+     backgroundColor: colors.surface,
+     borderWidth: 1,
+     borderColor: colors.border,
+     borderRadius: 12,
+     overflow: "hidden",
+     marginBottom: 12,
+   },
+   providerCalendarModeButton: {
+     flex: 1,
+     paddingVertical: 10,
+     alignItems: "center",
+   },
+   providerCalendarModeButtonActive: {
  
 EOF
 )
