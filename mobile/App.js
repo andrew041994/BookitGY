@@ -24,6 +24,7 @@ import {
   FlatList,
   AppState,
   useWindowDimensions,
+  Animated,
 } from "react-native";
 import * as ExpoLinking from "expo-linking";
 import * as AuthSession from "expo-auth-session";
@@ -53,6 +54,12 @@ import Constants from "expo-constants";
 import * as ImagePicker from "expo-image-picker";
 import * as Notifications from "expo-notifications";
 import { Ionicons } from "@expo/vector-icons";
+import {
+  GestureHandlerRootView,
+  PanGestureHandler,
+  PinchGestureHandler,
+  State,
+} from "react-native-gesture-handler";
 import {
   CalendarProvider,
   Calendar,
@@ -5192,6 +5199,205 @@ function AppointmentsScreen({ token, showFlash, pendingChatConversationId, clear
 
 
 
+function ZoomableCatalogImage({ imageUri, resetToken, onInteractionChange }) {
+  const scale = useRef(new Animated.Value(1)).current;
+  const translateX = useRef(new Animated.Value(0)).current;
+  const translateY = useRef(new Animated.Value(0)).current;
+  const scaleRef = useRef(1);
+  const panOffsetRef = useRef({ x: 0, y: 0 });
+  const imageSizeRef = useRef({ width: 1, height: 1 });
+  const [isZoomed, setIsZoomed] = useState(false);
+  const [isPinching, setIsPinching] = useState(false);
+  const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
+
+  const getPanBounds = useCallback(
+    (nextScale = scaleRef.current) => {
+      const { width: containerWidth, height: containerHeight } = containerSize;
+      if (!containerWidth || !containerHeight) return { maxX: 0, maxY: 0 };
+
+      const imageAspect = imageSizeRef.current.width / imageSizeRef.current.height;
+      const containerAspect = containerWidth / containerHeight;
+
+      let fittedWidth = containerWidth;
+      let fittedHeight = containerHeight;
+      if (imageAspect > containerAspect) {
+        fittedHeight = containerWidth / imageAspect;
+      } else {
+        fittedWidth = containerHeight * imageAspect;
+      }
+
+      return {
+        maxX: Math.max(0, (fittedWidth * nextScale - containerWidth) / 2),
+        maxY: Math.max(0, (fittedHeight * nextScale - containerHeight) / 2),
+      };
+    },
+    [containerSize]
+  );
+
+  const clampPan = useCallback(
+    (x, y, nextScale = scaleRef.current) => {
+      const { maxX, maxY } = getPanBounds(nextScale);
+      return {
+        x: Math.max(-maxX, Math.min(maxX, x)),
+        y: Math.max(-maxY, Math.min(maxY, y)),
+      };
+    },
+    [getPanBounds]
+  );
+
+  const emitInteraction = useCallback(
+    (nextZoomed, nextPinching) => {
+      onInteractionChange?.(Boolean(nextZoomed || nextPinching));
+    },
+    [onInteractionChange]
+  );
+
+  const resetZoom = useCallback(() => {
+    scaleRef.current = 1;
+    panOffsetRef.current = { x: 0, y: 0 };
+    scale.setValue(1);
+    translateX.setValue(0);
+    translateY.setValue(0);
+    setIsZoomed(false);
+    setIsPinching(false);
+    emitInteraction(false, false);
+  }, [scale, translateX, translateY, emitInteraction]);
+
+  useEffect(() => {
+    resetZoom();
+  }, [resetToken, resetZoom]);
+
+  useEffect(() => {
+    Image.getSize(
+      imageUri,
+      (width, height) => {
+        imageSizeRef.current = { width: Math.max(width, 1), height: Math.max(height, 1) };
+      },
+      () => {
+        imageSizeRef.current = { width: 1, height: 1 };
+      }
+    );
+  }, [imageUri]);
+
+  const onPinchGestureEvent = useCallback(
+    ({ nativeEvent }) => {
+      const nextScale = Math.max(1, Math.min(scaleRef.current * nativeEvent.scale, 3));
+      scale.setValue(nextScale);
+      const zoomed = nextScale > 1.01;
+      if (zoomed !== isZoomed) {
+        setIsZoomed(zoomed);
+        emitInteraction(zoomed, isPinching);
+      }
+    },
+    [scale, isZoomed, isPinching, emitInteraction]
+  );
+
+  const onPinchStateChange = useCallback(
+    ({ nativeEvent }) => {
+      if (nativeEvent.state === State.ACTIVE && !isPinching) {
+        setIsPinching(true);
+        emitInteraction(isZoomed, true);
+      }
+
+      if (nativeEvent.oldState === State.ACTIVE) {
+        const nextScale = Math.max(1, Math.min(scaleRef.current * nativeEvent.scale, 3));
+        scaleRef.current = nextScale;
+        scale.setValue(nextScale);
+
+        let nextPan = panOffsetRef.current;
+        const zoomed = nextScale > 1.01;
+        if (!zoomed) {
+          nextPan = { x: 0, y: 0 };
+        } else {
+          nextPan = clampPan(panOffsetRef.current.x, panOffsetRef.current.y, nextScale);
+        }
+
+        panOffsetRef.current = nextPan;
+        translateX.setValue(nextPan.x);
+        translateY.setValue(nextPan.y);
+        setIsZoomed(zoomed);
+        setIsPinching(false);
+        emitInteraction(zoomed, false);
+      }
+    },
+    [scale, translateX, translateY, clampPan, isPinching, isZoomed, emitInteraction]
+  );
+
+  const onPanGestureEvent = useCallback(
+    ({ nativeEvent }) => {
+      if (!isZoomed) return;
+      const next = clampPan(
+        panOffsetRef.current.x + nativeEvent.translationX,
+        panOffsetRef.current.y + nativeEvent.translationY
+      );
+      translateX.setValue(next.x);
+      translateY.setValue(next.y);
+    },
+    [isZoomed, clampPan, translateX, translateY]
+  );
+
+  const onPanStateChange = useCallback(
+    ({ nativeEvent }) => {
+      if (nativeEvent.oldState === State.ACTIVE) {
+        if (!isZoomed) {
+          panOffsetRef.current = { x: 0, y: 0 };
+          translateX.setValue(0);
+          translateY.setValue(0);
+          return;
+        }
+        const next = clampPan(
+          panOffsetRef.current.x + nativeEvent.translationX,
+          panOffsetRef.current.y + nativeEvent.translationY
+        );
+        panOffsetRef.current = next;
+        translateX.setValue(next.x);
+        translateY.setValue(next.y);
+      }
+    },
+    [isZoomed, clampPan, translateX, translateY]
+  );
+
+  return (
+    <View
+      style={styles.catalogViewerZoomContainer}
+      onLayout={(event) => {
+        const { width, height } = event.nativeEvent.layout;
+        setContainerSize((prev) =>
+          prev.width === width && prev.height === height ? prev : { width, height }
+        );
+      }}
+    >
+      <PanGestureHandler
+        enabled={isZoomed && !isPinching}
+        onGestureEvent={onPanGestureEvent}
+        onHandlerStateChange={onPanStateChange}
+      >
+        <Animated.View style={styles.catalogViewerZoomContainer}>
+          <PinchGestureHandler
+            onGestureEvent={onPinchGestureEvent}
+            onHandlerStateChange={onPinchStateChange}
+          >
+            <Animated.View
+              style={[
+                styles.catalogViewerZoomContainer,
+                {
+                  transform: [{ translateX }, { translateY }, { scale }],
+                },
+              ]}
+            >
+              <Image
+                source={{ uri: imageUri }}
+                style={styles.catalogViewerImage}
+                resizeMode="contain"
+              />
+            </Animated.View>
+          </PinchGestureHandler>
+        </Animated.View>
+      </PanGestureHandler>
+    </View>
+  );
+}
+
 function SearchScreen({ token, showFlash, navigation, route, toggleFavorite, isFavorite, syncFavoritesFromList}) {
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
@@ -5217,6 +5423,8 @@ function SearchScreen({ token, showFlash, navigation, route, toggleFavorite, isF
   const [catalogViewerVisible, setCatalogViewerVisible] = useState(false);
   const [catalogViewerStartIndex, setCatalogViewerStartIndex] = useState(0);
   const [catalogViewerIndex, setCatalogViewerIndex] = useState(0);
+  const [catalogViewerGestureLocked, setCatalogViewerGestureLocked] = useState(false);
+  const [catalogZoomResetToken, setCatalogZoomResetToken] = useState(0);
   const [availability, setAvailability] = useState([]);
   const [availabilityLoading, setAvailabilityLoading] = useState(false);
   const [availabilityError, setAvailabilityError] = useState("");
@@ -5255,6 +5463,8 @@ function SearchScreen({ token, showFlash, navigation, route, toggleFavorite, isF
       if (!catalogImageUrls.length) return;
       setCatalogViewerStartIndex(index);
       setCatalogViewerIndex(index);
+      setCatalogViewerGestureLocked(false);
+      setCatalogZoomResetToken((token) => token + 1);
       setCatalogViewerVisible(true);
     },
     [catalogImageUrls]
@@ -5264,6 +5474,8 @@ function SearchScreen({ token, showFlash, navigation, route, toggleFavorite, isF
     setCatalogViewerVisible(false);
     setCatalogViewerStartIndex(0);
     setCatalogViewerIndex(0);
+    setCatalogViewerGestureLocked(false);
+    setCatalogZoomResetToken((token) => token + 1);
   }, []);
 
   useEffect(() => {
@@ -6305,6 +6517,7 @@ function SearchScreen({ token, showFlash, navigation, route, toggleFavorite, isF
                     keyExtractor={(item, index) => `${item}-${index}`}
                     horizontal
                     pagingEnabled
+                    scrollEnabled={!catalogViewerGestureLocked}
                     initialScrollIndex={catalogViewerStartIndex}
                     showsHorizontalScrollIndicator={false}
                     getItemLayout={(_, index) => ({
@@ -6315,8 +6528,10 @@ function SearchScreen({ token, showFlash, navigation, route, toggleFavorite, isF
                     onMomentumScrollEnd={(event) => {
                       const nextIndex = Math.round(event.nativeEvent.contentOffset.x / width);
                       setCatalogViewerIndex(nextIndex);
+                      setCatalogViewerGestureLocked(false);
+                      setCatalogZoomResetToken((token) => token + 1);
                     }}
-                    renderItem={({ item }) => (
+                    renderItem={({ item, index }) => (
                       <View
                         style={[
                           styles.catalogViewerSlide,
@@ -6327,10 +6542,13 @@ function SearchScreen({ token, showFlash, navigation, route, toggleFavorite, isF
                           },
                         ]}
                       >
-                        <Image
-                          source={{ uri: item }}
-                          style={styles.catalogViewerImage}
-                          resizeMode="contain"
+                        <ZoomableCatalogImage
+                          imageUri={item}
+                          resetToken={catalogZoomResetToken}
+                          onInteractionChange={(shouldLockPaging) => {
+                            if (index !== catalogViewerIndex) return;
+                            setCatalogViewerGestureLocked(shouldLockPaging);
+                          }}
                         />
                       </View>
                     )}
@@ -11642,8 +11860,9 @@ function App() {
   if (authLoading) {
 
     return (
-      <SafeAreaProvider>
-        <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }} edges={["top", "bottom"]}>
+      <GestureHandlerRootView style={{ flex: 1 }}>
+        <SafeAreaProvider>
+          <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }} edges={["top", "bottom"]}>
           <FlashMessage flash={flash} />
           <View style={styles.center}>
             <ActivityIndicator size="large" color={colors.primary} />
@@ -11654,15 +11873,16 @@ function App() {
             <Text style={styles.loadingText}>bootStep={bootStep || "unknown"}</Text>
             <Text style={styles.loadingText}>mount={mountIdRef.current}</Text> */}
           </View>
-        </SafeAreaView>
-      </SafeAreaProvider>
-      
+          </SafeAreaView>
+        </SafeAreaProvider>
+      </GestureHandlerRootView>
     );
   }
 
   return (
-    <SafeAreaProvider>
-      <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }} edges={["top", "bottom"]}>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <SafeAreaProvider>
+        <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }} edges={["top", "bottom"]}>
         <FlashMessage flash={flash} />
 
         {!token ? (
@@ -11760,8 +11980,9 @@ function App() {
             setPendingChatConversationId={setPendingChatConversationId}
           />
         )}
-      </SafeAreaView>
-    </SafeAreaProvider>
+        </SafeAreaView>
+      </SafeAreaProvider>
+    </GestureHandlerRootView>
   );
 }
 
@@ -13795,6 +14016,12 @@ signupTextButtonText: {
   },
   catalogViewerSlide: {
     flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  catalogViewerZoomContainer: {
+    flex: 1,
+    width: "100%",
     justifyContent: "center",
     alignItems: "center",
   },
