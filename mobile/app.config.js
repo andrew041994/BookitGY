@@ -77,6 +77,7 @@ export default {
     "android.permission.ACCESS_ADSERVICES_CUSTOM_AUDIENCE",
     "android.permission.ACCESS_ADSERVICES_TOPICS",
   ],
+    googleServicesFile: "./google-services.json",
     "useNextNotificationsApi": true,
     intentFilters: [
       {
