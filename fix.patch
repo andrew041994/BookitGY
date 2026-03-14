@@ -1,12 +1,9 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
 diff --git a/mobile/App.js b/mobile/App.js
-index 69f9ca0de4cfb60267d0286f896af004f1932b9f..662e66623b0c06ae8d0f811103706b18f9ef5fe1 100644
+index 662e66623b0c06ae8d0f811103706b18f9ef5fe1..60f1afa6b418a9f6db02cb4756c0fb980c74009b 100644
 --- a/mobile/App.js
 +++ b/mobile/App.js
-@@ -6271,51 +6271,50 @@ function SearchScreen({ token, showFlash, navigation, route, toggleFavorite, isF
-                 {selectedService && selectedDate && (
-                   <View style={{ marginTop: 12, marginBottom: 20 }}>
-                     <TouchableOpacity
+@@ -6274,51 +6274,51 @@ function SearchScreen({ token, showFlash, navigation, route, toggleFavorite, isF
                        style={[
                          styles.bookButton,
                          (!selectedSlot || bookingLoading) && styles.bookButtonDisabled,
@@ -29,11 +26,11 @@ index 69f9ca0de4cfb60267d0286f896af004f1932b9f..662e66623b0c06ae8d0f811103706b18
                  onImageIndexChange={(nextIndex) => {
                    if (typeof nextIndex === "number") {
                      setCatalogViewerIndex(nextIndex);
--                    setCatalogViewerStartIndex(nextIndex);
                    }
                  }}
                  backgroundColor="#000000"
-                 swipeToCloseEnabled={false}
+-                swipeToCloseEnabled={false}
++                swipeToCloseEnabled
                  HeaderComponent={({ imageIndex }) => (
                    <View style={styles.catalogViewerModal}>
                      <Pressable
@@ -46,7 +43,7 @@ index 69f9ca0de4cfb60267d0286f896af004f1932b9f..662e66623b0c06ae8d0f811103706b18
                      >
                        <Ionicons name="close" size={28} color="#FFFFFF" />
                      </Pressable>
-                     {catalogImageUrls.length > 1 ? ( 
+                     {catalogImageUrls.length > 1 ? (
                        <View
                          style={[
                            styles.catalogViewerCounter,
@@ -55,6 +52,10 @@ index 69f9ca0de4cfb60267d0286f896af004f1932b9f..662e66623b0c06ae8d0f811103706b18
                        >
                          <Text style={styles.catalogViewerCounterText}>
                            {(typeof imageIndex === "number" ? imageIndex : catalogViewerIndex) + 1} / {catalogImageUrls.length}
+                         </Text>
+                       </View>
+                     ) : null}
+                   </View>
  
 EOF
 )

@@ -6296,7 +6296,7 @@ function SearchScreen({ token, showFlash, navigation, route, toggleFavorite, isF
                   }
                 }}
                 backgroundColor="#000000"
-                swipeToCloseEnabled={false}
+                swipeToCloseEnabled
                 HeaderComponent={({ imageIndex }) => (
                   <View style={styles.catalogViewerModal}>
                     <Pressable
