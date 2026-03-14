@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from typing import Iterable, Optional
 
 import requests
@@ -12,10 +13,11 @@ from app.utils.time import now_guyana
 logger = logging.getLogger(__name__)
 
 EXPO_PUSH_URL = "https://exp.host/--/api/v2/push/send"
+EXPO_TOKEN_PATTERN = re.compile(r"^(ExponentPushToken|ExpoPushToken)\[[^\]]+\]$")
 
 
 def _is_valid_expo_token(token: Optional[str]) -> bool:
-    return isinstance(token, str) and token.startswith("ExponentPushToken[") and token.endswith("]")
+    return isinstance(token, str) and bool(EXPO_TOKEN_PATTERN.match(token.strip()))
 
 
 def upsert_push_token(
@@ -103,6 +105,7 @@ def _deactivate_tokens(db: Session, tokens: Iterable[str]) -> None:
     for row in rows:
         row.is_active = False
     if rows:
+        logger.info("Deactivating %s Expo push token(s)", len(rows))
         db.commit()
 
 
@@ -134,12 +137,23 @@ def send_push_to_user(
         }
         try:
             response = requests.post(EXPO_PUSH_URL, json=payload, timeout=5)
+            response.raise_for_status()
             result = response.json() if response.content else {}
-            item = (result.get("data") or {}) if isinstance(result, dict) else {}
-            if item.get("status") == "error":
+            data_items = []
+            if isinstance(result, dict):
+                payload_data = result.get("data")
+                if isinstance(payload_data, list):
+                    data_items = payload_data
+                elif isinstance(payload_data, dict):
+                    data_items = [payload_data]
+
+            for item in data_items:
+                if not isinstance(item, dict) or item.get("status") != "error":
+                    continue
                 details = item.get("details") or {}
                 if details.get("error") == "DeviceNotRegistered":
                     invalid_tokens.append(token)
+                    break
         except Exception as exc:
             logger.warning("Push send failed for user_id=%s token=%s error=%s", user_id, token, exc)
 
