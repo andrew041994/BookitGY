@@ -46,7 +46,7 @@ index 69f9ca0de4cfb60267d0286f896af004f1932b9f..662e66623b0c06ae8d0f811103706b18
                      >
                        <Ionicons name="close" size={28} color="#FFFFFF" />
                      </Pressable>
-                     {catalogImageUrls.length > 1 ? (
+                     {catalogImageUrls.length > 1 ? ( 
                        <View
                          style={[
                            styles.catalogViewerCounter,
