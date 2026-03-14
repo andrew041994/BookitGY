@@ -52,6 +52,7 @@ import * as Location from "expo-location";
 import Constants from "expo-constants";
 import * as ImagePicker from "expo-image-picker";
 import * as Notifications from "expo-notifications";
+import * as Device from "expo-device";
 import { Ionicons } from "@expo/vector-icons";
 import ImageView from "react-native-image-viewing";
 import {
@@ -2065,6 +2066,16 @@ function ProfileScreen({ authLoading, setToken, showFlash, token }) {
 
   const logout = async () => {
     try {
+        const existingPushToken = await AsyncStorage.getItem("expoPushToken");
+        const deviceId = await AsyncStorage.getItem("pushDeviceId");
+        if (existingPushToken || deviceId) {
+          try {
+            await apiClient.post("/notifications/push-tokens/deactivate", { expo_push_token: existingPushToken || null, device_id: deviceId || null });
+          } catch (e) {
+            console.log("Failed to deactivate push token on logout", e?.response?.data || e?.message || e);
+          }
+        }
+
         await clearAllAuthTokens(); // ✅ clears access + refresh
       
         // Optional cleanup (keeps old installs from reviving stale tokens)
@@ -2074,6 +2085,7 @@ function ProfileScreen({ authLoading, setToken, showFlash, token }) {
           console.log("Error clearing legacy token", e?.message || e);
         }
       
+        await AsyncStorage.removeItem("expoPushToken");
         if (setToken) setToken(null);
       
         if (showFlash) showFlash("success", "Logged out successfully");
@@ -10910,6 +10922,20 @@ function App() {
   const [pendingChatConversationId, setPendingChatConversationId] = useState(null);
   const pushRegistrationInFlightRef = useRef(false);
   const lastRegisteredPushTokenRef = useRef(null);
+  const pushDeviceIdRef = useRef(null);
+
+
+  const getOrCreatePushDeviceId = useCallback(async () => {
+    if (pushDeviceIdRef.current) return pushDeviceIdRef.current;
+    const key = "pushDeviceId";
+    let existing = await AsyncStorage.getItem(key);
+    if (!existing) {
+      existing = `${Platform.OS}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+      await AsyncStorage.setItem(key, existing);
+    }
+    pushDeviceIdRef.current = existing;
+    return existing;
+  }, []);
 
   const registerExpoPushToken = useCallback(async () => {
     if (!token?.token || pushRegistrationInFlightRef.current) return;
@@ -10958,7 +10984,8 @@ function App() {
         return;
       }
 
-      await apiClient.put("/users/me", { expo_push_token: expoPushToken });
+      const deviceId = await getOrCreatePushDeviceId();
+      await apiClient.post("/notifications/push-tokens/register", { expo_push_token: expoPushToken, platform: Device?.osName || Platform.OS, device_id: deviceId });
       await AsyncStorage.setItem("expoPushToken", expoPushToken);
       lastRegisteredPushTokenRef.current = expoPushToken;
     } catch (err) {
@@ -10969,7 +10996,7 @@ function App() {
     } finally {
       pushRegistrationInFlightRef.current = false;
     }
-  }, [token?.token]);
+  }, [getOrCreatePushDeviceId, token?.token]);
 
   const formatFlashText = useCallback((text) => {
     if (typeof text === "string") return text;
@@ -11014,8 +11041,18 @@ function App() {
   useEffect(() => {
     const handleNotificationResponse = (response) => {
       const data = response?.notification?.request?.content?.data || {};
-      if (data?.type === 'chat' && data?.conversation_id) {
-        setPendingChatConversationId(Number(data.conversation_id));
+      const type = data?.type;
+      const conversationId = Number(data?.conversationId || data?.conversation_id);
+
+      if ((type === 'chat_message' || type === 'chat') && conversationId) {
+        setPendingChatConversationId(conversationId);
+        if (navigationRef?.current) {
+          navigationRef.current.navigate(token?.isProvider ? 'Dashboard' : 'Appointments');
+        }
+        return;
+      }
+
+      if (type === 'appointment_created' || type === 'appointment_canceled') {
         if (navigationRef?.current) {
           navigationRef.current.navigate(token?.isProvider ? 'Dashboard' : 'Appointments');
         }
@@ -11030,9 +11067,14 @@ function App() {
     };
 
     hydrateLastNotificationResponse();
+    const receivedSub = Notifications.addNotificationReceivedListener((notification) => {
+      const data = notification?.request?.content?.data || {};
+      console.log('[notifications] Foreground notification received in App:', data);
+    });
     const sub = Notifications.addNotificationResponseReceivedListener(handleNotificationResponse);
 
     return () => {
+      receivedSub?.remove?.();
       sub?.remove?.();
     };
   }, [navigationRef, token?.isProvider]);

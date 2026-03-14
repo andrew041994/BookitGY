@@ -4,7 +4,8 @@ from sqlalchemy.orm import Session
 from app.database import SessionLocal, _ensure_tables_initialized
 from app import models
 from app import crud
-from app.crud import send_push, generate_monthly_bills
+from app.crud import generate_monthly_bills
+from app.services.push_notifications import send_push_to_user
 from app.utils.time import now_guyana
 
 
@@ -32,11 +33,13 @@ def send_upcoming_reminders():
     )
 
     for booking, service, customer in rows:
-        send_push(
-            customer.expo_push_token,
-            "Upcoming appointment",
-            f"Your {service.name} at "
+        send_push_to_user(
+            db,
+            user_id=customer.id,
+            title="Upcoming appointment",
+            body=f"Your {service.name} at "
             f"{booking.start_time.strftime('%I:%M %p')} starts in 1 hour.",
+            data={"type": "upcoming_appointment", "bookingId": booking.id, "targetScreen": "Appointments"},
         )
 
     db.close()

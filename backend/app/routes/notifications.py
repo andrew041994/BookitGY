@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 from app import crud, models, schemas
 from app.database import get_db
 from app.security import get_current_user_from_header
+from app.services import push_notifications
 
 router = APIRouter(tags=["notifications"])
 
@@ -52,3 +53,41 @@ def mark_all_notifications_read(
 ):
     updated = crud.mark_all_notifications_read(db, user_id=current_user.id)
     return {"ok": True, "updated": updated}
+
+
+@router.post("/notifications/push-tokens/register")
+def register_push_token(
+    payload: schemas.PushTokenRegisterRequest,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user_from_header),
+):
+    try:
+        row = push_notifications.upsert_push_token(
+            db,
+            user_id=current_user.id,
+            expo_push_token=payload.expo_push_token,
+            platform=payload.platform,
+            device_id=payload.device_id,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+    return {"id": row.id, "is_active": row.is_active}
+
+
+@router.post("/notifications/push-tokens/deactivate")
+def deactivate_push_token(
+    payload: schemas.PushTokenDeactivateRequest,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user_from_header),
+):
+    try:
+        updated = push_notifications.deactivate_push_token(
+            db,
+            user_id=current_user.id,
+            expo_push_token=payload.expo_push_token,
+            device_id=payload.device_id,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    return {"updated": updated}

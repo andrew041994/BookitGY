@@ -833,6 +833,18 @@ class NotificationOut(BaseModel):
         from_attributes = True
 
 
+
+
+class PushTokenRegisterRequest(BaseModel):
+    expo_push_token: str
+    platform: Optional[str] = None
+    device_id: Optional[str] = None
+
+
+class PushTokenDeactivateRequest(BaseModel):
+    expo_push_token: Optional[str] = None
+    device_id: Optional[str] = None
+
 class NotificationsResponse(BaseModel):
     notifications: List[NotificationOut] = []
 

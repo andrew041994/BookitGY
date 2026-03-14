@@ -255,6 +255,23 @@ class Notification(Base):
     created_at = Column(DateTime, default=now_guyana, nullable=False, index=True)
 
 
+class PushToken(Base):
+    __tablename__ = "push_tokens"
+    __table_args__ = (
+        UniqueConstraint("expo_push_token", name="uq_push_tokens_expo_push_token"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    expo_push_token = Column(String, nullable=False)
+    platform = Column(String, nullable=True)
+    device_id = Column(String, nullable=True)
+    is_active = Column(Boolean, nullable=False, default=True)
+    created_at = Column(DateTime, default=now_guyana, nullable=False)
+    updated_at = Column(DateTime, default=now_guyana, onupdate=now_guyana, nullable=False)
+    last_seen_at = Column(DateTime, nullable=True)
+
+
 
 
 

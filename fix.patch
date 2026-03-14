@@ -1,61 +1,339 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
 diff --git a/mobile/App.js b/mobile/App.js
-index 662e66623b0c06ae8d0f811103706b18f9ef5fe1..60f1afa6b418a9f6db02cb4756c0fb980c74009b 100644
+index 60f1afa6b418a9f6db02cb4756c0fb980c74009b..2a14a808438e24d16e51974b3efc67cb27acdd3b 100644
 --- a/mobile/App.js
 +++ b/mobile/App.js
-@@ -6274,51 +6274,51 @@ function SearchScreen({ token, showFlash, navigation, route, toggleFavorite, isF
-                       style={[
-                         styles.bookButton,
-                         (!selectedSlot || bookingLoading) && styles.bookButtonDisabled,
-                       ]}
-                       disabled={!selectedSlot || bookingLoading}
-                       onPress={handleBookAppointment}
-                     >
-                       <Text style={styles.bookButtonLabel}>
-                         {bookingLoading ? "Booking..." : "Book Appointment"}
-                       </Text>
-                     </TouchableOpacity>
-                   </View>
-                 )}
-               </ScrollView>
-               <ImageView
-                 images={catalogImageUrls.map((uri) => ({ uri }))}
-                 imageIndex={catalogViewerStartIndex}
-                 visible={catalogViewerVisible}
-                 onRequestClose={handleCloseCatalogViewer}
-                 onImageIndexChange={(nextIndex) => {
-                   if (typeof nextIndex === "number") {
-                     setCatalogViewerIndex(nextIndex);
-                   }
-                 }}
-                 backgroundColor="#000000"
--                swipeToCloseEnabled={false}
-+                swipeToCloseEnabled
-                 HeaderComponent={({ imageIndex }) => (
-                   <View style={styles.catalogViewerModal}>
-                     <Pressable
-                       onPress={handleCloseCatalogViewer}
-                       style={[
-                         styles.catalogViewerCloseButton,
-                         { top: Math.max(insets.top, 10) + 6 },
-                       ]}
-                       hitSlop={10}
-                     >
-                       <Ionicons name="close" size={28} color="#FFFFFF" />
-                     </Pressable>
-                     {catalogImageUrls.length > 1 ? (
-                       <View
-                         style={[
-                           styles.catalogViewerCounter,
-                           { bottom: Math.max(insets.bottom, 12) + 8 },
-                         ]}
-                       >
-                         <Text style={styles.catalogViewerCounterText}>
-                           {(typeof imageIndex === "number" ? imageIndex : catalogViewerIndex) + 1} / {catalogImageUrls.length}
-                         </Text>
-                       </View>
-                     ) : null}
-                   </View>
+@@ -30,50 +30,51 @@ import * as AuthSession from "expo-auth-session";
+ import * as Google from "expo-auth-session/providers/google";
+ import * as WebBrowser from "expo-web-browser";
+ import * as Sharing from "expo-sharing";
+ 
+ import {
+   NavigationContainer,
+   CommonActions,
+   useFocusEffect,
+   useIsFocused,
+ } from "@react-navigation/native";
+ import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
+ import { enableScreens } from "react-native-screens";
+ import AsyncStorage from "@react-native-async-storage/async-storage";
+ import {
+   clearAllAuthTokens,
+   loadToken,
+   saveRefreshToken,
+   saveToken,
+ } from "./src/components/tokenStorage";
+ import ProviderCard from "./src/components/ProviderCard";
+ import ProviderShareCard from "./src/components/ProviderShareCard";
+ import * as Location from "expo-location";
+ import Constants from "expo-constants";
+ import * as ImagePicker from "expo-image-picker";
+ import * as Notifications from "expo-notifications";
++import * as Device from "expo-device";
+ import { Ionicons } from "@expo/vector-icons";
+ import ImageView from "react-native-image-viewing";
+ import {
+   GestureHandlerRootView,
+ } from "react-native-gesture-handler";
+ import {
+   CalendarProvider,
+   Calendar,
+ } from "react-native-calendars";
+ import {
+   SafeAreaProvider,
+   SafeAreaView,
+   useSafeAreaInsets,
+ } from "react-native-safe-area-context";
+ import { KeyboardAwareScrollView } from "react-native-keyboard-aware-scroll-view";
+ import { apiClient } from "./src/api";
+ import { submitBookingRating } from "./src/api/bookings";
+ import { getRatingSummary } from "./src/components/RatingSummary";
+ import {
+   durationPartsToMinutes,
+   formatDuration,
+   minutesToDurationParts,
+   validateDurationParts,
+ } from "./src/utils/duration";
+ // import { AccessToken, LoginManager } from "react-native-fbsdk-next";
+@@ -2043,59 +2044,70 @@ function ProfileScreen({ authLoading, setToken, showFlash, token }) {
+         mediaTypes: ImagePicker.MediaTypeOptions.Images,
+         allowsEditing: true,
+         aspect: [1, 1],
+         quality: 1,
+       });
+ 
+       if (result.canceled) {
+         return;
+       }
+ 
+       const asset = result.assets && result.assets[0];
+       if (!asset || !asset.uri) {
+         return;
+       }
+ 
+     await uploadAvatar(asset.uri);
+     } catch (err) {
+       console.log("Image picker error:", err);
+     }
+   };
+ 
+ 
+ 
+   const logout = async () => {
+     try {
++        const existingPushToken = await AsyncStorage.getItem("expoPushToken");
++        const deviceId = await AsyncStorage.getItem("pushDeviceId");
++        if (existingPushToken || deviceId) {
++          try {
++            await apiClient.post("/notifications/push-tokens/deactivate", { expo_push_token: existingPushToken || null, device_id: deviceId || null });
++          } catch (e) {
++            console.log("Failed to deactivate push token on logout", e?.response?.data || e?.message || e);
++          }
++        }
++
+         await clearAllAuthTokens(); // ✅ clears access + refresh
+       
+         // Optional cleanup (keeps old installs from reviving stale tokens)
+         try {
+           await AsyncStorage.removeItem(LEGACY_ACCESS_TOKEN_KEY);
+         } catch (e) {
+           console.log("Error clearing legacy token", e?.message || e);
+         }
+       
++        await AsyncStorage.removeItem("expoPushToken");
+         if (setToken) setToken(null);
+       
+         if (showFlash) showFlash("success", "Logged out successfully");
+       } catch (err) {
+         console.error("Error during logout", err);
+         if (showFlash) showFlash("error", "Could not log out. Please try again.");
+       }
+     };
+ 
+ 
+   // const logout = async () => {
+   //   try {
+   //     if (setToken) {
+   //       setToken(null);
+   //     }
+   //     if (showFlash) {
+   //       showFlash("success", "Logged out successfully");
+   //     }
+   //   } catch (err) {
+   //     console.error("Error during logout", err);
+   //     if (showFlash) {
+   //       showFlash("error", "Could not log out. Please try again.");
+   //     }
+   //   }
+   // };
+@@ -10888,173 +10900,203 @@ function App() {
+   const mountIdRef = useRef(Math.random().toString(16).slice(2));
+   console.log("APP MOUNT ID:", mountIdRef.current);
+   useEffect(() => console.log("APP useEffect ran for mount", mountIdRef.current), []);
+ 
+   const [token, setToken] = useState(null);
+   const [authLoading, setAuthLoading] = useState(true);
+   const [authMode, setAuthMode] = useState("landing"); // 'landing' | 'login' | 'signup' | 'forgot' | 'verifyEmail' | 'finishSetup'
+   const [pendingVerifyEmail, setPendingVerifyEmail] = useState("");
+   const [pendingGoogleLink, setPendingGoogleLink] = useState(null);
+   const [isAdmin, setIsAdmin] = useState(false);
+   const [setupContext, setSetupContext] = useState(null);
+   const [pendingDeepLinkUsername, setPendingDeepLinkUsername] = useState(null);
+   const [navReady, setNavReady] = useState(false);
+   const navReadyRef = useRef(false);
+   const navigationRef = useRef(null);
+   const authBootstrapRef = useRef({ inFlight: false, completed: false });
+   const tokenRef = useRef(token);
+   const lastDeeplinkHandledAtRef = useRef(0);
+   const lastHandledUrlRef = useRef(null);
+   const url = ExpoLinking.useURL();
+ 
+   const [flash, setFlash] = useState(null);
+   const [pendingChatConversationId, setPendingChatConversationId] = useState(null);
+   const pushRegistrationInFlightRef = useRef(false);
+   const lastRegisteredPushTokenRef = useRef(null);
++  const pushDeviceIdRef = useRef(null);
++
++
++  const getOrCreatePushDeviceId = useCallback(async () => {
++    if (pushDeviceIdRef.current) return pushDeviceIdRef.current;
++    const key = "pushDeviceId";
++    let existing = await AsyncStorage.getItem(key);
++    if (!existing) {
++      existing = `${Platform.OS}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
++      await AsyncStorage.setItem(key, existing);
++    }
++    pushDeviceIdRef.current = existing;
++    return existing;
++  }, []);
+ 
+   const registerExpoPushToken = useCallback(async () => {
+     if (!token?.token || pushRegistrationInFlightRef.current) return;
+ 
+     pushRegistrationInFlightRef.current = true;
+     try {
+       if (Platform.OS === "android") {
+         await Notifications.setNotificationChannelAsync("default", {
+           name: "default",
+           importance: Notifications.AndroidImportance.MAX,
+           vibrationPattern: [0, 250, 250, 250],
+           lightColor: "#FF231F7C",
+         });
+       }
+ 
+       const currentPermissions = await Notifications.getPermissionsAsync();
+       let finalStatus = currentPermissions?.status;
+ 
+       if (finalStatus !== "granted") {
+         const requestedPermissions = await Notifications.requestPermissionsAsync();
+         finalStatus = requestedPermissions?.status;
+       }
+ 
+       if (finalStatus !== "granted") {
+         return;
+       }
+ 
+       const projectId =
+         Constants?.expoConfig?.extra?.eas?.projectId ??
+         Constants?.easConfig?.projectId;
+ 
+       if (!projectId) {
+         console.log("[notifications] Missing EAS projectId; cannot get Expo push token.");
+         return;
+       }
+ 
+       const tokenResponse = await Notifications.getExpoPushTokenAsync({ projectId });
+       const expoPushToken = tokenResponse?.data;
+       if (!expoPushToken) return;
+ 
+       const storedPushToken = await AsyncStorage.getItem("expoPushToken");
+       if (
+         expoPushToken === storedPushToken ||
+         expoPushToken === lastRegisteredPushTokenRef.current
+       ) {
+         return;
+       }
+ 
+-      await apiClient.put("/users/me", { expo_push_token: expoPushToken });
++      const deviceId = await getOrCreatePushDeviceId();
++      await apiClient.post("/notifications/push-tokens/register", { expo_push_token: expoPushToken, platform: Device?.osName || Platform.OS, device_id: deviceId });
+       await AsyncStorage.setItem("expoPushToken", expoPushToken);
+       lastRegisteredPushTokenRef.current = expoPushToken;
+     } catch (err) {
+       console.log(
+         "[notifications] Failed to register Expo push token",
+         err?.response?.data || err?.message || err
+       );
+     } finally {
+       pushRegistrationInFlightRef.current = false;
+     }
+-  }, [token?.token]);
++  }, [getOrCreatePushDeviceId, token?.token]);
+ 
+   const formatFlashText = useCallback((text) => {
+     if (typeof text === "string") return text;
+     if (text == null) return "Something went wrong.";
+ 
+     const formatErrorItem = (item) => {
+       if (typeof item === "string") return item;
+       if (!item || typeof item !== "object") return String(item);
+ 
+       const message = item.msg || item.message;
+       if (Array.isArray(item.loc) && item.loc.length > 0) {
+         const field = item.loc[item.loc.length - 1];
+         return message ? `${field}: ${message}` : String(item);
+       }
+       if (message) return message;
+       return JSON.stringify(item);
+     };
+ 
+     if (Array.isArray(text)) {
+       return text.map(formatErrorItem).filter(Boolean).join("\n");
+     }
+ 
+     if (typeof text === "object") {
+       if (Array.isArray(text.detail)) {
+         return formatFlashText(text.detail);
+       }
+       if (typeof text.detail === "string") return text.detail;
+       if (typeof text.message === "string") return text.message;
+       if (typeof text.msg === "string") return text.msg;
+       return JSON.stringify(text);
+     }
+ 
+     return String(text);
+   }, []);
+ 
+ 
+   useEffect(() => {
+     if (!token?.token) return;
+     registerExpoPushToken();
+   }, [registerExpoPushToken, token?.token]);
+ 
+   useEffect(() => {
+     const handleNotificationResponse = (response) => {
+       const data = response?.notification?.request?.content?.data || {};
+-      if (data?.type === 'chat' && data?.conversation_id) {
+-        setPendingChatConversationId(Number(data.conversation_id));
++      const type = data?.type;
++      const conversationId = Number(data?.conversationId || data?.conversation_id);
++
++      if ((type === 'chat_message' || type === 'chat') && conversationId) {
++        setPendingChatConversationId(conversationId);
++        if (navigationRef?.current) {
++          navigationRef.current.navigate(token?.isProvider ? 'Dashboard' : 'Appointments');
++        }
++        return;
++      }
++
++      if (type === 'appointment_created' || type === 'appointment_canceled') {
+         if (navigationRef?.current) {
+           navigationRef.current.navigate(token?.isProvider ? 'Dashboard' : 'Appointments');
+         }
+       }
+     };
+ 
+     const hydrateLastNotificationResponse = async () => {
+       const initialResponse = await Notifications.getLastNotificationResponseAsync();
+       if (initialResponse) {
+         handleNotificationResponse(initialResponse);
+       }
+     };
+ 
+     hydrateLastNotificationResponse();
++    const receivedSub = Notifications.addNotificationReceivedListener((notification) => {
++      const data = notification?.request?.content?.data || {};
++      console.log('[notifications] Foreground notification received in App:', data);
++    });
+     const sub = Notifications.addNotificationResponseReceivedListener(handleNotificationResponse);
+ 
+     return () => {
++      receivedSub?.remove?.();
+       sub?.remove?.();
+     };
+   }, [navigationRef, token?.isProvider]);
+ 
+ 
+   const showFlash = useCallback((type, text) => {
+     setFlash({ type, text: formatFlashText(text) });
+     setTimeout(() => {
+       setFlash(null);
+     }, 4500);
+   }, [formatFlashText]);
+ 
+   const [googleLoading, setGoogleLoading] = useState(false);
+ 
+   // Expo Go proxy is a fallback only; OAuth/OpenID testing is expected in development builds or standalone/TestFlight apps.
+   const isExpoGo = Constants.appOwnership === "expo";
+   const useProxy = isExpoGo;
+   const hasLoggedGoogleEnvRef = useRef(false);
+ 
+   const googleIosClientId = (process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID || "").trim();
+   const googleAndroidClientId = (process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID || "").trim();
+   const googleWebClientId = (process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID || "").trim();
+ 
+   useEffect(() => {
+     if (hasLoggedGoogleEnvRef.current) return;
  
 EOF
 )

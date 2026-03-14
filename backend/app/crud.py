@@ -8,7 +8,6 @@ from sqlalchemy.orm import Session, aliased, joinedload
 from sqlalchemy.exc import IntegrityError
 from passlib.context import CryptContext
 from twilio.rest import Client
-import requests
 import hashlib
 import json
 from . import models, schemas
@@ -18,6 +17,7 @@ from app.utils.passwords import validate_password
 from app.utils.time import now_guyana, today_start_guyana, today_end_guyana
 from app.utils.duration import derive_booking_end, format_duration_human
 from app.utils.email import send_monthly_statement_email
+from app.services.push_notifications import send_push_to_user
 
 load_dotenv(find_dotenv(), override=False)
 
@@ -31,7 +31,6 @@ logger = logging.getLogger(__name__)
 pwd_context = CryptContext(schemes=["pbkdf2_sha256"], deprecated="auto")
 
 
-EXPO_PUSH_URL = "https://exp.host/--/api/v2/push/send"
 DEFAULT_SERVICE_CHARGE_PERCENTAGE = Decimal("10.0")
 INTRO_PROMO_REAL_PROVIDER_MIN_ID = 6
 INTRO_PROMO_MAX_ELIGIBLE_PROVIDERS = 100
@@ -82,29 +81,6 @@ def validate_coordinates(lat: Optional[float], long: Optional[float]) -> None:
         if not (-180.0 <= long <= 180.0):
             raise ValueError("Longitude must be between -180 and 180 degrees")
 
-
-def send_push(
-    to_token: Optional[str],
-    title: str,
-    body: str,
-    data: Optional[dict] = None,
-) -> None:
-    if not to_token:
-        return
-
-    payload = {
-        "to": to_token,
-        "sound": "default",
-        "title": title,
-        "body": body,
-    }
-    if data:
-        payload["data"] = data
-
-    try:
-        requests.post(EXPO_PUSH_URL, json=payload, timeout=5)
-    except Exception as e:
-        print(f"Push error: {e}")
 
 def hash_password(password: str) -> str:
     """Return a secure hash for the given plaintext password."""
@@ -766,6 +742,7 @@ def send_whatsapp_template(
 
 
 def notify_booking_created(
+    db: Session,
     customer: Optional[models.User],
     provider_user: Optional[models.User],
     service: models.Service,
@@ -809,18 +786,13 @@ def notify_booking_created(
 
 
     # Push notifications (one each)
-    send_push(
-        customer.expo_push_token,
-        "Booking confirmed",
-        f"{service.name} with {get_display_name(provider_user)} on "
+    send_push_to_user(
+        db,
+        user_id=provider_user.id,
+        title="New appointment",
+        body=f"{get_display_name(customer)} booked {service.name} on "
         f"{booking.start_time.strftime('%d %b %Y at %I:%M %p')}",
-    )
-
-    send_push(
-        provider_user.expo_push_token,
-        "New booking",
-        f"{get_display_name(customer)} booked {service.name} on "
-        f"{booking.start_time.strftime('%d %b %Y at %I:%M %p')}",
+        data={"type": "appointment_created", "bookingId": booking.id, "targetScreen": "Appointments"},
     )
 
 
@@ -1142,13 +1114,17 @@ def send_booking_message(
         db.add(notification)
         db.commit()
 
-        send_push(
-            recipient.expo_push_token,
-            f"New message from {get_display_name(sender)}",
-            body_text,
+        send_push_to_user(
+            db,
+            user_id=recipient.id,
+            title="New message",
+            body=f"{get_display_name(sender)}: {body_text}",
             data={
-                "type": "chat",
-                "conversation_id": conversation.id,
+                "type": "chat_message",
+                "bookingId": booking.id,
+                "conversationId": conversation.id,
+                "messageId": message.id,
+                "targetScreen": "Appointments",
             },
         )
 
@@ -1839,7 +1815,7 @@ def create_booking(
     )
 
     # Dispatch all notifications in one place
-    notify_booking_created(customer, provider_user, service, new_booking)
+    notify_booking_created(db, customer, provider_user, service, new_booking)
 
     return new_booking
 
@@ -3377,11 +3353,13 @@ def cancel_booking_for_customer(
 
 
     if provider_user and service and customer:
-        send_push(
-            provider_user.expo_push_token,
-            "Booking cancelled",
-            f"{get_display_name(customer)} cancelled {service.name} on "
+        send_push_to_user(
+            db,
+            user_id=provider_user.id,
+            title="Appointment canceled",
+            body=f"{get_display_name(customer)} canceled {service.name} on "
             f"{booking.start_time.strftime('%d %b %Y at %I:%M %p')}",
+            data={"type": "appointment_canceled", "bookingId": booking.id, "targetScreen": "Appointments"},
         )
 
     return booking
@@ -3458,11 +3436,13 @@ def cancel_booking_for_provider(
 
 
     if customer and service:
-        send_push(
-            customer.expo_push_token,
-            "Appointment cancelled",
-            f"Your provider cancelled {service.name} "
+        send_push_to_user(
+            db,
+            user_id=customer.id,
+            title="Appointment canceled",
+            body=f"Your provider canceled {service.name} "
             f"scheduled for {booking.start_time.strftime('%d %b %Y at %I:%M %p')}",
+            data={"type": "appointment_canceled", "bookingId": booking.id, "targetScreen": "Appointments"},
         )
 
     return True
