@@ -1,13 +1,35 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
 diff --git a/backend/app/services/push_notifications.py b/backend/app/services/push_notifications.py
-index 18b649a2ed9d490f69e28ad9b51f0aa0d24edffb..619847dd5ee33b124681d7f67cb99e98194321b5 100644
+index 619847dd5ee33b124681d7f67cb99e98194321b5..1dae565ff3092e24bb44e422b64f252a9c9ba77b 100644
 --- a/backend/app/services/push_notifications.py
 +++ b/backend/app/services/push_notifications.py
-@@ -126,65 +126,65 @@ def send_push_to_user(
+@@ -105,50 +105,51 @@ def _active_tokens_for_user(db: Session, user_id: int) -> list[models.PushToken]
+         .all()
+     )
+ 
+ 
+ def _deactivate_tokens(db: Session, tokens: Iterable[str]) -> None:
+     tokens = [t for t in tokens if t]
+     if not tokens:
+         return
+     rows = db.query(models.PushToken).filter(models.PushToken.expo_push_token.in_(tokens)).all()
+     for row in rows:
+         row.is_active = False
+     if rows:
+         logger.info("Deactivating %s Expo push token(s)", len(rows))
+         db.commit()
+ 
+ 
+ def send_push_to_user(
+     db: Session,
+     *,
+     user_id: int,
+     title: str,
      body: str,
      data: Optional[dict] = None,
  ) -> None:
      rows = _active_tokens_for_user(db, user_id)
++    logger.warning("ACTIVE PUSH TOKENS user_id=%s count=%s", user_id, len(rows))
      if not rows:
          return
  
@@ -29,50 +51,10 @@ index 18b649a2ed9d490f69e28ad9b51f0aa0d24edffb..619847dd5ee33b124681d7f67cb99e98
              "channelId": "default",
              "priority": "high",
          }
--        logger.info("Sending Expo push to token=%s", masked_token)
--        logger.info(
-+        logger.warning("Sending Expo push to token=%s", masked_token)
-+        logger.warning(
+         logger.warning("Sending Expo push to token=%s", masked_token)
+         logger.warning(
              "Expo push payload user_id=%s title=%s body=%s data=%s channelId=%s priority=%s sound=%s",
              user_id,
-             payload["title"],
-             payload["body"],
-             payload["data"],
-             payload["channelId"],
-             payload["priority"],
-             payload["sound"],
-         )
-         try:
-             response = requests.post(EXPO_PUSH_URL, json=payload, timeout=5)
-             status_code = getattr(response, "status_code", None)
--            logger.info("Expo push response status_code=%s token=%s", status_code, masked_token)
-+            logger.warning("Expo push response status_code=%s token=%s", status_code, masked_token)
-             raise_for_status = getattr(response, "raise_for_status", None)
-             if callable(raise_for_status):
-                 raise_for_status()
-             result = response.json() if response.content else {}
--            logger.info("Expo push parsed response token=%s response=%s", masked_token, result)
-+            logger.warning("Expo push parsed response token=%s response=%s", masked_token, result)
-             data_items = []
-             if isinstance(result, dict):
-                 payload_data = result.get("data")
-                 if isinstance(payload_data, list):
-                     data_items = payload_data
-                 elif isinstance(payload_data, dict):
-                     data_items = [payload_data]
- 
-             for item in data_items:
-                 if not isinstance(item, dict) or item.get("status") != "error":
-                     continue
-                 details = item.get("details") or {}
-                 if details.get("error") == "DeviceNotRegistered":
-                     invalid_tokens.append(token)
-                     break
-         except Exception as exc:
-             logger.warning("Push send failed for user_id=%s token=%s error=%s", user_id, token, exc)
- 
-     if invalid_tokens:
-         _deactivate_tokens(db, invalid_tokens)
  
 EOF
 )

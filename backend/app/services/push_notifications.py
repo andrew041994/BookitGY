@@ -127,6 +127,7 @@ def send_push_to_user(
     data: Optional[dict] = None,
 ) -> None:
     rows = _active_tokens_for_user(db, user_id)
+    logger.warning("ACTIVE PUSH TOKENS user_id=%s count=%s", user_id, len(rows))
     if not rows:
         return
 
