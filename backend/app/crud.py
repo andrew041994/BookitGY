@@ -1038,6 +1038,7 @@ def _get_or_create_conversation(
 
 
 def send_booking_message(
+        
     db: Session,
     *,
     booking_id: int,
@@ -1045,6 +1046,8 @@ def send_booking_message(
     text: Optional[str],
     attachment: Optional[schemas.MessageAttachmentPayload],
 ):
+    logger.warning("BOOKING MESSAGE PATCH LIVE")
+    
     context = get_booking_chat_context(db, booking_id=booking_id, user_id=sender_user_id)
     if not context:
         return None
