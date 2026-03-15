@@ -16,6 +16,15 @@ EXPO_PUSH_URL = "https://exp.host/--/api/v2/push/send"
 EXPO_TOKEN_PATTERN = re.compile(r"^(ExponentPushToken|ExpoPushToken)\[[^\]]+\]$")
 
 
+def _mask_expo_token(token: Optional[str]) -> str:
+    if not token:
+        return ""
+    trimmed = token.strip()
+    if len(trimmed) <= 14:
+        return "***"
+    return f"{trimmed[:10]}...{trimmed[-4:]}"
+
+
 def _is_valid_expo_token(token: Optional[str]) -> bool:
     return isinstance(token, str) and bool(EXPO_TOKEN_PATTERN.match(token.strip()))
 
@@ -128,6 +137,8 @@ def send_push_to_user(
             invalid_tokens.append(token)
             continue
 
+        masked_token = _mask_expo_token(token)
+
         payload = {
             "to": token,
             "sound": "default",
@@ -137,10 +148,26 @@ def send_push_to_user(
             "channelId": "default",
             "priority": "high",
         }
+        logger.info("Sending Expo push to token=%s", masked_token)
+        logger.info(
+            "Expo push payload user_id=%s title=%s body=%s data=%s channelId=%s priority=%s sound=%s",
+            user_id,
+            payload["title"],
+            payload["body"],
+            payload["data"],
+            payload["channelId"],
+            payload["priority"],
+            payload["sound"],
+        )
         try:
             response = requests.post(EXPO_PUSH_URL, json=payload, timeout=5)
-            response.raise_for_status()
+            status_code = getattr(response, "status_code", None)
+            logger.info("Expo push response status_code=%s token=%s", status_code, masked_token)
+            raise_for_status = getattr(response, "raise_for_status", None)
+            if callable(raise_for_status):
+                raise_for_status()
             result = response.json() if response.content else {}
+            logger.info("Expo push parsed response token=%s response=%s", masked_token, result)
             data_items = []
             if isinstance(result, dict):
                 payload_data = result.get("data")

@@ -1,69 +1,139 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
-diff --git a/mobile/App.js b/mobile/App.js
-index 2a14a808438e24d16e51974b3efc67cb27acdd3b..c4fa0d279ecdd2d51f5a1cbe46bcbe26412b3b48 100644
---- a/mobile/App.js
-+++ b/mobile/App.js
-@@ -124,50 +124,60 @@ const CLOUDINARY_CLOUD_NAME =
-   "";
+diff --git a/backend/app/services/push_notifications.py b/backend/app/services/push_notifications.py
+index fdb6faf788918517fc53fbb38c534a0409ec208b..18b649a2ed9d490f69e28ad9b51f0aa0d24edffb 100644
+--- a/backend/app/services/push_notifications.py
++++ b/backend/app/services/push_notifications.py
+@@ -1,43 +1,52 @@
+ from __future__ import annotations
  
- const CLOUDINARY_UPLOAD_PRESET =
-   process.env.EXPO_PUBLIC_CLOUDINARY_UPLOAD_PRESET ||
-   Constants.expoConfig?.extra?.CLOUDINARY_UPLOAD_PRESET ||
-   Constants.manifest?.extra?.CLOUDINARY_UPLOAD_PRESET ||
-   "";
+ import logging
+ import re
+ from typing import Iterable, Optional
  
- const CLOUDINARY_BOOKING_MESSAGES_FOLDER =
-   process.env.EXPO_PUBLIC_CLOUDINARY_BOOKING_MESSAGES_FOLDER ||
-   Constants.expoConfig?.extra?.CLOUDINARY_BOOKING_MESSAGES_FOLDER ||
-   Constants.manifest?.extra?.CLOUDINARY_BOOKING_MESSAGES_FOLDER ||
-   "bookitgy/booking_messages";
+ import requests
+ from sqlalchemy.orm import Session
  
- console.log("### API base URL =", API);
+ from app import models
+ from app.utils.time import now_guyana
+ 
+ logger = logging.getLogger(__name__)
+ 
+ EXPO_PUSH_URL = "https://exp.host/--/api/v2/push/send"
+ EXPO_TOKEN_PATTERN = re.compile(r"^(ExponentPushToken|ExpoPushToken)\[[^\]]+\]$")
  
  
- Notifications.setNotificationHandler({
-   handleNotification: async () => ({
-     shouldShowAlert: true,
-     shouldPlaySound: true,
-     shouldSetBadge: false,
-   }),
- });
- 
-+// Android requires a notification channel for alerts to appear
-+if (Platform.OS === "android") {
-+  Notifications.setNotificationChannelAsync("default", {
-+    name: "Default",
-+    importance: Notifications.AndroidImportance.MAX,
-+    vibrationPattern: [0, 250, 250, 250],
-+    lightColor: "#16a34a",
-+  });
-+}
++def _mask_expo_token(token: Optional[str]) -> str:
++    if not token:
++        return ""
++    trimmed = token.strip()
++    if len(trimmed) <= 14:
++        return "***"
++    return f"{trimmed[:10]}...{trimmed[-4:]}"
 +
- const colors = theme.colors;
- const HEADER_LOGO_WIDTH = 120;
- const HEADER_LOGO_HEIGHT = 120;
- const HEADER_VERTICAL_PADDING = 0;
++
+ def _is_valid_expo_token(token: Optional[str]) -> bool:
+     return isinstance(token, str) and bool(EXPO_TOKEN_PATTERN.match(token.strip()))
  
- // status color mapping
- const getAppointmentStatusThemeKey = (statusValue) => {
-   const normalized = `${statusValue || ""}`.trim().toLowerCase();
-   if (normalized.includes("cancel")) return "cancelled";
-   if (normalized.includes("complete")) return "completed";
-   return "scheduled";
- };
  
- const APPOINTMENT_STATUS_THEME = {
-   scheduled: {
-     accent: "#4DA3FF",
-     bgTint: "rgba(77,163,255,0.10)",
-     border: "rgba(77,163,255,0.35)",
-   },
-   completed: {
-     accent: "#2ECC71",
-     bgTint: "rgba(46,204,113,0.10)",
-     border: "rgba(46,204,113,0.35)",
-   },
-   cancelled: {
+ def upsert_push_token(
+     db: Session,
+     *,
+     user_id: int,
+     expo_push_token: str,
+     platform: Optional[str] = None,
+     device_id: Optional[str] = None,
+ ) -> models.PushToken:
+     token = (expo_push_token or "").strip()
+     if not _is_valid_expo_token(token):
+         raise ValueError("Invalid Expo push token")
+ 
+     existing = (
+         db.query(models.PushToken)
+         .filter(models.PushToken.expo_push_token == token)
+         .first()
+     )
+ 
+     now = now_guyana()
+     if existing:
+         existing.user_id = user_id
+@@ -106,58 +115,76 @@ def _deactivate_tokens(db: Session, tokens: Iterable[str]) -> None:
+         row.is_active = False
+     if rows:
+         logger.info("Deactivating %s Expo push token(s)", len(rows))
+         db.commit()
+ 
+ 
+ def send_push_to_user(
+     db: Session,
+     *,
+     user_id: int,
+     title: str,
+     body: str,
+     data: Optional[dict] = None,
+ ) -> None:
+     rows = _active_tokens_for_user(db, user_id)
+     if not rows:
+         return
+ 
+     invalid_tokens: list[str] = []
+     for row in rows:
+         token = row.expo_push_token
+         if not _is_valid_expo_token(token):
+             invalid_tokens.append(token)
+             continue
+ 
++        masked_token = _mask_expo_token(token)
++
+         payload = {
+             "to": token,
+             "sound": "default",
+             "title": title,
+             "body": body,
+             "data": data or {},
+             "channelId": "default",
+             "priority": "high",
+         }
++        logger.info("Sending Expo push to token=%s", masked_token)
++        logger.info(
++            "Expo push payload user_id=%s title=%s body=%s data=%s channelId=%s priority=%s sound=%s",
++            user_id,
++            payload["title"],
++            payload["body"],
++            payload["data"],
++            payload["channelId"],
++            payload["priority"],
++            payload["sound"],
++        )
+         try:
+             response = requests.post(EXPO_PUSH_URL, json=payload, timeout=5)
+-            response.raise_for_status()
++            status_code = getattr(response, "status_code", None)
++            logger.info("Expo push response status_code=%s token=%s", status_code, masked_token)
++            raise_for_status = getattr(response, "raise_for_status", None)
++            if callable(raise_for_status):
++                raise_for_status()
+             result = response.json() if response.content else {}
++            logger.info("Expo push parsed response token=%s response=%s", masked_token, result)
+             data_items = []
+             if isinstance(result, dict):
+                 payload_data = result.get("data")
+                 if isinstance(payload_data, list):
+                     data_items = payload_data
+                 elif isinstance(payload_data, dict):
+                     data_items = [payload_data]
+ 
+             for item in data_items:
+                 if not isinstance(item, dict) or item.get("status") != "error":
+                     continue
+                 details = item.get("details") or {}
+                 if details.get("error") == "DeviceNotRegistered":
+                     invalid_tokens.append(token)
+                     break
+         except Exception as exc:
+             logger.warning("Push send failed for user_id=%s token=%s error=%s", user_id, token, exc)
+ 
+     if invalid_tokens:
+         _deactivate_tokens(db, invalid_tokens)
  
 EOF
 )
