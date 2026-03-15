@@ -1,139 +1,110 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
-diff --git a/backend/app/services/push_notifications.py b/backend/app/services/push_notifications.py
-index fdb6faf788918517fc53fbb38c534a0409ec208b..18b649a2ed9d490f69e28ad9b51f0aa0d24edffb 100644
---- a/backend/app/services/push_notifications.py
-+++ b/backend/app/services/push_notifications.py
-@@ -1,43 +1,52 @@
- from __future__ import annotations
+diff --git a/backend/app/crud.py b/backend/app/crud.py
+index b641a51265cde2a8febf3c7f50c429b41b80e96c..ebd6b344df97a945128b949de6d771bd5cd0d7dc 100644
+--- a/backend/app/crud.py
++++ b/backend/app/crud.py
+@@ -1080,84 +1080,101 @@ def send_booking_message(
+     if attachment:
+         message_attachment = models.MessageAttachment(
+             message_id=message.id,
+             attachment_type="image",
+             file_url=attachment.file_url,
+             thumbnail_url=attachment.thumbnail_url,
+             original_filename=attachment.original_filename,
+             mime_type=attachment.mime_type,
+             file_size_bytes=attachment.file_size_bytes,
+             width=attachment.width,
+             height=attachment.height,
+         )
+         db.add(message_attachment)
  
- import logging
- import re
- from typing import Iterable, Optional
+     db.commit()
+     db.refresh(message)
  
- import requests
- from sqlalchemy.orm import Session
- 
- from app import models
- from app.utils.time import now_guyana
- 
- logger = logging.getLogger(__name__)
- 
- EXPO_PUSH_URL = "https://exp.host/--/api/v2/push/send"
- EXPO_TOKEN_PATTERN = re.compile(r"^(ExponentPushToken|ExpoPushToken)\[[^\]]+\]$")
- 
- 
-+def _mask_expo_token(token: Optional[str]) -> str:
-+    if not token:
-+        return ""
-+    trimmed = token.strip()
-+    if len(trimmed) <= 14:
-+        return "***"
-+    return f"{trimmed[:10]}...{trimmed[-4:]}"
-+
-+
- def _is_valid_expo_token(token: Optional[str]) -> bool:
-     return isinstance(token, str) and bool(EXPO_TOKEN_PATTERN.match(token.strip()))
- 
- 
- def upsert_push_token(
-     db: Session,
-     *,
-     user_id: int,
-     expo_push_token: str,
-     platform: Optional[str] = None,
-     device_id: Optional[str] = None,
- ) -> models.PushToken:
-     token = (expo_push_token or "").strip()
-     if not _is_valid_expo_token(token):
-         raise ValueError("Invalid Expo push token")
- 
-     existing = (
-         db.query(models.PushToken)
-         .filter(models.PushToken.expo_push_token == token)
-         .first()
+     recipient_id = (
+         context["provider_user_id"]
+         if sender_user_id == context["client_user_id"]
+         else context["client_user_id"]
      )
+     recipient = get_user_by_id(db, recipient_id)
+     sender = get_user_by_id(db, sender_user_id)
  
-     now = now_guyana()
-     if existing:
-         existing.user_id = user_id
-@@ -106,58 +115,76 @@ def _deactivate_tokens(db: Session, tokens: Iterable[str]) -> None:
-         row.is_active = False
-     if rows:
-         logger.info("Deactivating %s Expo push token(s)", len(rows))
++    logger.warning(
++        "BOOKING MESSAGE RECIPIENT DEBUG booking_id=%s sender_user_id=%s recipient_id=%s recipient_found=%s sender_found=%s context=%s",
++        booking.id,
++        sender_user_id,
++        recipient_id,
++        bool(recipient),
++        bool(sender),
++        context,
++    )
++
+     if recipient:
+         preview_text = "Sent an image" if not normalized_text else normalized_text
+         body_text = preview_text[:80]
+         notification = models.Notification(
+             user_id=recipient.id,
+             type="message",
+             title=f"New message from {get_display_name(sender)}",
+             body=body_text,
+             conversation_id=conversation.id,
+             message_id=message.id,
+             is_read=False,
+         )
+         db.add(notification)
          db.commit()
  
+         logger.info(
+             "Dispatching booking message push booking_id=%s sender_user_id=%s recipient_user_id=%s",
+             booking.id,
+             sender_user_id,
+             recipient.id,
+         )
+         send_push_to_user(
+             db,
+             user_id=recipient.id,
+             title="New message",
+             body=f"{get_display_name(sender)}: {body_text}",
+             data={
+                 "type": "chat_message",
+                 "bookingId": booking.id,
+                 "conversationId": conversation.id,
+                 "messageId": message.id,
+                 "targetScreen": "Appointments",
+             },
+         )
++    else:
++        logger.warning(
++            "BOOKING MESSAGE PUSH SKIPPED booking_id=%s sender_user_id=%s recipient_id=%s recipient_missing",
++            booking.id,
++            sender_user_id,
++            recipient_id,
++        )
  
- def send_push_to_user(
+     return message
+ 
+ 
+ def list_booking_messages(
      db: Session,
      *,
+     booking_id: int,
      user_id: int,
-     title: str,
-     body: str,
-     data: Optional[dict] = None,
- ) -> None:
-     rows = _active_tokens_for_user(db, user_id)
-     if not rows:
-         return
+ ):
+     context = get_booking_chat_context(db, booking_id=booking_id, user_id=user_id)
+     if not context:
+         return None
  
-     invalid_tokens: list[str] = []
-     for row in rows:
-         token = row.expo_push_token
-         if not _is_valid_expo_token(token):
-             invalid_tokens.append(token)
-             continue
- 
-+        masked_token = _mask_expo_token(token)
-+
-         payload = {
-             "to": token,
-             "sound": "default",
-             "title": title,
-             "body": body,
-             "data": data or {},
-             "channelId": "default",
-             "priority": "high",
-         }
-+        logger.info("Sending Expo push to token=%s", masked_token)
-+        logger.info(
-+            "Expo push payload user_id=%s title=%s body=%s data=%s channelId=%s priority=%s sound=%s",
-+            user_id,
-+            payload["title"],
-+            payload["body"],
-+            payload["data"],
-+            payload["channelId"],
-+            payload["priority"],
-+            payload["sound"],
-+        )
-         try:
-             response = requests.post(EXPO_PUSH_URL, json=payload, timeout=5)
--            response.raise_for_status()
-+            status_code = getattr(response, "status_code", None)
-+            logger.info("Expo push response status_code=%s token=%s", status_code, masked_token)
-+            raise_for_status = getattr(response, "raise_for_status", None)
-+            if callable(raise_for_status):
-+                raise_for_status()
-             result = response.json() if response.content else {}
-+            logger.info("Expo push parsed response token=%s response=%s", masked_token, result)
-             data_items = []
-             if isinstance(result, dict):
-                 payload_data = result.get("data")
-                 if isinstance(payload_data, list):
-                     data_items = payload_data
-                 elif isinstance(payload_data, dict):
-                     data_items = [payload_data]
- 
-             for item in data_items:
-                 if not isinstance(item, dict) or item.get("status") != "error":
-                     continue
-                 details = item.get("details") or {}
-                 if details.get("error") == "DeviceNotRegistered":
-                     invalid_tokens.append(token)
-                     break
-         except Exception as exc:
-             logger.warning("Push send failed for user_id=%s token=%s error=%s", user_id, token, exc)
- 
-     if invalid_tokens:
-         _deactivate_tokens(db, invalid_tokens)
+     provider_user = get_user_by_id(db, context["provider_user_id"])
+     client_user = get_user_by_id(db, context["client_user_id"])
+     participants = {
+         "provider": {
+             "username": provider_user.username if provider_user else "Provider",
+             "avatar_url": provider_user.avatar_url if provider_user else None,
+         },
+         "client": {
+             "username": client_user.username if client_user else "Client",
+             "avatar_url": client_user.avatar_url if client_user else None,
+         },
  
 EOF
 )

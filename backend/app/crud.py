@@ -1102,6 +1102,16 @@ def send_booking_message(
     recipient = get_user_by_id(db, recipient_id)
     sender = get_user_by_id(db, sender_user_id)
 
+    logger.warning(
+        "BOOKING MESSAGE RECIPIENT DEBUG booking_id=%s sender_user_id=%s recipient_id=%s recipient_found=%s sender_found=%s context=%s",
+        booking.id,
+        sender_user_id,
+        recipient_id,
+        bool(recipient),
+        bool(sender),
+        context,
+    )
+
     if recipient:
         preview_text = "Sent an image" if not normalized_text else normalized_text
         body_text = preview_text[:80]
@@ -1135,6 +1145,13 @@ def send_booking_message(
                 "messageId": message.id,
                 "targetScreen": "Appointments",
             },
+        )
+    else:
+        logger.warning(
+            "BOOKING MESSAGE PUSH SKIPPED booking_id=%s sender_user_id=%s recipient_id=%s recipient_missing",
+            booking.id,
+            sender_user_id,
+            recipient_id,
         )
 
     return message
