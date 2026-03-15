@@ -10948,7 +10948,19 @@ function App() {
   }, []);
 
   const registerExpoPushToken = useCallback(async () => {
-    if (!token?.token || pushRegistrationInFlightRef.current) return;
+    console.log("[notifications] registerExpoPushToken invoked", {
+      hasToken: !!token?.token,
+      userId: token?.userId,
+      inFlight: pushRegistrationInFlightRef.current,
+    });
+    if (!token?.token || pushRegistrationInFlightRef.current) {
+      console.log("[notifications] registerExpoPushToken skipped at entry", {
+        hasToken: !!token?.token,
+        userId: token?.userId,
+        inFlight: pushRegistrationInFlightRef.current,
+      });
+      return;
+    }
 
     let expoPushTokenForLog = null;
     let deviceIdForLog = null;
@@ -10972,7 +10984,10 @@ function App() {
         finalStatus = requestedPermissions?.status;
       }
 
+      console.log("[notifications] notification permission status", { finalStatus });
+
       if (finalStatus !== "granted") {
+        console.log("[notifications] push registration aborted: permission not granted");
         return;
       }
 
@@ -10980,18 +10995,33 @@ function App() {
         Constants?.expoConfig?.extra?.eas?.projectId ??
         Constants?.easConfig?.projectId;
 
+      console.log("[notifications] resolved Expo projectId", { projectId });
+
       if (!projectId) {
+        console.log("[notifications] push registration aborted: missing projectId");
         console.log("[notifications] Missing EAS projectId; cannot get Expo push token.");
         return;
       }
 
       const tokenResponse = await Notifications.getExpoPushTokenAsync({ projectId });
       const expoPushToken = tokenResponse?.data;
+      console.log("[notifications] Expo push token fetch result", {
+        userId: token?.userId,
+        expoPushToken,
+      });
       expoPushTokenForLog = expoPushToken;
-      if (!expoPushToken) return;
+      if (!expoPushToken) {
+        console.log("[notifications] push registration aborted: no Expo push token returned");
+        return;
+      }
 
       const currentRegistrationKey = `${token?.userId ?? "anonymous"}:${expoPushToken}`;
       if (currentRegistrationKey === lastRegisteredPushTokenRef.current) {
+        console.log("[notifications] push registration skipped: same session token already registered", {
+          userId: token?.userId,
+          currentRegistrationKey,
+          lastRegistered: lastRegisteredPushTokenRef.current,
+        });
         return;
       }
 

@@ -1,9 +1,11 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
 diff --git a/mobile/App.js b/mobile/App.js
-index c4fa0d279ecdd2d51f5a1cbe46bcbe26412b3b48..a113f37abba112d1b52fbc0c460f549e30a6a8c0 100644
+index a113f37abba112d1b52fbc0c460f549e30a6a8c0..664481b6c30f05802b358c8b04c4f828a53d49fe 100644
 --- a/mobile/App.js
 +++ b/mobile/App.js
-@@ -10928,102 +10928,120 @@ function App() {
+@@ -10926,94 +10926,124 @@ function App() {
+   const tokenRef = useRef(token);
+   const lastDeeplinkHandledAtRef = useRef(0);
    const lastHandledUrlRef = useRef(null);
    const url = ExpoLinking.useURL();
  
@@ -27,11 +29,24 @@ index c4fa0d279ecdd2d51f5a1cbe46bcbe26412b3b48..a113f37abba112d1b52fbc0c460f549e
    }, []);
  
    const registerExpoPushToken = useCallback(async () => {
-     if (!token?.token || pushRegistrationInFlightRef.current) return;
+-    if (!token?.token || pushRegistrationInFlightRef.current) return;
++    console.log("[notifications] registerExpoPushToken invoked", {
++      hasToken: !!token?.token,
++      userId: token?.userId,
++      inFlight: pushRegistrationInFlightRef.current,
++    });
++    if (!token?.token || pushRegistrationInFlightRef.current) {
++      console.log("[notifications] registerExpoPushToken skipped at entry", {
++        hasToken: !!token?.token,
++        userId: token?.userId,
++        inFlight: pushRegistrationInFlightRef.current,
++      });
++      return;
++    }
  
-+    let expoPushTokenForLog = null;
-+    let deviceIdForLog = null;
-+
+     let expoPushTokenForLog = null;
+     let deviceIdForLog = null;
+ 
      pushRegistrationInFlightRef.current = true;
      try {
        if (Platform.OS === "android") {
@@ -51,7 +66,10 @@ index c4fa0d279ecdd2d51f5a1cbe46bcbe26412b3b48..a113f37abba112d1b52fbc0c460f549e
          finalStatus = requestedPermissions?.status;
        }
  
++      console.log("[notifications] notification permission status", { finalStatus });
++
        if (finalStatus !== "granted") {
++        console.log("[notifications] push registration aborted: permission not granted");
          return;
        }
  
@@ -59,79 +77,59 @@ index c4fa0d279ecdd2d51f5a1cbe46bcbe26412b3b48..a113f37abba112d1b52fbc0c460f549e
          Constants?.expoConfig?.extra?.eas?.projectId ??
          Constants?.easConfig?.projectId;
  
++      console.log("[notifications] resolved Expo projectId", { projectId });
++
        if (!projectId) {
++        console.log("[notifications] push registration aborted: missing projectId");
          console.log("[notifications] Missing EAS projectId; cannot get Expo push token.");
          return;
        }
  
        const tokenResponse = await Notifications.getExpoPushTokenAsync({ projectId });
        const expoPushToken = tokenResponse?.data;
-+      expoPushTokenForLog = expoPushToken;
-       if (!expoPushToken) return;
++      console.log("[notifications] Expo push token fetch result", {
++        userId: token?.userId,
++        expoPushToken,
++      });
+       expoPushTokenForLog = expoPushToken;
+-      if (!expoPushToken) return;
++      if (!expoPushToken) {
++        console.log("[notifications] push registration aborted: no Expo push token returned");
++        return;
++      }
  
--      const storedPushToken = await AsyncStorage.getItem("expoPushToken");
--      if (
--        expoPushToken === storedPushToken ||
--        expoPushToken === lastRegisteredPushTokenRef.current
--      ) {
-+      const currentRegistrationKey = `${token?.userId ?? "anonymous"}:${expoPushToken}`;
-+      if (currentRegistrationKey === lastRegisteredPushTokenRef.current) {
+       const currentRegistrationKey = `${token?.userId ?? "anonymous"}:${expoPushToken}`;
+       if (currentRegistrationKey === lastRegisteredPushTokenRef.current) {
++        console.log("[notifications] push registration skipped: same session token already registered", {
++          userId: token?.userId,
++          currentRegistrationKey,
++          lastRegistered: lastRegisteredPushTokenRef.current,
++        });
          return;
        }
  
        const deviceId = await getOrCreatePushDeviceId();
--      await apiClient.post("/notifications/push-tokens/register", { expo_push_token: expoPushToken, platform: Device?.osName || Platform.OS, device_id: deviceId });
-+      deviceIdForLog = deviceId;
-+      console.log("[notifications] Registering Expo push token", {
-+        userId: token?.userId,
-+        expoPushToken,
-+        deviceId,
-+      });
-+      const registerResponse = await apiClient.post("/notifications/push-tokens/register", { expo_push_token: expoPushToken, platform: Device?.osName || Platform.OS, device_id: deviceId });
-+      console.log("[notifications] Expo push token registration response", {
-+        userId: token?.userId,
-+        expoPushToken,
-+        deviceId,
-+        response: registerResponse?.data,
-+      });
+       deviceIdForLog = deviceId;
+       console.log("[notifications] Registering Expo push token", {
+         userId: token?.userId,
+         expoPushToken,
+         deviceId,
+       });
+       const registerResponse = await apiClient.post("/notifications/push-tokens/register", { expo_push_token: expoPushToken, platform: Device?.osName || Platform.OS, device_id: deviceId });
+       console.log("[notifications] Expo push token registration response", {
+         userId: token?.userId,
+         expoPushToken,
+         deviceId,
+         response: registerResponse?.data,
+       });
        await AsyncStorage.setItem("expoPushToken", expoPushToken);
--      lastRegisteredPushTokenRef.current = expoPushToken;
-+      lastRegisteredPushTokenRef.current = currentRegistrationKey;
+       lastRegisteredPushTokenRef.current = currentRegistrationKey;
      } catch (err) {
        console.log(
          "[notifications] Failed to register Expo push token",
--        err?.response?.data || err?.message || err
-+        {
-+          userId: token?.userId,
-+          expoPushToken: expoPushTokenForLog,
-+          deviceId: deviceIdForLog || pushDeviceIdRef.current,
-+          error: err?.response?.data || err?.message || err,
-+        }
-       );
-     } finally {
-       pushRegistrationInFlightRef.current = false;
-     }
-   }, [getOrCreatePushDeviceId, token?.token]);
- 
-   const formatFlashText = useCallback((text) => {
-     if (typeof text === "string") return text;
-     if (text == null) return "Something went wrong.";
- 
-     const formatErrorItem = (item) => {
-       if (typeof item === "string") return item;
-       if (!item || typeof item !== "object") return String(item);
- 
-       const message = item.msg || item.message;
-       if (Array.isArray(item.loc) && item.loc.length > 0) {
-         const field = item.loc[item.loc.length - 1];
-         return message ? `${field}: ${message}` : String(item);
-       }
-       if (message) return message;
-       return JSON.stringify(item);
-     };
- 
-     if (Array.isArray(text)) {
-       return text.map(formatErrorItem).filter(Boolean).join("\n");
+         {
+           userId: token?.userId,
+           expoPushToken: expoPushTokenForLog,
  
 EOF
 )
