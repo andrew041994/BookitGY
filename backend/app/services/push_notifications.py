@@ -134,6 +134,8 @@ def send_push_to_user(
             "title": title,
             "body": body,
             "data": data or {},
+            "channelId": "default",
+            "priority": "high",
         }
         try:
             response = requests.post(EXPO_PUSH_URL, json=payload, timeout=5)
