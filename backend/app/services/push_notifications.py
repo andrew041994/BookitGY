@@ -148,8 +148,8 @@ def send_push_to_user(
             "channelId": "default",
             "priority": "high",
         }
-        logger.info("Sending Expo push to token=%s", masked_token)
-        logger.info(
+        logger.warning("Sending Expo push to token=%s", masked_token)
+        logger.warning(
             "Expo push payload user_id=%s title=%s body=%s data=%s channelId=%s priority=%s sound=%s",
             user_id,
             payload["title"],
@@ -162,12 +162,12 @@ def send_push_to_user(
         try:
             response = requests.post(EXPO_PUSH_URL, json=payload, timeout=5)
             status_code = getattr(response, "status_code", None)
-            logger.info("Expo push response status_code=%s token=%s", status_code, masked_token)
+            logger.warning("Expo push response status_code=%s token=%s", status_code, masked_token)
             raise_for_status = getattr(response, "raise_for_status", None)
             if callable(raise_for_status):
                 raise_for_status()
             result = response.json() if response.content else {}
-            logger.info("Expo push parsed response token=%s response=%s", masked_token, result)
+            logger.warning("Expo push parsed response token=%s response=%s", masked_token, result)
             data_items = []
             if isinstance(result, dict):
                 payload_data = result.get("data")

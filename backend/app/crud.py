@@ -1127,7 +1127,7 @@ def send_booking_message(
         db.add(notification)
         db.commit()
 
-        logger.info(
+        logger.warning(
             "Dispatching booking message push booking_id=%s sender_user_id=%s recipient_user_id=%s",
             booking.id,
             sender_user_id,
