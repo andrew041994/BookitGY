@@ -146,6 +146,16 @@ Notifications.setNotificationHandler({
   }),
 });
 
+// Android requires a notification channel for alerts to appear
+if (Platform.OS === "android") {
+  Notifications.setNotificationChannelAsync("default", {
+    name: "Default",
+    importance: Notifications.AndroidImportance.MAX,
+    vibrationPattern: [0, 250, 250, 250],
+    lightColor: "#16a34a",
+  });
+}
+
 const colors = theme.colors;
 const HEADER_LOGO_WIDTH = 120;
 const HEADER_LOGO_HEIGHT = 120;
