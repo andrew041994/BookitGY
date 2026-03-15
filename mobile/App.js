@@ -10950,6 +10950,9 @@ function App() {
   const registerExpoPushToken = useCallback(async () => {
     if (!token?.token || pushRegistrationInFlightRef.current) return;
 
+    let expoPushTokenForLog = null;
+    let deviceIdForLog = null;
+
     pushRegistrationInFlightRef.current = true;
     try {
       if (Platform.OS === "android") {
@@ -10984,24 +10987,39 @@ function App() {
 
       const tokenResponse = await Notifications.getExpoPushTokenAsync({ projectId });
       const expoPushToken = tokenResponse?.data;
+      expoPushTokenForLog = expoPushToken;
       if (!expoPushToken) return;
 
-      const storedPushToken = await AsyncStorage.getItem("expoPushToken");
-      if (
-        expoPushToken === storedPushToken ||
-        expoPushToken === lastRegisteredPushTokenRef.current
-      ) {
+      const currentRegistrationKey = `${token?.userId ?? "anonymous"}:${expoPushToken}`;
+      if (currentRegistrationKey === lastRegisteredPushTokenRef.current) {
         return;
       }
 
       const deviceId = await getOrCreatePushDeviceId();
-      await apiClient.post("/notifications/push-tokens/register", { expo_push_token: expoPushToken, platform: Device?.osName || Platform.OS, device_id: deviceId });
+      deviceIdForLog = deviceId;
+      console.log("[notifications] Registering Expo push token", {
+        userId: token?.userId,
+        expoPushToken,
+        deviceId,
+      });
+      const registerResponse = await apiClient.post("/notifications/push-tokens/register", { expo_push_token: expoPushToken, platform: Device?.osName || Platform.OS, device_id: deviceId });
+      console.log("[notifications] Expo push token registration response", {
+        userId: token?.userId,
+        expoPushToken,
+        deviceId,
+        response: registerResponse?.data,
+      });
       await AsyncStorage.setItem("expoPushToken", expoPushToken);
-      lastRegisteredPushTokenRef.current = expoPushToken;
+      lastRegisteredPushTokenRef.current = currentRegistrationKey;
     } catch (err) {
       console.log(
         "[notifications] Failed to register Expo push token",
-        err?.response?.data || err?.message || err
+        {
+          userId: token?.userId,
+          expoPushToken: expoPushTokenForLog,
+          deviceId: deviceIdForLog || pushDeviceIdRef.current,
+          error: err?.response?.data || err?.message || err,
+        }
       );
     } finally {
       pushRegistrationInFlightRef.current = false;
